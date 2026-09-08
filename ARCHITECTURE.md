@@ -1,0 +1,178 @@
+# Innerwall Architecture
+
+**Status:** Living document. Decisions with lasting consequences are recorded as ADRs in `docs/adr/`; this document describes the system those decisions produce. Where the two disagree, the ADR wins and this document has a bug.
+
+---
+
+## 1. What Innerwall is
+
+Innerwall is an open-source microsegmentation platform for heterogeneous server estates — VMs, bare metal, and cloud instances, with no orchestrator required. A lightweight agent on each workload observes network flows and programs the operating system's native firewall. A central control plane turns label-based policy into per-host rulesets, distributes them, and renders the estate's real traffic as a live dependency map.
+
+The product thesis, argued from first principles:
+
+1. **East-west traffic is the blind spot.** Perimeter controls see what enters and leaves a network; they say nothing about what moves laterally inside it. Most damage in a compromised environment comes from lateral movement, and most environments cannot even *see* that traffic, let alone constrain it.
+2. **You cannot safely enforce what you cannot see.** Writing segmentation rules against an unobserved network is guesswork, and guesswork with firewalls causes outages. Therefore visibility comes first, simulation second, enforcement last — as a workflow the product enforces, not a best practice it suggests.
+3. **The host already has a firewall.** Every mainstream OS ships a capable packet filter. A segmentation system does not need its own datapath; it needs to *program the existing ones* correctly, atomically, and observably. This keeps the agent small, the failure modes legible, and the performance cost near zero.
+4. **Central planes fail by being chatty.** Any design where thousands of endpoints poll a central API — and where humans, dashboards, and automation hit the same API — eventually meets rate limits, thundering herds, and throttled front doors. Innerwall is push-based and desired-state from day one so that class of failure is designed out rather than mitigated later.
+
+## 2. Design principles
+
+These recur throughout the system and are the tie-breakers when decisions conflict:
+
+- **Visibility → simulation → enforcement.** Read-only value first; enforcement is opt-in, per scope, after the operator has seen what would break.
+- **Desired state, reconciled — never imperative commands.** The control plane declares what each host's ruleset should be; agents converge on it and report what they actually run. Drift is detectable by definition.
+- **Push over poll.** Long-lived streams carry policy down and telemetry up. Nothing in the steady state polls.
+- **Separate the read path from the policy path.** Analytical load (dashboards, flow queries, exports) must never contend with policy distribution.
+- **Fail static.** Loss of the control plane changes nothing on any host: last-known policy stays enforced, telemetry buffers locally. Control-plane availability is a convenience property, not a safety property.
+- **Boring to operate.** One control-plane binary, one Postgres. Everything that could be a second stateful system is behind an interface until scale forces it into existence.
+- **Design the seam now, implement later.** Flow storage, the CA, relays, and federation all exist today as interfaces with a single default implementation. Scaling is a documented path, not a rewrite.
+
+## 3. System overview
+
+```
+                         ┌────────────────────────────────────────────┐
+                         │              Control plane                 │
+                         │  (single Go binary, N stateless replicas)  │
+                         │                                            │
+   Browser ──────────────┼─► API service ──► Policy compiler          │
+   Automation ─ REST/JSON│      │                  │                  │
+                         │      ▼                  ▼                  │
+                         │   Postgres ◄──── compiled ruleset versions │
+                         │      ▲                  │                  │
+                         │      │                  ▼                  │
+   Agents ══ gRPC/mTLS ══╪═► Agent gateway ◄── push per-agent deltas  │
+   (persistent streams)  │      │                                     │
+                         │      ▼                                     │
+                         │   Flow ingestion ──► FlowStore (Postgres)  │
+                         │   CA / identity service (embedded)         │
+                         └────────────────────────────────────────────┘
+
+   Host ┌──────────────────────────────┐
+        │ innerwall-agent (static Go)  │
+        │  sync loop ── policy in      │
+        │  collect loop ── flows out   │
+        │  reconcile loop ── nftables  │
+        │  health loop ── heartbeat    │
+        └──────────────────────────────┘
+```
+
+## 4. Control plane
+
+One deployable binary, internally organized as services with clean boundaries so they can split into separate processes if scale ever demands it (ADR-0005). All durable state lives in Postgres; replicas are stateless and interchangeable.
+
+### 4.1 API service
+
+Serves the UI and automation over a REST/JSON façade generated from the same protobuf definitions that drive the agent protocol (ADR-0007). Design rules that exist specifically to keep a central API healthy under estate-scale automation:
+
+- **Bulk endpoints** for anything a script would loop over (label assignment, workload queries).
+- **Cursor pagination** everywhere; no offset pagination, no unbounded lists.
+- **Async job pattern** for expensive operations: provisioning a policy change returns a job ID immediately; clients poll or subscribe for completion. No endpoint is allowed to block for the duration of a fan-out.
+
+### 4.2 Agent gateway
+
+Terminates agent mTLS and holds one persistent bidirectional gRPC stream per agent (ADR-0002). Policy deltas go down; aggregated flows, heartbeats, and ruleset-version ACKs come up on the same stream. Because any stateless replica must be able to accept any agent, a small presence table (Postgres, with LISTEN/NOTIFY for change propagation at v1 scale) maps agent → replica so that "push to agent X" can find the connection.
+
+Reconnection storms are a first-class design case: a control-plane restart means every agent reconnects, each with a CPU-expensive mTLS handshake. Agents use exponential backoff with full jitter (`wait = random(0, min(cap, base × 2^attempt))`), which turns synchronized waves into a smooth trickle.
+
+### 4.3 Policy compiler
+
+Consumes label-based rules plus current registry state and produces **per-agent compiled rulesets**, each with a monotonic version. Only the agents affected by a change are recompiled — the blast radius of compilation follows the blast radius of the edit. Agents ACK the version they run; desired vs. actual version is therefore a queryable fact, and sync drift is an alert, not a mystery. A Postgres advisory lock ensures a single active compiler across replicas.
+
+### 4.4 Flow ingestion
+
+Receives pre-aggregated flow records from agents, enriches them (IP → workload identity via the registry), deduplicates bidirectionally (both endpoints of a connection report it), and writes to the FlowStore. Agent-side aggregation is the load-bearing decision here: agents roll flows up into `(src, dst, port, proto, count, bytes)` tuples over a 1–10 minute window before shipping, cutting central volume by orders of magnitude (ADR-0009).
+
+### 4.5 Identity / CA service
+
+An embedded certificate authority issues short-lived agent certificates. It sits behind a `CertificateAuthority` interface so external issuers can replace it without touching enrollment logic (ADR-0004). The signing key is environment-provided in development; the interface anticipates KMS/HSM-backed signing.
+
+### 4.6 High availability
+
+- Control-plane replicas are stateless; HA is N replicas behind a load balancer plus a properly HA Postgres. Postgres is the availability story.
+- The property that actually makes the system safe is agent-side: **fail static** (ADR-0011). With that in place, control-plane downtime degrades management, never enforcement.
+- v1 sizing honesty: single binary + single Postgres (co-located or adjacent) is the supported deployment until real estates demand more. The seams for splitting are designed; the split is not built.
+
+## 5. Agent
+
+A single static Go binary (`innerwall-agent`), structured as four independent loops sharing local state:
+
+1. **Sync loop** — maintains the gRPC stream, receives policy deltas, persists the last-known compiled ruleset to disk, ACKs versions.
+2. **Collect loop** — reads flow data from conntrack (v1), aggregates in memory over the reporting window, ships batches upstream; buffers to local disk when disconnected. eBPF-based collection is a later, additive backend behind the same collector interface.
+3. **Reconcile loop** — converges the host firewall onto the desired ruleset. On Linux this means an **Innerwall-owned nftables table**, replaced atomically as a unit: rule application is all-or-nothing, never a partially applied ruleset, and never a mutation of tables owned by other software (ADR-0003).
+4. **Health loop** — heartbeats (piggybacked on the stream), resource self-accounting, and local safety controls.
+
+Safety properties (ADR-0011):
+
+- **Fail static.** Disconnection changes nothing. Last-known policy remains enforced from disk across agent restarts and host reboots.
+- **Local kill switch.** An operator with root on the host can always disable enforcement locally (removing the Innerwall table) without control-plane involvement. Root on the box outranks the platform — by design, and stated loudly, because it is the first question a security architect asks.
+- **Resource budgets.** The agent enforces caps on its own memory and flow-buffer disk usage; when exceeded, it degrades telemetry (sampling, then dropping) before it ever degrades the host.
+- **No self-update in v1.** The agent updates through the host's normal package management. A platform that can silently replace its own root-privileged binary is a supply-chain liability; that convenience is deferred until it can be done with proper signing and staged rollout.
+
+## 6. Identity and enrollment
+
+The hard problem is the first certificate; everything after is routine mTLS rotation.
+
+- **Enrollment policies** define the constraints of enrollment: allowed label assignments, expiry, usage limits (one-time or N-use).
+- **Join tokens** are minted from an enrollment policy and passed to the install script. The agent generates its keypair locally (the private key never leaves the host), submits CSR + token + host metadata over server-authenticated TLS, and receives a short-TTL certificate plus chain. The token is burned or decremented.
+- **Identity lives in the cert; attributes live in the registry.** Certificates carry a SPIFFE-style URI SAN (`spiffe://innerwall/agent/<uuid>`) with a control-plane-assigned UUID. Mutable facts — hostname, labels, enforcement state — never enter the certificate. Cert = authentication; registry = authorization.
+- **Rotation over revocation.** 24–48h cert TTLs with renewal at ~50% lifetime via authenticated re-CSR. Short TTLs mostly obviate revocation machinery; a control-plane deny-list of agent IDs covers the rest. An agent that misses its renewal window re-enrolls (manual by default; configurable).
+- **Designed-for edge cases:** clock skew (small `notBefore` backdating), cloned VM images presenting duplicate identities (detected on connect, forced re-enrollment), CA key custody (interface anticipates external KMS/HSM).
+
+Trust-on-first-use is explicitly rejected: an enrollment window where anyone reachable can register as anything is unacceptable for a system that will enforce policy and whose policy discloses network topology.
+
+## 7. Policy model
+
+- **Labels, not addresses.** Workloads carry labels (e.g. `role=db`, `env=prod`, `app=billing`); rules are written between label sets. IPs are an output of compilation, never an input to policy.
+- **Draft → simulate → provision.** Edits accumulate in a draft with a first-class diff against active policy. Simulation replays observed flows against the draft and reports exactly which real, recent connections would have been blocked. Provisioning creates an immutable numbered version — the unit of audit and rollback.
+- **Enforcement scope, v1: inbound only** (ADR-0010). Each workload's ruleset constrains what may reach it. Inbound-only halves the policy surface an operator must reason about, and it is the direction where a mistake is legible (a blocked *inbound* dependency shows up in the map immediately). Outbound enforcement arrives in v2 as a layered model: shared **baseline policies** for estate-wide dependencies (DNS, directory services, NTP, package mirrors) composed under **app-scoped policies**, so application teams never re-declare infrastructure.
+- **Enforcement is per-scope and gradual.** Workloads move visibility → simulated → enforced individually or by label selection; nothing forces estate-wide enforcement as a single event.
+
+## 8. Flow data
+
+- **Schema:** aggregated tuples `(src workload, dst workload, dst port, proto, first_seen, last_seen, count, bytes)` — deliberately column-shaped and time-partitioned.
+- **v1 store: Postgres only** (ADR-0009), time-partitioned tables with partition-drop retention. With agent-side aggregation this comfortably serves tens of millions of flow records per day.
+- **The seam:** all access goes through a `FlowStore` interface, and the schema is written to port cleanly to a columnar store. A second stateful system enters the deployment only when a real estate's query latency demands it — and when it does, the read path moves wholesale, keeping analytical load permanently off the policy plane.
+
+## 9. UI
+
+A static single-page application (Vite + React) embedded into the control-plane binary via `go:embed` — one artifact to deploy, no server-side rendering, no separate frontend service (ADR-0008). The UI speaks only the public REST façade, which keeps that API honest: anything the UI can do, automation can do.
+
+Surfaces, in product order:
+
+1. **Flow map** — the live dependency graph (ReactFlow), aggregated by label group rather than per-host, because a thousand-node hairball is not visibility. Drill-down expands groups to workloads to flows.
+2. **Policy editor** — draft/diff-first. The diff against active policy *is* the review artifact.
+3. **Simulation view** — the draft replayed against observed flows: "these seventeen real connections from the last week would have been denied."
+4. **Workload inventory** — registry, labels, agent health, desired-vs-actual ruleset version.
+5. **Enrollment** — generate scoped, expiring, pre-labeled join tokens with a copy-paste install command. Deliberately polished: it is the first thirty seconds of every evaluation.
+
+## 10. Scale-out roadmap (designed, not built)
+
+Two extensions exist today only as documented seams (ADR-0012):
+
+- **Relay tier.** For very large estates, agents connect to a nearby relay; relays multiplex to the core, collapsing connection counts by orders of magnitude. Relays cache **signed policy bundles** — the control plane signs compiled rulesets, so a relay can serve cached policy during a core outage without ever being trusted to *author* policy. Agents always retain fallback-to-direct.
+- **Regional federation.** Multi-region estates run regional control planes under a thin global coordinator. Label-membership summaries sync across regions so cross-region policy compiles correctly; raw flow data never leaves its region (a compliance property, not just a bandwidth one). The CA extends hierarchically with per-region intermediates. Region isolation is the failure-mode goal: a severed region keeps enforcing and keeps serving its own map.
+
+## 11. Security posture
+
+- The agent runs privileged because programming the host firewall requires it; everything else is minimized — static binary, no runtime downloads, no self-update, no listening ports (the agent only dials out).
+- The control plane is the high-value target and is treated accordingly: policy provisioning is versioned and audited, enrollment is token-gated, agent identity is short-lived, and the deny-list provides immediate lockout.
+- Supply chain: reproducible static builds, signed releases, DCO-enforced provenance on every commit (ADR-0013).
+
+## 12. Document map
+
+| Concern | Where |
+|---|---|
+| Why visibility precedes enforcement | ADR-0001 |
+| Agent transport & desired-state sync | ADR-0002 |
+| Native-firewall enforcement | ADR-0003 |
+| Identity, enrollment, CA | ADR-0004 |
+| Control-plane shape & HA | ADR-0005 |
+| Data access layer | ADR-0006 |
+| API surface | ADR-0007 |
+| UI delivery | ADR-0008 |
+| Flow storage | ADR-0009 |
+| Enforcement scope | ADR-0010 |
+| Agent safety properties | ADR-0011 |
+| Relays & federation seams | ADR-0012 |
+| License & provenance | ADR-0013 |
+| Docs & review workflow | ADR-0014 |

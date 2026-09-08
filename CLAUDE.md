@@ -1,0 +1,46 @@
+# CLAUDE.md — standing instructions for coding agents
+
+You are working on **Innerwall**, an open-source microsegmentation platform: host agents observe flows and program native OS firewalls; a control plane compiles label-based policy into per-host rulesets and renders a live dependency map.
+
+## Read order
+
+1. `ARCHITECTURE.md` — the system as designed.
+2. `docs/adr/` — the decisions and their reasoning. ADRs are the source of truth; ARCHITECTURE.md describes the system they produce.
+3. This file — the rules you must not casually break.
+
+## Hard rules (distilled from Accepted ADRs)
+
+These are the constraints a plausible-looking change is most likely to violate. Each cites its ADR; a change that contradicts one requires a **superseding ADR in the same PR**.
+
+- **No ORM, no query builders, no runtime SQL generation.** Hand-written SQL in `internal/store/queries/`, sqlc-generated Go, goose migrations. Every production query lives in the repo. (ADR-0006)
+- **No polling loops anywhere in steady state.** Agents hold one persistent gRPC stream; policy moves as versioned desired-state deltas; reconnects use exponential backoff with full jitter. (ADR-0002)
+- **Agents never touch firewall state outside the Innerwall-owned nftables table**, and ruleset application is atomic — full-table replacement, never incremental mutation of live rules. (ADR-0003)
+- **Agents fail static — never open, never closed.** Last-ACKed policy persists to disk and survives restarts and reboots. The local kill switch must always work without the control plane. (ADR-0011)
+- **No agent self-update code.** Not a flag, not a stub, not "for later." (ADR-0011)
+- **Flows are aggregated at the agent** into `(src, dst, port, proto, count, bytes)` windows before shipping. Never ship per-connection records. (ADR-0009)
+- **All flow reads/writes go through the `FlowStore` interface.** No direct SQL against flow tables outside its Postgres implementation. (ADR-0009)
+- **The UI talks only to the public REST façade.** No private endpoints, no backchannel, no direct DB access from anything in `ui/`. (ADR-0007, ADR-0008)
+- **All API surface is defined in `proto/` first.** No hand-added REST routes; the façade is generated. Breaking proto changes fail CI without an ADR reference. (ADR-0007)
+- **Policy compilation is inbound-only in v1.** The schema reserves direction; the compiler must not emit outbound rules. (ADR-0010)
+- **Certificates carry identity only** (SPIFFE-style URI SAN, control-plane-assigned UUID). Labels, hostnames, and other mutable attributes never go in certs. (ADR-0004)
+- **Statelessness is load-bearing:** no control-plane replica may hold state that matters beyond its process; anything durable goes in Postgres. (ADR-0005)
+- **Policy bundles are signed from day one**, and `region_id` stays in the schema even while unused. These seams are cheap now and expensive later. (ADR-0012)
+- **The Makefile stays dumb.** Targets are 1–3-line wrappers over real tools; anything with logic becomes a script in `scripts/` that a target calls.
+
+## Vocabulary and framing
+
+- Project terminology only: **enrollment policy**, **join token**, **agent**, **control plane**, **workload**, **label**.
+- All docs, comments, commit messages, and identifiers argue from **first principles**. No references to other products, companies, or their terminology — anywhere in the repo. If a design needs motivation, derive it (e.g. "central planes fail by being chatty"), don't compare.
+
+## Commands
+
+- `make build` / `make test` / `make lint` — the whole loop. `make dev` runs the compose stack (control plane + Postgres).
+- `make proto` regenerates from `proto/` (buf); `make sqlc` regenerates the store. **Never edit generated code** — CI regenerates and fails on drift.
+- UI: `make ui` builds; Biome handles lint + format in `ui/` (one `biome.json`, no eslint/prettier).
+- Migrations: new goose file in `internal/store/migrations/`, never edit an applied one.
+
+## Change protocol
+
+- ADRs are immutable once Accepted; change by superseding ADR (next number, `Supersedes: ADR-XXXX` header, old one marked Superseded).
+- CI runs an automated review of every PR against the Accepted ADRs. If it flags your change, the fix is either the change or a superseding ADR — never silent drift.
+- Commits require DCO sign-off (`git commit -s`). (ADR-0013)
