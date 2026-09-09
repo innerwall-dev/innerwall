@@ -10,12 +10,14 @@ base="${1:?usage: check-proto-breaking.sh <base-ref>}"
 
 cd "$(dirname "$0")/.."
 
-if ! git cat-file -e "${base}:proto/buf.yaml" 2>/dev/null; then
-	echo "base ref ${base} has no proto module; nothing to compare"
+if ! git ls-tree -r --name-only "${base}" -- proto | grep -q '\.proto$'; then
+	echo "base ref ${base} has no proto files; nothing to compare"
 	exit 0
 fi
 
-if buf breaking proto --against ".git#ref=${base},subdir=proto"; then
+# The buf module root is proto/ on both sides (buf.yaml at the repo root
+# declares it), so the comparison is module against module.
+if buf breaking --against ".git#ref=${base},subdir=proto"; then
 	echo "no breaking proto changes against ${base}"
 	exit 0
 fi

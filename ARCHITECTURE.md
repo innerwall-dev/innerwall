@@ -176,3 +176,4 @@ Two extensions exist today only as documented seams (ADR-0012):
 | Relays & federation seams | ADR-0012 |
 | License & provenance | ADR-0013 |
 | Docs & review workflow | ADR-0014 |
+| Agent wire contract | ADR-0015 |
