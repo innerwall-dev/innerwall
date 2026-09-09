@@ -1,0 +1,17 @@
+# Build outputs
+/bin/
+/dist/
+# UI (the tracked ui/dist/.gitkeep keeps the embed directory present)
+/ui/node_modules/
+/ui/dist/*
+!/ui/dist/.gitkeep
+# Local environment
+.env
+*.local
+# Test and coverage artifacts
+coverage.out
+*.test
+# Editor and OS noise
+.idea/
+.vscode/
+.DS_Store

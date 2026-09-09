@@ -1,0 +1,15 @@
+# Code generation for proto/. Plugins run from this module's go.mod `tool`
+# directives so the generated output is pinned by go.sum, not by whatever is on
+# PATH. Regenerate with `make proto`; CI fails on drift.
+version: v2
+clean: true
+plugins:
+  - local: [go, tool, protoc-gen-go]
+    out: internal/gen
+    opt: paths=source_relative
+  - local: [go, tool, protoc-gen-go-grpc]
+    out: internal/gen
+    opt: paths=source_relative
+  - local: [go, tool, protoc-gen-grpc-gateway]
+    out: internal/gen
+    opt: paths=source_relative

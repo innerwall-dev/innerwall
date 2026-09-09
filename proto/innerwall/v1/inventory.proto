@@ -1,0 +1,9 @@
+// Inventory: workloads, registry, and presence (ADR-0005).
+// Messages arrive with milestone M1's contract work; this file establishes
+// the package.
+
+syntax = "proto3";
+
+package innerwall.v1;
+
+option go_package = "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1;innerwallv1";

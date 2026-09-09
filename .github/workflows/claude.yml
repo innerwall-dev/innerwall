@@ -1,0 +1,91 @@
+# Coding-agent workflows (ADR-0014):
+#   claude      — interactive: responds to @claude mentions on issues and PRs.
+#   adr-review  — automation: reviews every PR against the Accepted ADRs in
+#                 docs/adr/ and posts findings as a PR comment. Advisory only;
+#                 findings never fail the build.
+#
+# Both jobs authenticate through workload identity federation using the job's
+# OIDC token. No static credential is configured anywhere in this workflow: a
+# static key or token would silently take precedence over federation.
+# The federation identifiers below are not secrets; only the OIDC token is.
+name: claude
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  issues:
+    types: [opened, assigned]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  claude:
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_federation_rule_id: fdrl_017Z5x46M1Apn3aGGLYLFfsT
+          anthropic_organization_id: 2d941f98-8c11-4723-86e9-8dddac458911
+          anthropic_service_account_id: svac_01LUZUMbvB9sTx4tXUQ1oHm2
+          anthropic_workspace_id: wrkspc_01UvMt6iYb2SMsdhT2XRoFz2
+          claude_args: |
+            --allowedTools "Bash(make build),Bash(make test),Bash(make lint),Bash(go build:*),Bash(go test:*),Bash(go vet:*),Bash(npm --prefix ui run:*)"
+
+  adr-review:
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: anthropics/claude-code-action@v1
+        # Advisory: a finding is a review comment, not a failed check.
+        continue-on-error: true
+        with:
+          anthropic_federation_rule_id: fdrl_017Z5x46M1Apn3aGGLYLFfsT
+          anthropic_organization_id: 2d941f98-8c11-4723-86e9-8dddac458911
+          anthropic_service_account_id: svac_01LUZUMbvB9sTx4tXUQ1oHm2
+          anthropic_workspace_id: wrkspc_01UvMt6iYb2SMsdhT2XRoFz2
+          use_sticky_comment: true
+          prompt: |
+            You are reviewing pull request #${{ github.event.pull_request.number }} in ${{ github.repository }} for conformance with the project's architecture decision records.
+
+            The ADRs in docs/adr/ are the source of truth for this project. Each Accepted ADR is immutable; a change that contradicts one is allowed only when the same pull request adds a superseding ADR (next number, a `Supersedes: ADR-XXXX` header, and the old ADR marked Superseded). CLAUDE.md distills the ADRs into hard rules and vocabulary rules; ARCHITECTURE.md describes the system they produce.
+
+            Steps:
+            1. Read docs/adr/README.md, every ADR in docs/adr/, and CLAUDE.md.
+            2. Read the pull request diff with `gh pr diff ${{ github.event.pull_request.number }}` and the description with `gh pr view ${{ github.event.pull_request.number }}`.
+            3. For each change, decide whether it contradicts an Accepted ADR. Contradictions include, but are not limited to: an ORM or query builder or runtime SQL generation; polling loops in steady state; firewall changes outside the owned nftables table or non-atomic rule application; an agent that fails open or closed rather than static; agent self-update code; per-connection flow shipping; flow access that bypasses the FlowStore interface; UI code that reaches anything other than the public REST façade; hand-added REST routes not defined in proto/; outbound policy compilation in v1; mutable attributes in certificates; control-plane state that matters beyond a single process; unsigned policy bundles or removal of region_id; Makefile targets with logic; references to other products or companies anywhere in the repository; a hand-edited generated file; an edit to an already-Accepted ADR.
+            4. If a contradiction is present, check whether the pull request adds a superseding ADR that covers it.
+
+            Post exactly one comment on the pull request using `gh pr comment ${{ github.event.pull_request.number }} --body`, updating it if you already posted one. Structure it as:
+            - A one-line verdict: "No ADR contradictions found" or "ADR review: N finding(s)".
+            - For each finding: the ADR number and title, the file and line, what the change does, why it contradicts the ADR, and whether a superseding ADR is present. Quote the ADR text you are relying on.
+            - If a superseding ADR is present, note whether it follows the format in docs/adr/README.md.
+
+            Stay within the ADRs: do not review style, naming, or test coverage. Do not modify files. This review is advisory; it informs the human reviewers and does not block the merge.
+          claude_args: |
+            --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(gh api:*),Read,Glob,Grep"
+            --max-turns 40
