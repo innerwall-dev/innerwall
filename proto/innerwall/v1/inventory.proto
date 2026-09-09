@@ -1,9 +1,122 @@
-// Inventory: workloads, registry, and presence (ADR-0005).
-// Messages arrive with milestone M1's contract work; this file establishes
-// the package.
-
 syntax = "proto3";
 
 package innerwall.v1;
 
 option go_package = "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1;innerwallv1";
+
+// Shared inventory vocabulary: workload identity, labels, and host facts.
+// This file is the bottom of the import graph — policy.proto and agent.proto
+// both depend on it, and it imports nothing from them. Shared enums live here
+// for that reason.
+
+import "google/protobuf/timestamp.proto";
+
+// Transport protocol vocabulary shared by policy definitions, flow records,
+// and listening-service inventory.
+enum Protocol {
+  PROTOCOL_UNSPECIFIED = 0;
+  PROTOCOL_TCP = 1;
+  PROTOCOL_UDP = 2;
+  PROTOCOL_ICMP = 3;
+}
+
+// How the agent treats traffic that the rendered policy would deny.
+// Progression is visibility -> simulation -> enforced: policy is authored and
+// validated against observed traffic before anything is dropped.
+enum EnforcementMode {
+  ENFORCEMENT_MODE_UNSPECIFIED = 0;
+  // Observe and report flows only. No policy evaluation required.
+  ENFORCEMENT_MODE_VISIBILITY = 1;
+  // Evaluate rendered policy against observed flows and report would-be
+  // denials, but drop nothing.
+  ENFORCEMENT_MODE_SIMULATION = 2;
+  // Evaluate rendered policy and drop denied traffic.
+  ENFORCEMENT_MODE_ENFORCED = 3;
+}
+
+// A key/value pair attached to a workload. Labels are assigned by the control
+// plane — at enrollment (derived from the provisioning token's scope) or later
+// by an operator. Agents never self-assign labels; an agent-supplied label
+// would let a compromised host place itself into a more permissive policy
+// scope. Policy selectors (policy.proto) match against these values.
+message Label {
+  string key = 1;
+  string value = 2;
+}
+
+message NetworkInterface {
+  string name = 1;
+  // Addresses in CIDR notation (e.g. "10.0.4.17/24").
+  repeated string addresses = 2;
+  string mac_address = 3;
+}
+
+message OsInfo {
+  // Broad family, e.g. "linux".
+  string family = 1;
+  // Distribution or product name.
+  string name = 2;
+  string version = 3;
+  string kernel_version = 4;
+  string architecture = 5;
+}
+
+message AgentInfo {
+  string version = 1;
+  // Feature capabilities the agent supports, as opaque strings. Lets the
+  // control plane vary behavior across agent versions without a schema change.
+  repeated string capabilities = 2;
+}
+
+// Facts observed on the host by the agent. Reported at enrollment and
+// refreshed via inventory reports on the sync stream. Facts are descriptive
+// inventory only — they never confer identity (ADR-0004) and never carry
+// labels (see Label).
+message HostFacts {
+  string hostname = 1;
+  OsInfo os = 2;
+  repeated NetworkInterface interfaces = 3;
+}
+
+// A service listening on the host. Combined with observed flows, this is what
+// makes policy authoring tractable during the visibility phase: the operator
+// sees both what is exposed and what actually connects to it.
+message ListeningService {
+  Protocol protocol = 1;
+  uint32 port = 2;
+  string process_name = 3;
+  string process_path = 4;
+}
+
+// Control-plane view of an agent's convergence with desired state.
+enum SyncState {
+  SYNC_STATE_UNSPECIFIED = 0;
+  // Applied policy version matches the latest rendered version.
+  SYNC_STATE_SYNCED = 1;
+  // A newer rendered version exists that the agent has not yet acknowledged.
+  SYNC_STATE_PENDING = 2;
+  // The agent reported a failed apply and remains on its last good version.
+  SYNC_STATE_DEGRADED = 3;
+  // No live sync stream for this workload.
+  SYNC_STATE_OFFLINE = 4;
+}
+
+// A workload as known to the control plane. This is the control plane's
+// authoritative record, composed from enrollment, inventory reports, and
+// sync status — not a message the agent sends.
+message Workload {
+  // Stable identity assigned at enrollment and bound into the workload's
+  // credential (ADR-0004). Never derived from host facts.
+  string workload_id = 1;
+  repeated Label labels = 2;
+  HostFacts facts = 3;
+  AgentInfo agent = 4;
+  EnforcementMode mode = 5;
+  SyncState sync_state = 6;
+  google.protobuf.Timestamp enrolled_at = 7;
+  google.protobuf.Timestamp last_seen = 8;
+
+  // Reserved for multi-region topology (ADR-0012).
+  reserved 9;
+  reserved "region_id";
+}

@@ -1,9 +1,256 @@
-// Agent protocol: enrollment, the persistent sync stream, flow reporting,
-// and heartbeats (ADR-0002, ADR-0004). Messages arrive with milestone M1's
-// contract work; this file establishes the package.
-
 syntax = "proto3";
 
 package innerwall.v1;
 
 option go_package = "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1;innerwallv1";
+
+// The agent-facing wire contract, split into two services along the
+// authentication boundary:
+//
+//   EnrollmentService — authenticated by a provisioning token. The only
+//     surface reachable before a workload has an identity.
+//   AgentService — authenticated by the credential issued at enrollment
+//     (mutual TLS). Workload identity is always derived from the connection's
+//     credential, never from request payloads (ADR-0004).
+//
+// Policy distribution follows ADR-0002: the server streams desired state to
+// connected agents; agents acknowledge what they have applied.
+
+import "google/protobuf/timestamp.proto";
+import "innerwall/v1/inventory.proto";
+import "innerwall/v1/policy.proto";
+
+service EnrollmentService {
+  // Exchange a provisioning token and a certificate signing request for a
+  // workload identity and signed credential.
+  rpc Enroll(EnrollRequest) returns (EnrollResponse);
+}
+
+service AgentService {
+  // The desired-state sync stream. Lifecycle:
+  //   1. Agent connects and sends Hello (agent info, host facts, last
+  //      applied policy version — 0 if none).
+  //   2. Server replies HelloAck (sync configuration), then unconditionally
+  //      sends a PolicySnapshot. Deltas are only ever sent within a live
+  //      stream, after the snapshot; reconnection always restarts from a
+  //      snapshot. This trades a few kilobytes on reconnect for the
+  //      elimination of cross-session divergence as a failure class.
+  //   3. Server pipelines PolicyUpdates without waiting for acks. The agent
+  //      applies updates strictly in order and acks each one. Apply is
+  //      atomic: on failure the agent remains on its last good version and
+  //      acks FAILED, and the server's recovery move is a fresh snapshot,
+  //      never a retried delta.
+  // Low-volume control traffic only. Flow telemetry is deliberately a
+  // separate RPC so that reporting volume can never head-of-line-block a
+  // policy update.
+  rpc Sync(stream SyncRequest) returns (stream SyncResponse);
+
+  // High-volume, loss-tolerant flow telemetry. The agent aggregates flows
+  // over the window configured in SyncConfig and uploads batches. The
+  // response is returned when the client closes the stream.
+  rpc ReportFlows(stream ReportFlowsRequest) returns (ReportFlowsResponse);
+
+  // Rotate the workload credential before expiry. Authenticated by the
+  // current credential; the renewed credential binds the same identity.
+  rpc RenewCredential(RenewCredentialRequest) returns (RenewCredentialResponse);
+}
+
+// ---------------------------------------------------------------------------
+// Enrollment
+// ---------------------------------------------------------------------------
+
+message EnrollRequest {
+  // Provisioning token. Tokens are scoped, not single-use: a token minted for
+  // a label set can enroll many workloads (baked into an image or provisioning
+  // pipeline), and the control plane assigns that label set at enrollment.
+  string provisioning_token = 1;
+  // PKCS#10 certificate signing request, PEM-encoded. The private key never
+  // leaves the host.
+  bytes csr_pem = 2;
+  // Host facts observed at enrollment time. Descriptive only — facts never
+  // influence identity or authorization (ADR-0004).
+  HostFacts facts = 3;
+}
+
+message EnrollResponse {
+  // The identity granted to this workload. Also bound into the issued
+  // credential; from this point on, identity is always taken from the
+  // connection credential, and this field exists for agent-side logging
+  // and diagnostics only.
+  string workload_id = 1;
+  // Signed client certificate, PEM-encoded.
+  bytes certificate_pem = 2;
+  // CA bundle for verifying the control plane, PEM-encoded.
+  bytes ca_bundle_pem = 3;
+  // Labels assigned from the provisioning token's scope.
+  repeated Label assigned_labels = 4;
+}
+
+message RenewCredentialRequest {
+  // PKCS#10 certificate signing request, PEM-encoded. The workload being
+  // renewed is derived from the connection credential, not from the request.
+  bytes csr_pem = 1;
+}
+
+message RenewCredentialResponse {
+  bytes certificate_pem = 1;
+  bytes ca_bundle_pem = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Sync stream envelopes
+// ---------------------------------------------------------------------------
+
+message SyncRequest {
+  oneof msg {
+    Hello hello = 1;
+    PolicyAck policy_ack = 2;
+    InventoryReport inventory = 3;
+    Heartbeat heartbeat = 4;
+  }
+}
+
+message SyncResponse {
+  oneof msg {
+    HelloAck hello_ack = 1;
+    PolicyUpdate policy_update = 2;
+    Directive directive = 3;
+  }
+}
+
+// First message on every stream, agent -> server.
+message Hello {
+  AgentInfo agent = 1;
+  // The policy version currently applied on the host; 0 if none. Informs
+  // server-side status only — the server always responds with a snapshot
+  // regardless of this value.
+  uint64 applied_policy_version = 2;
+  HostFacts facts = 3;
+}
+
+// First server message on every stream.
+message HelloAck {
+  SyncConfig config = 1;
+}
+
+// Server-assigned operating parameters. Centralizing these means fleet-wide
+// tuning without agent redeployment.
+message SyncConfig {
+  uint32 heartbeat_interval_seconds = 1;
+  uint32 inventory_report_interval_seconds = 2;
+  uint32 flow_aggregation_window_seconds = 3;
+  uint32 flow_batch_max_records = 4;
+}
+
+message PolicyUpdate {
+  oneof update {
+    PolicySnapshot snapshot = 1;
+    PolicyDelta delta = 2;
+  }
+}
+
+enum AckStatus {
+  ACK_STATUS_UNSPECIFIED = 0;
+  // The update was applied atomically to the host firewall.
+  ACK_STATUS_APPLIED = 1;
+  // The apply failed as a unit; the agent remains on its previous version.
+  // Partial application is not representable by design: a version number is
+  // only meaningful if it describes the complete installed state.
+  ACK_STATUS_FAILED = 2;
+}
+
+message PolicyAck {
+  // The to-version of the update being acknowledged.
+  uint64 version = 1;
+  AckStatus status = 2;
+  // Populated when status is FAILED.
+  string error_detail = 3;
+}
+
+// Periodic inventory refresh, agent -> server.
+message InventoryReport {
+  HostFacts facts = 1;
+  repeated ListeningService listening_services = 2;
+}
+
+// Lightweight liveness signal with backpressure visibility.
+message Heartbeat {
+  uint64 uptime_seconds = 1;
+  // Flow records dropped by the agent since the stream opened (buffer
+  // pressure). Non-zero values tell the operator that the flow map is
+  // incomplete before they trust it for policy authoring.
+  uint64 dropped_flow_records = 2;
+}
+
+// Server-initiated commands. Modeled as a oneof of messages rather than an
+// enum so future directives can carry payloads without a breaking change.
+message Directive {
+  oneof directive {
+    // Tear down and re-establish the sync stream (which restarts from a
+    // snapshot by the stream lifecycle rules).
+    Reconnect reconnect = 1;
+    // Discard the current credential and repeat enrollment. Requires a new
+    // provisioning token delivered out of band.
+    Reenroll reenroll = 2;
+  }
+}
+
+message Reconnect {}
+
+message Reenroll {}
+
+// ---------------------------------------------------------------------------
+// Flow telemetry
+// ---------------------------------------------------------------------------
+
+// One aggregation window of flow records from one agent.
+message ReportFlowsRequest {
+  google.protobuf.Timestamp window_start = 1;
+  google.protobuf.Timestamp window_end = 2;
+  repeated FlowRecord records = 3;
+}
+
+message ReportFlowsResponse {
+  // Total records accepted across the stream.
+  uint64 accepted_records = 1;
+}
+
+// The outcome the policy engine reached (or would have reached) for a flow.
+// WOULD_BLOCK is the load-bearing value for the simulation phase: it is the
+// evidence that a policy is safe (or not) to enforce.
+enum PolicyDecision {
+  POLICY_DECISION_UNSPECIFIED = 0;
+  // Observed in visibility mode; no policy evaluation was performed.
+  POLICY_DECISION_OBSERVED = 1;
+  // Permitted by the rendered policy.
+  POLICY_DECISION_ALLOWED = 2;
+  // Permitted (simulation mode), but the rendered policy would have denied it.
+  POLICY_DECISION_WOULD_BLOCK = 3;
+  // Denied and dropped (enforced mode).
+  POLICY_DECISION_BLOCKED = 4;
+}
+
+// An aggregated flow observation. Flows are aggregated per unique
+// (src_address, dst_address, dst_port, protocol, direction, decision) within
+// the reporting window; the ephemeral source port is deliberately not part of
+// the record, since it carries no policy meaning and would defeat aggregation.
+message FlowRecord {
+  string src_address = 1;
+  string dst_address = 2;
+  uint32 dst_port = 3;
+  Protocol protocol = 4;
+  // Direction relative to the reporting workload. Only DIRECTION_INBOUND is
+  // produced in v1 (ADR-0010); the field exists so records are
+  // self-describing when outbound observation lands.
+  Direction direction = 5;
+  PolicyDecision decision = 6;
+  // The rendered rule that matched, when a policy evaluation occurred.
+  // Empty for OBSERVED records and for flows no rule matched.
+  string matched_rule_id = 7;
+  uint64 connection_count = 8;
+  uint64 byte_count = 9;
+  google.protobuf.Timestamp first_seen = 10;
+  google.protobuf.Timestamp last_seen = 11;
+  // Best-effort process attribution on the reporting host.
+  string process_name = 12;
+}

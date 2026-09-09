@@ -1,5 +1,5 @@
-# Continuous integration: build, test, lint (Go, proto, UI), generated-code
-# drift, proto breaking-change gate, and DCO sign-off. Tool versions here are
+# Continuous integration: build, test, lint (Go, UI), proto (lint, build,
+# breaking-change gate), generated-code drift, and DCO sign-off. Tool versions here are
 # mirrored in scripts/install-tools.sh so local regeneration matches CI.
 name: ci
 
@@ -46,11 +46,6 @@ jobs:
       - uses: golangci/golangci-lint-action@v8
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
-      - uses: bufbuild/buf-action@v1
-        with:
-          version: ${{ env.BUF_VERSION }}
-          setup_only: true
-      - run: buf lint proto
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -87,8 +82,7 @@ jobs:
           sqlc-version: ${{ env.SQLC_VERSION }}
       - run: scripts/check-drift.sh
 
-  proto-breaking:
-    if: github.event_name == 'pull_request'
+  proto:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -98,7 +92,11 @@ jobs:
         with:
           version: ${{ env.BUF_VERSION }}
           setup_only: true
-      - run: scripts/check-proto-breaking.sh "origin/${{ github.base_ref }}"
+      - run: buf lint
+      - run: buf build
+      # Breaking changes are compared against main. A breaking change passes
+      # only when the PR title or body references an ADR (ADR-0007).
+      - run: scripts/check-proto-breaking.sh origin/main
         env:
           PR_TEXT: |
             ${{ github.event.pull_request.title }}

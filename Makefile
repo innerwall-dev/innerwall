@@ -11,11 +11,11 @@ test:
 
 lint:
 	golangci-lint run ./...
-	buf lint proto
+	buf lint
 	npm --prefix ui run lint
 
 proto:
-	buf generate proto --template proto/buf.gen.yaml
+	buf generate
 
 sqlc:
 	sqlc generate

@@ -1,9 +1,180 @@
-// Policy: labels, rules, drafts, versions, and simulation (ADR-0010).
-// Messages arrive with milestone M1's contract work; this file establishes
-// the package.
-
 syntax = "proto3";
 
 package innerwall.v1;
 
 option go_package = "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1;innerwallv1";
+
+// Policy model, in two deliberately separate layers:
+//
+//   1. The AUTHORED model (Ruleset, Rule, selectors): what operators write.
+//      Selectors express intent over labels and are evaluated only by the
+//      control plane.
+//   2. The RENDERED model (WorkloadPolicy, snapshots, deltas): what agents
+//      receive on the sync stream (ADR-0002). Fully resolved to concrete
+//      addresses, ports, and protocols.
+//
+// Agents never evaluate selectors. The control plane resolves intent to a
+// concrete per-workload artifact and ships that. This keeps agent behavior
+// deterministic and debuggable from the rendered artifact alone, and lets
+// selector semantics evolve without an agent upgrade. It also makes deltas
+// natural: the high-churn quantity is peer membership in a resolved rule,
+// which is exactly what PolicyDelta expresses.
+
+import "innerwall/v1/inventory.proto";
+
+// ---------------------------------------------------------------------------
+// Authored model
+// ---------------------------------------------------------------------------
+
+// Matches workloads by label. Requirements are ANDed across matches; values
+// within a match are ORed. An empty selector matches nothing (never
+// everything): breadth must be stated explicitly, not reached by omission.
+message LabelSelector {
+  repeated LabelMatch matches = 1;
+}
+
+message LabelMatch {
+  string key = 1;
+  // The label value must equal one of these.
+  repeated string values = 2;
+}
+
+// Inclusive port range. A single port is expressed as start == end.
+message PortRange {
+  uint32 start = 1;
+  uint32 end = 2;
+}
+
+message ServiceEntry {
+  Protocol protocol = 1;
+  // Empty means all ports for the protocol (e.g. ICMP, which has none).
+  repeated PortRange ports = 2;
+}
+
+// A named, reusable set of protocol/port entries.
+message ServiceDefinition {
+  string id = 1;
+  string name = 2;
+  repeated ServiceEntry entries = 3;
+}
+
+// A named set of addresses for peers that are not managed workloads
+// (databases without agents, corporate ranges, external services). These
+// exist from day one: no fleet is ever fully enrolled.
+message AddressGroup {
+  string id = 1;
+  string name = 2;
+  // CIDR notation.
+  repeated string cidrs = 3;
+}
+
+// Traffic direction relative to the workloads in a ruleset's scope.
+// Both values are defined now so that enabling outbound later is an
+// admission-validation change, not a schema change (ADR-0010). In v1 the
+// control plane rejects any rule with DIRECTION_OUTBOUND at admission.
+enum Direction {
+  DIRECTION_UNSPECIFIED = 0;
+  DIRECTION_INBOUND = 1;
+  DIRECTION_OUTBOUND = 2;
+}
+
+// The remote end of a rule: managed workloads by selector, a named address
+// group, or a literal CIDR.
+message PeerSelector {
+  oneof peer {
+    LabelSelector workloads = 1;
+    string address_group_id = 2;
+    string cidr = 3;
+  }
+}
+
+// A single authored rule. The ruleset's scope is the local end; `peers` is
+// the remote end; `direction` orients the two. For DIRECTION_INBOUND, peers
+// may initiate connections to scoped workloads on the listed services. (For
+// DIRECTION_OUTBOUND — rejected in v1 — scoped workloads would initiate to
+// peers.) This orientation means the schema needs no separate
+// source/destination fields per direction.
+message Rule {
+  string id = 1;
+  Direction direction = 2;
+  repeated PeerSelector peers = 3;
+  repeated ServiceEntry services = 4;
+  bool enabled = 5;
+  string description = 6;
+}
+
+message Ruleset {
+  string id = 1;
+  string name = 2;
+  // The workloads this ruleset applies to (the local end of its rules).
+  LabelSelector scope = 3;
+  repeated Rule rules = 4;
+  bool enabled = 5;
+  string description = 6;
+}
+
+// ---------------------------------------------------------------------------
+// Rendered model
+// ---------------------------------------------------------------------------
+
+// A single resolved inbound permission: concrete peers, one protocol, ports.
+// Carries the authored rule id for provenance — flow records and diagnostics
+// can point back to the intent that produced a given permission.
+message ResolvedRule {
+  string rule_id = 1;
+  // Concrete peer addresses: managed-workload addresses as host routes
+  // (/32 or /128) plus any literal CIDRs from the authored rule.
+  repeated string peer_cidrs = 2;
+  Protocol protocol = 3;
+  repeated PortRange ports = 4;
+}
+
+// The complete rendered policy for one workload at one version. Versions are
+// per-workload, monotonic, and opaque to everything except ordering. Small by
+// construction: a workload's rendered policy is its own inbound rules only.
+message WorkloadPolicy {
+  uint64 version = 1;
+  EnforcementMode mode = 2;
+  repeated ResolvedRule inbound_rules = 3;
+
+  // Reserved for multi-region topology (ADR-0012).
+  reserved 4;
+  reserved "region_id";
+}
+
+// Full desired state. Sent on every new sync stream (see agent.proto) and as
+// the recovery path after a failed delta apply. Always replaces the agent's
+// entire policy state.
+message PolicySnapshot {
+  WorkloadPolicy policy = 1;
+}
+
+// An incremental change between two consecutive rendered versions. Only ever
+// valid within the live stream on which the base version was established:
+// from_version must equal the agent's currently applied version or the delta
+// must be discarded and a snapshot requested.
+message PolicyDelta {
+  uint64 from_version = 1;
+  uint64 to_version = 2;
+  repeated DeltaChange changes = 3;
+}
+
+message DeltaChange {
+  oneof change {
+    // Add a new resolved rule, or replace an existing one wholesale.
+    ResolvedRule upsert_rule = 1;
+    // Remove a resolved rule by authored-rule id.
+    string remove_rule_id = 2;
+    // Add peers to an existing resolved rule's peer set.
+    PeerChange add_peers = 3;
+    // Remove peers from an existing resolved rule's peer set.
+    PeerChange remove_peers = 4;
+    // Change the workload's enforcement mode.
+    EnforcementMode set_mode = 5;
+  }
+}
+
+message PeerChange {
+  string rule_id = 1;
+  repeated string peer_cidrs = 2;
+}
