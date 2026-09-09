@@ -1,0 +1,84 @@
+# Release builds for both binaries: static (CGO disabled), trimmed, timestamped
+# from the commit so the same tag rebuilds byte-for-byte. Archives are
+# checksummed and signed. Tag-driven; see docs/development.md.
+version: 2
+
+project_name: innerwall
+
+before:
+  hooks:
+    - go mod tidy
+    - npm --prefix ui ci
+    - npm --prefix ui run build
+
+builds:
+  - id: innerwall
+    main: ./cmd/innerwall
+    binary: innerwall
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+  - id: innerwall-agent
+    main: ./cmd/innerwall-agent
+    binary: innerwall-agent
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: innerwall
+    ids:
+      - innerwall
+    name_template: "innerwall_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+  - id: innerwall-agent
+    ids:
+      - innerwall-agent
+    name_template: "innerwall-agent_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+signs:
+  - cmd: cosign
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - --output-certificate=${certificate}
+      - --output-signature=${signature}
+      - ${artifact}
+      - --yes
+    artifacts: checksum
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^ci:"
