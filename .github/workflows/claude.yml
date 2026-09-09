@@ -64,6 +64,7 @@ jobs:
         # Advisory: a finding is a review comment, not a failed check.
         continue-on-error: true
         with:
+          allowed_bots: "claude,claude[bot]"
           anthropic_federation_rule_id: fdrl_017Z5x46M1Apn3aGGLYLFfsT
           anthropic_organization_id: 2d941f98-8c11-4723-86e9-8dddac458911
           anthropic_service_account_id: svac_01LUZUMbvB9sTx4tXUQ1oHm2
