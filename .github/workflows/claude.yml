@@ -42,9 +42,9 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_federation_rule_id: fdrl_017Z5x46M1Apn3aGGLYLFfsT
-          anthropic_organization_id: <ORG_ID>
+          anthropic_organization_id: 2d941f98-8c11-4723-86e9-8dddac458911
           anthropic_service_account_id: svac_01LUZUMbvB9sTx4tXUQ1oHm2
-          anthropic_workspace_id: <WORKSPACE_ID>
+          anthropic_workspace_id: wrkspc_01UvMt6iYb2SMsdhT2XRoFz2
           claude_args: |
             --allowedTools "Bash(make build),Bash(make test),Bash(make lint),Bash(go build:*),Bash(go test:*),Bash(go vet:*),Bash(npm --prefix ui run:*)"
 
@@ -65,9 +65,9 @@ jobs:
         continue-on-error: true
         with:
           anthropic_federation_rule_id: fdrl_017Z5x46M1Apn3aGGLYLFfsT
-          anthropic_organization_id: <ORG_ID>
+          anthropic_organization_id: 2d941f98-8c11-4723-86e9-8dddac458911
           anthropic_service_account_id: svac_01LUZUMbvB9sTx4tXUQ1oHm2
-          anthropic_workspace_id: <WORKSPACE_ID>
+          anthropic_workspace_id: wrkspc_01UvMt6iYb2SMsdhT2XRoFz2
           use_sticky_comment: true
           prompt: |
             You are reviewing pull request #${{ github.event.pull_request.number }} in ${{ github.repository }} for conformance with the project's architecture decision records.
