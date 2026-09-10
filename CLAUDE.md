@@ -22,14 +22,14 @@ These are the constraints a plausible-looking change is most likely to violate. 
 - **The UI talks only to the public REST façade.** No private endpoints, no backchannel, no direct DB access from anything in `ui/`. (ADR-0007, ADR-0008)
 - **All API surface is defined in `proto/` first.** No hand-added REST routes; the façade is generated. Breaking proto changes fail CI without an ADR reference. (ADR-0007)
 - **Policy compilation is inbound-only in v1.** The schema reserves direction; the compiler must not emit outbound rules. (ADR-0010)
-- **Certificates carry identity only** (SPIFFE-style URI SAN, control-plane-assigned UUID). Labels, hostnames, and other mutable attributes never go in certs. (ADR-0004)
+- **Certificates carry identity only:** exactly one URI SAN, `innerwall://workload/<uuid>`, with a control-plane-assigned UUID, formatted and parsed by `internal/identity` alone. Labels, hostnames, and other mutable attributes never go in certs. A signing request contributes only its public key; identity is read from the verified connection credential and nowhere else. (ADR-0016)
 - **Statelessness is load-bearing:** no control-plane replica may hold state that matters beyond its process; anything durable goes in Postgres. (ADR-0005)
 - **Policy bundles are signed from day one**, and `region_id` stays in the schema even while unused. These seams are cheap now and expensive later. (ADR-0012)
 - **The Makefile stays dumb.** Targets are 1–3-line wrappers over real tools; anything with logic becomes a script in `scripts/` that a target calls.
 
 ## Vocabulary and framing
 
-- Project terminology only: **enrollment policy**, **join token**, **agent**, **control plane**, **workload**, **label**.
+- Project terminology only: **provisioning token**, **agent**, **control plane**, **workload**, **label**, **signing authority**.
 - All docs, comments, commit messages, and identifiers argue from **first principles**. No references to other products, companies, or their terminology — anywhere in the repo. If a design needs motivation, derive it (e.g. "central planes fail by being chatty"), don't compare.
 
 ## Commands

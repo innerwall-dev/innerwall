@@ -8,7 +8,7 @@ Direction, not dates. Ordering follows ADR-0001: every milestone before enforcem
 - Proto contract for enrollment, sync stream, flow reporting, inventory
 
 ## M2 — Enrollment and identity
-- Control plane: Postgres schema + migrations, enrollment policies, join tokens, embedded CA behind the `CertificateAuthority` interface
+- Control plane: Postgres schema + migrations, provisioning tokens, file-backed signing authority behind the `ca.Authority` interface
 - Agent: enrollment client, mTLS bring-up, cert renewal loop
 - `install.sh` — token in, enrolled agent out
 
@@ -35,7 +35,7 @@ Direction, not dates. Ordering follows ADR-0001: every milestone before enforcem
 - **Windows agent** — second enforcement backend behind the enforcer interface (ADR-0003)
 - **Columnar FlowStore** implementation when a real estate's query latency demands it (ADR-0009)
 - **Relay tier** with signed-bundle caching; **regional federation** with per-region intermediates (ADR-0012)
-- External CA integrations behind the existing interface (ADR-0004)
+- External signing backends behind the existing interface (ADR-0016)
 
 ## Non-goals (deliberate)
 - No orchestrator dependency — heterogeneous server estates are the point
