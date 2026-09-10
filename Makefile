@@ -1,7 +1,7 @@
 # Thin dispatcher. Every target is a 1–3-line wrapper over a real tool;
 # anything with logic lives in scripts/.
 
-.PHONY: build test lint proto sqlc ui dev drift tools
+.PHONY: build test lint proto sqlc ui dev drift tools migrate
 
 build:
 	CGO_ENABLED=0 go build -trimpath -o bin/ ./cmd/...
@@ -26,6 +26,9 @@ ui:
 
 dev:
 	docker compose up --build
+
+migrate:
+	go run ./cmd/innerwall migrate
 
 drift:
 	scripts/check-drift.sh

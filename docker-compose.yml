@@ -2,8 +2,9 @@
 # (ADR-0005). All durable state lives in Postgres; the control plane is
 # stateless and can be replaced or scaled to N replicas behind a load balancer.
 #
-# Until milestone M2 wires the services in, the control-plane container starts,
-# prints its version, and exits; Postgres stays up for migration work.
+# The control plane applies migrations, creates its signing authority on
+# first start (persisted in the innerwall-state volume), and serves the agent
+# gateway. The REST/JSON façade and UI are wired in by later milestones.
 
 services:
   postgres:
@@ -27,9 +28,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    command: ["serve", "--migrate", "--init-ca", "--tls-hosts", "localhost,127.0.0.1,innerwall"]
     environment:
       # Postgres connection string for the control plane.
       INNERWALL_DATABASE_URL: postgres://innerwall:innerwall@postgres:5432/innerwall?sslmode=disable
+      INNERWALL_CA_DIR: /var/lib/innerwall/ca
+    volumes:
+      - innerwall-state:/var/lib/innerwall
     ports:
       # REST/JSON façade and embedded UI.
       - "127.0.0.1:8080:8080"
@@ -38,3 +43,4 @@ services:
 
 volumes:
   pgdata:
+  innerwall-state:
