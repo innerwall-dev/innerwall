@@ -5,7 +5,9 @@ Ordered goose SQL files, applied in filename order and reviewed like code
 one.
 
 Naming: `NNNNN_short_description.sql`, starting at `00001`. Each file carries a
-`-- +goose Up` section and a `-- +goose Down` section.
+`-- +goose Up` section and a `-- +goose Down` section. The files are embedded
+into the control plane and applied by `innerwall migrate`; sqlc compiles the
+queries against the same files.
 
 Rules the first migrations must respect:
 

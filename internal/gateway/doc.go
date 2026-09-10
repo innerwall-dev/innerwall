@@ -1,6 +1,12 @@
-// Package gateway terminates agent mTLS and holds one persistent bidirectional
-// gRPC stream per agent (ADR-0002). Policy deltas go down; aggregated flows,
-// heartbeats, and ruleset-version ACKs come up. A presence table in Postgres
-// lets any stateless replica route a push to the replica holding the stream
-// (ADR-0005). Reconnection storms are a first-class design case.
+// Package gateway is the agent-facing gRPC surface of the control plane. It
+// terminates TLS on one listener and serves two services split on the
+// authentication boundary (ADR-0015): EnrollmentService, reachable with a
+// provisioning token and no client certificate, and AgentService, reachable
+// only with a verified workload credential. An interceptor enforces that
+// split per service and is the only place identity is derived from a
+// connection; handlers read it from the request context and nowhere else
+// (ADR-0016).
+//
+// This milestone serves enrollment and credential renewal. The persistent
+// desired-state stream (ADR-0002), flow ingestion, and presence follow.
 package gateway
