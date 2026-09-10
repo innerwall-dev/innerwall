@@ -6,15 +6,36 @@ package db
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
 
 type Querier interface {
+	AddProvisioningTokenLabel(ctx context.Context, arg AddProvisioningTokenLabelParams) error
+	AddWorkloadLabel(ctx context.Context, arg AddWorkloadLabelParams) error
+	// Provisioning tokens (ADR-0016). Only the SHA-256 hash of a token is ever
+	// stored or looked up; no query here touches plaintext.
+	CreateProvisioningToken(ctx context.Context, arg CreateProvisioningTokenParams) (ProvisioningToken, error)
+	// Workload identity registry (ADR-0016). The id column is the workload_id
+	// carried in the credential's URI SAN; labels are assigned at enrollment from
+	// the provisioning token's scope and are never read from a certificate.
+	CreateWorkload(ctx context.Context, arg CreateWorkloadParams) error
+	GetProvisioningToken(ctx context.Context, id uuid.UUID) (ProvisioningToken, error)
+	GetProvisioningTokenByHash(ctx context.Context, tokenHash []byte) (ProvisioningToken, error)
+	GetWorkload(ctx context.Context, id uuid.UUID) (Workload, error)
+	ListAllProvisioningTokenLabels(ctx context.Context) ([]ProvisioningTokenLabel, error)
+	ListProvisioningTokenLabels(ctx context.Context, tokenID uuid.UUID) ([]ProvisioningTokenLabel, error)
+	ListProvisioningTokens(ctx context.Context) ([]ProvisioningToken, error)
+	ListWorkloadLabels(ctx context.Context, workloadID uuid.UUID) ([]WorkloadLabel, error)
 	// Queries are hand-written SQL compiled by sqlc into internal/store/db
 	// (ADR-0006). One file per concern; every production query lives here.
 	//
 	// Ping is a connectivity probe that touches no tables. It exists so the data
 	// layer is exercised end to end before the first migration lands.
 	Ping(ctx context.Context) (int32, error)
+	RecordProvisioningTokenUse(ctx context.Context, arg RecordProvisioningTokenUseParams) error
+	RecordWorkloadRenewal(ctx context.Context, arg RecordWorkloadRenewalParams) (int64, error)
+	RevokeProvisioningToken(ctx context.Context, arg RevokeProvisioningTokenParams) (int64, error)
 }
 
 var _ Querier = (*Queries)(nil)

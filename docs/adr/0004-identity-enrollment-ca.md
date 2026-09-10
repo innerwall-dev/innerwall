@@ -1,6 +1,6 @@
 # ADR-0004: Token-gated enrollment, SPIFFE-style identity, embedded CA behind an interface
 
-**Status:** Accepted
+**Status:** Superseded by ADR-0016
 
 ## Context
 

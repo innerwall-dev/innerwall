@@ -15,8 +15,12 @@ RUN go mod download
 COPY . .
 COPY --from=ui /src/ui/dist ./ui/dist
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/innerwall ./cmd/innerwall
+RUN mkdir -p /out/state
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/innerwall /innerwall
+# State directory (signing authority) owned by the runtime user; a volume
+# mounted here inherits the ownership on first use.
+COPY --from=build --chown=nonroot:nonroot /out/state /var/lib/innerwall
 EXPOSE 8080 8443
 ENTRYPOINT ["/innerwall"]

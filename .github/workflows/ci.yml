@@ -29,12 +29,30 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    # Integration tests (enrollment end to end, the store) run against a
+    # disposable Postgres and skip when INNERWALL_TEST_DATABASE_URL is unset.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: innerwall_test
+          POSTGRES_USER: innerwall
+          POSTGRES_PASSWORD: innerwall
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U innerwall -d innerwall_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
       - run: make test
+        env:
+          INNERWALL_TEST_DATABASE_URL: postgres://innerwall:innerwall@127.0.0.1:5432/innerwall_test?sslmode=disable
 
   lint:
     runs-on: ubuntu-latest

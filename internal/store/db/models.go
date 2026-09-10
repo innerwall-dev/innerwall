@@ -3,3 +3,44 @@
 //   sqlc v1.31.1
 
 package db
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
+
+type ProvisioningToken struct {
+	ID         uuid.UUID
+	RegionID   string
+	TokenHash  []byte
+	Name       string
+	CreatedAt  time.Time
+	ExpiresAt  time.Time
+	RevokedAt  *time.Time
+	UseCount   int64
+	LastUsedAt *time.Time
+}
+
+type ProvisioningTokenLabel struct {
+	TokenID uuid.UUID
+	Key     string
+	Value   string
+}
+
+type Workload struct {
+	ID                  uuid.UUID
+	RegionID            string
+	ProvisioningTokenID uuid.UUID
+	Hostname            string
+	EnrolledAt          time.Time
+	CredentialSerial    string
+	CredentialExpiresAt time.Time
+	LastRenewedAt       *time.Time
+}
+
+type WorkloadLabel struct {
+	WorkloadID uuid.UUID
+	Key        string
+	Value      string
+}

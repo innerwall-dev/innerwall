@@ -16,7 +16,7 @@ A small agent on each workload observes network flows and programs the operating
 
 ## Quickstart
 
-The supported v1 deployment is one control-plane binary and one Postgres (ADR-0005):
+The supported v1 deployment is one control-plane binary and one Postgres (ADR-0017):
 
 ```sh
 git clone https://github.com/innerwall-dev/innerwall.git
@@ -24,13 +24,13 @@ cd innerwall
 make dev        # docker compose: control plane + Postgres
 ```
 
-Enrolling an agent takes a join token and nothing else:
+Enrolling an agent takes a provisioning token and nothing else:
 
 ```sh
-curl -fsSL https://<control-plane>/install.sh | sh -s -- --token <join-token>
+curl -fsSL https://<control-plane>/install.sh | sh -s -- --token <provisioning-token>
 ```
 
-Enrollment arrives with milestone M2; until then the installer only validates its arguments.
+Today the same exchange is `innerwall-agent enroll --server <host:port> --token <provisioning-token> --bootstrap-ca <ca.crt>`; the installer wraps it in a later milestone. See `docs/deploy/README.md`.
 
 ## Layout
 

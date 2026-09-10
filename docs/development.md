@@ -31,6 +31,7 @@ The Makefile is a thin dispatcher. Every target wraps a tool in one to three lin
 | `make sqlc` | `sqlc generate` from `internal/store/queries/` into `internal/store/db/` |
 | `make ui` | `npm ci` and a production Vite build into `ui/dist/` |
 | `make dev` | `docker compose up --build`: control plane + Postgres |
+| `make migrate` | Applies pending migrations to `$INNERWALL_DATABASE_URL` (`innerwall migrate`) |
 | `make drift` | Regenerates everything and fails on any diff (what CI runs) |
 | `make tools` | Installs the pinned CLI toolchain |
 
@@ -42,14 +43,14 @@ Never edit generated code. Change the source, regenerate, commit both.
 
 - **Protobuf → Go.** Edit `proto/innerwall/v1/*.proto`, run `make proto`. Output lands in `internal/gen/innerwall/v1/`. `buf.yaml` at the repo root declares `proto/` as the module root, so package `innerwall.v1` lives at `proto/innerwall/v1/` and files import as `innerwall/v1/<name>.proto`. `buf.gen.yaml` runs the plugins through `go tool`, so the output is pinned by `go.sum`. The contract itself is recorded in ADR-0015.
 - **SQL → Go.** Edit or add `internal/store/queries/*.sql`, run `make sqlc`. Output lands in `internal/store/db/`. `sqlc.yaml` at the repo root builds the schema from `internal/store/migrations/`, so a query can only reference tables a migration creates.
-- **Migrations.** Add a new goose file in `internal/store/migrations/` (`NNNNN_description.sql`, `-- +goose Up` / `-- +goose Down`). Never edit an applied one. See the README in that directory for the schema rules the ADRs impose.
+- **Migrations.** Add a new goose file in `internal/store/migrations/` (`NNNNN_description.sql`, `-- +goose Up` / `-- +goose Down`). Never edit an applied one. See the README in that directory for the schema rules the ADRs impose. The files are embedded into the control plane and applied by `innerwall migrate` (or `serve --migrate`) through the goose library, so the binary carries its own schema; the goose CLI is for inspecting and rolling back.
 - **UI.** `make ui` builds `ui/dist/`, which `ui/embed.go` embeds into the control-plane binary. `ui/dist/.gitkeep` is tracked (and copied back in from `ui/public/` on every build) so the embed directory is never empty on a fresh checkout.
 
 ## CI
 
 `.github/workflows/ci.yml` runs on every push to `main` and every PR:
 
-- `build`, `test`, `lint` (Go + Biome), `ui` (production build)
+- `build`, `test`, `lint` (Go + Biome), `ui` (production build). The `test` job runs a Postgres service container and sets `INNERWALL_TEST_DATABASE_URL`; tests that need a database skip when it is unset, so `make test` works offline and runs the integration tests when you point that variable at a disposable database.
 - `proto`: `buf lint`, `buf build`, and `scripts/check-proto-breaking.sh`, which runs `buf breaking` against `main` and fails unless the PR title or body references an ADR (`ADR-NNNN`)
 - `drift`: `scripts/check-drift.sh`, which runs `make proto sqlc` and fails on any diff or untracked generated file
 - `dco`: `scripts/check-dco.sh`, which requires a `Signed-off-by` trailer on every commit in the PR
@@ -66,16 +67,17 @@ internal/gateway          agent gRPC streams, presence
 internal/compiler         label rules → per-agent versioned rulesets
 internal/ingest           flow enrichment, bidirectional dedupe
 internal/flowstore        FlowStore interface + Postgres implementation
-internal/ca               CertificateAuthority interface + embedded CA
-internal/enroll           enrollment policies, join tokens
+internal/ca               Authority interface; fileca/ is the file-backed implementation
+internal/identity         workload identity and its URI SAN form (the only place it is built or parsed)
+internal/enroll           provisioning tokens, enrollment, renewal
 internal/registry         workloads, agents, labels
-internal/store            queries/ (SQL), migrations/ (goose), db/ (sqlc output)
-internal/agent            sync/, collect/, enforce/, health/
+internal/store            queries/ (SQL), migrations/ (goose), db/ (sqlc output); storetest/ opens a test database
+internal/agent            credential/ (enroll, renew, state dir), sync/, collect/, enforce/, health/
 internal/gen              buf output (generated; never edited)
 proto/innerwall/v1        the API contract (buf.yaml and buf.gen.yaml at the repo root)
 ui/                       Vite + React SPA; src/{map,policy,simulate,inventory,enroll}
 ui/embed.go               go:embed of ui/dist into the control plane
-deploy/install.sh         agent installer (join token in)
+deploy/install.sh         agent installer (provisioning token in)
 scripts/                  everything the Makefile calls that has logic
 docs/adr                  decisions; docs/deploy: running it; docs/img: diagrams
 ```

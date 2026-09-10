@@ -58,7 +58,7 @@ These recur throughout the system and are the tie-breakers when decisions confli
 
 ## 4. Control plane
 
-One deployable binary, internally organized as services with clean boundaries so they can split into separate processes if scale ever demands it (ADR-0005). All durable state lives in Postgres; replicas are stateless and interchangeable.
+One deployable binary, internally organized as services with clean boundaries so they can split into separate processes if scale ever demands it (ADR-0017). All durable state lives in Postgres; replicas are stateless and interchangeable. The signing authority's key is the one exception: operator-provisioned configuration, identical on every replica.
 
 ### 4.1 API service
 
@@ -84,11 +84,11 @@ Receives pre-aggregated flow records from agents, enriches them (IP → workload
 
 ### 4.5 Identity / CA service
 
-An embedded certificate authority issues short-lived agent certificates. It sits behind a `CertificateAuthority` interface so external issuers can replace it without touching enrollment logic (ADR-0004). The signing key is environment-provided in development; the interface anticipates KMS/HSM-backed signing.
+An embedded signing authority issues short-lived workload certificates. It sits behind the `ca.Authority` interface so external issuers can replace it without touching enrollment logic (ADR-0016). Version 1 ships a file-backed authority (key and self-signed root created once by `innerwall ca init`); the interface anticipates signing by a secrets manager or hardware-backed key. The authority directory is operator-provisioned configuration, distributed identically to every replica alongside the database connection string and listener certificate; it is the one durable artifact deliberately kept out of Postgres, because a signing key readable by everything that reads the database is not a signing boundary (ADR-0017). Every backend reads a signing request through one function that returns the public key and nothing else: the subject, names, and extensions an enrollee requests never reach a certificate.
 
 ### 4.6 High availability
 
-- Control-plane replicas are stateless; HA is N replicas behind a load balancer plus a properly HA Postgres. Postgres is the availability story.
+- Control-plane replicas are stateless; HA is N replicas behind a load balancer plus a properly HA Postgres. Postgres is the availability story. The signing authority's key is configuration provisioned identically on each replica (or held by an external backend), not state a replica accumulates (ADR-0016).
 - The property that actually makes the system safe is agent-side: **fail static** (ADR-0011). With that in place, control-plane downtime degrades management, never enforcement.
 - v1 sizing honesty: single binary + single Postgres (co-located or adjacent) is the supported deployment until real estates demand more. The seams for splitting are designed; the split is not built.
 
@@ -112,11 +112,12 @@ Safety properties (ADR-0011):
 
 The hard problem is the first certificate; everything after is routine mTLS rotation.
 
-- **Enrollment policies** define the constraints of enrollment: allowed label assignments, expiry, usage limits (one-time or N-use).
-- **Join tokens** are minted from an enrollment policy and passed to the install script. The agent generates its keypair locally (the private key never leaves the host), submits CSR + token + host metadata over server-authenticated TLS, and receives a short-TTL certificate plus chain. The token is burned or decremented.
-- **Identity lives in the cert; attributes live in the registry.** Certificates carry a SPIFFE-style URI SAN (`spiffe://innerwall/agent/<uuid>`) with a control-plane-assigned UUID. Mutable facts — hostname, labels, enforcement state — never enter the certificate. Cert = authentication; registry = authorization.
-- **Rotation over revocation.** 24–48h cert TTLs with renewal at ~50% lifetime via authenticated re-CSR. Short TTLs mostly obviate revocation machinery; a control-plane deny-list of agent IDs covers the rest. An agent that misses its renewal window re-enrolls (manual by default; configurable).
-- **Designed-for edge cases:** clock skew (small `notBefore` backdating), cloned VM images presenting duplicate identities (detected on connect, forced re-enrollment), CA key custody (interface anticipates external KMS/HSM).
+- **Provisioning tokens** carry the constraints of enrollment: the label set they assign, an expiry (30 days by default), and revocation. A token is `iw_` plus 32 random bytes; the control plane stores only its SHA-256 hash and shows the plaintext once at mint. A token may enroll many workloads within its scope, so it can be baked into an image or a provisioning pipeline (ADR-0015, ADR-0016).
+- **Enrollment.** The agent generates its keypair locally (the private key never leaves the host), submits CSR + token + host facts over server-authenticated TLS, and receives a short-lived certificate plus the authority bundle. The trust anchor for that first connection is distributed out of band with the token: the token proves the agent to the control plane, the anchor proves the control plane to the agent.
+- **Identity lives in the cert; attributes live in the registry.** Certificates carry exactly one URI SAN, `innerwall://workload/<uuid>`, with a control-plane-assigned UUID; one package formats and parses it. Mutable facts — hostname, labels, enforcement state — never enter the certificate. Cert = authentication; registry = authorization.
+- **One listener, one boundary.** The enrollment service and the agent service share a TLS listener. Client certificates are verified when presented; a server interceptor requires one, with a parseable workload identity, for every service except enrollment, and hands the identity to handlers through the request context. Handlers read identity from nowhere else.
+- **Rotation over revocation.** 24h credential lifetimes with renewal via authenticated re-CSR over mutual TLS; the same identity is reissued with a fresh serial. Short lifetimes mostly obviate revocation machinery; a control-plane deny-list of workload IDs covers the rest. A workload that misses its renewal window re-enrolls.
+- **Designed-for edge cases:** clock skew (small `notBefore` backdating), cloned VM images presenting duplicate identities (detected on connect, forced re-enrollment), signing-key custody (the interface anticipates external key holders).
 
 Trust-on-first-use is explicitly rejected: an enrollment window where anyone reachable can register as anything is unacceptable for a system that will enforce policy and whose policy discloses network topology.
 
@@ -143,7 +144,7 @@ Surfaces, in product order:
 2. **Policy editor** — draft/diff-first. The diff against active policy *is* the review artifact.
 3. **Simulation view** — the draft replayed against observed flows: "these seventeen real connections from the last week would have been denied."
 4. **Workload inventory** — registry, labels, agent health, desired-vs-actual ruleset version.
-5. **Enrollment** — generate scoped, expiring, pre-labeled join tokens with a copy-paste install command. Deliberately polished: it is the first thirty seconds of every evaluation.
+5. **Enrollment** — generate scoped, expiring, pre-labeled provisioning tokens with a copy-paste install command. Deliberately polished: it is the first thirty seconds of every evaluation.
 
 ## 10. Scale-out roadmap (designed, not built)
 
@@ -165,8 +166,8 @@ Two extensions exist today only as documented seams (ADR-0012):
 | Why visibility precedes enforcement | ADR-0001 |
 | Agent transport & desired-state sync | ADR-0002 |
 | Native-firewall enforcement | ADR-0003 |
-| Identity, enrollment, CA | ADR-0004 |
-| Control-plane shape & HA | ADR-0005 |
+| Identity, enrollment, CA | ADR-0016 (supersedes ADR-0004) |
+| Control-plane shape & HA | ADR-0017 (supersedes ADR-0005) |
 | Data access layer | ADR-0006 |
 | API surface | ADR-0007 |
 | UI delivery | ADR-0008 |
