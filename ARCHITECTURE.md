@@ -84,11 +84,11 @@ Receives pre-aggregated flow records from agents, enriches them (IP → workload
 
 ### 4.5 Identity / CA service
 
-An embedded signing authority issues short-lived workload certificates. It sits behind the `ca.Authority` interface so external issuers can replace it without touching enrollment logic (ADR-0016). Version 1 ships a file-backed authority (key and self-signed root on the control-plane host, created by `innerwall ca init`); the interface anticipates signing by a secrets manager or hardware-backed key. Every backend reads a signing request through one function that returns the public key and nothing else: the subject, names, and extensions an enrollee requests never reach a certificate.
+An embedded signing authority issues short-lived workload certificates. It sits behind the `ca.Authority` interface so external issuers can replace it without touching enrollment logic (ADR-0016). Version 1 ships a file-backed authority (key and self-signed root created once by `innerwall ca init`); the interface anticipates signing by a secrets manager or hardware-backed key. The authority directory is operator-provisioned configuration, distributed identically to every replica alongside the database connection string and listener certificate; it is the one durable artifact deliberately kept out of Postgres, because a signing key readable by everything that reads the database is not a signing boundary (ADR-0016 narrows ADR-0005 for this material). Every backend reads a signing request through one function that returns the public key and nothing else: the subject, names, and extensions an enrollee requests never reach a certificate.
 
 ### 4.6 High availability
 
-- Control-plane replicas are stateless; HA is N replicas behind a load balancer plus a properly HA Postgres. Postgres is the availability story.
+- Control-plane replicas are stateless; HA is N replicas behind a load balancer plus a properly HA Postgres. Postgres is the availability story. The signing authority's key is configuration provisioned identically on each replica (or held by an external backend), not state a replica accumulates (ADR-0016).
 - The property that actually makes the system safe is agent-side: **fail static** (ADR-0011). With that in place, control-plane downtime degrades management, never enforcement.
 - v1 sizing honesty: single binary + single Postgres (co-located or adjacent) is the supported deployment until real estates demand more. The seams for splitting are designed; the split is not built.
 
