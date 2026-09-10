@@ -1,7 +1,8 @@
 // Command innerwall is the control plane: one binary containing the API
-// service, agent gateway, policy compiler, flow ingestion, and embedded CA.
-// All durable state lives in Postgres; replicas are stateless and
-// interchangeable (ADR-0005).
+// service, agent gateway, policy compiler, flow ingestion, and signing
+// authority. All durable state lives in Postgres; replicas are stateless and
+// interchangeable. The signing authority's key is the one exception:
+// operator-provisioned configuration, identical on every replica (ADR-0017).
 //
 // Subcommands:
 //
