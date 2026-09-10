@@ -23,7 +23,7 @@ These are the constraints a plausible-looking change is most likely to violate. 
 - **All API surface is defined in `proto/` first.** No hand-added REST routes; the façade is generated. Breaking proto changes fail CI without an ADR reference. (ADR-0007)
 - **Policy compilation is inbound-only in v1.** The schema reserves direction; the compiler must not emit outbound rules. (ADR-0010)
 - **Certificates carry identity only:** exactly one URI SAN, `innerwall://workload/<uuid>`, with a control-plane-assigned UUID, formatted and parsed by `internal/identity` alone. Labels, hostnames, and other mutable attributes never go in certs. A signing request contributes only its public key; identity is read from the verified connection credential and nowhere else. (ADR-0016)
-- **Statelessness is load-bearing:** no control-plane replica may hold state that matters beyond its process; anything durable goes in Postgres. (ADR-0005)
+- **Statelessness is load-bearing:** no control-plane replica may hold state that matters beyond its process; anything durable goes in Postgres. The one exception is the signing authority's key, which is operator-provisioned configuration identical on every replica, never database state. (ADR-0017)
 - **Policy bundles are signed from day one**, and `region_id` stays in the schema even while unused. These seams are cheap now and expensive later. (ADR-0012)
 - **The Makefile stays dumb.** Targets are 1–3-line wrappers over real tools; anything with logic becomes a script in `scripts/` that a target calls.
 
@@ -41,6 +41,6 @@ These are the constraints a plausible-looking change is most likely to violate. 
 
 ## Change protocol
 
-- ADRs are immutable once Accepted; change by superseding ADR (next number, `Supersedes: ADR-XXXX` header, old one marked Superseded), or, for one named exception to one decision, a narrowing ADR (`Narrows: ADR-XXXX (scope)` header, old one's status line marked narrowed). The status line is the only part of an Accepted ADR ever edited. See `docs/adr/README.md`.
+- ADRs are immutable once Accepted; change by superseding ADR (next number, `Supersedes: ADR-XXXX` header, old one marked Superseded).
 - CI runs an automated review of every PR against the Accepted ADRs. If it flags your change, the fix is either the change or a superseding ADR — never silent drift.
 - Commits require DCO sign-off (`git commit -s`). (ADR-0013)

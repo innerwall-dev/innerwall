@@ -64,7 +64,7 @@ func newHarness(t *testing.T, st enroll.Store) *harness {
 // harness bundle.
 func (h *harness) dial(t *testing.T, cred *tls.Certificate) *grpc.ClientConn {
 	t.Helper()
-	cfg, err := gateway.ClientTLSConfig(cred, h.bundle)
+	cfg, err := credential.TLSConfig(cred, h.bundle)
 	if err != nil {
 		t.Fatal(err)
 	}

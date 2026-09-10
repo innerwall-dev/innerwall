@@ -58,24 +58,6 @@ func ServerTLSConfig(serverCert tls.Certificate, bundlePEM []byte) (*tls.Config,
 	}, nil
 }
 
-// ClientTLSConfig builds an agent-side configuration: the workload
-// credential (nil for enrollment, which has none yet) and the trust anchor
-// for the control plane.
-func ClientTLSConfig(cred *tls.Certificate, trustPEM []byte) (*tls.Config, error) {
-	cfg := &tls.Config{MinVersion: tls.VersionTLS13}
-	if len(trustPEM) > 0 {
-		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM(trustPEM) {
-			return nil, errors.New("gateway: trust bundle holds no certificates")
-		}
-		cfg.RootCAs = pool
-	}
-	if cred != nil {
-		cfg.Certificates = []tls.Certificate{*cred}
-	}
-	return cfg, nil
-}
-
 // authenticate applies the per-service policy to one call. It returns the
 // context to run the handler with, carrying the derived identity when the
 // service requires one.

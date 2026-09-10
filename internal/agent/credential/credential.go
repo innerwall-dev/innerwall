@@ -24,7 +24,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
-	"github.com/innerwall-dev/innerwall/internal/gateway"
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 	"github.com/innerwall-dev/innerwall/internal/identity"
 )
@@ -232,7 +231,7 @@ func Enroll(ctx context.Context, key *ecdsa.PrivateKey, opts EnrollOptions) (*En
 	if err != nil {
 		return nil, err
 	}
-	tlsCfg, err := gateway.ClientTLSConfig(nil, opts.BootstrapCA)
+	tlsCfg, err := TLSConfig(nil, opts.BootstrapCA)
 	if err != nil {
 		return nil, err
 	}
@@ -299,7 +298,7 @@ func Renew(ctx context.Context, key *ecdsa.PrivateKey, opts RenewOptions) (*Rene
 	if err != nil {
 		return nil, err
 	}
-	tlsCfg, err := gateway.ClientTLSConfig(&opts.Credential, opts.Trust)
+	tlsCfg, err := TLSConfig(&opts.Credential, opts.Trust)
 	if err != nil {
 		return nil, err
 	}
@@ -328,6 +327,24 @@ func Renew(ctx context.Context, key *ecdsa.PrivateKey, opts RenewOptions) (*Rene
 		return nil, err
 	}
 	return &RenewResult{WorkloadID: id, CertificatePEM: resp.GetCertificatePem(), BundlePEM: resp.GetCaBundlePem()}, nil
+}
+
+// TLSConfig builds the agent's client configuration: the workload
+// credential (nil for enrollment, which has none yet) and the PEM trust
+// anchor for the control plane (empty means the host's trust store).
+func TLSConfig(cred *tls.Certificate, trustPEM []byte) (*tls.Config, error) {
+	cfg := &tls.Config{MinVersion: tls.VersionTLS13}
+	if len(trustPEM) > 0 {
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(trustPEM) {
+			return nil, errors.New("credential: trust bundle holds no certificates")
+		}
+		cfg.RootCAs = pool
+	}
+	if cred != nil {
+		cfg.Certificates = []tls.Certificate{*cred}
+	}
+	return cfg, nil
 }
 
 func dial(server string, tlsCfg *tls.Config) (*grpc.ClientConn, error) {

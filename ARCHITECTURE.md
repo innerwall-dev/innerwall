@@ -58,7 +58,7 @@ These recur throughout the system and are the tie-breakers when decisions confli
 
 ## 4. Control plane
 
-One deployable binary, internally organized as services with clean boundaries so they can split into separate processes if scale ever demands it (ADR-0005). All durable state lives in Postgres; replicas are stateless and interchangeable.
+One deployable binary, internally organized as services with clean boundaries so they can split into separate processes if scale ever demands it (ADR-0017). All durable state lives in Postgres; replicas are stateless and interchangeable. The signing authority's key is the one exception: operator-provisioned configuration, identical on every replica.
 
 ### 4.1 API service
 
@@ -84,7 +84,7 @@ Receives pre-aggregated flow records from agents, enriches them (IP → workload
 
 ### 4.5 Identity / CA service
 
-An embedded signing authority issues short-lived workload certificates. It sits behind the `ca.Authority` interface so external issuers can replace it without touching enrollment logic (ADR-0016). Version 1 ships a file-backed authority (key and self-signed root created once by `innerwall ca init`); the interface anticipates signing by a secrets manager or hardware-backed key. The authority directory is operator-provisioned configuration, distributed identically to every replica alongside the database connection string and listener certificate; it is the one durable artifact deliberately kept out of Postgres, because a signing key readable by everything that reads the database is not a signing boundary (ADR-0016 narrows ADR-0005 for this material). Every backend reads a signing request through one function that returns the public key and nothing else: the subject, names, and extensions an enrollee requests never reach a certificate.
+An embedded signing authority issues short-lived workload certificates. It sits behind the `ca.Authority` interface so external issuers can replace it without touching enrollment logic (ADR-0016). Version 1 ships a file-backed authority (key and self-signed root created once by `innerwall ca init`); the interface anticipates signing by a secrets manager or hardware-backed key. The authority directory is operator-provisioned configuration, distributed identically to every replica alongside the database connection string and listener certificate; it is the one durable artifact deliberately kept out of Postgres, because a signing key readable by everything that reads the database is not a signing boundary (ADR-0017). Every backend reads a signing request through one function that returns the public key and nothing else: the subject, names, and extensions an enrollee requests never reach a certificate.
 
 ### 4.6 High availability
 
@@ -167,7 +167,7 @@ Two extensions exist today only as documented seams (ADR-0012):
 | Agent transport & desired-state sync | ADR-0002 |
 | Native-firewall enforcement | ADR-0003 |
 | Identity, enrollment, CA | ADR-0016 (supersedes ADR-0004) |
-| Control-plane shape & HA | ADR-0005 |
+| Control-plane shape & HA | ADR-0017 (supersedes ADR-0005) |
 | Data access layer | ADR-0006 |
 | API surface | ADR-0007 |
 | UI delivery | ADR-0008 |

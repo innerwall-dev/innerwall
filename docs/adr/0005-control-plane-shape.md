@@ -1,6 +1,6 @@
 # ADR-0005: Single Go binary, modular monolith, stateless replicas, Postgres
 
-**Status:** Accepted; narrowed by ADR-0016 (signing-key custody)
+**Status:** Superseded by ADR-0017
 
 ## Context
 

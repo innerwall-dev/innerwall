@@ -16,7 +16,7 @@ A small agent on each workload observes network flows and programs the operating
 
 ## Quickstart
 
-The supported v1 deployment is one control-plane binary and one Postgres (ADR-0005):
+The supported v1 deployment is one control-plane binary and one Postgres (ADR-0017):
 
 ```sh
 git clone https://github.com/innerwall-dev/innerwall.git
