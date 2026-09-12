@@ -10,7 +10,7 @@
 // freshly rendered one and the version advances only when the rendered
 // output changed. The Engine runs both inside one store transaction that
 // holds the render lock, so renders are serialized across processes
-// (ADR-0017) and every persisted change is announced to the replica holding
+// (ADR-0019) and every persisted change is announced to the replica holding
 // the workload's stream.
 //
 // Version 1 re-renders every workload on any change and recovers

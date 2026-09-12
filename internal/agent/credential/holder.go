@@ -17,7 +17,7 @@ import (
 // already past its expiry: the workload can no longer authenticate, so it
 // cannot renew, and only a new enrollment with a fresh provisioning token
 // restores it. The daemon reports this and does not attempt enrollment
-// itself (ADR-0016).
+// itself (ADR-0020).
 var ErrCredentialExpired = errors.New("credential: expired; re-enrollment with a new provisioning token is required")
 
 // Holder is the credential a running daemon presents, swappable in place.

@@ -23,7 +23,7 @@ import (
 // renewal are written against this interface so that a backend holding its
 // key elsewhere (a secrets manager, a hardware module, a hosted signing
 // service) replaces the file-backed default without touching enrollment
-// logic (ADR-0016).
+// logic (ADR-0020).
 type Authority interface {
 	// Sign issues a client certificate binding id to the public key in the
 	// CSR. Implementations MUST use only the CSR's public key: any subject,

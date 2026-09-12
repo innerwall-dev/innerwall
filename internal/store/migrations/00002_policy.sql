@@ -10,7 +10,7 @@
 --   * The RENDERED model: one row per workload holding the serialized
 --     WorkloadPolicy the agent receives and its per-workload monotonic
 --     version. Versions live here and nowhere else, so they survive any
---     control-plane restart (ADR-0017).
+--     control-plane restart (ADR-0019).
 --   * Workload STATUS: enforcement mode, host facts and the addresses
 --     derived from them (the renderer resolves peers to these), listening
 --     services, agent info, last-seen, and the convergence state the sync

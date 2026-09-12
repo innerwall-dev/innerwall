@@ -1,6 +1,6 @@
 # ADR-0017: Single Go binary, stateless replicas, Postgres for state, and the one exception: signing-key custody
 
-**Status:** Accepted
+**Status:** Superseded by ADR-0019
 **Supersedes:** ADR-0005
 
 ## Context

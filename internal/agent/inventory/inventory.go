@@ -1,7 +1,7 @@
 // Package inventory collects the descriptive facts the agent reports: host
 // facts (hostname, operating system, interfaces and their addresses) and a
 // best-effort list of listening services. Facts never confer identity or
-// authorization (ADR-0016); they feed the inventory view and, for
+// authorization (ADR-0020); they feed the inventory view and, for
 // addresses, the resolution of peers in other workloads' rendered policy
 // (ADR-0018).
 package inventory

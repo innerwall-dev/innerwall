@@ -16,7 +16,7 @@ import (
 
 // DefaultLeafTTL is the lifetime of an issued workload credential when the
 // operator sets none. Short lifetimes replace revocation machinery: a
-// credential that is not renewed simply stops working (ADR-0016).
+// credential that is not renewed simply stops working (ADR-0020).
 const DefaultLeafTTL = 24 * time.Hour
 
 // ErrWorkloadUnknown is returned when a credential names a workload the

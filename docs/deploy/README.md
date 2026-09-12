@@ -2,7 +2,7 @@
 
 ## Supported v1 deployment
 
-One control-plane binary and one Postgres, co-located or adjacent (ADR-0017). `docker-compose.yml` at the repository root is that deployment:
+One control-plane binary and one Postgres, co-located or adjacent (ADR-0019). `docker-compose.yml` at the repository root is that deployment:
 
 ```sh
 make dev
@@ -40,7 +40,7 @@ docker compose exec innerwall /innerwall policy show <workload-id>
 
 Only inbound rules are admitted (ADR-0010). The REST/JSON façade and UI are wired in by later milestones.
 
-Running more than one replica: the signing authority directory (`INNERWALL_CA_DIR`, created once by `innerwall ca init`) is configuration and must be identical on every replica, like the database connection string. `serve --init-ca` is a single-replica development convenience; two replicas that each initialise their own authority issue credentials the other will not accept (ADR-0017).
+Running more than one replica: the signing authority directory (`INNERWALL_CA_DIR`, created once by `innerwall ca init`) is configuration and must be identical on every replica, like the database connection string. `serve --init-ca` is a single-replica development convenience; two replicas that each initialise their own authority issue credentials the other will not accept (ADR-0019).
 
 ## High availability
 
