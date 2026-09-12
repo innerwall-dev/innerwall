@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/innerwall-dev/innerwall/internal/ca/fileca"
+	"github.com/innerwall-dev/innerwall/internal/compiler"
 	"github.com/innerwall-dev/innerwall/internal/enroll"
 	"github.com/innerwall-dev/innerwall/internal/gateway"
 	"github.com/innerwall-dev/innerwall/internal/store"
@@ -88,7 +89,22 @@ func runServe(ctx context.Context, args []string) error {
 	}
 
 	svc := &enroll.Service{Store: st, Authority: authority, LeafTTL: *leafTTL}
-	grpcServer := gateway.NewGRPCServer(tlsCfg, gateway.New(svc, log))
+	engine := &compiler.Engine{Store: st, Log: log}
+	srv := gateway.New(gateway.Deps{
+		Enroll:   svc,
+		Registry: st,
+		Policies: st,
+		Engine:   engine,
+		Events:   st,
+		Log:      log,
+	})
+	grpcServer := gateway.NewGRPCServer(tlsCfg, srv)
+	// Every workload's rendered policy must exist before its stream can
+	// be served; a fresh database or one migrated from an earlier schema
+	// renders here once.
+	if _, err := engine.Render(ctx); err != nil {
+		return err
+	}
 
 	lis, err := net.Listen("tcp", *listen)
 	if err != nil {
@@ -99,6 +115,12 @@ func runServe(ctx context.Context, args []string) error {
 
 	errc := make(chan error, 1)
 	go func() { errc <- grpcServer.Serve(lis) }()
+	// Route render announcements to live streams until shutdown.
+	go func() {
+		if err := srv.Run(ctx); err != nil {
+			log.Error("policy announcement listener stopped", "error", err)
+		}
+	}()
 	select {
 	case <-ctx.Done():
 		log.Info("shutting down")

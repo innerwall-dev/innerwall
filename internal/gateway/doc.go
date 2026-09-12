@@ -7,6 +7,9 @@
 // connection; handlers read it from the request context and nowhere else
 // (ADR-0016).
 //
-// This milestone serves enrollment and credential renewal. The persistent
-// desired-state stream (ADR-0002), flow ingestion, and presence follow.
+// The sync stream (ADR-0002, ADR-0015) lives here too: one live stream per
+// workload, registered in an in-process map so that a render's
+// announcement, delivered over the database's notification channel, finds
+// the stream to push to. Stream state is the only state held in process,
+// and a reconnect rebuilds it from a snapshot. Flow ingestion follows.
 package gateway
