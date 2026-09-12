@@ -86,7 +86,7 @@ func (s Store) Save(key *ecdsa.PrivateKey, certPEM, bundlePEM []byte) error {
 	if err != nil {
 		return fmt.Errorf("credential: encoding key: %w", err)
 	}
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
+	keyPEM := encodePEM("PRIVATE KEY", keyDER)
 	if err := writeAtomic(s.keyPath(), keyPEM); err != nil {
 		return err
 	}
@@ -158,6 +158,10 @@ func (s Store) LoadKey() (*ecdsa.PrivateKey, error) {
 		return nil, fmt.Errorf("credential: key is %T, want ecdsa", parsed)
 	}
 	return key, nil
+}
+
+func encodePEM(typ string, der []byte) []byte {
+	return pem.EncodeToMemory(&pem.Block{Type: typ, Bytes: der})
 }
 
 // writeAtomic writes data to a temporary file beside path with mode 0600
