@@ -1,7 +1,20 @@
-// Package compiler turns label-based rules plus registry state into per-agent
-// compiled rulesets, each with a monotonic version. Only agents affected by a
-// change are recompiled. A single compiler is active across replicas, held by
-// a Postgres advisory lock (ADR-0017). Compilation is inbound-only in v1; the
-// schema reserves direction (ADR-0010). Compiled bundles are signed from day
-// one (ADR-0012).
+// Package compiler renders the authored policy model plus registry state
+// into each workload's concrete WorkloadPolicy and decides which versions
+// advance (ADR-0018).
+//
+// Rendering is a pure function of its inputs: label selectors resolve to the
+// workloads that match them, and those workloads' current addresses become
+// host routes; address groups expand to their CIDRs; service references and
+// inline entries expand to one resolved rule per protocol. Versioning is a
+// pure function too: the previously persisted policy is diffed against the
+// freshly rendered one and the version advances only when the rendered
+// output changed. The Engine runs both inside one store transaction that
+// holds the render lock, so renders are serialized across processes
+// (ADR-0017) and every persisted change is announced to the replica holding
+// the workload's stream.
+//
+// Version 1 re-renders every workload on any change and recovers
+// per-workload version semantics by diffing. Compilation is inbound-only
+// (ADR-0010): admission never lets an outbound rule reach this package, and
+// the renderer emits only inbound rules regardless.
 package compiler
