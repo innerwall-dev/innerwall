@@ -25,6 +25,7 @@ These are the constraints a plausible-looking change is most likely to violate. 
 - **Certificates carry identity only:** exactly one URI SAN, `innerwall://workload/<uuid>`, with a control-plane-assigned UUID, formatted and parsed by `internal/identity` alone. Labels, hostnames, and other mutable attributes never go in certs. A signing request contributes only its public key; identity is read from the verified connection credential and nowhere else. (ADR-0016)
 - **Statelessness is load-bearing:** no control-plane replica may hold state that matters beyond its process; anything durable goes in Postgres. The one exception is the signing authority's key, which is operator-provisioned configuration identical on every replica, never database state. (ADR-0017)
 - **Policy bundles are signed from day one**, and `region_id` stays in the schema even while unused. These seams are cheap now and expensive later. (ADR-0012)
+- **A workload's policy version advances only when its rendered output changes.** Deltas are the diff of consecutive rendered policies, computed by the one shared `internal/rendered` implementation, and the snapshot-plus-delta property test is the contract. Rendered policy and versions live in Postgres; a stream is served the persisted artifact and never triggers a render on connect. (ADR-0018)
 - **The Makefile stays dumb.** Targets are 1–3-line wrappers over real tools; anything with logic becomes a script in `scripts/` that a target calls.
 
 ## Vocabulary and framing
