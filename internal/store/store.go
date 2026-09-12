@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
+	"github.com/pressly/goose/v3/lock"
 
 	"github.com/innerwall-dev/innerwall/internal/enroll"
 	"github.com/innerwall-dev/innerwall/internal/identity"
@@ -51,7 +52,9 @@ func (s *Store) Close() { s.pool.Close() }
 // Migrate applies every pending migration in internal/store/migrations. It is
 // idempotent: a fully migrated database is a no-op. Migrations run through
 // the same goose engine the CLI uses, against the same embedded files that
-// sqlc compiled the queries against.
+// sqlc compiled the queries against. A session-level advisory lock
+// serializes concurrent callers (two replicas starting with --migrate, or
+// test packages sharing one database), so exactly one applies each file.
 func Migrate(ctx context.Context, databaseURL string) error {
 	cfg, err := pgx.ParseConfig(databaseURL)
 	if err != nil {
@@ -60,7 +63,11 @@ func Migrate(ctx context.Context, databaseURL string) error {
 	sqlDB := stdlib.OpenDB(*cfg)
 	defer func() { _ = sqlDB.Close() }()
 
-	provider, err := goose.NewProvider(goose.DialectPostgres, sqlDB, migrationsFS())
+	locker, err := lock.NewPostgresSessionLocker()
+	if err != nil {
+		return fmt.Errorf("store: preparing migration lock: %w", err)
+	}
+	provider, err := goose.NewProvider(goose.DialectPostgres, sqlDB, migrationsFS(), goose.WithSessionLocker(locker))
 	if err != nil {
 		return fmt.Errorf("store: preparing migrations: %w", err)
 	}

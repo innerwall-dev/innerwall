@@ -11,22 +11,84 @@ import (
 )
 
 type Querier interface {
+	// Rendered per-workload policy and its version (ADR-0018). The render
+	// transaction holds an advisory lock so that two renders never interleave
+	// their version bumps, and it notifies listeners of every changed workload
+	// on commit so that the replica holding the workload's stream pushes the
+	// change without anything polling (ADR-0002).
+	AcquireRenderLock(ctx context.Context, key int64) error
+	AddAddressGroupCIDR(ctx context.Context, arg AddAddressGroupCIDRParams) error
 	AddProvisioningTokenLabel(ctx context.Context, arg AddProvisioningTokenLabelParams) error
+	AddRule(ctx context.Context, arg AddRuleParams) error
+	AddRulePeer(ctx context.Context, arg AddRulePeerParams) error
+	AddRulePeerMatch(ctx context.Context, arg AddRulePeerMatchParams) error
+	AddRuleServiceEntry(ctx context.Context, arg AddRuleServiceEntryParams) error
+	AddRuleServiceRef(ctx context.Context, arg AddRuleServiceRefParams) error
+	AddRulesetScopeMatch(ctx context.Context, arg AddRulesetScopeMatchParams) error
+	AddServiceEntry(ctx context.Context, arg AddServiceEntryParams) error
+	AddWorkloadAddress(ctx context.Context, arg AddWorkloadAddressParams) error
 	AddWorkloadLabel(ctx context.Context, arg AddWorkloadLabelParams) error
+	AddWorkloadListeningService(ctx context.Context, arg AddWorkloadListeningServiceParams) error
+	CountRulesReferencingAddressGroup(ctx context.Context, addressGroupID *uuid.UUID) (int64, error)
+	CountRulesReferencingService(ctx context.Context, serviceID uuid.UUID) (int64, error)
+	// Address groups: named CIDR sets for peers that are not managed workloads
+	// (ADR-0018).
+	CreateAddressGroup(ctx context.Context, arg CreateAddressGroupParams) error
 	// Provisioning tokens (ADR-0016). Only the SHA-256 hash of a token is ever
 	// stored or looked up; no query here touches plaintext.
 	CreateProvisioningToken(ctx context.Context, arg CreateProvisioningTokenParams) (ProvisioningToken, error)
+	// Rulesets and their rules: the authored policy model (ADR-0018). A ruleset
+	// is written and replaced as a unit; its child rows are deleted and
+	// reinserted inside one transaction on update.
+	CreateRuleset(ctx context.Context, arg CreateRulesetParams) error
+	// Named service definitions: reusable protocol/port sets (ADR-0018).
+	CreateService(ctx context.Context, arg CreateServiceParams) error
 	// Workload identity registry (ADR-0016). The id column is the workload_id
 	// carried in the credential's URI SAN; labels are assigned at enrollment from
 	// the provisioning token's scope and are never read from a certificate.
 	CreateWorkload(ctx context.Context, arg CreateWorkloadParams) error
+	DeleteAddressGroup(ctx context.Context, id uuid.UUID) (int64, error)
+	DeleteAddressGroupCIDRs(ctx context.Context, addressGroupID uuid.UUID) error
+	DeleteRules(ctx context.Context, rulesetID uuid.UUID) error
+	DeleteRuleset(ctx context.Context, id uuid.UUID) (int64, error)
+	DeleteRulesetScopeMatches(ctx context.Context, rulesetID uuid.UUID) error
+	DeleteService(ctx context.Context, id uuid.UUID) (int64, error)
+	DeleteServiceEntries(ctx context.Context, serviceID uuid.UUID) error
+	DeleteWorkloadAddresses(ctx context.Context, workloadID uuid.UUID) error
+	DeleteWorkloadLabels(ctx context.Context, workloadID uuid.UUID) error
+	DeleteWorkloadListeningServices(ctx context.Context, workloadID uuid.UUID) error
+	GetAddressGroup(ctx context.Context, id uuid.UUID) (AddressGroup, error)
 	GetProvisioningToken(ctx context.Context, id uuid.UUID) (ProvisioningToken, error)
 	GetProvisioningTokenByHash(ctx context.Context, tokenHash []byte) (ProvisioningToken, error)
+	GetRuleset(ctx context.Context, id uuid.UUID) (Ruleset, error)
+	GetService(ctx context.Context, id uuid.UUID) (Service, error)
 	GetWorkload(ctx context.Context, id uuid.UUID) (Workload, error)
+	GetWorkloadPolicy(ctx context.Context, workloadID uuid.UUID) (WorkloadPolicy, error)
+	ListAddressGroupCIDRs(ctx context.Context, addressGroupID uuid.UUID) ([]AddressGroupCidr, error)
+	ListAddressGroups(ctx context.Context) ([]AddressGroup, error)
+	ListAllAddressGroupCIDRs(ctx context.Context) ([]AddressGroupCidr, error)
 	ListAllProvisioningTokenLabels(ctx context.Context) ([]ProvisioningTokenLabel, error)
+	ListAllRulePeerMatches(ctx context.Context) ([]RulePeerMatch, error)
+	ListAllRulePeers(ctx context.Context) ([]RulePeer, error)
+	ListAllRuleServiceEntries(ctx context.Context) ([]RuleServiceEntry, error)
+	ListAllRuleServiceRefs(ctx context.Context) ([]RuleServiceRef, error)
+	ListAllRules(ctx context.Context) ([]Rule, error)
+	ListAllRulesetScopeMatches(ctx context.Context) ([]RulesetScopeMatch, error)
+	ListAllServiceEntries(ctx context.Context) ([]ServiceEntry, error)
+	ListAllWorkloadAddresses(ctx context.Context) ([]WorkloadAddress, error)
+	ListAllWorkloadLabels(ctx context.Context) ([]WorkloadLabel, error)
 	ListProvisioningTokenLabels(ctx context.Context, tokenID uuid.UUID) ([]ProvisioningTokenLabel, error)
 	ListProvisioningTokens(ctx context.Context) ([]ProvisioningToken, error)
+	ListRulesets(ctx context.Context) ([]Ruleset, error)
+	ListServiceEntries(ctx context.Context, serviceID uuid.UUID) ([]ServiceEntry, error)
+	ListServices(ctx context.Context) ([]Service, error)
+	ListWorkloadAddresses(ctx context.Context, workloadID uuid.UUID) ([]string, error)
 	ListWorkloadLabels(ctx context.Context, workloadID uuid.UUID) ([]WorkloadLabel, error)
+	ListWorkloadListeningServices(ctx context.Context, workloadID uuid.UUID) ([]WorkloadListeningService, error)
+	ListWorkloadPolicies(ctx context.Context) ([]WorkloadPolicy, error)
+	// --- inventory and status (ADR-0018) ------------------------------------------
+	ListWorkloads(ctx context.Context) ([]Workload, error)
+	NotifyPolicyChanged(ctx context.Context, arg NotifyPolicyChangedParams) error
 	// Queries are hand-written SQL compiled by sqlc into internal/store/db
 	// (ADR-0006). One file per concern; every production query lives here.
 	//
@@ -34,8 +96,19 @@ type Querier interface {
 	// layer is exercised end to end before the first migration lands.
 	Ping(ctx context.Context) (int32, error)
 	RecordProvisioningTokenUse(ctx context.Context, arg RecordProvisioningTokenUseParams) error
+	RecordWorkloadAgent(ctx context.Context, arg RecordWorkloadAgentParams) (int64, error)
+	RecordWorkloadApplied(ctx context.Context, arg RecordWorkloadAppliedParams) (int64, error)
+	RecordWorkloadHeartbeat(ctx context.Context, arg RecordWorkloadHeartbeatParams) (int64, error)
+	RecordWorkloadHeartbeatSeen(ctx context.Context, arg RecordWorkloadHeartbeatSeenParams) (int64, error)
+	RecordWorkloadInventory(ctx context.Context, arg RecordWorkloadInventoryParams) (int64, error)
 	RecordWorkloadRenewal(ctx context.Context, arg RecordWorkloadRenewalParams) (int64, error)
 	RevokeProvisioningToken(ctx context.Context, arg RevokeProvisioningTokenParams) (int64, error)
+	SetWorkloadMode(ctx context.Context, arg SetWorkloadModeParams) (int64, error)
+	SetWorkloadSyncState(ctx context.Context, arg SetWorkloadSyncStateParams) (int64, error)
+	UpdateAddressGroup(ctx context.Context, arg UpdateAddressGroupParams) (int64, error)
+	UpdateRuleset(ctx context.Context, arg UpdateRulesetParams) (int64, error)
+	UpdateService(ctx context.Context, arg UpdateServiceParams) (int64, error)
+	UpsertWorkloadPolicy(ctx context.Context, arg UpsertWorkloadPolicyParams) error
 }
 
 var _ Querier = (*Queries)(nil)

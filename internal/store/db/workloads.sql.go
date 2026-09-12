@@ -12,6 +12,21 @@ import (
 	"github.com/google/uuid"
 )
 
+const addWorkloadAddress = `-- name: AddWorkloadAddress :exec
+INSERT INTO workload_addresses (workload_id, address)
+VALUES ($1, $2)
+`
+
+type AddWorkloadAddressParams struct {
+	WorkloadID uuid.UUID
+	Address    string
+}
+
+func (q *Queries) AddWorkloadAddress(ctx context.Context, arg AddWorkloadAddressParams) error {
+	_, err := q.db.Exec(ctx, addWorkloadAddress, arg.WorkloadID, arg.Address)
+	return err
+}
+
 const addWorkloadLabel = `-- name: AddWorkloadLabel :exec
 INSERT INTO workload_labels (workload_id, key, value)
 VALUES ($1, $2, $3)
@@ -25,6 +40,32 @@ type AddWorkloadLabelParams struct {
 
 func (q *Queries) AddWorkloadLabel(ctx context.Context, arg AddWorkloadLabelParams) error {
 	_, err := q.db.Exec(ctx, addWorkloadLabel, arg.WorkloadID, arg.Key, arg.Value)
+	return err
+}
+
+const addWorkloadListeningService = `-- name: AddWorkloadListeningService :exec
+INSERT INTO workload_listening_services (workload_id, protocol, port, process_name, process_path)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (workload_id, protocol, port) DO UPDATE
+SET process_name = EXCLUDED.process_name, process_path = EXCLUDED.process_path
+`
+
+type AddWorkloadListeningServiceParams struct {
+	WorkloadID  uuid.UUID
+	Protocol    int32
+	Port        int32
+	ProcessName string
+	ProcessPath string
+}
+
+func (q *Queries) AddWorkloadListeningService(ctx context.Context, arg AddWorkloadListeningServiceParams) error {
+	_, err := q.db.Exec(ctx, addWorkloadListeningService,
+		arg.WorkloadID,
+		arg.Protocol,
+		arg.Port,
+		arg.ProcessName,
+		arg.ProcessPath,
+	)
 	return err
 }
 
@@ -58,8 +99,38 @@ func (q *Queries) CreateWorkload(ctx context.Context, arg CreateWorkloadParams) 
 	return err
 }
 
+const deleteWorkloadAddresses = `-- name: DeleteWorkloadAddresses :exec
+DELETE FROM workload_addresses
+WHERE workload_id = $1
+`
+
+func (q *Queries) DeleteWorkloadAddresses(ctx context.Context, workloadID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteWorkloadAddresses, workloadID)
+	return err
+}
+
+const deleteWorkloadLabels = `-- name: DeleteWorkloadLabels :exec
+DELETE FROM workload_labels
+WHERE workload_id = $1
+`
+
+func (q *Queries) DeleteWorkloadLabels(ctx context.Context, workloadID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteWorkloadLabels, workloadID)
+	return err
+}
+
+const deleteWorkloadListeningServices = `-- name: DeleteWorkloadListeningServices :exec
+DELETE FROM workload_listening_services
+WHERE workload_id = $1
+`
+
+func (q *Queries) DeleteWorkloadListeningServices(ctx context.Context, workloadID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteWorkloadListeningServices, workloadID)
+	return err
+}
+
 const getWorkload = `-- name: GetWorkload :one
-SELECT id, region_id, provisioning_token_id, hostname, enrolled_at, credential_serial, credential_expires_at, last_renewed_at FROM workloads
+SELECT id, region_id, provisioning_token_id, hostname, enrolled_at, credential_serial, credential_expires_at, last_renewed_at, mode, facts, agent_version, agent_capabilities, last_seen_at, sync_state, applied_policy_version, sync_error, dropped_flow_records FROM workloads
 WHERE id = $1
 `
 
@@ -75,8 +146,93 @@ func (q *Queries) GetWorkload(ctx context.Context, id uuid.UUID) (Workload, erro
 		&i.CredentialSerial,
 		&i.CredentialExpiresAt,
 		&i.LastRenewedAt,
+		&i.Mode,
+		&i.Facts,
+		&i.AgentVersion,
+		&i.AgentCapabilities,
+		&i.LastSeenAt,
+		&i.SyncState,
+		&i.AppliedPolicyVersion,
+		&i.SyncError,
+		&i.DroppedFlowRecords,
 	)
 	return i, err
+}
+
+const listAllWorkloadAddresses = `-- name: ListAllWorkloadAddresses :many
+SELECT workload_id, address FROM workload_addresses
+ORDER BY workload_id, address
+`
+
+func (q *Queries) ListAllWorkloadAddresses(ctx context.Context) ([]WorkloadAddress, error) {
+	rows, err := q.db.Query(ctx, listAllWorkloadAddresses)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WorkloadAddress{}
+	for rows.Next() {
+		var i WorkloadAddress
+		if err := rows.Scan(&i.WorkloadID, &i.Address); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAllWorkloadLabels = `-- name: ListAllWorkloadLabels :many
+SELECT workload_id, key, value FROM workload_labels
+ORDER BY workload_id, key
+`
+
+func (q *Queries) ListAllWorkloadLabels(ctx context.Context) ([]WorkloadLabel, error) {
+	rows, err := q.db.Query(ctx, listAllWorkloadLabels)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WorkloadLabel{}
+	for rows.Next() {
+		var i WorkloadLabel
+		if err := rows.Scan(&i.WorkloadID, &i.Key, &i.Value); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWorkloadAddresses = `-- name: ListWorkloadAddresses :many
+SELECT address FROM workload_addresses
+WHERE workload_id = $1
+ORDER BY address
+`
+
+func (q *Queries) ListWorkloadAddresses(ctx context.Context, workloadID uuid.UUID) ([]string, error) {
+	rows, err := q.db.Query(ctx, listWorkloadAddresses, workloadID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var address string
+		if err := rows.Scan(&address); err != nil {
+			return nil, err
+		}
+		items = append(items, address)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listWorkloadLabels = `-- name: ListWorkloadLabels :many
@@ -105,6 +261,202 @@ func (q *Queries) ListWorkloadLabels(ctx context.Context, workloadID uuid.UUID) 
 	return items, nil
 }
 
+const listWorkloadListeningServices = `-- name: ListWorkloadListeningServices :many
+SELECT workload_id, protocol, port, process_name, process_path FROM workload_listening_services
+WHERE workload_id = $1
+ORDER BY protocol, port
+`
+
+func (q *Queries) ListWorkloadListeningServices(ctx context.Context, workloadID uuid.UUID) ([]WorkloadListeningService, error) {
+	rows, err := q.db.Query(ctx, listWorkloadListeningServices, workloadID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WorkloadListeningService{}
+	for rows.Next() {
+		var i WorkloadListeningService
+		if err := rows.Scan(
+			&i.WorkloadID,
+			&i.Protocol,
+			&i.Port,
+			&i.ProcessName,
+			&i.ProcessPath,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWorkloads = `-- name: ListWorkloads :many
+
+SELECT id, region_id, provisioning_token_id, hostname, enrolled_at, credential_serial, credential_expires_at, last_renewed_at, mode, facts, agent_version, agent_capabilities, last_seen_at, sync_state, applied_policy_version, sync_error, dropped_flow_records FROM workloads
+ORDER BY enrolled_at, id
+`
+
+// --- inventory and status (ADR-0018) ------------------------------------------
+func (q *Queries) ListWorkloads(ctx context.Context) ([]Workload, error) {
+	rows, err := q.db.Query(ctx, listWorkloads)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Workload{}
+	for rows.Next() {
+		var i Workload
+		if err := rows.Scan(
+			&i.ID,
+			&i.RegionID,
+			&i.ProvisioningTokenID,
+			&i.Hostname,
+			&i.EnrolledAt,
+			&i.CredentialSerial,
+			&i.CredentialExpiresAt,
+			&i.LastRenewedAt,
+			&i.Mode,
+			&i.Facts,
+			&i.AgentVersion,
+			&i.AgentCapabilities,
+			&i.LastSeenAt,
+			&i.SyncState,
+			&i.AppliedPolicyVersion,
+			&i.SyncError,
+			&i.DroppedFlowRecords,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const recordWorkloadAgent = `-- name: RecordWorkloadAgent :execrows
+UPDATE workloads
+SET agent_version = $2, agent_capabilities = $3, applied_policy_version = $4, last_seen_at = $5
+WHERE id = $1
+`
+
+type RecordWorkloadAgentParams struct {
+	ID                   uuid.UUID
+	AgentVersion         string
+	AgentCapabilities    []string
+	AppliedPolicyVersion int64
+	LastSeenAt           *time.Time
+}
+
+func (q *Queries) RecordWorkloadAgent(ctx context.Context, arg RecordWorkloadAgentParams) (int64, error) {
+	result, err := q.db.Exec(ctx, recordWorkloadAgent,
+		arg.ID,
+		arg.AgentVersion,
+		arg.AgentCapabilities,
+		arg.AppliedPolicyVersion,
+		arg.LastSeenAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const recordWorkloadApplied = `-- name: RecordWorkloadApplied :execrows
+UPDATE workloads
+SET applied_policy_version = $2, sync_state = $3, sync_error = '', last_seen_at = $4
+WHERE id = $1
+`
+
+type RecordWorkloadAppliedParams struct {
+	ID                   uuid.UUID
+	AppliedPolicyVersion int64
+	SyncState            int32
+	LastSeenAt           *time.Time
+}
+
+func (q *Queries) RecordWorkloadApplied(ctx context.Context, arg RecordWorkloadAppliedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, recordWorkloadApplied,
+		arg.ID,
+		arg.AppliedPolicyVersion,
+		arg.SyncState,
+		arg.LastSeenAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const recordWorkloadHeartbeat = `-- name: RecordWorkloadHeartbeat :execrows
+UPDATE workloads
+SET last_seen_at = $2, dropped_flow_records = $3
+WHERE id = $1
+`
+
+type RecordWorkloadHeartbeatParams struct {
+	ID                 uuid.UUID
+	LastSeenAt         *time.Time
+	DroppedFlowRecords int64
+}
+
+func (q *Queries) RecordWorkloadHeartbeat(ctx context.Context, arg RecordWorkloadHeartbeatParams) (int64, error) {
+	result, err := q.db.Exec(ctx, recordWorkloadHeartbeat, arg.ID, arg.LastSeenAt, arg.DroppedFlowRecords)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const recordWorkloadHeartbeatSeen = `-- name: RecordWorkloadHeartbeatSeen :execrows
+UPDATE workloads
+SET last_seen_at = $2
+WHERE id = $1
+`
+
+type RecordWorkloadHeartbeatSeenParams struct {
+	ID         uuid.UUID
+	LastSeenAt *time.Time
+}
+
+func (q *Queries) RecordWorkloadHeartbeatSeen(ctx context.Context, arg RecordWorkloadHeartbeatSeenParams) (int64, error) {
+	result, err := q.db.Exec(ctx, recordWorkloadHeartbeatSeen, arg.ID, arg.LastSeenAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const recordWorkloadInventory = `-- name: RecordWorkloadInventory :execrows
+UPDATE workloads
+SET facts = $2, hostname = $3, last_seen_at = $4
+WHERE id = $1
+`
+
+type RecordWorkloadInventoryParams struct {
+	ID         uuid.UUID
+	Facts      []byte
+	Hostname   string
+	LastSeenAt *time.Time
+}
+
+func (q *Queries) RecordWorkloadInventory(ctx context.Context, arg RecordWorkloadInventoryParams) (int64, error) {
+	result, err := q.db.Exec(ctx, recordWorkloadInventory,
+		arg.ID,
+		arg.Facts,
+		arg.Hostname,
+		arg.LastSeenAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const recordWorkloadRenewal = `-- name: RecordWorkloadRenewal :execrows
 UPDATE workloads
 SET credential_serial = $2, credential_expires_at = $3, last_renewed_at = $4
@@ -124,6 +476,51 @@ func (q *Queries) RecordWorkloadRenewal(ctx context.Context, arg RecordWorkloadR
 		arg.CredentialSerial,
 		arg.CredentialExpiresAt,
 		arg.LastRenewedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setWorkloadMode = `-- name: SetWorkloadMode :execrows
+UPDATE workloads
+SET mode = $2
+WHERE id = $1
+`
+
+type SetWorkloadModeParams struct {
+	ID   uuid.UUID
+	Mode int32
+}
+
+func (q *Queries) SetWorkloadMode(ctx context.Context, arg SetWorkloadModeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setWorkloadMode, arg.ID, arg.Mode)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setWorkloadSyncState = `-- name: SetWorkloadSyncState :execrows
+UPDATE workloads
+SET sync_state = $2, sync_error = $3, last_seen_at = $4
+WHERE id = $1
+`
+
+type SetWorkloadSyncStateParams struct {
+	ID         uuid.UUID
+	SyncState  int32
+	SyncError  string
+	LastSeenAt *time.Time
+}
+
+func (q *Queries) SetWorkloadSyncState(ctx context.Context, arg SetWorkloadSyncStateParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setWorkloadSyncState,
+		arg.ID,
+		arg.SyncState,
+		arg.SyncError,
+		arg.LastSeenAt,
 	)
 	if err != nil {
 		return 0, err

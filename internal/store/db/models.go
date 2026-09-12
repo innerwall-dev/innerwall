@@ -10,6 +10,19 @@ import (
 	"github.com/google/uuid"
 )
 
+type AddressGroup struct {
+	ID        uuid.UUID
+	RegionID  string
+	Name      string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type AddressGroupCidr struct {
+	AddressGroupID uuid.UUID
+	Cidr           string
+}
+
 type ProvisioningToken struct {
 	ID         uuid.UUID
 	RegionID   string
@@ -28,19 +41,117 @@ type ProvisioningTokenLabel struct {
 	Value   string
 }
 
+type Rule struct {
+	ID          uuid.UUID
+	RulesetID   uuid.UUID
+	Ordinal     int32
+	Direction   int32
+	Enabled     bool
+	Description string
+}
+
+type RulePeer struct {
+	RuleID         uuid.UUID
+	Ordinal        int32
+	Kind           int32
+	AddressGroupID *uuid.UUID
+	Cidr           *string
+}
+
+type RulePeerMatch struct {
+	RuleID      uuid.UUID
+	PeerOrdinal int32
+	Key         string
+	Values      []string
+}
+
+type RuleServiceEntry struct {
+	RuleID    uuid.UUID
+	Ordinal   int32
+	Protocol  int32
+	PortStart *int32
+	PortEnd   *int32
+}
+
+type RuleServiceRef struct {
+	RuleID    uuid.UUID
+	ServiceID uuid.UUID
+}
+
+type Ruleset struct {
+	ID          uuid.UUID
+	RegionID    string
+	Name        string
+	Description string
+	Enabled     bool
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type RulesetScopeMatch struct {
+	RulesetID uuid.UUID
+	Key       string
+	Values    []string
+}
+
+type Service struct {
+	ID        uuid.UUID
+	RegionID  string
+	Name      string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type ServiceEntry struct {
+	ServiceID uuid.UUID
+	Ordinal   int32
+	Protocol  int32
+	PortStart *int32
+	PortEnd   *int32
+}
+
 type Workload struct {
-	ID                  uuid.UUID
-	RegionID            string
-	ProvisioningTokenID uuid.UUID
-	Hostname            string
-	EnrolledAt          time.Time
-	CredentialSerial    string
-	CredentialExpiresAt time.Time
-	LastRenewedAt       *time.Time
+	ID                   uuid.UUID
+	RegionID             string
+	ProvisioningTokenID  uuid.UUID
+	Hostname             string
+	EnrolledAt           time.Time
+	CredentialSerial     string
+	CredentialExpiresAt  time.Time
+	LastRenewedAt        *time.Time
+	Mode                 int32
+	Facts                []byte
+	AgentVersion         string
+	AgentCapabilities    []string
+	LastSeenAt           *time.Time
+	SyncState            int32
+	AppliedPolicyVersion int64
+	SyncError            string
+	DroppedFlowRecords   int64
+}
+
+type WorkloadAddress struct {
+	WorkloadID uuid.UUID
+	Address    string
 }
 
 type WorkloadLabel struct {
 	WorkloadID uuid.UUID
 	Key        string
 	Value      string
+}
+
+type WorkloadListeningService struct {
+	WorkloadID  uuid.UUID
+	Protocol    int32
+	Port        int32
+	ProcessName string
+	ProcessPath string
+}
+
+type WorkloadPolicy struct {
+	WorkloadID uuid.UUID
+	Version    int64
+	Policy     []byte
+	RenderedAt time.Time
 }
