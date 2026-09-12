@@ -42,7 +42,7 @@ const offlineWriteTimeout = 5 * time.Second
 // session is one live sync stream: the in-process record that lets a
 // render's announcement find the stream to push to. It holds only stream
 // state: what was last sent on this stream. Everything durable is in the
-// registry (ADR-0017).
+// registry (ADR-0019).
 type session struct {
 	id     identity.WorkloadID
 	ctx    context.Context
@@ -365,9 +365,12 @@ func (s *Server) sendRecoverySnapshot(ctx context.Context, log *slog.Logger, ses
 	return nil
 }
 
-// currentPolicy returns the persisted policy of id, rendering first if
-// none exists yet. Every enrolled workload is rendered at enrollment, so
-// the render here is a fallback for a record that predates it.
+// currentPolicy returns the persisted policy of id. Connecting is not a
+// render trigger (ADR-0018): every workload is rendered at enrollment and
+// the control plane renders once at startup. The one exception is repair:
+// a workload with no persisted policy at all, which only a render that
+// failed at enrollment leaves behind, is rendered here once rather than
+// refused until an operator intervenes.
 func (s *Server) currentPolicy(ctx context.Context, id identity.WorkloadID) (*innerwallv1.WorkloadPolicy, error) {
 	p, err := s.policies.GetWorkloadPolicy(ctx, id)
 	if err != nil {
@@ -376,6 +379,7 @@ func (s *Server) currentPolicy(ctx context.Context, id identity.WorkloadID) (*in
 	if p != nil {
 		return p, nil
 	}
+	s.log.Warn("workload has no persisted policy; rendering once to repair", "workload_id", id)
 	if _, err := s.engine.Render(ctx); err != nil {
 		return nil, err
 	}

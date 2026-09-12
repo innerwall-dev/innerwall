@@ -512,13 +512,20 @@ func (*PeerSelector_Cidr) isPeerSelector_Peer() {}
 // peers.) This orientation means the schema needs no separate
 // source/destination fields per direction.
 type Rule struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Direction     Direction              `protobuf:"varint,2,opt,name=direction,proto3,enum=innerwall.v1.Direction" json:"direction,omitempty"`
-	Peers         []*PeerSelector        `protobuf:"bytes,3,rep,name=peers,proto3" json:"peers,omitempty"`
-	Services      []*ServiceEntry        `protobuf:"bytes,4,rep,name=services,proto3" json:"services,omitempty"`
-	Enabled       bool                   `protobuf:"varint,5,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	Description   string                 `protobuf:"bytes,6,opt,name=description,proto3" json:"description,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Id        string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Direction Direction              `protobuf:"varint,2,opt,name=direction,proto3,enum=innerwall.v1.Direction" json:"direction,omitempty"`
+	Peers     []*PeerSelector        `protobuf:"bytes,3,rep,name=peers,proto3" json:"peers,omitempty"`
+	// Services permitted, written inline.
+	Services    []*ServiceEntry `protobuf:"bytes,4,rep,name=services,proto3" json:"services,omitempty"`
+	Enabled     bool            `protobuf:"varint,5,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	Description string          `protobuf:"bytes,6,opt,name=description,proto3" json:"description,omitempty"`
+	// Services permitted by reference to ServiceDefinitions, by id. The
+	// control plane expands a reference when it renders, so editing a
+	// definition re-renders every rule that names it; a reference to a
+	// definition that does not exist is rejected at admission. A rule may
+	// combine references with inline entries (ADR-0018).
+	ServiceIds    []string `protobuf:"bytes,7,rep,name=service_ids,json=serviceIds,proto3" json:"service_ids,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -593,6 +600,13 @@ func (x *Rule) GetDescription() string {
 		return x.Description
 	}
 	return ""
+}
+
+func (x *Rule) GetServiceIds() []string {
+	if x != nil {
+		return x.ServiceIds
+	}
+	return nil
 }
 
 type Ruleset struct {
@@ -681,11 +695,16 @@ func (x *Ruleset) GetDescription() string {
 }
 
 // A single resolved inbound permission: concrete peers, one protocol, ports.
-// Carries the authored rule id for provenance — flow records and diagnostics
-// can point back to the intent that produced a given permission.
+// Its id carries the authored rule id for provenance — flow records and
+// diagnostics can point back to the intent that produced a given permission.
 type ResolvedRule struct {
-	state  protoimpl.MessageState `protogen:"open.v1"`
-	RuleId string                 `protobuf:"bytes,1,opt,name=rule_id,json=ruleId,proto3" json:"rule_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The resolved rule's identity: the authored rule id, a slash, and the
+	// protocol name in lower case, e.g. "<authored-rule-id>/tcp". An authored
+	// rule that permits several protocols renders to one resolved rule per
+	// protocol, and deltas address each by this id, so the protocol is part
+	// of the identity. Provenance is the part before the slash (ADR-0018).
+	RuleId string `protobuf:"bytes,1,opt,name=rule_id,json=ruleId,proto3" json:"rule_id,omitempty"`
 	// Concrete peer addresses: managed-workload addresses as host routes
 	// (/32 or /128) plus any literal CIDRs from the authored rule.
 	PeerCidrs     []string     `protobuf:"bytes,2,rep,name=peer_cidrs,json=peerCidrs,proto3" json:"peer_cidrs,omitempty"`
@@ -1033,7 +1052,7 @@ type DeltaChange_UpsertRule struct {
 }
 
 type DeltaChange_RemoveRuleId struct {
-	// Remove a resolved rule by authored-rule id.
+	// Remove a resolved rule by its id (see ResolvedRule.rule_id).
 	RemoveRuleId string `protobuf:"bytes,2,opt,name=remove_rule_id,json=removeRuleId,proto3,oneof"`
 }
 
@@ -1063,9 +1082,10 @@ func (*DeltaChange_RemovePeers) isDeltaChange_Change() {}
 func (*DeltaChange_SetMode) isDeltaChange_Change() {}
 
 type PeerChange struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RuleId        string                 `protobuf:"bytes,1,opt,name=rule_id,json=ruleId,proto3" json:"rule_id,omitempty"`
-	PeerCidrs     []string               `protobuf:"bytes,2,rep,name=peer_cidrs,json=peerCidrs,proto3" json:"peer_cidrs,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The resolved rule's id (see ResolvedRule.rule_id).
+	RuleId        string   `protobuf:"bytes,1,opt,name=rule_id,json=ruleId,proto3" json:"rule_id,omitempty"`
+	PeerCidrs     []string `protobuf:"bytes,2,rep,name=peer_cidrs,json=peerCidrs,proto3" json:"peer_cidrs,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1143,14 +1163,16 @@ const file_innerwall_v1_policy_proto_rawDesc = "" +
 	"\tworkloads\x18\x01 \x01(\v2\x1b.innerwall.v1.LabelSelectorH\x00R\tworkloads\x12*\n" +
 	"\x10address_group_id\x18\x02 \x01(\tH\x00R\x0eaddressGroupId\x12\x14\n" +
 	"\x04cidr\x18\x03 \x01(\tH\x00R\x04cidrB\x06\n" +
-	"\x04peer\"\xf3\x01\n" +
+	"\x04peer\"\x94\x02\n" +
 	"\x04Rule\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x125\n" +
 	"\tdirection\x18\x02 \x01(\x0e2\x17.innerwall.v1.DirectionR\tdirection\x120\n" +
 	"\x05peers\x18\x03 \x03(\v2\x1a.innerwall.v1.PeerSelectorR\x05peers\x126\n" +
 	"\bservices\x18\x04 \x03(\v2\x1a.innerwall.v1.ServiceEntryR\bservices\x12\x18\n" +
 	"\aenabled\x18\x05 \x01(\bR\aenabled\x12 \n" +
-	"\vdescription\x18\x06 \x01(\tR\vdescription\"\xc6\x01\n" +
+	"\vdescription\x18\x06 \x01(\tR\vdescription\x12\x1f\n" +
+	"\vservice_ids\x18\a \x03(\tR\n" +
+	"serviceIds\"\xc6\x01\n" +
 	"\aRuleset\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x121\n" +

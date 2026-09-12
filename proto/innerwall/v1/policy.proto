@@ -98,9 +98,16 @@ message Rule {
   string id = 1;
   Direction direction = 2;
   repeated PeerSelector peers = 3;
+  // Services permitted, written inline.
   repeated ServiceEntry services = 4;
   bool enabled = 5;
   string description = 6;
+  // Services permitted by reference to ServiceDefinitions, by id. The
+  // control plane expands a reference when it renders, so editing a
+  // definition re-renders every rule that names it; a reference to a
+  // definition that does not exist is rejected at admission. A rule may
+  // combine references with inline entries (ADR-0018).
+  repeated string service_ids = 7;
 }
 
 message Ruleset {
@@ -118,9 +125,14 @@ message Ruleset {
 // ---------------------------------------------------------------------------
 
 // A single resolved inbound permission: concrete peers, one protocol, ports.
-// Carries the authored rule id for provenance — flow records and diagnostics
-// can point back to the intent that produced a given permission.
+// Its id carries the authored rule id for provenance — flow records and
+// diagnostics can point back to the intent that produced a given permission.
 message ResolvedRule {
+  // The resolved rule's identity: the authored rule id, a slash, and the
+  // protocol name in lower case, e.g. "<authored-rule-id>/tcp". An authored
+  // rule that permits several protocols renders to one resolved rule per
+  // protocol, and deltas address each by this id, so the protocol is part
+  // of the identity. Provenance is the part before the slash (ADR-0018).
   string rule_id = 1;
   // Concrete peer addresses: managed-workload addresses as host routes
   // (/32 or /128) plus any literal CIDRs from the authored rule.
@@ -163,7 +175,7 @@ message DeltaChange {
   oneof change {
     // Add a new resolved rule, or replace an existing one wholesale.
     ResolvedRule upsert_rule = 1;
-    // Remove a resolved rule by authored-rule id.
+    // Remove a resolved rule by its id (see ResolvedRule.rule_id).
     string remove_rule_id = 2;
     // Add peers to an existing resolved rule's peer set.
     PeerChange add_peers = 3;
@@ -175,6 +187,7 @@ message DeltaChange {
 }
 
 message PeerChange {
+  // The resolved rule's id (see ResolvedRule.rule_id).
   string rule_id = 1;
   repeated string peer_cidrs = 2;
 }

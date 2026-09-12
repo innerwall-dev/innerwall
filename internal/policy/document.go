@@ -12,10 +12,11 @@ import (
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 )
 
-// The document form is how an operator writes a ruleset: JSON with names
-// where the stored model has ids, string enums, and "80-90" port specs.
-// It is the input of the command line today and of the API façade's
-// import path later; the stored model never depends on it.
+// The document form is how an operator writes a ruleset at the command
+// line: JSON with names where the stored model has ids, string enums, and
+// "80-90" port specs. The API façade takes the wire contract's Ruleset
+// instead, whose service_ids field carries the same references; the stored
+// model depends on neither form.
 
 // RulesetDoc is the JSON form of a ruleset.
 type RulesetDoc struct {
