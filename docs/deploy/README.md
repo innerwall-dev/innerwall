@@ -8,7 +8,7 @@ One control-plane binary and one Postgres, co-located or adjacent (ADR-0017). `d
 make dev
 ```
 
-It starts Postgres with a persistent volume and builds the control plane from source. The control plane reads its Postgres connection string from `INNERWALL_DATABASE_URL`. Ports: the REST/JSON façade and embedded UI on 8080 (bound to localhost in the compose file), the agent gateway on 8443.
+It starts Postgres with a persistent volume and builds the control plane from source. The control plane reads its Postgres connection string from `INNERWALL_DATABASE_URL`. Ports: the operator surface (REST/JSON API and, once it lands, the console) on 8080 over TLS (bound to localhost in the compose file), the agent gateway on 8443.
 
 On first start the control plane applies migrations, creates its signing authority in the `innerwall-state` volume, and serves the agent gateway on 8443. Enrolling an agent from the host:
 
@@ -54,7 +54,28 @@ docker compose exec innerwall /innerwall flows rollup --label role=db --decision
 docker compose exec innerwall /innerwall flows totals <workload-id>
 ```
 
-Windows older than `--flow-retention` (30 days by default) are deleted by a job that runs every `--flow-retention-interval` on whichever replica takes the lock first; totals since first seen are kept. The REST/JSON façade and UI are wired in by later milestones.
+Windows older than `--flow-retention` (30 days by default) are deleted by a job that runs every `--flow-retention-interval` on whichever replica takes the lock first; totals since first seen are kept. Expired operator sessions are pruned on the same schedule.
+
+## Operator surface
+
+The control plane serves the operator-facing REST/JSON API on `--operator-listen` (`:8080` by default), over TLS and nothing else (ADR-0021). Give it a certificate with `--operator-tls-cert` and `--operator-tls-key`; without them it generates a self-signed certificate on first start, keeps it as `operator.crt` and `operator.key` beside the signing authority (so the compose stack's `innerwall-state` volume carries it), and logs its SHA-256 fingerprint. Verify that fingerprint in the browser before trusting the first connection; a deployment with several replicas provisions the same pair on each, as it does the authority directory. A generated certificate that has expired is replaced on the next start, with the new fingerprint logged.
+
+Version 1 has one operator. Set the password on the control-plane host; there is no endpoint that does it, and until it is set the login endpoint refuses with a problem the console recognizes as a fresh install:
+
+```sh
+innerwall operator set-password --name "Ada"     # prompts twice; or pipe the password on stdin
+```
+
+Automation authenticates with an operator token presented as a bearer credential. Tokens are minted, listed, and revoked on the host; the plaintext is shown once at mint and only its digest is stored:
+
+```sh
+innerwall operator token mint --name ci --ttl 720h   # omit --ttl for a token that does not expire
+innerwall operator token list
+innerwall operator token revoke <token-id>
+curl -H "Authorization: Bearer iwo_..." https://localhost:8080/api/v1/me
+```
+
+A browser logs in with `POST /api/v1/session` and receives a session cookie that lives seven days and is never extended; `DELETE /api/v1/session` ends it. Every error is a problem document (`application/problem+json`) whose `type` a client branches on. `--site` (or `INNERWALL_SITE`) sets the label the console header shows; `/api/v1/me` returns it with the operator's display name.
 
 Running more than one replica: the signing authority directory (`INNERWALL_CA_DIR`, created once by `innerwall ca init`) is configuration and must be identical on every replica, like the database connection string. `serve --init-ca` is a single-replica development convenience; two replicas that each initialise their own authority issue credentials the other will not accept (ADR-0017).
 

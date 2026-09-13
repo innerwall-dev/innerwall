@@ -62,7 +62,7 @@ Never edit generated code. Change the source, regenerate, commit both.
 ```
 cmd/innerwall/            control-plane main
 cmd/innerwall-agent/      agent main
-internal/api              REST/JSON façade (generated gateway + handlers)
+internal/api              operator surface: REST/JSON handlers, auth middleware, listener TLS
 internal/gateway          agent gRPC surface: enrollment, renewal, the sync stream and its pushes
 internal/compiler         renders the authored model into per-workload policies; versions by diff
 internal/policy           authored model (services, address groups, rulesets), admission, documents

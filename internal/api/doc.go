@@ -1,6 +1,17 @@
-// Package api serves the public REST/JSON façade consumed by the UI and by
-// automation. The façade is generated from the protobuf definitions in proto/;
-// nothing exists here that is not defined there first (ADR-0007). Design rules
-// for estate-scale automation: bulk endpoints, cursor pagination everywhere,
-// async jobs for anything that fans out.
+// Package api serves the operator surface: the public REST/JSON API
+// consumed by the console and by automation, on a listener of its own
+// (ADR-0021). Its handlers are hand-shaped over the shared domain layer
+// (ADR-0007 as amended): they carry the semantics a browser-facing surface
+// needs and hold no domain logic, calling the same domain functions the
+// command line calls. Design rules for estate scale: aggregation is
+// server-side, unbounded reads paginate by cursor, a fan-out mutation
+// returns a recorded intent and never blocks on convergence, and bulk
+// operations exist only where the console's screens demand them.
+//
+// The package owns the listener's transport rules: TLS only; a middleware
+// that resolves a session cookie or a bearer operator token to the one
+// operator principal; an origin guard on every request that is not a read;
+// a fixed-window throttle on the login endpoint; problem documents for
+// every error. Handlers see a principal and nothing about how it was
+// authenticated.
 package api

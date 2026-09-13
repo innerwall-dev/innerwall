@@ -64,6 +64,34 @@ type FlowWindow struct {
 	ProcessName     string
 }
 
+type Operator struct {
+	ID           bool
+	RegionID     string
+	PasswordHash string
+	DisplayName  *string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+type OperatorSession struct {
+	IDHash    []byte
+	RegionID  string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
+type OperatorToken struct {
+	ID          uuid.UUID
+	RegionID    string
+	TokenHash   []byte
+	TokenPrefix string
+	Name        string
+	CreatedAt   time.Time
+	ExpiresAt   *time.Time
+	RevokedAt   *time.Time
+	LastUsedAt  *time.Time
+}
+
 type ProvisioningToken struct {
 	ID         uuid.UUID
 	RegionID   string

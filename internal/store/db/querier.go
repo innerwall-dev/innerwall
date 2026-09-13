@@ -6,6 +6,7 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -35,6 +36,8 @@ type Querier interface {
 	// Address groups: named CIDR sets for peers that are not managed workloads
 	// (ADR-0018).
 	CreateAddressGroup(ctx context.Context, arg CreateAddressGroupParams) error
+	CreateOperatorSession(ctx context.Context, arg CreateOperatorSessionParams) error
+	CreateOperatorToken(ctx context.Context, arg CreateOperatorTokenParams) error
 	// Provisioning tokens (ADR-0016). Only the SHA-256 hash of a token is ever
 	// stored or looked up; no query here touches plaintext.
 	CreateProvisioningToken(ctx context.Context, arg CreateProvisioningTokenParams) (ProvisioningToken, error)
@@ -50,10 +53,14 @@ type Querier interface {
 	CreateWorkload(ctx context.Context, arg CreateWorkloadParams) error
 	DeleteAddressGroup(ctx context.Context, id uuid.UUID) (int64, error)
 	DeleteAddressGroupCIDRs(ctx context.Context, addressGroupID uuid.UUID) error
+	// Retention: expired sessions are removed on the same schedule as aged
+	// flow windows (ADR-0019, ADR-0021).
+	DeleteExpiredOperatorSessions(ctx context.Context, now time.Time) (int64, error)
 	// Retention: one bounded batch of the oldest windows before the horizon.
 	// The caller loops until a batch deletes nothing, so no single statement
 	// holds locks for the whole backlog (ADR-0019).
 	DeleteFlowWindowsBefore(ctx context.Context, arg DeleteFlowWindowsBeforeParams) (int64, error)
+	DeleteOperatorSession(ctx context.Context, idHash []byte) (int64, error)
 	DeleteRules(ctx context.Context, rulesetID uuid.UUID) error
 	DeleteRuleset(ctx context.Context, id uuid.UUID) (int64, error)
 	DeleteRulesetScopeMatches(ctx context.Context, rulesetID uuid.UUID) error
@@ -63,6 +70,13 @@ type Querier interface {
 	DeleteWorkloadLabels(ctx context.Context, workloadID uuid.UUID) error
 	DeleteWorkloadListeningServices(ctx context.Context, workloadID uuid.UUID) error
 	GetAddressGroup(ctx context.Context, id uuid.UUID) (AddressGroup, error)
+	// Operator surface (ADR-0021). Passwords are stored as argon2id strings;
+	// session identifiers and operator tokens only as SHA-256 digests. No query
+	// here touches a plaintext credential.
+	GetOperator(ctx context.Context) (Operator, error)
+	GetOperatorSession(ctx context.Context, idHash []byte) (OperatorSession, error)
+	GetOperatorToken(ctx context.Context, id uuid.UUID) (OperatorToken, error)
+	GetOperatorTokenByHash(ctx context.Context, tokenHash []byte) (OperatorToken, error)
 	GetProvisioningToken(ctx context.Context, id uuid.UUID) (ProvisioningToken, error)
 	GetProvisioningTokenByHash(ctx context.Context, tokenHash []byte) (ProvisioningToken, error)
 	GetRuleset(ctx context.Context, id uuid.UUID) (Ruleset, error)
@@ -88,6 +102,7 @@ type Querier interface {
 	ListAllWorkloadLabels(ctx context.Context) ([]WorkloadLabel, error)
 	ListFlowTotals(ctx context.Context, arg ListFlowTotalsParams) ([]FlowTotal, error)
 	ListFlowWindows(ctx context.Context, arg ListFlowWindowsParams) ([]FlowWindow, error)
+	ListOperatorTokens(ctx context.Context) ([]OperatorToken, error)
 	ListProvisioningTokenLabels(ctx context.Context, tokenID uuid.UUID) ([]ProvisioningTokenLabel, error)
 	ListProvisioningTokens(ctx context.Context) ([]ProvisioningToken, error)
 	ListRulesets(ctx context.Context) ([]Ruleset, error)
@@ -106,6 +121,7 @@ type Querier interface {
 	// Ping is a connectivity probe that touches no tables. It exists so the data
 	// layer is exercised end to end before the first migration lands.
 	Ping(ctx context.Context) (int32, error)
+	RecordOperatorTokenUse(ctx context.Context, arg RecordOperatorTokenUseParams) error
 	RecordProvisioningTokenUse(ctx context.Context, arg RecordProvisioningTokenUseParams) error
 	RecordWorkloadAgent(ctx context.Context, arg RecordWorkloadAgentParams) (int64, error)
 	RecordWorkloadApplied(ctx context.Context, arg RecordWorkloadAppliedParams) (int64, error)
@@ -113,12 +129,14 @@ type Querier interface {
 	RecordWorkloadHeartbeatSeen(ctx context.Context, arg RecordWorkloadHeartbeatSeenParams) (int64, error)
 	RecordWorkloadInventory(ctx context.Context, arg RecordWorkloadInventoryParams) (int64, error)
 	RecordWorkloadRenewal(ctx context.Context, arg RecordWorkloadRenewalParams) (int64, error)
+	RevokeOperatorToken(ctx context.Context, arg RevokeOperatorTokenParams) (int64, error)
 	RevokeProvisioningToken(ctx context.Context, arg RevokeProvisioningTokenParams) (int64, error)
 	// The rollup the operator console issues for a label scope: the scope is
 	// resolved to workload ids by the caller, and the rows are grouped by
 	// resolved peer and service (destination port and protocol). A decision of
 	// 0 means every decision.
 	RollupFlowWindows(ctx context.Context, arg RollupFlowWindowsParams) ([]RollupFlowWindowsRow, error)
+	SetOperator(ctx context.Context, arg SetOperatorParams) (Operator, error)
 	SetWorkloadMode(ctx context.Context, arg SetWorkloadModeParams) (int64, error)
 	SetWorkloadSyncState(ctx context.Context, arg SetWorkloadSyncStateParams) (int64, error)
 	// Retention runs singly across replicas: whichever replica acquires the

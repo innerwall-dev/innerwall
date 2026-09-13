@@ -1,0 +1,236 @@
+package api
+
+import (
+	"crypto/tls"
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"net/http"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/innerwall-dev/innerwall/internal/operator"
+)
+
+// APIPrefix is where the surface is mounted. Every other path belongs to
+// the console.
+const APIPrefix = "/api/v1"
+
+// maxBodyBytes bounds a request body; the surface's requests are small
+// documents, and a bound keeps a client from holding a handler on a stream.
+const maxBodyBytes = 64 << 10
+
+// Deps is what the operator surface is built from.
+type Deps struct {
+	Operators *operator.Service
+	// Site is the label the console header shows; empty when none is
+	// configured.
+	Site string
+	// LoginAttempts and LoginWindow configure the login throttle; the
+	// defaults apply when zero.
+	LoginAttempts int
+	LoginWindow   time.Duration
+	Log           *slog.Logger
+	// Now is the clock; time.Now if nil.
+	Now func() time.Time
+}
+
+// Server holds the surface's handlers and the listener's middleware. The
+// handlers are hand-shaped over the domain layer (ADR-0007 as amended):
+// each carries the transport semantics of its endpoint and calls the same
+// domain functions the command line calls, holding no logic of its own.
+type Server struct {
+	operators *operator.Service
+	site      string
+	auth      *Authenticator
+	throttle  *Throttle
+	log       *slog.Logger
+}
+
+// New constructs the surface.
+func New(d Deps) *Server {
+	if d.Log == nil {
+		d.Log = slog.Default()
+	}
+	if d.Now == nil {
+		d.Now = time.Now
+	}
+	return &Server{
+		operators: d.Operators,
+		site:      d.Site,
+		auth:      &Authenticator{Operators: d.Operators, Log: d.Log},
+		throttle:  &Throttle{Limit: d.LoginAttempts, Window: d.LoginWindow, Now: d.Now},
+		log:       d.Log,
+	}
+}
+
+// Handler builds the listener's handler: the routes under APIPrefix behind
+// the origin guard, the login throttle, and the authentication middleware,
+// in that order, and the console mount point for every other path.
+func (s *Server) Handler() http.Handler {
+	routes := newRouter()
+	routes.handle(http.MethodPost, APIPrefix+"/session", s.createSession)
+	routes.handle(http.MethodDelete, APIPrefix+"/session", s.deleteSession)
+	routes.handle(http.MethodGet, APIPrefix+"/me", s.getMe)
+
+	root := http.NewServeMux()
+	root.Handle(APIPrefix+"/", CrossOriginGuard(s.throttle.Middleware(s.auth.Middleware(routes))))
+	root.Handle("/", http.HandlerFunc(consoleMountPoint))
+	return root
+}
+
+// router matches an exact method and path. It answers a known path with an
+// unsupported method with 405 and an Allow header, and anything else with
+// 404, both as problem documents; the standard multiplexer answers both in
+// plain text, which the surface never speaks.
+type router struct {
+	routes map[string]map[string]http.HandlerFunc // path → method → handler
+}
+
+func newRouter() *router { return &router{routes: map[string]map[string]http.HandlerFunc{}} }
+
+func (r *router) handle(method, path string, h http.HandlerFunc) {
+	if r.routes[path] == nil {
+		r.routes[path] = map[string]http.HandlerFunc{}
+	}
+	r.routes[path][method] = h
+}
+
+func (r *router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	methods, ok := r.routes[req.URL.Path]
+	if !ok {
+		writeProblem(w, problemNotFound)
+		return
+	}
+	if h, ok := methods[req.Method]; ok {
+		h(w, req)
+		return
+	}
+	allowed := make([]string, 0, len(methods))
+	for m := range methods {
+		allowed = append(allowed, m)
+	}
+	sort.Strings(allowed)
+	w.Header().Set("Allow", strings.Join(allowed, ", "))
+	writeProblem(w, Problem{Type: ProblemMethodNotAllowed, Title: http.StatusText(http.StatusMethodNotAllowed), Status: http.StatusMethodNotAllowed})
+}
+
+// consoleMountPoint is where the embedded console is served once it
+// exists (ADR-0008). Until the scaffold lands, every path outside the API
+// prefix answers not found from here.
+func consoleMountPoint(w http.ResponseWriter, _ *http.Request) {
+	p := problemNotFound
+	p.Detail = "the operator console is not served by this build; the API is under " + APIPrefix
+	writeProblem(w, p)
+}
+
+// NewHTTPServer wraps the handler in a server with the listener's TLS
+// configuration and header timeouts set.
+func NewHTTPServer(tlsCfg *tls.Config, handler http.Handler) *http.Server {
+	return &http.Server{
+		Handler:           handler,
+		TLSConfig:         tlsCfg,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+	}
+}
+
+// Me is the operator as the console sees it: the display name set with
+// the password (null until one is set, and the console renders a generic
+// fallback) and the site label configured on the control plane (empty
+// when none is).
+type Me struct {
+	DisplayName *string `json:"display_name"`
+	Site        string  `json:"site"`
+}
+
+func (s *Server) me(p *operator.Principal) Me {
+	me := Me{Site: s.site}
+	if p != nil {
+		me.DisplayName = p.DisplayName
+	}
+	return me
+}
+
+// decodeJSON reads one JSON document into v. A body that is not JSON, or
+// that is more than one document, is an invalid request; unknown fields
+// are ignored so a newer console can talk to an older control plane.
+func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodyBytes))
+	if err := dec.Decode(v); err != nil {
+		writeProblem(w, Problem{Type: ProblemInvalidRequest, Title: "Invalid request body", Status: http.StatusBadRequest, Detail: "the body is not a JSON document of the expected shape"})
+		return false
+	}
+	if dec.More() {
+		writeProblem(w, Problem{Type: ProblemInvalidRequest, Title: "Invalid request body", Status: http.StatusBadRequest, Detail: "the body holds more than one document"})
+		return false
+	}
+	return true
+}
+
+// createSession is POST /api/v1/session: exchange the password for a
+// session. The password is verified before anything else happens; a
+// control plane with no password refuses with its own problem type and
+// never offers to set one here.
+func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Password string `json:"password"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	ctx := r.Context()
+	err := s.operators.VerifyPassword(ctx, req.Password)
+	switch {
+	case errors.Is(err, operator.ErrNoOperator):
+		writeProblem(w, Problem{Type: ProblemNoPassword, Title: "No operator password has been set", Status: http.StatusForbidden, Detail: "no operator password has been set; run `innerwall operator set-password` on the control-plane host"})
+		return
+	case errors.Is(err, operator.ErrPasswordMismatch):
+		w.Header().Set("WWW-Authenticate", `Bearer realm="innerwall"`)
+		writeProblem(w, Problem{Type: ProblemInvalidCredentials, Title: "Invalid credentials", Status: http.StatusUnauthorized, Detail: "the password is not correct"})
+		return
+	case err != nil:
+		s.log.Error("verifying operator password", "error", err)
+		writeProblem(w, problemInternal)
+		return
+	}
+	id, sess, err := s.operators.CreateSession(ctx)
+	if err != nil {
+		s.log.Error("creating operator session", "error", err)
+		writeProblem(w, problemInternal)
+		return
+	}
+	op, err := s.operators.Store.GetOperator(ctx)
+	if err != nil {
+		s.log.Error("reading operator", "error", err)
+		writeProblem(w, problemInternal)
+		return
+	}
+	http.SetCookie(w, sessionCookie(id, sess.ExpiresAt.Sub(sess.CreatedAt)))
+	s.log.Info("operator logged in")
+	writeJSON(w, http.StatusOK, s.me(&operator.Principal{DisplayName: op.DisplayName}))
+}
+
+// deleteSession is DELETE /api/v1/session: revoke the current session and
+// clear the cookie.
+func (s *Server) deleteSession(w http.ResponseWriter, r *http.Request) {
+	if err := s.auth.EndSession(r.Context(), w); err != nil {
+		s.log.Error("ending operator session", "error", err)
+		writeProblem(w, problemInternal)
+		return
+	}
+	writeJSON(w, http.StatusOK, struct{}{})
+}
+
+// getMe is GET /api/v1/me: the authenticated operator and the site label.
+func (s *Server) getMe(w http.ResponseWriter, r *http.Request) {
+	p, ok := PrincipalFromContext(r.Context())
+	if !ok {
+		// The middleware admits no unauthenticated request to this
+		// handler; reaching here is a wiring fault, not a client error.
+		writeProblem(w, problemUnauthenticated)
+		return
+	}
+	writeJSON(w, http.StatusOK, s.me(p))
+}
