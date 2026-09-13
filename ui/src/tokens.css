@@ -1,0 +1,301 @@
+/* ============================================================================
+   Innerwall operator console — design tokens
+   Source of truth: the 21 locked screens (Innerwall Console.dc.html = dark,
+   Innerwall Console Light.dc.html = light). Values are extracted verbatim;
+   nothing here is restyled.
+
+   :root  = light theme      .dark = dark theme
+   Base palette follows the shadcn/ui naming convention so `tailwind.config`
+   can map hsl(var(--x)) → we ship raw hex/rgba instead (see snippet at end:
+   use the `<alpha-value>`-free color form).
+
+   Typography
+   ----------
+   --font-sans : "IBM Plex Sans"  — all UI copy, table body, headings, buttons
+   --font-mono : "IBM Plex Mono"  — anything the operator may copy or compare
+                 byte-for-byte: hostnames, workload ids, label key=value pairs,
+                 selectors, CIDRs / addresses, protocol/port (tcp/5432),
+                 policy versions (v41), counts & durations in tables, tokens,
+                 the ⌘K hint, nav glyphs, and decision/mode glyphs (○ ✓ ◆ ✕ ◌ ◐ ●).
+   Body size 13px / 1.45. Table meta 11–12px. KPI numerals 20px mono.
+   ============================================================================ */
+
+:root {
+  /* ---------- Typography ---------- */
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  /* ---------- Base palette (shadcn/ui) — LIGHT ---------- */
+  --background: #f5f5f4;            /* page */
+  --foreground: #16161a;
+  --card: #ffffff;                  /* panels, dialogs, pill/chip surfaces */
+  --card-foreground: #16161a;
+  --popover: #ffffff;
+  --popover-foreground: #16161a;
+  --primary: #f2b632;               /* gold fill: primary buttons, logo mark, active theme segment */
+  --primary-foreground: #1b1400;
+  --primary-border: #e9a91c;        /* 1px border on gold buttons (light only) */
+  --secondary: #dededb;             /* active segmented tab */
+  --secondary-foreground: #16161a;
+  --muted: #efefed;                 /* avatar disc, popover item hover */
+  --muted-foreground: #6e6e77;      /* eyebrow labels, hints, badges, timestamps */
+  --accent: #fbf0d2;                /* gold-tinted selection: active chip, selected ruleset, "30 d" badge */
+  --accent-foreground: #16161a;
+  --accent-border: #e9c979;
+  --destructive: #d13b32;           /* validation errors, blocked, revoked, expired credential */
+  --destructive-foreground: #ffffff;/* not used by any screen (no filled red surface) — reserved */
+  --border: #e2e2e0;                /* hairlines, table rules, matrix grid */
+  --input: #d6d6d3;                 /* search box, popover, inputs */
+  --input-strong: #c8c8c5;          /* ⌘K kbd, avatar ring, dialog border, token/command boxes */
+  --ring: #f2b632;                  /* hover/focus ring (avatar hover border) */
+  --radius: 6px;                    /* buttons, inputs, popover items. pills 4px · chips 5px · popover 8px · dialog 10px */
+
+  /* Supporting neutrals the screens use beyond the shadcn set */
+  --surface-sidebar: #ebebe9;       /* sidebar, top bar, right drawer */
+  --surface-nav-active: #fcfcfb;    /* active nav row, selected ruleset row */
+  --surface-row-selected: #f7f7f6;  /* selected rollup row */
+  --surface-row-editing: #f0f0ee;   /* rule row in edit */
+  --surface-cell-selected: #e0e0dd; /* selected matrix cell */
+  --foreground-secondary: #2c2c31;  /* mono values in tables (src/dst, scope) */
+  --foreground-tertiary: #5c5c64;   /* body-secondary: crumbs, table meta, tab idle */
+  --foreground-glyph: #66666e;      /* nav glyphs, popover icons, peer-kind tag text */
+  --foreground-separator: #a9a9a6;  /* “/” and “·” separators, peer-kind tag border */
+  --link: #8a5d06;
+  --link-hover: #5e3f04;
+  --checkbox-accent: #a8720a;       /* native checkbox accent-color */
+  --overlay: rgba(20,20,24,.45);    /* dialog scrim + dialog shadow */
+  --shadow-popover: 0 12px 32px rgba(0,0,0,.14);
+  --surface-translucent: rgba(245,245,244,.92); /* floating legend on flow map */
+  --hairline-soft: rgba(0,0,0,.05); /* inner divider inside cards */
+  --scrollbar-thumb: #d6d6d3;
+
+  /* ---------- Semantic status — LIGHT ---------- */
+  /* Flow decisions (each: text/glyph · translucent fill · 1px border) */
+  --status-observed: #5c5c64;
+  --status-observed-bg: rgba(92,92,100,.10);
+  --status-observed-border: #a9a9a6;
+  --status-allowed: #1f8a55;
+  --status-allowed-bg: rgba(31,138,85,.12);
+  --status-allowed-bg-soft: rgba(31,138,85,.06);   /* verdict banner (safe to enforce) */
+  --status-allowed-border: #a9dcc0;
+  --status-would-block: #e0640a;
+  --status-would-block-bg: rgba(224,100,10,.10);
+  --status-would-block-bg-soft: rgba(224,100,10,.05); /* verdict banner (not safe) */
+  --status-would-block-border: #f5c19a;
+  --status-would-block-surface: #fff6dc;           /* degraded workload status card */
+  --status-blocked: #d13b32;
+  --status-blocked-bg: rgba(209,59,50,.12);
+  --status-blocked-border: #f2b8b3;
+
+  /* Workload sync state (text/glyph) */
+  --status-synced: #1f8a55;
+  --status-pending: #8a5d06;
+  --status-degraded: #e0640a;
+  --status-offline: #6e6e77;
+  --status-offline-bar: #a9a9a6;    /* offline segment in fleet sync bar */
+
+  /* Enforcement mode (text/glyph · 1px pill border) */
+  --mode-visibility: #5c5c64;
+  --mode-visibility-border: #c8c8c5;
+  --mode-simulation: #7a5205;
+  --mode-simulation-border: #e9c979;
+  --mode-enforced: #16161a;
+  --mode-enforced-border: #a9a9a6;
+
+  /* Agent credential (fleet table "Credential" column) */
+  --cred-ok: #5c5c64;               /* "renews 9h" */
+  --cred-renewal-failed: #e0640a;   /* "renewal failed · retrying" */
+  --cred-expired: #d13b32;          /* "expired 2d ago" */
+
+  /* Provisioning token status */
+  --token-active: #1f8a55;
+  --token-revoked: #d13b32;
+  --token-expired: #6e6e77;
+
+  /* ---------- Visualization — LIGHT ---------- */
+  /* Flow map nodes */
+  --viz-node-managed-fill: #fdfdfc;
+  --viz-node-managed-stroke: #bdbdba;
+  --viz-node-unmanaged-fill: #f5f5f4;      /* = --background; dashed 5 4 */
+  --viz-node-unmanaged-stroke: #6e6e77;
+  --viz-node-unmanaged-text: #6e6e77;
+  --viz-node-unlabeled-stroke: #f5c19a;    /* dashed 2 3 */
+  --viz-node-unlabeled-text: #e0640a;      /* "▲ no labels — matches no scope" */
+  --viz-node-title: #16161a;
+  --viz-node-subtitle: #66666e;
+  /* Flow map edges (stroke + arrowhead + label text; label chip fill = --background) */
+  --viz-edge-observed: #5c5c64;            /* dash 2 4, 1.5px */
+  --viz-edge-allowed: #1f8a55;             /* solid, 1.5px */
+  --viz-edge-would-block: #e0640a;         /* dash 8 4, 1.5px */
+  --viz-edge-blocked: #d13b32;             /* solid, 2px */
+  --viz-edge-label-bg: #f5f5f4;
+  --viz-edge-dim-opacity: .35;             /* non-selected observed edges when a selection exists */
+  --viz-edge-selected-width: 2.5px;
+  /* Matrix views (flow map + simulation review) */
+  --viz-matrix-grid: #e2e2e0;
+  --viz-matrix-empty: #f5f5f4;
+  --viz-matrix-selected: #e0e0dd;
+  /* Connection-volume bars (simulation review rollup) */
+  --viz-bar-track: #e2e2e0;
+  --viz-bar-observed: #5c5c64;
+  --viz-bar-allowed: #1f8a55;
+  --viz-bar-would-block: #e0640a;
+  --viz-bar-blocked: #d13b32;
+  /* Fleet sync bar (sidebar) */
+  --viz-sync-synced: #1f8a55;
+  --viz-sync-pending: #8a5d06;
+  --viz-sync-degraded: #e0640a;
+  --viz-sync-offline: #a9a9a6;
+  --viz-sync-track: #e2e2e0;
+
+  /* ---------- Brand mark — LIGHT ---------- */
+  --logo-outline: #4a4a52;
+  --logo-fill: #e39a12;
+}
+
+.dark {
+  /* ---------- Base palette — DARK ---------- */
+  --background: #070708;
+  --foreground: #ededef;
+  --card: #18181b;
+  --card-foreground: #ededef;
+  --popover: #18181b;
+  --popover-foreground: #ededef;
+  --primary: #f2b632;
+  --primary-foreground: #070708;
+  --primary-border: #f2b632;
+  --secondary: #232327;
+  --secondary-foreground: #ededef;
+  --muted: #121214;
+  --muted-foreground: #818189;
+  --accent: #2a2008;
+  --accent-foreground: #ededef;
+  --accent-border: #6e5214;
+  --destructive: #f0655c;
+  --destructive-foreground: #070708; /* reserved — no filled red surface in screens */
+  --border: #222225;
+  --input: #2a2a2e;
+  --input-strong: #333338;
+  --ring: #f2b632;
+  --radius: 6px;
+
+  --surface-sidebar: #0c0c0e;
+  --surface-nav-active: #17171a;
+  --surface-row-selected: #141416;
+  --surface-row-editing: #101012;
+  --surface-cell-selected: #222226;
+  --foreground-secondary: #cfcfd4;
+  --foreground-tertiary: #a0a0a8;
+  --foreground-glyph: #92929a;
+  --foreground-separator: #46464d;
+  --link: #f6c65a;
+  --link-hover: #fdebc2;
+  --checkbox-accent: #f2b632;
+  --overlay: rgba(0,0,0,.6);
+  --shadow-popover: 0 12px 32px rgba(0,0,0,.55);
+  --surface-translucent: rgba(7,7,8,.92);
+  --hairline-soft: rgba(255,255,255,.06);
+  --scrollbar-thumb: #2a2a2e;
+
+  /* ---------- Semantic status — DARK ---------- */
+  --status-observed: #a0a0a8;
+  --status-observed-bg: rgba(160,160,168,.12);
+  --status-observed-border: #46464d;
+  --status-allowed: #4fc38a;
+  --status-allowed-bg: rgba(79,195,138,.12);
+  --status-allowed-bg-soft: rgba(79,195,138,.06);
+  --status-allowed-border: #24513a;
+  --status-would-block: #fb8b3c;
+  --status-would-block-bg: rgba(251,139,60,.14);
+  --status-would-block-bg-soft: rgba(251,139,60,.06);
+  --status-would-block-border: #5e3512;
+  --status-would-block-surface: #1a1408;
+  --status-blocked: #f0655c;
+  --status-blocked-bg: rgba(240,101,92,.14);
+  --status-blocked-border: #5a2320;
+
+  --status-synced: #4fc38a;
+  --status-pending: #f6c65a;
+  --status-degraded: #fb8b3c;
+  --status-offline: #818189;
+  --status-offline-bar: #46464d;
+
+  --mode-visibility: #a0a0a8;
+  --mode-visibility-border: #333338;
+  --mode-simulation: #fad98f;
+  --mode-simulation-border: #6e5214;
+  --mode-enforced: #ededef;
+  --mode-enforced-border: #46464d;
+
+  --cred-ok: #a0a0a8;
+  --cred-renewal-failed: #fb8b3c;
+  --cred-expired: #f0655c;
+
+  --token-active: #4fc38a;
+  --token-revoked: #f0655c;
+  --token-expired: #818189;
+
+  /* ---------- Visualization — DARK ---------- */
+  --viz-node-managed-fill: #161618;
+  --viz-node-managed-stroke: #38383e;
+  --viz-node-unmanaged-fill: #070708;
+  --viz-node-unmanaged-stroke: #818189;
+  --viz-node-unmanaged-text: #818189;
+  --viz-node-unlabeled-stroke: #5e3512;
+  --viz-node-unlabeled-text: #fb8b3c;
+  --viz-node-title: #ededef;
+  --viz-node-subtitle: #92929a;
+  --viz-edge-observed: #a0a0a8;
+  --viz-edge-allowed: #4fc38a;
+  --viz-edge-would-block: #fb8b3c;
+  --viz-edge-blocked: #f0655c;
+  --viz-edge-label-bg: #070708;
+  --viz-edge-dim-opacity: .35;
+  --viz-edge-selected-width: 2.5px;
+  --viz-matrix-grid: #222225;
+  --viz-matrix-empty: #070708;
+  --viz-matrix-selected: #222226;
+  --viz-bar-track: #222225;
+  --viz-bar-observed: #a0a0a8;
+  --viz-bar-allowed: #4fc38a;
+  --viz-bar-would-block: #fb8b3c;
+  --viz-bar-blocked: #f0655c;
+  --viz-sync-synced: #4fc38a;
+  --viz-sync-pending: #f6c65a;
+  --viz-sync-degraded: #fb8b3c;
+  --viz-sync-offline: #46464d;
+  --viz-sync-track: #222225;
+
+  /* ---------- Brand mark — DARK ---------- */
+  --logo-outline: #ededef;
+  --logo-fill: #f2b632;
+}
+
+/* ============================================================================
+   Notes
+   ----------------------------------------------------------------------------
+   • Color is never the only decision encoding. Every status token ships with
+     a glyph the screens use in text:  observed ○  allowed ✓  would-block ◆
+     blocked ✕ · sync: synced ●  pending ◔  degraded ▲  offline ○ ·
+     mode: visibility ◌  simulation ◐  enforced ●.
+   • Edge geometry travels with decision: observed dash "2 4", would-block
+     dash "8 4", allowed/blocked solid; blocked 2px, others 1.5px.
+   • --status-degraded and --status-would-block share a hue on purpose
+     (both mean "attention, not failure"); --cred-renewal-failed reuses it.
+     Hard failures (blocked, expired credential, revoked token, validation
+     errors) all resolve to --destructive.
+   • Pending sync intentionally uses the primary hue family (dark #f6c65a,
+     light #8a5d06) — it reads as "in progress by the control plane".
+
+   Uncategorized (appear in screens; kept for completeness)
+   ----------------------------------------------------------------------------
+   • --primary-border #e9a91c (light) — hairline on gold buttons; dark uses
+     the fill color itself. Listed above under base palette.
+   • --checkbox-accent — native <input type=checkbox> accent-color in fleet
+     table (light #a8720a; dark inherits --primary).
+   • --logo-outline / --logo-fill — sidebar mark only; light mode uses a
+     deliberately darker amber (#e39a12) than --primary so the mark holds on
+     the off-white sidebar. Listed above under brand mark.
+   • Verdict banner in simulation review uses the *-bg-soft tints with the
+     matching *-border — the only place the .06/.05 alphas appear.
+   ============================================================================ */
