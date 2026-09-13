@@ -44,7 +44,7 @@ Only inbound rules are admitted (ADR-0010). A workload in `visibility` mode has 
 innerwall-agent down --state-dir ./agent-state
 ```
 
-It deletes the owned table and nothing else, and says so: the persisted policy stays on disk, a running daemon re-applies it on its next update and a restarted one on start, so stopping enforcement for good means stopping the daemon too. The agent claims the connection mark on connections its rules accept; a host that already uses connection marks for something else should be looked at before enforcement is switched on. The other firewall tables on the host are never touched: the agent's chain runs at input priority `filter + 10`, after the host's own filter chains, and a packet must be accepted by both.
+It deletes the owned table and nothing else, and says so: the persisted policy stays on disk, a running daemon re-applies it on its next update and a restarted one on start, so stopping enforcement for good means stopping the daemon too. The agent writes its rule attribution into bits 16 through 31 of the connection mark (mask `0xffff0000`) and leaves the low sixteen bits exactly as it finds them, so a host tool that marks connections in the low bits keeps working; a tool that uses the high bits conflicts with the agent (ADR-0020). The other firewall tables on the host are never touched: the agent's chain runs at input priority `filter + 10`, after the host's own filter chains, and a packet must be accepted by both.
 
 Stored flows are read with the `flows` commands, which are the query shapes the operator console will issue (ADR-0019):
 

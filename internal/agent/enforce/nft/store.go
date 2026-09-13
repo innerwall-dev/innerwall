@@ -117,6 +117,9 @@ func (s *Store) Restore(ctx context.Context) error {
 // the acknowledgement must describe the kernel.
 func (s *Store) Apply(ctx context.Context, policy *innerwallv1.WorkloadPolicy) error {
 	next := rendered.Canonical(policy)
+	if len(next.GetInboundRules()) > MaxRules {
+		return fmt.Errorf("%w: %d rules, at most %d", ErrTooManyRules, len(next.GetInboundRules()), MaxRules)
+	}
 	s.mu.RLock()
 	current := s.current
 	s.mu.RUnlock()
@@ -171,16 +174,18 @@ func (s *Store) Mode() innerwallv1.EnforcementMode {
 }
 
 // Classify maps a connection mark to the decision and rule the installed
-// ruleset reached: a rule's mark is ALLOWED by that rule; the would-block
-// mark is WOULD_BLOCK; anything else was not evaluated (visibility mode,
-// or a connection older than the ruleset) and is OBSERVED.
+// ruleset reached, reading only the agent's region of the mark: a rule's
+// number is ALLOWED by that rule; the would-block value is WOULD_BLOCK;
+// anything else was not evaluated (visibility mode, or a connection older
+// than the ruleset) and is OBSERVED. The foreign bits are ignored.
 func (s *Store) Classify(mark uint32) (innerwallv1.PolicyDecision, string) {
-	if mark == WouldBlockMark {
+	index := RuleIndex(mark)
+	if index == WouldBlockIndex {
 		return innerwallv1.PolicyDecision_POLICY_DECISION_WOULD_BLOCK, ""
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if id, ok := s.marks[mark]; ok {
+	if id, ok := s.marks[index]; ok {
 		return innerwallv1.PolicyDecision_POLICY_DECISION_ALLOWED, id
 	}
 	return innerwallv1.PolicyDecision_POLICY_DECISION_OBSERVED, ""

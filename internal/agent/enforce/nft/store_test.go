@@ -3,6 +3,7 @@ package nft
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -68,14 +69,29 @@ func TestStoreAppliesPersistsAndRestores(t *testing.T) {
 	if err != nil || info.Mode().Perm() != 0o600 {
 		t.Fatalf("policy file stat = %v, %v", info, err)
 	}
-	if d, id := s.Classify(1); d != innerwallv1.PolicyDecision_POLICY_DECISION_ALLOWED || id != ruleWeb {
-		t.Fatalf("Classify(1) = %v %s", d, id)
+	if d, id := s.Classify(RuleMark(1)); d != innerwallv1.PolicyDecision_POLICY_DECISION_ALLOWED || id != ruleWeb {
+		t.Fatalf("Classify(rule 1) = %v %s", d, id)
+	}
+	// Foreign bits in the mark change nothing about the classification.
+	if d, id := s.Classify(RuleMark(1) | 0x2a); d != innerwallv1.PolicyDecision_POLICY_DECISION_ALLOWED || id != ruleWeb {
+		t.Fatalf("Classify(rule 1 with foreign bits) = %v %s", d, id)
 	}
 	if d, _ := s.Classify(WouldBlockMark); d != innerwallv1.PolicyDecision_POLICY_DECISION_WOULD_BLOCK {
 		t.Fatalf("Classify(would-block) = %v", d)
 	}
+	if d, _ := s.Classify(WouldBlockMark | 0xbeef); d != innerwallv1.PolicyDecision_POLICY_DECISION_WOULD_BLOCK {
+		t.Fatalf("Classify(would-block with foreign bits) = %v", d)
+	}
 	if d, _ := s.Classify(0); d != innerwallv1.PolicyDecision_POLICY_DECISION_OBSERVED {
 		t.Fatalf("Classify(0) = %v", d)
+	}
+	// A foreign mark alone, and a raw rule number outside the region, are
+	// not ours.
+	if d, _ := s.Classify(0x2a); d != innerwallv1.PolicyDecision_POLICY_DECISION_OBSERVED {
+		t.Fatalf("Classify(foreign only) = %v", d)
+	}
+	if d, _ := s.Classify(1); d != innerwallv1.PolicyDecision_POLICY_DECISION_OBSERVED {
+		t.Fatalf("Classify(1) = %v; the raw number is not in the region", d)
 	}
 	if s.TerminalDecision() != innerwallv1.PolicyDecision_POLICY_DECISION_BLOCKED {
 		t.Fatalf("terminal decision = %v", s.TerminalDecision())
@@ -121,7 +137,7 @@ func TestStoreAppliesPersistsAndRestores(t *testing.T) {
 	if s.Current().GetVersion() != 9 || s.Mode() != innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED {
 		t.Fatalf("refused apply changed the installed policy: %v", s.Current())
 	}
-	if d, id := s.Classify(3); d != innerwallv1.PolicyDecision_POLICY_DECISION_ALLOWED || id != rulePng {
+	if d, id := s.Classify(RuleMark(3)); d != innerwallv1.PolicyDecision_POLICY_DECISION_ALLOWED || id != rulePng {
 		t.Fatalf("marks changed on a refused apply: %v %s", d, id)
 	}
 	runner.refuse = nil
@@ -145,7 +161,7 @@ func TestStoreAppliesPersistsAndRestores(t *testing.T) {
 	if s2.LastApply() != ApplyFull || len(runner2.scripts) != 1 || runner2.scripts[0] != Render(v9, Options{}) {
 		t.Fatalf("restore: kind=%s scripts=%d", s2.LastApply(), len(runner2.scripts))
 	}
-	if d, id := s2.Classify(2); d != innerwallv1.PolicyDecision_POLICY_DECISION_ALLOWED || id != ruleDNS {
+	if d, id := s2.Classify(RuleMark(2)); d != innerwallv1.PolicyDecision_POLICY_DECISION_ALLOWED || id != ruleDNS {
 		t.Fatalf("marks after restore: %v %s", d, id)
 	}
 
@@ -156,8 +172,22 @@ func TestStoreAppliesPersistsAndRestores(t *testing.T) {
 	if s2.LastApply() != ApplyFull || s2.TerminalDecision() != innerwallv1.PolicyDecision_POLICY_DECISION_WOULD_BLOCK {
 		t.Fatalf("simulation apply: kind=%s terminal=%v", s2.LastApply(), s2.TerminalDecision())
 	}
-	if d, _ := s2.Classify(2); d != innerwallv1.PolicyDecision_POLICY_DECISION_OBSERVED {
+	if d, _ := s2.Classify(RuleMark(2)); d != innerwallv1.PolicyDecision_POLICY_DECISION_OBSERVED {
 		t.Fatalf("stale mark still classified: %v", d)
+	}
+
+	// More rules than the region can number is refused before the kernel
+	// sees anything.
+	huge := &innerwallv1.WorkloadPolicy{Version: 11, Mode: innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED}
+	for i := 0; i <= MaxRules; i++ {
+		huge.InboundRules = append(huge.InboundRules, &innerwallv1.ResolvedRule{RuleId: fmt.Sprintf("%05x/tcp", i), Protocol: innerwallv1.Protocol_PROTOCOL_TCP})
+	}
+	before := len(runner2.scripts)
+	if err := s2.Apply(ctx, huge); !errors.Is(err, ErrTooManyRules) {
+		t.Fatalf("oversized policy err = %v", err)
+	}
+	if len(runner2.scripts) != before || s2.Current().GetVersion() != 10 {
+		t.Fatal("oversized policy reached the kernel or replaced the installed policy")
 	}
 
 	// Teardown is the declare-and-delete of the owned table and nothing

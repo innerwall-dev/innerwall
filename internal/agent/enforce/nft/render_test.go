@@ -87,7 +87,7 @@ func TestSimulationDiffersOnlyInTerminalRule(t *testing.T) {
 	if !strings.Contains(e, "drop") || !strings.Contains(e, "innerwall terminal enforced") {
 		t.Fatalf("enforced terminal line = %q", e)
 	}
-	if !strings.Contains(s, "accept") || !strings.Contains(s, "ct mark set 0xffffffff") || !strings.Contains(s, "innerwall terminal simulation") {
+	if !strings.Contains(s, "accept") || !strings.Contains(s, "ct mark set (ct mark & 0x0000ffff) | 0xffff0000") || !strings.Contains(s, "innerwall terminal simulation") {
 		t.Fatalf("simulation terminal line = %q", s)
 	}
 	// Both log to the same group before their verdict.
@@ -142,6 +142,37 @@ func TestRenderStructure(t *testing.T) {
 	}
 	if !strings.Contains(script, "meta l4proto icmp") || !strings.Contains(script, "meta l4proto ipv6-icmp") {
 		t.Fatalf("icmp match missing:\n%s", script)
+	}
+	// Every mark write keeps the foreign bits and sets only the region.
+	for _, want := range []string{
+		"ct mark set (ct mark & 0x0000ffff) | 0x00010000 accept",
+		"ct mark set (ct mark & 0x0000ffff) | 0x00020000 accept",
+		"ct mark set (ct mark & 0x0000ffff) | 0x00030000 accept",
+	} {
+		if strings.Count(script, want) != 2 {
+			t.Fatalf("%q should appear once per family:\n%s", want, script)
+		}
+	}
+	if strings.Contains(script, "ct mark set 0x") || strings.Contains(script, "ct mark set 1") {
+		t.Fatalf("an unmasked mark write:\n%s", script)
+	}
+}
+
+// TestMarkRegion checks the region arithmetic: a rule's mark occupies
+// bits 16 through 31, the foreign bits are never part of a mark the agent
+// writes, and reading a mark ignores whatever the foreign bits hold.
+func TestMarkRegion(t *testing.T) {
+	if RuleMark(1) != 0x00010000 || RuleMark(0xfffe) != 0xfffe0000 || WouldBlockMark != 0xffff0000 {
+		t.Fatalf("RuleMark(1)=%#x RuleMark(max)=%#x WouldBlockMark=%#x", RuleMark(1), RuleMark(0xfffe), WouldBlockMark)
+	}
+	if RuleMark(1)&ForeignMask != 0 || WouldBlockMark&ForeignMask != 0 {
+		t.Fatal("a mark the agent writes touches the foreign bits")
+	}
+	if RuleIndex(RuleMark(7)|0x2a) != 7 || RuleIndex(WouldBlockMark|0xbeef) != WouldBlockIndex || RuleIndex(0x2a) != 0 || RuleIndex(0) != 0 {
+		t.Fatal("RuleIndex does not ignore the foreign bits")
+	}
+	if MaxRules != 0xfffe {
+		t.Fatalf("MaxRules = %d", MaxRules)
 	}
 }
 

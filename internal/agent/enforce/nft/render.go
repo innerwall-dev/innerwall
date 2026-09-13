@@ -18,6 +18,7 @@
 package nft
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -44,10 +45,43 @@ const ChainName = "inbound"
 // constraints and removes none (ADR-0003).
 const Priority = "filter + 10"
 
-// WouldBlockMark is the connection mark the simulation terminal rule sets
-// before accepting: the mark of a connection enforcement would have
-// dropped. Rule marks are small positive integers and never reach it.
-const WouldBlockMark uint32 = 0xffffffff
+// The agent claims one sixteen-bit region of the 32-bit connection mark,
+// bits 16 through 31, and nothing outside it. Every write the ruleset
+// makes keeps the other sixteen bits as they were, and every read the
+// collector makes looks only at the region, so a host that already uses
+// the connection mark for something else in the low bits keeps working
+// and its marks survive ours (ADR-0020).
+const (
+	// MarkShift is the position of the region's lowest bit.
+	MarkShift = 16
+	// MarkMask selects the region.
+	MarkMask uint32 = 0xffff0000
+	// ForeignMask selects the bits the agent never writes.
+	ForeignMask uint32 = 0x0000ffff
+	// WouldBlockIndex is the region value the simulation terminal rule
+	// sets: the connection is one enforcement would have dropped.
+	WouldBlockIndex uint32 = 0xffff
+	// MaxRules is how many rules one policy can carry, one region value
+	// each, leaving WouldBlockIndex free.
+	MaxRules = int(WouldBlockIndex) - 1
+)
+
+// WouldBlockMark is the region value of a would-block connection, in
+// place: the mark with all region bits set and the foreign bits clear.
+const WouldBlockMark uint32 = WouldBlockIndex << MarkShift
+
+// RuleMark returns the mark value, in place, of rule number index (from
+// 1), with the foreign bits clear.
+func RuleMark(index uint32) uint32 { return index << MarkShift }
+
+// RuleIndex reads the region out of a connection mark: the rule number
+// that accepted the connection, WouldBlockIndex, or 0 when the agent
+// never marked it. The foreign bits are ignored.
+func RuleIndex(mark uint32) uint32 { return (mark & MarkMask) >> MarkShift }
+
+// ErrTooManyRules is returned when a policy has more rules than the mark
+// region can number.
+var ErrTooManyRules = errors.New("nft: policy has more rules than the connection-mark region can number")
 
 // LogPrefix is the prefix on every logged packet.
 const LogPrefix = "innerwall "
@@ -74,10 +108,12 @@ func (o Options) group() uint16 {
 	return DefaultNflogGroup
 }
 
-// Marks returns the connection mark of every rule in the canonical policy:
-// rules in canonical order (sorted by id) are numbered from 1. The mapping
-// is a pure function of the policy, so the collector's classification of a
-// marked connection needs nothing beyond the policy that set the mark.
+// Marks returns the rule number of every rule in the canonical policy:
+// rules in canonical order (sorted by id) are numbered from 1, and the
+// number is what the rule writes into the mark region (RuleMark). The
+// mapping is a pure function of the policy, so the collector's
+// classification of a marked connection needs nothing beyond the policy
+// that set the mark.
 func Marks(policy *innerwallv1.WorkloadPolicy) map[uint32]string {
 	out := map[uint32]string{}
 	for i, r := range rendered.Canonical(policy).GetInboundRules() {
@@ -113,7 +149,8 @@ func SetName(ruleID string, v6 bool) string {
 // content of the owned table, as one transaction: the table is declared
 // (a no-op when it exists), deleted, and recreated with its new content,
 // so the kernel holds either the previous ruleset or this one and never a
-// mixture (ADR-0003, ADR-0015).
+// mixture (ADR-0003, ADR-0015). A policy with more rules than the mark
+// region can number is refused by the store before it reaches here.
 func Render(policy *innerwallv1.WorkloadPolicy, opts Options) string {
 	policy = rendered.Canonical(policy)
 	table := opts.table()
@@ -143,17 +180,18 @@ func Render(policy *innerwallv1.WorkloadPolicy, opts Options) string {
 	// established, and nothing after this line can touch it.
 	b.WriteString("\t\tct state established,related accept\n")
 	for i, r := range rules {
-		mark := uint32(i + 1) //nolint:gosec // rule counts are small
-		comment := fmt.Sprintf("innerwall rule %s mark %d", r.GetRuleId(), mark)
+		index := uint32(i + 1) //nolint:gosec // bounded by MaxRules
+		comment := fmt.Sprintf("innerwall rule %s mark %d", r.GetRuleId(), index)
 		match := l4Match(r)
-		fmt.Fprintf(&b, "\t\tip saddr @%s %s ct mark set %d accept comment \"%s\"\n", SetName(r.GetRuleId(), false), match.v4, mark, comment)
-		fmt.Fprintf(&b, "\t\tip6 saddr @%s %s ct mark set %d accept comment \"%s\"\n", SetName(r.GetRuleId(), true), match.v6, mark, comment)
+		// The write keeps the foreign bits: (ct mark & foreign) | ours.
+		fmt.Fprintf(&b, "\t\tip saddr @%s %s ct mark set (ct mark & 0x%08x) | 0x%08x accept comment \"%s\"\n", SetName(r.GetRuleId(), false), match.v4, ForeignMask, RuleMark(index), comment)
+		fmt.Fprintf(&b, "\t\tip6 saddr @%s %s ct mark set (ct mark & 0x%08x) | 0x%08x accept comment \"%s\"\n", SetName(r.GetRuleId(), true), match.v6, ForeignMask, RuleMark(index), comment)
 	}
 	switch policy.GetMode() {
 	case innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED:
 		fmt.Fprintf(&b, "\t\tlog prefix \"%s\" group %d drop comment \"innerwall terminal enforced\"\n", LogPrefix, opts.group())
 	case innerwallv1.EnforcementMode_ENFORCEMENT_MODE_SIMULATION:
-		fmt.Fprintf(&b, "\t\tlog prefix \"%s\" group %d counter ct mark set 0x%08x accept comment \"innerwall terminal simulation\"\n", LogPrefix, opts.group(), WouldBlockMark)
+		fmt.Fprintf(&b, "\t\tlog prefix \"%s\" group %d counter ct mark set (ct mark & 0x%08x) | 0x%08x accept comment \"innerwall terminal simulation\"\n", LogPrefix, opts.group(), ForeignMask, WouldBlockMark)
 	case innerwallv1.EnforcementMode_ENFORCEMENT_MODE_VISIBILITY, innerwallv1.EnforcementMode_ENFORCEMENT_MODE_UNSPECIFIED:
 		// Handled above.
 	}

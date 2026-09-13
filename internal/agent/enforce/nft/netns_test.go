@@ -58,7 +58,17 @@ const (
 
 	nflogGroup = 201
 	tableName  = "innerwalltest"
+
+	// A pre-existing user of the connection mark: another table, at a hook
+	// that runs before ours, writing the low bits of every new
+	// connection. Ours must leave it intact and still attribute.
+	foreignTable = "iwforeign"
+	foreignMark  = 0x2a
 )
+
+// foreignScript installs the foreign table; it is not ours and is never
+// touched by the agent.
+const foreignScript = "table inet " + foreignTable + " {}\ndelete table inet " + foreignTable + "\ntable inet " + foreignTable + " {\n\tchain premark {\n\t\ttype filter hook prerouting priority mangle; policy accept;\n\t\tct state new ct mark set 0x2a\n\t}\n}\n"
 
 type outcome string
 
@@ -228,6 +238,11 @@ func TestEnforcementInNamespace(t *testing.T) {
 	if _, err := os.Stat(enforce.PolicyPath(stateDir)); err != nil {
 		t.Fatalf("teardown removed the persisted policy: %v", err)
 	}
+	// The other table on the host is untouched by every apply and by the
+	// teardown.
+	if out, err := inNamespace("nft", "list", "table", "inet", foreignTable).CombinedOutput(); err != nil || !strings.Contains(string(out), "premark") {
+		t.Fatalf("foreign table after teardown: %v\n%s", err, out)
+	}
 }
 
 // child drives one in-namespace run of this binary.
@@ -381,6 +396,52 @@ func (o *observed) none(t *testing.T, what string, cond func(collect.Observation
 	}
 }
 
+// rawMarks records every connection mark the kernel reported.
+type rawMarks struct {
+	mu   sync.Mutex
+	seen []uint32
+}
+
+func (r *rawMarks) add(mark uint32) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.seen = append(r.seen, mark)
+}
+
+// expect waits for a mark exactly equal to want. Polling is a test device
+// only.
+func (r *rawMarks) expect(t *testing.T, what string, want uint32) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		r.mu.Lock()
+		for _, m := range r.seen {
+			if m == want {
+				r.mu.Unlock()
+				return
+			}
+		}
+		snapshot := append([]uint32(nil), r.seen...)
+		r.mu.Unlock()
+		if time.Now().After(deadline) {
+			t.Fatalf("no mark %#x for %s; saw %#x", want, what, snapshot)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// noneWithout fails if any mark the agent set has lost the foreign bits.
+func (r *rawMarks) noneWithout(t *testing.T, foreign uint32) {
+	t.Helper()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, m := range r.seen {
+		if nft.RuleIndex(m) != 0 && m&nft.ForeignMask != foreign {
+			t.Fatalf("mark %#x carries our region but lost the foreign bits %#x", m, foreign)
+		}
+	}
+}
+
 func policyAt(version uint64, mode innerwallv1.EnforcementMode, peers ...string) *innerwallv1.WorkloadPolicy {
 	return &innerwallv1.WorkloadPolicy{Version: version, Mode: mode, InboundRules: []*innerwallv1.ResolvedRule{
 		{RuleId: ruleA, Protocol: innerwallv1.Protocol_PROTOCOL_TCP, PeerCidrs: peers, Ports: []*innerwallv1.PortRange{{Start: portAllowed, End: portAllowed}}},
@@ -439,14 +500,26 @@ func runTarget(t *testing.T) {
 		}()
 	}
 
-	// The agent side: the store over real nft, and the two sources.
+	// Another user of the connection mark, installed before the agent
+	// and never touched by it.
+	if err := (nft.ExecRunner{}).Apply(ctx, foreignScript); err != nil {
+		t.Fatalf("installing the foreign table: %v", err)
+	}
+
+	// The agent side: the store over real nft, and the two sources. The
+	// classifier is wrapped to record every raw mark the kernel reports,
+	// so the test can see the foreign bits beside ours.
 	store := nft.New(nft.Config{StateDir: os.Getenv(envStateDir), Table: tableName, NflogGroup: nflogGroup})
 	if err := store.Load(); err != nil {
 		t.Fatal(err)
 	}
 	obs := &observed{}
+	marks := &rawMarks{}
 	sources := collect.Sources{
-		&conntrack.Source{Classify: store.Classify},
+		&conntrack.Source{Classify: func(mark uint32) (innerwallv1.PolicyDecision, string) {
+			marks.add(mark)
+			return store.Classify(mark)
+		}},
 		&nflog.Source{Group: nflogGroup, Decide: store.TerminalDecision},
 	}
 	go func() { _ = sources.Run(ctx, obs.add) }()
@@ -475,6 +548,9 @@ func runTarget(t *testing.T) {
 	})
 	obs.waitFor(t, "blocked attempt from the unlisted peer", from(peer2IP, portAllowed, innerwallv1.PolicyDecision_POLICY_DECISION_BLOCKED))
 	obs.none(t, "the denied port allowed", from(peerIP, portDenied, innerwallv1.PolicyDecision_POLICY_DECISION_ALLOWED))
+	// The accepted connection carries our rule number in the region and
+	// the foreign mark, untouched, in the low bits.
+	marks.expect(t, "rule 1 beside the foreign mark", nft.RuleMark(1)|foreignMark)
 
 	// Delta: the second peer address joins rule A's set; no full reload.
 	if err := store.Apply(ctx, policyAt(2, innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED, peerIP+"/32", peer2IP+"/32")); err != nil {
@@ -502,6 +578,10 @@ func runTarget(t *testing.T) {
 	obs.waitFor(t, "would-block on the denied port", func(o collect.Observation) bool {
 		return from(peerIP, portDenied, innerwallv1.PolicyDecision_POLICY_DECISION_WOULD_BLOCK)(o) && o.Connections == 1
 	})
+	// The would-block connection is marked the same way: region set, foreign
+	// bits kept.
+	marks.expect(t, "would-block beside the foreign mark", nft.WouldBlockMark|foreignMark)
+	marks.noneWithout(t, foreignMark)
 	obs.waitFor(t, "allowed port still attributed under simulation", func(o collect.Observation) bool {
 		return from(peerIP, portAllowed, innerwallv1.PolicyDecision_POLICY_DECISION_ALLOWED)(o) && o.RuleID == ruleA
 	})
