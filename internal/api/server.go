@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"sort"
@@ -31,6 +32,9 @@ type Deps struct {
 	// Site is the label the console header shows; empty when none is
 	// configured.
 	Site string
+	// Console is the built console tree served at every path outside the
+	// API prefix; nil when this build carries none (ADR-0008).
+	Console fs.FS
 	// LoginAttempts and LoginWindow configure the login throttle; the
 	// defaults apply when zero.
 	LoginAttempts int
@@ -48,6 +52,7 @@ type Server struct {
 	operators *operator.Service
 	reads     *readmodel.Reader
 	site      string
+	console   fs.FS
 	auth      *Authenticator
 	throttle  *Throttle
 	log       *slog.Logger
@@ -65,6 +70,7 @@ func New(d Deps) *Server {
 		operators: d.Operators,
 		reads:     d.Reads,
 		site:      d.Site,
+		console:   d.Console,
 		auth:      &Authenticator{Operators: d.Operators, Log: d.Log},
 		throttle:  &Throttle{Limit: d.LoginAttempts, Window: d.LoginWindow, Now: d.Now},
 		log:       d.Log,
@@ -73,7 +79,7 @@ func New(d Deps) *Server {
 
 // Handler builds the listener's handler: the routes under APIPrefix behind
 // the origin guard, the login throttle, and the authentication middleware,
-// in that order, and the console mount point for every other path.
+// in that order, and the console at every other path.
 func (s *Server) Handler() http.Handler {
 	routes := newRouter()
 	routes.handle(http.MethodPost, APIPrefix+"/session", s.createSession)
@@ -87,7 +93,7 @@ func (s *Server) Handler() http.Handler {
 
 	root := http.NewServeMux()
 	root.Handle(APIPrefix+"/", CrossOriginGuard(s.throttle.Middleware(s.auth.Middleware(routes))))
-	root.Handle("/", http.HandlerFunc(consoleMountPoint))
+	root.Handle("/", ConsoleHandler(s.console))
 	return root
 }
 
@@ -196,15 +202,6 @@ func (r *router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	sort.Strings(allowed)
 	w.Header().Set("Allow", strings.Join(allowed, ", "))
 	writeProblem(w, Problem{Type: ProblemMethodNotAllowed, Title: http.StatusText(http.StatusMethodNotAllowed), Status: http.StatusMethodNotAllowed})
-}
-
-// consoleMountPoint is where the embedded console is served once it
-// exists (ADR-0008). Until the scaffold lands, every path outside the API
-// prefix answers not found from here.
-func consoleMountPoint(w http.ResponseWriter, _ *http.Request) {
-	p := problemNotFound
-	p.Detail = "the operator console is not served by this build; the API is under " + APIPrefix
-	writeProblem(w, p)
 }
 
 // NewHTTPServer wraps the handler in a server with the listener's TLS
