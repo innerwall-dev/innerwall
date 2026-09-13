@@ -13,4 +13,6 @@ Two mechanisms, and which one applies is decided by whether the core decision su
 
 Narrowing is a form of amendment; there is no `Narrows:` header.
 
+`main` is the record: an ADR number is consumed only when the ADR carrying it is on `main`, so a number used by a draft on a branch that never merged is free for the next ADR.
+
 An ADR written to resolve a review finding is scoped to that finding. New architectural decisions encountered along the way get their own commissioned ADR, not bullets inside the fix.
