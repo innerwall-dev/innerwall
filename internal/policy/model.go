@@ -1,11 +1,13 @@
 package policy
 
 import (
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
 
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
+	"github.com/innerwall-dev/innerwall/internal/identity"
 )
 
 // PortRange is an inclusive port range; a single port has Start == End.
@@ -69,7 +71,10 @@ type Peer struct {
 // Rule is a single authored rule. The ruleset's scope is the local end,
 // Peers the remote end, Direction orients the two. Services may be named
 // by reference (ServiceIDs) or written inline (Entries); the renderer
-// expands both into the same rendered form.
+// expands both into the same rendered form. CreatedAt and UpdatedAt are
+// the rule's own instants: a rule that keeps its id across an edit of its
+// ruleset keeps its CreatedAt, and its UpdatedAt advances only when the
+// rule itself changed.
 type Rule struct {
 	ID          uuid.UUID
 	Direction   innerwallv1.Direction
@@ -78,6 +83,8 @@ type Rule struct {
 	Peers       []Peer
 	ServiceIDs  []uuid.UUID
 	Entries     []ServiceEntry
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 // Ruleset is a named set of rules applied to the workloads its scope
@@ -116,4 +123,21 @@ func (s Selector) Matches(labels map[string]string) bool {
 		}
 	}
 	return true
+}
+
+// MatchWorkloads resolves a selector against an index of every workload's
+// current labels and returns the ids it matches, sorted. It is the one
+// scope resolution: the renderer's scope match (Matches) applied to the
+// registry, which the read model's scoped reads, the selector preview,
+// and the bulk mode change all call, so a preview and the change it
+// precedes cannot resolve differently.
+func MatchWorkloads(s Selector, index map[identity.WorkloadID]map[string]string) []identity.WorkloadID {
+	out := make([]identity.WorkloadID, 0)
+	for id, labels := range index {
+		if s.Matches(labels) {
+			out = append(out, id)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })
+	return out
 }

@@ -68,11 +68,16 @@ func (q *Queries) CreateService(ctx context.Context, arg CreateServiceParams) er
 
 const deleteService = `-- name: DeleteService :execrows
 DELETE FROM services
-WHERE id = $1
+WHERE id = $1 AND ($2::timestamptz IS NULL OR updated_at = $2::timestamptz)
 `
 
-func (q *Queries) DeleteService(ctx context.Context, id uuid.UUID) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteService, id)
+type DeleteServiceParams struct {
+	ID       uuid.UUID
+	Expected *time.Time
+}
+
+func (q *Queries) DeleteService(ctx context.Context, arg DeleteServiceParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteService, arg.ID, arg.Expected)
 	if err != nil {
 		return 0, err
 	}
@@ -204,17 +209,25 @@ func (q *Queries) ListServices(ctx context.Context) ([]Service, error) {
 const updateService = `-- name: UpdateService :execrows
 UPDATE services
 SET name = $2, updated_at = $3
-WHERE id = $1
+WHERE id = $1 AND ($4::timestamptz IS NULL OR updated_at = $4::timestamptz)
 `
 
 type UpdateServiceParams struct {
 	ID        uuid.UUID
 	Name      string
 	UpdatedAt time.Time
+	Expected  *time.Time
 }
 
+// Conditional writes: expected is the updated_at the caller last read, or
+// NULL for an unconditional write.
 func (q *Queries) UpdateService(ctx context.Context, arg UpdateServiceParams) (int64, error) {
-	result, err := q.db.Exec(ctx, updateService, arg.ID, arg.Name, arg.UpdatedAt)
+	result, err := q.db.Exec(ctx, updateService,
+		arg.ID,
+		arg.Name,
+		arg.UpdatedAt,
+		arg.Expected,
+	)
 	if err != nil {
 		return 0, err
 	}

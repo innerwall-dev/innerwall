@@ -101,7 +101,8 @@ func runTokenList(ctx context.Context, args []string) error {
 	}
 	defer st.Close()
 
-	tokens, err := st.ListTokens(ctx)
+	svc := &enroll.Service{Store: st}
+	tokens, err := svc.ListTokens(ctx)
 	if err != nil {
 		return err
 	}
@@ -145,7 +146,8 @@ func runTokenRevoke(ctx context.Context, args []string) error {
 	}
 	defer st.Close()
 
-	if err := st.RevokeToken(ctx, id, time.Now()); err != nil {
+	svc := &enroll.Service{Store: st}
+	if err := svc.RevokeToken(ctx, id); err != nil {
 		return err
 	}
 	fmt.Printf("token %s revoked\n", id)

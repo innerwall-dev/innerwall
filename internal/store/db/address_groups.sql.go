@@ -60,11 +60,16 @@ func (q *Queries) CreateAddressGroup(ctx context.Context, arg CreateAddressGroup
 
 const deleteAddressGroup = `-- name: DeleteAddressGroup :execrows
 DELETE FROM address_groups
-WHERE id = $1
+WHERE id = $1 AND ($2::timestamptz IS NULL OR updated_at = $2::timestamptz)
 `
 
-func (q *Queries) DeleteAddressGroup(ctx context.Context, id uuid.UUID) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteAddressGroup, id)
+type DeleteAddressGroupParams struct {
+	ID       uuid.UUID
+	Expected *time.Time
+}
+
+func (q *Queries) DeleteAddressGroup(ctx context.Context, arg DeleteAddressGroupParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteAddressGroup, arg.ID, arg.Expected)
 	if err != nil {
 		return 0, err
 	}
@@ -184,17 +189,25 @@ func (q *Queries) ListAllAddressGroupCIDRs(ctx context.Context) ([]AddressGroupC
 const updateAddressGroup = `-- name: UpdateAddressGroup :execrows
 UPDATE address_groups
 SET name = $2, updated_at = $3
-WHERE id = $1
+WHERE id = $1 AND ($4::timestamptz IS NULL OR updated_at = $4::timestamptz)
 `
 
 type UpdateAddressGroupParams struct {
 	ID        uuid.UUID
 	Name      string
 	UpdatedAt time.Time
+	Expected  *time.Time
 }
 
+// Conditional writes: expected is the updated_at the caller last read, or
+// NULL for an unconditional write.
 func (q *Queries) UpdateAddressGroup(ctx context.Context, arg UpdateAddressGroupParams) (int64, error) {
-	result, err := q.db.Exec(ctx, updateAddressGroup, arg.ID, arg.Name, arg.UpdatedAt)
+	result, err := q.db.Exec(ctx, updateAddressGroup,
+		arg.ID,
+		arg.Name,
+		arg.UpdatedAt,
+		arg.Expected,
+	)
 	if err != nil {
 		return 0, err
 	}

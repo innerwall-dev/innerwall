@@ -2,8 +2,11 @@ package registry
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"net/netip"
+	"sort"
 	"time"
 
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
@@ -53,6 +56,42 @@ type Workload struct {
 	// renewal failed, as its heartbeat reported it; empty when healthy.
 	CredentialRenewalError string
 	CredentialExpiresAt    time.Time
+}
+
+// ErrLabelsChanged is returned by a conditional label write whose expected
+// version is not the labels' current one. The error carrying it is a
+// *LabelsVersionError naming the current version.
+var ErrLabelsChanged = errors.New("registry: the workload's labels have changed since they were read")
+
+// LabelsVersionError is a refused conditional label write with the
+// version the labels hold now.
+type LabelsVersionError struct {
+	Current string
+}
+
+func (e *LabelsVersionError) Error() string {
+	return ErrLabelsChanged.Error() + " (current version " + e.Current + ")"
+}
+
+func (e *LabelsVersionError) Unwrap() error { return ErrLabelsChanged }
+
+// LabelsVersion is the version of a workload's labels: a digest of the
+// set itself, since nothing persisted records when labels last changed
+// and the set is the whole of what an operator edits. Two label sets that
+// say the same thing have the same version, whatever order they were
+// written in.
+func LabelsVersion(labels []Label) string {
+	pairs := make([]string, 0, len(labels))
+	for _, l := range labels {
+		pairs = append(pairs, l.Key+"="+l.Value)
+	}
+	sort.Strings(pairs)
+	h := sha256.New()
+	for _, p := range pairs {
+		h.Write([]byte(p))
+		h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 
 // LabelMap returns the labels as a map for selector matching.

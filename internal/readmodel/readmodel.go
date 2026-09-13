@@ -255,26 +255,14 @@ func (s *Reader) scope(ctx context.Context, workload *identity.WorkloadID, selec
 	if err != nil {
 		return nil, true, err
 	}
-	var matched []identity.WorkloadID
-	for id, labels := range index {
-		if !selector.Matches(labels) {
-			continue
-		}
+	matched := make([]identity.WorkloadID, 0)
+	for _, id := range policy.MatchWorkloads(selector, index) {
 		if workload != nil && id != *workload {
 			continue
 		}
 		matched = append(matched, id)
 	}
-	sortIDs(matched)
 	return matched, true, nil
-}
-
-func sortIDs(ids []identity.WorkloadID) {
-	for i := 1; i < len(ids); i++ {
-		for j := i; j > 0 && ids[j].String() < ids[j-1].String(); j-- {
-			ids[j], ids[j-1] = ids[j-1], ids[j]
-		}
-	}
 }
 
 // --- cursors -----------------------------------------------------------------

@@ -132,11 +132,32 @@ func (s *Store) ListListeningServices(ctx context.Context, id identity.WorkloadI
 
 // SetWorkloadLabels implements registry.Store.
 func (s *Store) SetWorkloadLabels(ctx context.Context, id identity.WorkloadID, labels []registry.Label) error {
+	return s.ReplaceWorkloadLabels(ctx, id, labels, "")
+}
+
+// ReplaceWorkloadLabels implements fleet.Store: the labels are replaced
+// only when they still hold the version the caller read (empty for an
+// unconditional write), judged inside the transaction on the rows as they
+// stand.
+func (s *Store) ReplaceWorkloadLabels(ctx context.Context, id identity.WorkloadID, labels []registry.Label, expect string) error {
 	return s.tx(ctx, func(q *db.Queries) error {
 		if _, err := q.GetWorkload(ctx, id.UUID()); errors.Is(err, pgx.ErrNoRows) {
 			return registry.ErrWorkloadUnknown
 		} else if err != nil {
 			return fmt.Errorf("store: looking up workload: %w", err)
+		}
+		if expect != "" {
+			rows, err := q.ListWorkloadLabels(ctx, id.UUID())
+			if err != nil {
+				return fmt.Errorf("store: listing workload labels: %w", err)
+			}
+			current := make([]registry.Label, 0, len(rows))
+			for _, l := range rows {
+				current = append(current, registry.Label{Key: l.Key, Value: l.Value})
+			}
+			if v := registry.LabelsVersion(current); v != expect {
+				return &registry.LabelsVersionError{Current: v}
+			}
 		}
 		if err := q.DeleteWorkloadLabels(ctx, id.UUID()); err != nil {
 			return fmt.Errorf("store: replacing labels: %w", err)

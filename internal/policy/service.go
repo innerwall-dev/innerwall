@@ -2,8 +2,10 @@ package policy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,8 +20,13 @@ type Renderer interface {
 }
 
 // Authoring is the mutation surface for the authored model: admission, then
-// persistence, then rendering. The command line and, later, the API façade
-// go through it and nothing else writes the authored tables.
+// persistence, then rendering. The command line and the operator surface
+// go through it and nothing else writes the authored tables; admission
+// runs here, so the two transports cannot diverge on what is admitted.
+//
+// Updates and deletes take the version the caller last read (expect) and
+// refuse with a *VersionMismatchError when the object has moved; an empty
+// expect writes unconditionally, which is the command line's default.
 type Authoring struct {
 	Store    Store
 	Renderer Renderer
@@ -44,8 +51,8 @@ func (a *Authoring) render(ctx context.Context) error {
 	return nil
 }
 
-// references loads the ids admission resolves against.
-func (a *Authoring) references(ctx context.Context) (References, error) {
+// References loads the ids admission resolves against.
+func (a *Authoring) References(ctx context.Context) (References, error) {
 	refs := References{Services: map[uuid.UUID]struct{}{}, AddressGroups: map[uuid.UUID]struct{}{}}
 	services, err := a.Store.ListServices(ctx)
 	if err != nil {
@@ -80,20 +87,20 @@ func (a *Authoring) CreateService(ctx context.Context, s *Service) error {
 }
 
 // UpdateService admits and persists a changed service.
-func (a *Authoring) UpdateService(ctx context.Context, s *Service) error {
+func (a *Authoring) UpdateService(ctx context.Context, s *Service, expect string) error {
 	if err := ValidateService(s); err != nil {
 		return err
 	}
 	s.UpdatedAt = a.now()
-	if err := a.Store.UpdateService(ctx, s); err != nil {
+	if err := a.Store.UpdateService(ctx, s, expect); err != nil {
 		return err
 	}
 	return a.render(ctx)
 }
 
 // DeleteService removes a service no rule references.
-func (a *Authoring) DeleteService(ctx context.Context, id uuid.UUID) error {
-	if err := a.Store.DeleteService(ctx, id); err != nil {
+func (a *Authoring) DeleteService(ctx context.Context, id uuid.UUID, expect string) error {
+	if err := a.Store.DeleteService(ctx, id, expect); err != nil {
 		return err
 	}
 	return a.render(ctx)
@@ -117,30 +124,30 @@ func (a *Authoring) CreateAddressGroup(ctx context.Context, g *AddressGroup) err
 }
 
 // UpdateAddressGroup admits and persists a changed address group.
-func (a *Authoring) UpdateAddressGroup(ctx context.Context, g *AddressGroup) error {
+func (a *Authoring) UpdateAddressGroup(ctx context.Context, g *AddressGroup, expect string) error {
 	if err := ValidateAddressGroup(g); err != nil {
 		return err
 	}
 	g.CIDRs = canonicalCIDRs(g.CIDRs)
 	g.UpdatedAt = a.now()
-	if err := a.Store.UpdateAddressGroup(ctx, g); err != nil {
+	if err := a.Store.UpdateAddressGroup(ctx, g, expect); err != nil {
 		return err
 	}
 	return a.render(ctx)
 }
 
 // DeleteAddressGroup removes an address group no rule references.
-func (a *Authoring) DeleteAddressGroup(ctx context.Context, id uuid.UUID) error {
-	if err := a.Store.DeleteAddressGroup(ctx, id); err != nil {
+func (a *Authoring) DeleteAddressGroup(ctx context.Context, id uuid.UUID, expect string) error {
+	if err := a.Store.DeleteAddressGroup(ctx, id, expect); err != nil {
 		return err
 	}
 	return a.render(ctx)
 }
 
 // CreateRuleset admits and persists a new ruleset, assigning ids to it and
-// to any rule that has none.
+// to any rule that has none. Every rule is created now.
 func (a *Authoring) CreateRuleset(ctx context.Context, rs *Ruleset) error {
-	refs, err := a.references(ctx)
+	refs, err := a.References(ctx)
 	if err != nil {
 		return err
 	}
@@ -151,7 +158,11 @@ func (a *Authoring) CreateRuleset(ctx context.Context, rs *Ruleset) error {
 		rs.ID = uuid.New()
 	}
 	assignRuleIDs(rs)
-	rs.CreatedAt, rs.UpdatedAt = a.now(), a.now()
+	now := a.now()
+	rs.CreatedAt, rs.UpdatedAt = now, now
+	for i := range rs.Rules {
+		rs.Rules[i].CreatedAt, rs.Rules[i].UpdatedAt = now, now
+	}
 	if err := a.Store.CreateRuleset(ctx, rs); err != nil {
 		return err
 	}
@@ -159,30 +170,178 @@ func (a *Authoring) CreateRuleset(ctx context.Context, rs *Ruleset) error {
 }
 
 // UpdateRuleset admits and persists a changed ruleset. Rules that keep
-// their id keep their provenance across the edit; rules without an id are
-// new.
-func (a *Authoring) UpdateRuleset(ctx context.Context, rs *Ruleset) error {
-	refs, err := a.references(ctx)
+// their id keep their provenance across the edit: their CreatedAt is
+// carried from the persisted rule, and their UpdatedAt advances only when
+// the rule itself changed. Rules without an id are new.
+func (a *Authoring) UpdateRuleset(ctx context.Context, rs *Ruleset, expect string) error {
+	refs, err := a.References(ctx)
 	if err != nil {
 		return err
 	}
 	if err := ValidateRuleset(rs, refs); err != nil {
 		return err
 	}
+	existing, err := a.Store.GetRuleset(ctx, rs.ID)
+	if err != nil {
+		return err
+	}
 	assignRuleIDs(rs)
-	rs.UpdatedAt = a.now()
-	if err := a.Store.UpdateRuleset(ctx, rs); err != nil {
+	now := a.now()
+	carryRuleTimestamps(existing, rs, now)
+	rs.CreatedAt, rs.UpdatedAt = existing.CreatedAt, now
+	if err := a.Store.UpdateRuleset(ctx, rs, expect); err != nil {
 		return err
 	}
 	return a.render(ctx)
 }
 
 // DeleteRuleset removes a ruleset and its rules.
-func (a *Authoring) DeleteRuleset(ctx context.Context, id uuid.UUID) error {
-	if err := a.Store.DeleteRuleset(ctx, id); err != nil {
+func (a *Authoring) DeleteRuleset(ctx context.Context, id uuid.UUID, expect string) error {
+	if err := a.Store.DeleteRuleset(ctx, id, expect); err != nil {
 		return err
 	}
 	return a.render(ctx)
+}
+
+// CreateRule adds one rule to a ruleset. The ruleset is written as a
+// unit, conditioned on the version it was read at, so a concurrent edit
+// of the same ruleset is refused rather than overwritten. Findings are
+// reported relative to the rule.
+func (a *Authoring) CreateRule(ctx context.Context, rulesetID uuid.UUID, r *Rule) error {
+	rs, err := a.Store.GetRuleset(ctx, rulesetID)
+	if err != nil {
+		return err
+	}
+	if r.ID == uuid.Nil {
+		r.ID = uuid.New()
+	}
+	rs.Rules = append(rs.Rules, *r)
+	if err := a.UpdateRuleset(ctx, rs, VersionOf(rs.UpdatedAt)); err != nil {
+		return a.ruleWriteError(ctx, rulesetID, r.ID, err, len(rs.Rules)-1)
+	}
+	*r = rs.Rules[len(rs.Rules)-1]
+	return nil
+}
+
+// UpdateRule replaces one rule of a ruleset. expect is the rule's own
+// version; a stale one is refused with the rule's current version.
+func (a *Authoring) UpdateRule(ctx context.Context, rulesetID uuid.UUID, r *Rule, expect string) error {
+	rs, err := a.Store.GetRuleset(ctx, rulesetID)
+	if err != nil {
+		return err
+	}
+	idx := slices.IndexFunc(rs.Rules, func(x Rule) bool { return x.ID == r.ID })
+	if idx < 0 {
+		return ErrRuleUnknown
+	}
+	if current := VersionOf(rs.Rules[idx].UpdatedAt); expect != "" && expect != current {
+		return &VersionMismatchError{Current: current}
+	}
+	rs.Rules[idx] = *r
+	if err := a.UpdateRuleset(ctx, rs, VersionOf(rs.UpdatedAt)); err != nil {
+		return a.ruleWriteError(ctx, rulesetID, r.ID, err, idx)
+	}
+	*r = rs.Rules[idx]
+	return nil
+}
+
+// DeleteRule removes one rule from a ruleset. expect is the rule's own
+// version.
+func (a *Authoring) DeleteRule(ctx context.Context, rulesetID, ruleID uuid.UUID, expect string) error {
+	rs, err := a.Store.GetRuleset(ctx, rulesetID)
+	if err != nil {
+		return err
+	}
+	idx := slices.IndexFunc(rs.Rules, func(x Rule) bool { return x.ID == ruleID })
+	if idx < 0 {
+		return ErrRuleUnknown
+	}
+	if current := VersionOf(rs.Rules[idx].UpdatedAt); expect != "" && expect != current {
+		return &VersionMismatchError{Current: current}
+	}
+	rs.Rules = slices.Delete(rs.Rules, idx, idx+1)
+	if err := a.UpdateRuleset(ctx, rs, VersionOf(rs.UpdatedAt)); err != nil {
+		return a.ruleWriteError(ctx, rulesetID, ruleID, err, -1)
+	}
+	return nil
+}
+
+// ruleWriteError restates a ruleset write's failure for a rule-level
+// caller: findings are rebased to the rule, and a version mismatch on the
+// ruleset (someone else wrote it between the read and the write) is
+// reported with the rule's current version, or as unknown when the rule
+// is gone.
+func (a *Authoring) ruleWriteError(ctx context.Context, rulesetID, ruleID uuid.UUID, err error, idx int) error {
+	if f := AsFindings(err); f != nil && idx >= 0 {
+		f.Rebase(fmt.Sprintf("rules[%d]", idx))
+		return f
+	}
+	if !errors.Is(err, ErrVersionMismatch) {
+		return err
+	}
+	rs, lerr := a.Store.GetRuleset(ctx, rulesetID)
+	if lerr != nil {
+		return lerr
+	}
+	for i := range rs.Rules {
+		if rs.Rules[i].ID == ruleID {
+			return &VersionMismatchError{Current: VersionOf(rs.Rules[i].UpdatedAt)}
+		}
+	}
+	return ErrRuleUnknown
+}
+
+// carryRuleTimestamps gives every rule of next its instants: a rule whose
+// id existed in prev keeps its CreatedAt and keeps its UpdatedAt unless
+// its content changed; every other rule is created now.
+func carryRuleTimestamps(prev, next *Ruleset, now time.Time) {
+	before := make(map[uuid.UUID]*Rule, len(prev.Rules))
+	for i := range prev.Rules {
+		before[prev.Rules[i].ID] = &prev.Rules[i]
+	}
+	for i := range next.Rules {
+		r := &next.Rules[i]
+		old, ok := before[r.ID]
+		if !ok {
+			r.CreatedAt, r.UpdatedAt = now, now
+			continue
+		}
+		r.CreatedAt = old.CreatedAt
+		if RuleEqual(old, r) {
+			r.UpdatedAt = old.UpdatedAt
+		} else {
+			r.UpdatedAt = now
+		}
+	}
+}
+
+// RuleEqual reports whether two rules say the same thing: same direction,
+// enablement, description, peers, services, and entries, in order.
+// Timestamps are not compared; they are a consequence of content changing.
+func RuleEqual(a, b *Rule) bool {
+	if a.Direction != b.Direction || a.Enabled != b.Enabled || a.Description != b.Description {
+		return false
+	}
+	if !slices.EqualFunc(a.Peers, b.Peers, peerEqual) || !slices.Equal(a.ServiceIDs, b.ServiceIDs) {
+		return false
+	}
+	return slices.EqualFunc(a.Entries, b.Entries, entryEqual)
+}
+
+func peerEqual(a, b Peer) bool {
+	if a.Kind != b.Kind || a.AddressGroupID != b.AddressGroupID || a.CIDR != b.CIDR || len(a.Workloads) != len(b.Workloads) {
+		return false
+	}
+	for k, av := range a.Workloads {
+		if !slices.Equal(av, b.Workloads[k]) {
+			return false
+		}
+	}
+	return true
+}
+
+func entryEqual(a, b ServiceEntry) bool {
+	return a.Protocol == b.Protocol && slices.Equal(a.Ports, b.Ports)
 }
 
 func assignRuleIDs(rs *Ruleset) {
