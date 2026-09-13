@@ -104,3 +104,61 @@ WHERE id = $1;
 UPDATE workloads
 SET last_seen_at = $2
 WHERE id = $1;
+
+-- --- operator read model (ADR-0007 as amended) -------------------------------
+
+-- One page of the fleet in the order the fleet screen shows it: the
+-- workloads needing attention first (degraded, then offline, then
+-- pending, then synced), most recently seen first within a state, then by
+-- id. The cursor is the (rank, last seen, id) of the last row served; the
+-- first page passes a rank below every row. A workload never seen sorts
+-- as if seen at the epoch. An empty id array means every workload; a zero
+-- mode or sync state means any. The latest rendered version rides along
+-- from workload_policies so sync drift is one read.
+-- name: ListWorkloadPage :many
+SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at,
+       w.credential_serial, w.credential_expires_at, w.last_renewed_at,
+       w.mode, w.facts, w.agent_version, w.agent_capabilities, w.last_seen_at,
+       w.sync_state, w.applied_policy_version, w.sync_error, w.dropped_flow_records,
+       w.credential_renewal_error,
+       w.sync_rank::integer AS sync_rank, w.seen_key::timestamptz AS seen_key,
+       p.version AS latest_version, p.rendered_at AS latest_rendered_at
+FROM (
+    SELECT workloads.*,
+           CASE workloads.sync_state WHEN 3 THEN 0 WHEN 4 THEN 1 WHEN 2 THEN 2 WHEN 1 THEN 3 ELSE 4 END AS sync_rank,
+           coalesce(workloads.last_seen_at, '1970-01-01 00:00:00+00'::timestamptz) AS seen_key
+    FROM workloads
+) AS w
+LEFT JOIN workload_policies p ON p.workload_id = w.id
+WHERE (cardinality(sqlc.arg(workload_ids)::uuid[]) = 0 OR w.id = ANY(sqlc.arg(workload_ids)::uuid[]))
+  AND (sqlc.arg(mode)::integer = 0 OR w.mode = sqlc.arg(mode)::integer)
+  AND (sqlc.arg(sync_state)::integer = 0 OR w.sync_state = sqlc.arg(sync_state)::integer)
+  AND (w.sync_rank > sqlc.arg(cursor_rank)::integer
+       OR (w.sync_rank = sqlc.arg(cursor_rank)::integer
+           AND (w.seen_key < sqlc.arg(cursor_seen)::timestamptz
+                OR (w.seen_key = sqlc.arg(cursor_seen)::timestamptz AND w.id > sqlc.arg(cursor_id)::uuid))))
+ORDER BY w.sync_rank, w.seen_key DESC, w.id
+LIMIT sqlc.arg(row_limit);
+
+-- One workload with its latest rendered version, for the detail read.
+-- name: GetWorkloadWithPolicy :one
+SELECT sqlc.embed(w), p.version AS latest_version, p.rendered_at AS latest_rendered_at
+FROM workloads w
+LEFT JOIN workload_policies p ON p.workload_id = w.id
+WHERE w.id = $1;
+
+-- The children of the workloads on one page, fetched once per page.
+-- name: ListWorkloadLabelsFor :many
+SELECT * FROM workload_labels
+WHERE workload_id = ANY(sqlc.arg(workload_ids)::uuid[])
+ORDER BY workload_id, key;
+
+-- name: ListWorkloadAddressesFor :many
+SELECT * FROM workload_addresses
+WHERE workload_id = ANY(sqlc.arg(workload_ids)::uuid[])
+ORDER BY workload_id, address;
+
+-- name: ListWorkloadListeningServicesFor :many
+SELECT * FROM workload_listening_services
+WHERE workload_id = ANY(sqlc.arg(workload_ids)::uuid[])
+ORDER BY workload_id, protocol, port;

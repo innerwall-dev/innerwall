@@ -15,7 +15,7 @@ Direction, not dates. Ordering follows ADR-0001: every milestone before enforcem
 ## M3 — Flows and the map (first demo-able moment)
 - Agent: conntrack collector, windowed aggregation, disk buffering, sync loop with fail-static persistence
 - Control plane: gateway streams, ingestion (enrichment + bidirectional dedupe), Postgres `FlowStore`
-- Control plane: operator surface — second TLS-only listener, single-operator authentication, session and identity endpoints (ADR-0021)
+- Control plane: operator surface — second TLS-only listener, single-operator authentication, session and identity endpoints (ADR-0021); the read model behind the console's screens (flow rollups, flow pages, workloads, rendered policy)
 - UI: embedded SPA shell, ReactFlow dependency map with label-group aggregation, workload inventory
 
 ## M4 — Policy, simulation, drafts

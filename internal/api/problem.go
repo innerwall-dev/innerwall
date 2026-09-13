@@ -24,7 +24,9 @@ const problemTypeBase = "urn:innerwall:problem:"
 
 // The problem types the surface emits. A console branches on
 // ProblemNoPassword to show its fresh-install state, and on
-// ProblemUnauthenticated to show the login form.
+// ProblemUnauthenticated to show the login form. ProblemInvalidRequest is
+// a body that cannot be read; ProblemInvalidParameter is a query or path
+// parameter that cannot be, and its detail names the parameter.
 const (
 	ProblemUnauthenticated    = problemTypeBase + "unauthenticated"
 	ProblemInvalidCredentials = problemTypeBase + "invalid-credentials"
@@ -32,6 +34,7 @@ const (
 	ProblemCrossOrigin        = problemTypeBase + "cross-origin"
 	ProblemTooManyAttempts    = problemTypeBase + "too-many-attempts"
 	ProblemInvalidRequest     = problemTypeBase + "invalid-request"
+	ProblemInvalidParameter   = problemTypeBase + "invalid-parameter"
 	ProblemNotFound           = problemTypeBase + "not-found"
 	ProblemMethodNotAllowed   = problemTypeBase + "method-not-allowed"
 	ProblemInternal           = problemTypeBase + "internal"
@@ -45,11 +48,11 @@ func writeProblem(w http.ResponseWriter, p Problem) {
 	_ = json.NewEncoder(w).Encode(p)
 }
 
-// writeJSON sends v as the response body.
-func writeJSON(w http.ResponseWriter, status int, v any) {
+// writeJSON sends v as the body of a successful response.
+func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(status)
+	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(v)
 }
 

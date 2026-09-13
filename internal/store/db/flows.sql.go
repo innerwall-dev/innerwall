@@ -118,6 +118,92 @@ func (q *Queries) ListFlowTotals(ctx context.Context, arg ListFlowTotalsParams) 
 	return items, nil
 }
 
+const listFlowWindowPage = `-- name: ListFlowWindowPage :many
+SELECT id, region_id, workload_id, window_start, window_end, peer_kind, peer_key, peer_labels, src_address, dst_address, dst_port, protocol, direction, decision, matched_rule_id, connection_count, byte_count, first_seen, last_seen, process_name FROM flow_windows
+WHERE workload_id = $1
+  AND window_start >= $2
+  AND window_start < $3
+  AND ($4::integer = 0 OR decision = $4::integer)
+  AND ($5::integer = 0 OR direction = $5::integer)
+  AND ($6::text = '' OR peer_key = $6::text)
+  AND ($7::integer = 0 OR (protocol = $7::integer AND dst_port = $8::integer))
+  AND (window_start < $9::timestamptz
+       OR (window_start = $9::timestamptz AND id < $10::bigint))
+ORDER BY window_start DESC, id DESC
+LIMIT $11
+`
+
+type ListFlowWindowPageParams struct {
+	WorkloadID  uuid.UUID
+	Since       time.Time
+	Until       time.Time
+	Decision    int32
+	Direction   int32
+	PeerKey     string
+	Protocol    int32
+	DstPort     int32
+	CursorStart time.Time
+	CursorID    int64
+	RowLimit    int32
+}
+
+// One page of a workload's windows, newest first, keyed by
+// (window_start, id) so a page never shifts when new windows land. The
+// first page passes a cursor beyond any row. An empty peer key means every
+// peer; a zero protocol means every service.
+func (q *Queries) ListFlowWindowPage(ctx context.Context, arg ListFlowWindowPageParams) ([]FlowWindow, error) {
+	rows, err := q.db.Query(ctx, listFlowWindowPage,
+		arg.WorkloadID,
+		arg.Since,
+		arg.Until,
+		arg.Decision,
+		arg.Direction,
+		arg.PeerKey,
+		arg.Protocol,
+		arg.DstPort,
+		arg.CursorStart,
+		arg.CursorID,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []FlowWindow{}
+	for rows.Next() {
+		var i FlowWindow
+		if err := rows.Scan(
+			&i.ID,
+			&i.RegionID,
+			&i.WorkloadID,
+			&i.WindowStart,
+			&i.WindowEnd,
+			&i.PeerKind,
+			&i.PeerKey,
+			&i.PeerLabels,
+			&i.SrcAddress,
+			&i.DstAddress,
+			&i.DstPort,
+			&i.Protocol,
+			&i.Direction,
+			&i.Decision,
+			&i.MatchedRuleID,
+			&i.ConnectionCount,
+			&i.ByteCount,
+			&i.FirstSeen,
+			&i.LastSeen,
+			&i.ProcessName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listFlowWindows = `-- name: ListFlowWindows :many
 SELECT id, region_id, workload_id, window_start, window_end, peer_kind, peer_key, peer_labels, src_address, dst_address, dst_port, protocol, direction, decision, matched_rule_id, connection_count, byte_count, first_seen, last_seen, process_name FROM flow_windows
 WHERE workload_id = $1
@@ -248,6 +334,433 @@ func (q *Queries) RollupFlowWindows(ctx context.Context, arg RollupFlowWindowsPa
 			&i.ByteCount,
 			&i.FirstSeen,
 			&i.LastSeen,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rollupFlowsByDstService = `-- name: RollupFlowsByDstService :many
+SELECT workload_id, dst_port, protocol,
+       count(*)::bigint                            AS flow_count,
+       sum(connection_count)::bigint               AS connection_count,
+       sum(byte_count)::bigint                     AS byte_count,
+       min(first_seen)::timestamptz                AS first_seen,
+       max(last_seen)::timestamptz                 AS last_seen,
+       CAST(min(min(window_start)) OVER () AS timestamptz) AS effective_from,
+       CAST(max(max(window_end)) OVER () AS timestamptz)   AS effective_to,
+       CAST(count(*) OVER () AS bigint)                     AS group_count,
+       CAST(sum(count(*)) OVER () AS bigint)                AS total_flow_count,
+       CAST(sum(sum(connection_count)) OVER () AS bigint)   AS total_connection_count,
+       CAST(sum(sum(byte_count)) OVER () AS bigint)         AS total_byte_count
+FROM flow_windows
+WHERE (cardinality($1::uuid[]) = 0 OR workload_id = ANY($1::uuid[]))
+  AND window_start >= $2
+  AND window_start < $3
+  AND ($4::integer = 0 OR decision = $4::integer)
+  AND ($5::integer = 0 OR direction = $5::integer)
+  AND ($6::integer = 0 OR (protocol = $6::integer AND dst_port = $7::integer))
+GROUP BY workload_id, dst_port, protocol
+ORDER BY CASE WHEN $8::text = 'recent' THEN max(last_seen) END DESC NULLS LAST,
+         sum(connection_count) DESC, workload_id, dst_port, protocol
+LIMIT $9
+`
+
+type RollupFlowsByDstServiceParams struct {
+	WorkloadIds []uuid.UUID
+	Since       time.Time
+	Until       time.Time
+	Decision    int32
+	Direction   int32
+	Protocol    int32
+	DstPort     int32
+	OrderBy     string
+	GroupLimit  int32
+}
+
+type RollupFlowsByDstServiceRow struct {
+	WorkloadID           uuid.UUID
+	DstPort              int32
+	Protocol             int32
+	FlowCount            int64
+	ConnectionCount      int64
+	ByteCount            int64
+	FirstSeen            time.Time
+	LastSeen             time.Time
+	EffectiveFrom        time.Time
+	EffectiveTo          time.Time
+	GroupCount           int64
+	TotalFlowCount       int64
+	TotalConnectionCount int64
+	TotalByteCount       int64
+}
+
+// Grouped by the reporting workload and the service reached on it: the
+// cells of the matrix.
+func (q *Queries) RollupFlowsByDstService(ctx context.Context, arg RollupFlowsByDstServiceParams) ([]RollupFlowsByDstServiceRow, error) {
+	rows, err := q.db.Query(ctx, rollupFlowsByDstService,
+		arg.WorkloadIds,
+		arg.Since,
+		arg.Until,
+		arg.Decision,
+		arg.Direction,
+		arg.Protocol,
+		arg.DstPort,
+		arg.OrderBy,
+		arg.GroupLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RollupFlowsByDstServiceRow{}
+	for rows.Next() {
+		var i RollupFlowsByDstServiceRow
+		if err := rows.Scan(
+			&i.WorkloadID,
+			&i.DstPort,
+			&i.Protocol,
+			&i.FlowCount,
+			&i.ConnectionCount,
+			&i.ByteCount,
+			&i.FirstSeen,
+			&i.LastSeen,
+			&i.EffectiveFrom,
+			&i.EffectiveTo,
+			&i.GroupCount,
+			&i.TotalFlowCount,
+			&i.TotalConnectionCount,
+			&i.TotalByteCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rollupFlowsByRule = `-- name: RollupFlowsByRule :many
+
+SELECT matched_rule_id,
+       count(*)::bigint                            AS flow_count,
+       sum(connection_count)::bigint               AS connection_count,
+       sum(byte_count)::bigint                     AS byte_count,
+       min(first_seen)::timestamptz                AS first_seen,
+       max(last_seen)::timestamptz                 AS last_seen,
+       CAST(min(min(window_start)) OVER () AS timestamptz) AS effective_from,
+       CAST(max(max(window_end)) OVER () AS timestamptz)   AS effective_to,
+       CAST(count(*) OVER () AS bigint)                     AS group_count,
+       CAST(sum(count(*)) OVER () AS bigint)                AS total_flow_count,
+       CAST(sum(sum(connection_count)) OVER () AS bigint)   AS total_connection_count,
+       CAST(sum(sum(byte_count)) OVER () AS bigint)         AS total_byte_count
+FROM flow_windows
+WHERE (cardinality($1::uuid[]) = 0 OR workload_id = ANY($1::uuid[]))
+  AND window_start >= $2
+  AND window_start < $3
+  AND ($4::integer = 0 OR decision = $4::integer)
+  AND ($5::integer = 0 OR direction = $5::integer)
+  AND ($6::integer = 0 OR (protocol = $6::integer AND dst_port = $7::integer))
+GROUP BY matched_rule_id
+ORDER BY CASE WHEN $8::text = 'recent' THEN max(last_seen) END DESC NULLS LAST,
+         sum(connection_count) DESC, matched_rule_id
+LIMIT $9
+`
+
+type RollupFlowsByRuleParams struct {
+	WorkloadIds []uuid.UUID
+	Since       time.Time
+	Until       time.Time
+	Decision    int32
+	Direction   int32
+	Protocol    int32
+	DstPort     int32
+	OrderBy     string
+	GroupLimit  int32
+}
+
+type RollupFlowsByRuleRow struct {
+	MatchedRuleID        string
+	FlowCount            int64
+	ConnectionCount      int64
+	ByteCount            int64
+	FirstSeen            time.Time
+	LastSeen             time.Time
+	EffectiveFrom        time.Time
+	EffectiveTo          time.Time
+	GroupCount           int64
+	TotalFlowCount       int64
+	TotalConnectionCount int64
+	TotalByteCount       int64
+}
+
+// --- operator read model -----------------------------------------------------
+//
+// The rollups the operator surface and the command line issue (ADR-0007 as
+// amended, ADR-0019 decision 4). Each grouping the surface offers is one
+// named statement over the same windows; the caller picks the statement
+// and never assembles one. Every rollup shares one filter convention: an
+// empty workload id array means every workload, a zero decision or
+// direction means any, and a zero protocol means every service (a service
+// is one destination port and protocol). Ordering is by connection count
+// unless order_by is 'recent', in which case the most recently seen group
+// comes first. The window bounds actually covered, the number of groups,
+// and the totals across every group ride on each row as window aggregates,
+// so a truncated result still says how it relates to the whole. The
+// decision-and-time and workload-and-time indexes serve all four.
+// Grouped by the resolved rule that admitted the traffic; records with no
+// matched rule form the group with the empty rule id.
+func (q *Queries) RollupFlowsByRule(ctx context.Context, arg RollupFlowsByRuleParams) ([]RollupFlowsByRuleRow, error) {
+	rows, err := q.db.Query(ctx, rollupFlowsByRule,
+		arg.WorkloadIds,
+		arg.Since,
+		arg.Until,
+		arg.Decision,
+		arg.Direction,
+		arg.Protocol,
+		arg.DstPort,
+		arg.OrderBy,
+		arg.GroupLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RollupFlowsByRuleRow{}
+	for rows.Next() {
+		var i RollupFlowsByRuleRow
+		if err := rows.Scan(
+			&i.MatchedRuleID,
+			&i.FlowCount,
+			&i.ConnectionCount,
+			&i.ByteCount,
+			&i.FirstSeen,
+			&i.LastSeen,
+			&i.EffectiveFrom,
+			&i.EffectiveTo,
+			&i.GroupCount,
+			&i.TotalFlowCount,
+			&i.TotalConnectionCount,
+			&i.TotalByteCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rollupFlowsByRulePeer = `-- name: RollupFlowsByRulePeer :many
+SELECT matched_rule_id, peer_kind, peer_key,
+       CAST((array_agg(peer_labels ORDER BY last_seen DESC))[1] AS jsonb) AS peer_labels,
+       count(*)::bigint                            AS flow_count,
+       sum(connection_count)::bigint               AS connection_count,
+       sum(byte_count)::bigint                     AS byte_count,
+       min(first_seen)::timestamptz                AS first_seen,
+       max(last_seen)::timestamptz                 AS last_seen,
+       CAST(min(min(window_start)) OVER () AS timestamptz) AS effective_from,
+       CAST(max(max(window_end)) OVER () AS timestamptz)   AS effective_to,
+       CAST(count(*) OVER () AS bigint)                     AS group_count,
+       CAST(sum(count(*)) OVER () AS bigint)                AS total_flow_count,
+       CAST(sum(sum(connection_count)) OVER () AS bigint)   AS total_connection_count,
+       CAST(sum(sum(byte_count)) OVER () AS bigint)         AS total_byte_count
+FROM flow_windows
+WHERE (cardinality($1::uuid[]) = 0 OR workload_id = ANY($1::uuid[]))
+  AND window_start >= $2
+  AND window_start < $3
+  AND ($4::integer = 0 OR decision = $4::integer)
+  AND ($5::integer = 0 OR direction = $5::integer)
+  AND ($6::integer = 0 OR (protocol = $6::integer AND dst_port = $7::integer))
+GROUP BY matched_rule_id, peer_kind, peer_key
+ORDER BY CASE WHEN $8::text = 'recent' THEN max(last_seen) END DESC NULLS LAST,
+         sum(connection_count) DESC, matched_rule_id, peer_kind, peer_key
+LIMIT $9
+`
+
+type RollupFlowsByRulePeerParams struct {
+	WorkloadIds []uuid.UUID
+	Since       time.Time
+	Until       time.Time
+	Decision    int32
+	Direction   int32
+	Protocol    int32
+	DstPort     int32
+	OrderBy     string
+	GroupLimit  int32
+}
+
+type RollupFlowsByRulePeerRow struct {
+	MatchedRuleID        string
+	PeerKind             int32
+	PeerKey              string
+	PeerLabels           []byte
+	FlowCount            int64
+	ConnectionCount      int64
+	ByteCount            int64
+	FirstSeen            time.Time
+	LastSeen             time.Time
+	EffectiveFrom        time.Time
+	EffectiveTo          time.Time
+	GroupCount           int64
+	TotalFlowCount       int64
+	TotalConnectionCount int64
+	TotalByteCount       int64
+}
+
+// Grouped by rule and the resolved peer that hit it. The label snapshot
+// of a peer is the one stored with its most recently seen record.
+func (q *Queries) RollupFlowsByRulePeer(ctx context.Context, arg RollupFlowsByRulePeerParams) ([]RollupFlowsByRulePeerRow, error) {
+	rows, err := q.db.Query(ctx, rollupFlowsByRulePeer,
+		arg.WorkloadIds,
+		arg.Since,
+		arg.Until,
+		arg.Decision,
+		arg.Direction,
+		arg.Protocol,
+		arg.DstPort,
+		arg.OrderBy,
+		arg.GroupLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RollupFlowsByRulePeerRow{}
+	for rows.Next() {
+		var i RollupFlowsByRulePeerRow
+		if err := rows.Scan(
+			&i.MatchedRuleID,
+			&i.PeerKind,
+			&i.PeerKey,
+			&i.PeerLabels,
+			&i.FlowCount,
+			&i.ConnectionCount,
+			&i.ByteCount,
+			&i.FirstSeen,
+			&i.LastSeen,
+			&i.EffectiveFrom,
+			&i.EffectiveTo,
+			&i.GroupCount,
+			&i.TotalFlowCount,
+			&i.TotalConnectionCount,
+			&i.TotalByteCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rollupFlowsBySrcDst = `-- name: RollupFlowsBySrcDst :many
+SELECT peer_kind, peer_key,
+       CAST((array_agg(peer_labels ORDER BY last_seen DESC))[1] AS jsonb) AS peer_labels,
+       workload_id,
+       count(*)::bigint                            AS flow_count,
+       sum(connection_count)::bigint               AS connection_count,
+       sum(byte_count)::bigint                     AS byte_count,
+       min(first_seen)::timestamptz                AS first_seen,
+       max(last_seen)::timestamptz                 AS last_seen,
+       CAST(min(min(window_start)) OVER () AS timestamptz) AS effective_from,
+       CAST(max(max(window_end)) OVER () AS timestamptz)   AS effective_to,
+       CAST(count(*) OVER () AS bigint)                     AS group_count,
+       CAST(sum(count(*)) OVER () AS bigint)                AS total_flow_count,
+       CAST(sum(sum(connection_count)) OVER () AS bigint)   AS total_connection_count,
+       CAST(sum(sum(byte_count)) OVER () AS bigint)         AS total_byte_count
+FROM flow_windows
+WHERE (cardinality($1::uuid[]) = 0 OR workload_id = ANY($1::uuid[]))
+  AND window_start >= $2
+  AND window_start < $3
+  AND ($4::integer = 0 OR decision = $4::integer)
+  AND ($5::integer = 0 OR direction = $5::integer)
+  AND ($6::integer = 0 OR (protocol = $6::integer AND dst_port = $7::integer))
+GROUP BY peer_kind, peer_key, workload_id
+ORDER BY CASE WHEN $8::text = 'recent' THEN max(last_seen) END DESC NULLS LAST,
+         sum(connection_count) DESC, peer_kind, peer_key, workload_id
+LIMIT $9
+`
+
+type RollupFlowsBySrcDstParams struct {
+	WorkloadIds []uuid.UUID
+	Since       time.Time
+	Until       time.Time
+	Decision    int32
+	Direction   int32
+	Protocol    int32
+	DstPort     int32
+	OrderBy     string
+	GroupLimit  int32
+}
+
+type RollupFlowsBySrcDstRow struct {
+	PeerKind             int32
+	PeerKey              string
+	PeerLabels           []byte
+	WorkloadID           uuid.UUID
+	FlowCount            int64
+	ConnectionCount      int64
+	ByteCount            int64
+	FirstSeen            time.Time
+	LastSeen             time.Time
+	EffectiveFrom        time.Time
+	EffectiveTo          time.Time
+	GroupCount           int64
+	TotalFlowCount       int64
+	TotalConnectionCount int64
+	TotalByteCount       int64
+}
+
+// Grouped by the resolved source peer and the reporting workload: the
+// edges of the dependency map. Inbound only in this version, so the
+// source is the peer and the destination is the workload.
+func (q *Queries) RollupFlowsBySrcDst(ctx context.Context, arg RollupFlowsBySrcDstParams) ([]RollupFlowsBySrcDstRow, error) {
+	rows, err := q.db.Query(ctx, rollupFlowsBySrcDst,
+		arg.WorkloadIds,
+		arg.Since,
+		arg.Until,
+		arg.Decision,
+		arg.Direction,
+		arg.Protocol,
+		arg.DstPort,
+		arg.OrderBy,
+		arg.GroupLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RollupFlowsBySrcDstRow{}
+	for rows.Next() {
+		var i RollupFlowsBySrcDstRow
+		if err := rows.Scan(
+			&i.PeerKind,
+			&i.PeerKey,
+			&i.PeerLabels,
+			&i.WorkloadID,
+			&i.FlowCount,
+			&i.ConnectionCount,
+			&i.ByteCount,
+			&i.FirstSeen,
+			&i.LastSeen,
+			&i.EffectiveFrom,
+			&i.EffectiveTo,
+			&i.GroupCount,
+			&i.TotalFlowCount,
+			&i.TotalConnectionCount,
+			&i.TotalByteCount,
 		); err != nil {
 			return nil, err
 		}

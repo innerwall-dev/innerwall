@@ -22,6 +22,7 @@ import (
 	"github.com/innerwall-dev/innerwall/internal/gateway"
 	"github.com/innerwall-dev/innerwall/internal/ingest"
 	"github.com/innerwall-dev/innerwall/internal/operator"
+	"github.com/innerwall-dev/innerwall/internal/readmodel"
 	"github.com/innerwall-dev/innerwall/internal/store"
 	"github.com/innerwall-dev/innerwall/ui"
 )
@@ -107,7 +108,8 @@ func runServe(ctx context.Context, args []string) error {
 		return err
 	}
 	operators := &operator.Service{Store: st}
-	apiSrv := api.New(api.Deps{Operators: operators, Site: *site, Log: log.With("service", "api")})
+	reads := &readmodel.Reader{Store: st, Flows: st.Flows()}
+	apiSrv := api.New(api.Deps{Operators: operators, Reads: reads, Site: *site, Log: log.With("service", "api")})
 	httpServer := api.NewHTTPServer(api.ServerTLSConfig(operatorCert), apiSrv.Handler())
 
 	svc := &enroll.Service{Store: st, Authority: authority, LeafTTL: *leafTTL}

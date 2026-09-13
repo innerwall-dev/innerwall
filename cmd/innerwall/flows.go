@@ -13,7 +13,9 @@ import (
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 	"github.com/innerwall-dev/innerwall/internal/identity"
 	"github.com/innerwall-dev/innerwall/internal/policy"
+	"github.com/innerwall-dev/innerwall/internal/readmodel"
 	"github.com/innerwall-dev/innerwall/internal/registry"
+	"github.com/innerwall-dev/innerwall/internal/store"
 )
 
 // The flows commands are the read shapes the operator console will issue
@@ -41,18 +43,11 @@ func runFlows(ctx context.Context, args []string) error {
 // parseDecision accepts the decision names without their prefix; empty
 // means every decision.
 func parseDecision(s string) (innerwallv1.PolicyDecision, error) {
-	if s == "" {
-		return innerwallv1.PolicyDecision_POLICY_DECISION_UNSPECIFIED, nil
-	}
-	v, ok := innerwallv1.PolicyDecision_value["POLICY_DECISION_"+strings.ToUpper(strings.ReplaceAll(s, "-", "_"))]
-	if !ok || v == 0 {
-		return 0, fmt.Errorf("unknown decision %q (observed|allowed|would_block|blocked)", s)
-	}
-	return innerwallv1.PolicyDecision(v), nil
+	return readmodel.ParseVerdict(s)
 }
 
 func decisionName(d innerwallv1.PolicyDecision) string {
-	return strings.ToLower(strings.TrimPrefix(d.String(), "POLICY_DECISION_"))
+	return readmodel.VerdictName(d)
 }
 
 // peerNames maps workload and address-group ids to display names.
@@ -226,11 +221,16 @@ func runFlowsRollup(ctx context.Context, args []string) error {
 	decision := fs.String("decision", "", "only this decision: observed|allowed|would_block|blocked (default all)")
 	var labels labelFlags
 	fs.Var(&labels, "label", "label key=value selecting the workloads in scope (repeatable, ANDed; none selects every workload)")
+	groupBy := fs.String("group-by", "", "the operator surface's grouped rollup instead of the peer-and-service one: "+flowstore.GroupByNames())
+	workload := fs.String("workload", "", "with --group-by: only this workload's flows")
+	service := fs.String("service", "", "with --group-by: only this service, <protocol>/<port> or icmp")
+	order := fs.String("order", "connections", "with --group-by: connections | recent")
+	limit := fs.Int("limit", flowstore.DefaultGroupLimit, "with --group-by: the most groups shown; the rest are counted in the totals")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() != 0 {
-		return usageError("usage: innerwall flows rollup [--label key=value ...] [--decision would_block] [--since 24h]")
+		return usageError("usage: innerwall flows rollup [--label key=value ...] [--decision would_block] [--since 24h] [--group-by rule|rule,peer|src,dst|dst,service]")
 	}
 	dec, err := parseDecision(*decision)
 	if err != nil {
@@ -245,6 +245,9 @@ func runFlowsRollup(ctx context.Context, args []string) error {
 		return err
 	}
 	defer st.Close()
+	if *groupBy != "" {
+		return runFlowsGroupedRollup(ctx, st, groupedRollupArgs{groupBy: *groupBy, labels: labels, decision: dec, from: from, to: to, workload: *workload, service: *service, order: *order, limit: *limit})
+	}
 	names, err := loadPeerNames(ctx, st)
 	if err != nil {
 		return err
@@ -320,4 +323,118 @@ func runFlowsTotals(ctx context.Context, args []string) error {
 			r.ConnectionCount, r.ByteCount, r.WindowCount, r.FirstSeen.UTC().Format(time.RFC3339), r.LastSeen.UTC().Format(time.RFC3339))
 	}
 	return w.Flush()
+}
+
+type groupedRollupArgs struct {
+	groupBy  string
+	labels   labelFlags
+	decision innerwallv1.PolicyDecision
+	from, to time.Time
+	workload string
+	service  string
+	order    string
+	limit    int
+}
+
+// runFlowsGroupedRollup issues the read model's grouped rollup, the same
+// function the operator surface serves at /api/v1/flows/rollup.
+func runFlowsGroupedRollup(ctx context.Context, st *store.Store, a groupedRollupArgs) error {
+	req := readmodel.RollupRequest{From: a.from, To: a.to, Verdict: a.decision, Selector: policy.Selector{}, Order: flowstore.GroupOrder(a.order), Limit: a.limit}
+	var err error
+	if req.GroupBy, err = flowstore.ParseGroupBy(a.groupBy); err != nil {
+		return err
+	}
+	for _, l := range a.labels {
+		req.Selector[l.Key] = append(req.Selector[l.Key], l.Value)
+	}
+	if a.workload != "" {
+		id, err := identity.ParseWorkloadID(a.workload)
+		if err != nil {
+			return err
+		}
+		req.Workload = &id
+	}
+	if a.service != "" {
+		svc, err := readmodel.ParseService(a.service)
+		if err != nil {
+			return err
+		}
+		req.Service = &svc
+	}
+	reads := &readmodel.Reader{Store: st, Flows: st.Flows()}
+	res, err := reads.Rollup(ctx, req)
+	if err != nil {
+		return err
+	}
+	covered := "no windows"
+	if res.EffectiveFrom != nil {
+		covered = res.EffectiveFrom.UTC().Format(time.RFC3339) + " to " + res.EffectiveTo.UTC().Format(time.RFC3339)
+	}
+	fmt.Fprintf(os.Stderr, "%s to %s requested, %s covered; %d groups, %d records, %d connections", res.Range.From.Format(time.RFC3339), res.Range.To.Format(time.RFC3339), covered, res.GroupCount, res.Totals.FlowCount, res.Totals.ConnectionCount)
+	if res.Truncated {
+		fmt.Fprintf(os.Stderr, "; showing the top %d", len(res.Groups))
+	}
+	fmt.Fprintln(os.Stderr)
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintln(w, strings.ToUpper(strings.ReplaceAll(a.groupBy, ",", "\t"))+"\tRECORDS\tCONNS\tBYTES\tFIRST SEEN\tLAST SEEN")
+	for i := range res.Groups {
+		g := &res.Groups[i]
+		keys := make([]string, 0, 2)
+		for _, k := range req.GroupBy.Keys() {
+			switch k {
+			case "rule":
+				keys = append(keys, ruleKeyString(g.Keys.Rule))
+			case "peer":
+				keys = append(keys, peerRefString(g.Keys.Peer))
+			case "src":
+				keys = append(keys, peerRefString(g.Keys.Src))
+			case "dst":
+				keys = append(keys, workloadRefString(g.Keys.Dst))
+			case "service":
+				keys = append(keys, g.Keys.Service.String())
+			}
+		}
+		_, _ = fmt.Fprintf(w, "%s\t%d\t%d\t%d\t%s\t%s\n", strings.Join(keys, "\t"), g.FlowCount, g.ConnectionCount, g.ByteCount, g.FirstSeen.UTC().Format(time.RFC3339), g.LastSeen.UTC().Format(time.RFC3339))
+	}
+	return w.Flush()
+}
+
+func ruleKeyString(r *readmodel.RuleRef) string {
+	if r == nil {
+		return "(no rule)"
+	}
+	return r.ID
+}
+
+func peerRefString(p *readmodel.PeerRef) string {
+	if p == nil {
+		return ""
+	}
+	name := p.Key
+	if p.Name != "" {
+		name = p.Name
+	}
+	switch p.Kind {
+	case flowstore.PeerWorkload:
+		if len(p.Labels) > 0 {
+			return name + " [" + labelMapString(p.Labels) + "]"
+		}
+		return name
+	case flowstore.PeerAddressGroup:
+		return "group:" + name
+	case flowstore.PeerUnknown:
+		return p.Key
+	default:
+		return p.Key
+	}
+}
+
+func workloadRefString(w *readmodel.WorkloadRef) string {
+	if w == nil {
+		return ""
+	}
+	if w.Hostname != "" {
+		return w.Hostname
+	}
+	return w.ID.String()
 }
