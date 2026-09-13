@@ -16,6 +16,8 @@ require (
 	github.com/ti-mo/conntrack v0.6.0
 	github.com/ti-mo/netfilter v0.5.3
 	github.com/vishvananda/netlink v1.3.1
+	golang.org/x/crypto v0.55.0
+	golang.org/x/term v0.45.0
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
 )

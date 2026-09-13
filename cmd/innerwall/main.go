@@ -10,6 +10,8 @@
 //	migrate        apply pending database migrations
 //	ca init        create the file-backed signing authority and a server certificate
 //	token          mint, list, and revoke provisioning tokens
+//	operator       set the operator password; mint, list, and revoke
+//	               operator tokens (ADR-0021)
 //	service        author reusable protocol/port sets
 //	address-group  author named CIDR sets
 //	ruleset        author rulesets from JSON documents
@@ -74,6 +76,7 @@ commands:
   migrate        apply pending database migrations
   ca init        create the signing authority and server certificate
   token          mint | list | revoke provisioning tokens
+  operator       set-password | token mint | token list | token revoke
   service        create | update | delete | get | list services
   address-group  create | update | delete | get | list address groups
   ruleset        create | update | delete | get | list rulesets (JSON documents)
@@ -100,6 +103,8 @@ func run(ctx context.Context, args []string) error {
 		return runCA(args[1:])
 	case "token":
 		return runToken(ctx, args[1:])
+	case "operator":
+		return runOperator(ctx, args[1:])
 	case "service":
 		return runService(ctx, args[1:])
 	case "address-group":

@@ -13,6 +13,21 @@ const DefaultRetention = 30 * 24 * time.Hour
 // DefaultRetentionInterval is how often a replica attempts a pruning run.
 const DefaultRetentionInterval = time.Hour
 
+// Pruner is a bounded deletion that rides the retention schedule instead of
+// having a schedule of its own: expired operator sessions are the first
+// (ADR-0021). It reports how many rows it removed. A pruner must be safe to
+// run on every replica at once, because unlike window pruning it is not
+// serialized by the retention lock.
+type Pruner interface {
+	Prune(ctx context.Context, now time.Time) (deleted int64, err error)
+}
+
+// PrunerFunc adapts a function to Pruner.
+type PrunerFunc func(ctx context.Context, now time.Time) (int64, error)
+
+// Prune implements Pruner.
+func (f PrunerFunc) Prune(ctx context.Context, now time.Time) (int64, error) { return f(ctx, now) }
+
 // Retention prunes aged windows on a schedule. Every replica runs one; the
 // store's advisory lock makes sure only one prunes at a time, and a replica
 // that finds the lock held skips the round (ADR-0017). This is a scheduled
@@ -20,6 +35,9 @@ const DefaultRetentionInterval = time.Hour
 // or not there is anything to delete, and nothing waits on it.
 type Retention struct {
 	Store FlowStore
+	// Pruners run after the windows on every round, each in turn; one
+	// failing does not stop the others.
+	Pruners []Pruner
 	// Horizon is the age beyond which windows are deleted;
 	// DefaultRetention when zero.
 	Horizon time.Duration
@@ -78,10 +96,27 @@ func (r *Retention) Run(ctx context.Context) error {
 		default:
 			r.log().Debug("flow retention skipped; another replica holds the lock")
 		}
+		r.prune(ctx)
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
+		}
+	}
+}
+
+// prune runs every additional pruner once.
+func (r *Retention) prune(ctx context.Context) {
+	now := r.now()
+	for i, p := range r.Pruners {
+		deleted, err := p.Prune(ctx, now)
+		switch {
+		case err != nil && ctx.Err() != nil:
+			return
+		case err != nil:
+			r.log().Error("retention pruner failed", "pruner", i, "error", err)
+		case deleted > 0:
+			r.log().Info("retention pruner ran", "pruner", i, "deleted", deleted)
 		}
 	}
 }
