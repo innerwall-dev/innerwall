@@ -36,7 +36,7 @@ Today the same exchange is `innerwall-agent enroll --server <host:port> --token 
 
 | Path | What lives there |
 |---|---|
-| `proto/` | Source of truth for every API (ADR-0007) |
+| `proto/` | Source of truth for the agent contract (ADR-0007) |
 | `cmd/innerwall`, `cmd/innerwall-agent` | Control-plane and agent binaries |
 | `internal/` | Control-plane services and agent loops, one package per boundary |
 | `internal/store/` | Hand-written SQL, goose migrations, sqlc output (ADR-0006) |
