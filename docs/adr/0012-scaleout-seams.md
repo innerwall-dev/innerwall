@@ -15,6 +15,10 @@ Both are specified and seamed today, implemented when demanded:
 
 ## Consequences
 
-- v1 code must respect the seams: policy bundles are signed from day one; region_id exists in the schema; nothing assumes exactly one control plane.
+- v1 code must respect the seams: rendered policy carries an authenticity envelope before it transits anything other than the mutually authenticated sync stream (signing deferred until then; see Amendments); region_id exists in the schema; nothing assumes exactly one control plane.
 - Small deployments pay nothing; the scaling story is documentation until it's code.
 - Signed-bundle verification keys become part of agent trust material now, even with no relays shipped.
+
+## Amendments
+
+- **2026-09-13 (PR #5, ADR-0018): policy-bundle signing deferred, with a tripwire.** The consequence that required policy bundles to be signed from day one is corrected in place. Today the agent's only policy source is the mutually authenticated sync stream to the control plane; a signature on the rendered bundle would re-prove what the connection already proves, and a second key with its own custody story is not free. The requirement stands down until policy transits anything other than that stream. Any future distribution design involving relays, caches, or regional intermediaries (the reserved topology) must include an authenticity envelope for rendered policy; this note is the tripwire for that requirement. The core decision, that the relay tier and regional federation are designed seams with deferred implementations, stands.
