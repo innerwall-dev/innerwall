@@ -1,0 +1,10 @@
+table inet innerwall {}
+delete table inet innerwall
+table inet innerwall {
+	chain inbound {
+		type filter hook input priority filter + 10; policy accept;
+		iif "lo" accept
+		ct state established,related accept
+		log prefix "innerwall " group 200 drop comment "innerwall terminal enforced"
+	}
+}
