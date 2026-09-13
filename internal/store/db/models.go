@@ -64,6 +64,23 @@ type FlowWindow struct {
 	ProcessName     string
 }
 
+type ModeChange struct {
+	ID                 uuid.UUID
+	RegionID           string
+	CreatedAt          time.Time
+	TargetMode         int32
+	Selector           []byte
+	ExpectedMatchCount int32
+	Matched            int32
+	DesiredUpdated     int32
+}
+
+type ModeChangeWorkload struct {
+	ModeChangeID uuid.UUID
+	WorkloadID   uuid.UUID
+	PreviousMode int32
+}
+
 type Operator struct {
 	ID           bool
 	RegionID     string
@@ -117,6 +134,8 @@ type Rule struct {
 	Direction   int32
 	Enabled     bool
 	Description string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 type RulePeer struct {

@@ -5,14 +5,16 @@
 INSERT INTO address_groups (id, name, created_at, updated_at)
 VALUES ($1, $2, $3, $3);
 
+-- Conditional writes: expected is the updated_at the caller last read, or
+-- NULL for an unconditional write.
 -- name: UpdateAddressGroup :execrows
 UPDATE address_groups
 SET name = $2, updated_at = $3
-WHERE id = $1;
+WHERE id = $1 AND (sqlc.narg(expected)::timestamptz IS NULL OR updated_at = sqlc.narg(expected)::timestamptz);
 
 -- name: DeleteAddressGroup :execrows
 DELETE FROM address_groups
-WHERE id = $1;
+WHERE id = $1 AND (sqlc.narg(expected)::timestamptz IS NULL OR updated_at = sqlc.narg(expected)::timestamptz);
 
 -- name: GetAddressGroup :one
 SELECT * FROM address_groups

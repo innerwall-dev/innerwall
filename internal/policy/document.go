@@ -6,19 +6,23 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 )
 
-// The document form is how an operator writes a ruleset at the command
-// line: JSON with names where the stored model has ids, string enums, and
-// "80-90" port specs. The API façade takes the wire contract's Ruleset
-// instead, whose service_ids field carries the same references; the stored
-// model depends on neither form.
+// The document form is how an operator writes a ruleset: JSON with names
+// or ids where the stored model has ids, string enums, and "80-90" port
+// specs. The command line reads it from a file and the operator surface
+// from a request body, through the same conversion, so the two transports
+// accept exactly the same documents; the stored model depends on neither.
 
-// RulesetDoc is the JSON form of a ruleset.
+// RulesetDoc is the JSON form of a ruleset. Version, CreatedAt, and
+// UpdatedAt are written by the control plane and ignored on the way in:
+// a document that echoes them back is accepted, and the version it names
+// is carried by the write's condition, not by the document.
 type RulesetDoc struct {
 	ID          string              `json:"id,omitempty"`
 	Name        string              `json:"name"`
@@ -26,10 +30,15 @@ type RulesetDoc struct {
 	Enabled     *bool               `json:"enabled,omitempty"`
 	Scope       map[string][]string `json:"scope"`
 	Rules       []RuleDoc           `json:"rules"`
+	Version     string              `json:"version,omitempty"`
+	CreatedAt   string              `json:"created_at,omitempty"`
+	UpdatedAt   string              `json:"updated_at,omitempty"`
 }
 
 // RuleDoc is the JSON form of a rule. Services and address groups may be
-// named by name or id; Entries are inline protocol/port specs.
+// named by name or id; Entries are inline protocol/port specs. Version,
+// CreatedAt, and UpdatedAt are the rule's own, written by the control
+// plane and ignored on the way in.
 type RuleDoc struct {
 	ID          string     `json:"id,omitempty"`
 	Direction   string     `json:"direction"`
@@ -38,6 +47,9 @@ type RuleDoc struct {
 	Peers       []PeerDoc  `json:"peers"`
 	Services    []string   `json:"services,omitempty"`
 	Entries     []EntryDoc `json:"entries,omitempty"`
+	Version     string     `json:"version,omitempty"`
+	CreatedAt   string     `json:"created_at,omitempty"`
+	UpdatedAt   string     `json:"updated_at,omitempty"`
 }
 
 // PeerDoc is the JSON form of a peer; exactly one field is set.
@@ -110,7 +122,7 @@ func ParseDirection(s string) (innerwallv1.Direction, error) {
 	case "":
 		return innerwallv1.Direction_DIRECTION_UNSPECIFIED, nil
 	default:
-		return innerwallv1.Direction_DIRECTION_UNSPECIFIED, fmt.Errorf("policy: unknown direction %q", s)
+		return innerwallv1.Direction_DIRECTION_UNSPECIFIED, fmt.Errorf("%w: %q", ErrBadDirection, s)
 	}
 }
 
@@ -145,13 +157,13 @@ func ParsePortSpec(s string) (PortRange, error) {
 	lo, hi, isRange := strings.Cut(s, "-")
 	start, err := strconv.ParseUint(strings.TrimSpace(lo), 10, 32)
 	if err != nil {
-		return PortRange{}, fmt.Errorf("policy: port %q is not a number", lo)
+		return PortRange{}, fmt.Errorf("%w: %q", ErrBadPortSpec, s)
 	}
 	end := start
 	if isRange {
 		end, err = strconv.ParseUint(strings.TrimSpace(hi), 10, 32)
 		if err != nil {
-			return PortRange{}, fmt.Errorf("policy: port %q is not a number", hi)
+			return PortRange{}, fmt.Errorf("%w: %q", ErrBadPortSpec, s)
 		}
 	}
 	return PortRange{Start: uint32(start), End: uint32(end)}, nil
@@ -199,29 +211,44 @@ func FormatEntrySpec(e ServiceEntry) string {
 	return ProtocolName(e.Protocol) + ":" + strings.Join(specs, ",")
 }
 
-func entryFromDoc(d EntryDoc) (ServiceEntry, error) {
+// entryFromDoc converts one entry, adding a finding per field that does
+// not parse.
+func entryFromDoc(f *Findings, path string, d EntryDoc) ServiceEntry {
 	proto, err := ParseProtocol(d.Protocol)
 	if err != nil {
-		return ServiceEntry{}, err
+		f.add(path+".protocol", ErrBadProtocol, d.Protocol)
 	}
 	e := ServiceEntry{Protocol: proto}
-	for _, spec := range d.Ports {
+	for i, spec := range d.Ports {
 		p, err := ParsePortSpec(spec)
 		if err != nil {
-			return ServiceEntry{}, err
+			f.add(fmt.Sprintf("%s.ports[%d]", path, i), ErrBadPortSpec, spec)
+			continue
 		}
 		e.Ports = append(e.Ports, p)
 	}
-	return e, nil
+	return e
+}
+
+// EntryFromDoc converts one entry document, reporting findings relative
+// to the entry.
+func EntryFromDoc(d EntryDoc) (ServiceEntry, error) {
+	f := &Findings{}
+	e := entryFromDoc(f, "", d)
+	f.Rebase("")
+	return e, f.result()
 }
 
 func entryToDoc(e ServiceEntry) EntryDoc {
-	d := EntryDoc{Protocol: ProtocolName(e.Protocol)}
+	d := EntryDoc{Protocol: ProtocolName(e.Protocol), Ports: []string{}}
 	for _, p := range e.Ports {
 		d.Ports = append(d.Ports, FormatPortSpec(p))
 	}
 	return d
 }
+
+// EntryToDoc is the document form of one entry.
+func EntryToDoc(e ServiceEntry) EntryDoc { return entryToDoc(e) }
 
 // ResolveID accepts an id or a name and returns the id.
 func ResolveID(s string, byName map[string]uuid.UUID) (uuid.UUID, bool) {
@@ -233,9 +260,11 @@ func ResolveID(s string, byName map[string]uuid.UUID) (uuid.UUID, bool) {
 }
 
 // DecodeRuleset parses a JSON document into a ruleset, resolving names.
-// It does not validate; admission does, with the store's view of what
-// exists. An unresolvable name is reported here because it is a document
-// error, not an admission error.
+// It does not admit; admission does, with the store's view of what
+// exists. What the document itself gets wrong (an id that is not a UUID,
+// a name that resolves to nothing, a port that is not a number) is
+// reported as findings at the offending paths, the same shape admission
+// reports.
 func DecodeRuleset(data []byte, names Names) (*Ruleset, error) {
 	var doc RulesetDoc
 	dec := json.NewDecoder(strings.NewReader(string(data)))
@@ -246,8 +275,10 @@ func DecodeRuleset(data []byte, names Names) (*Ruleset, error) {
 	return RulesetFromDoc(&doc, names)
 }
 
-// RulesetFromDoc converts a parsed document.
+// RulesetFromDoc converts a parsed document. The error, when there is
+// one, is a *Findings.
 func RulesetFromDoc(doc *RulesetDoc, names Names) (*Ruleset, error) {
+	f := &Findings{}
 	rs := &Ruleset{Name: doc.Name, Description: doc.Description, Enabled: true, Scope: Selector(doc.Scope)}
 	if doc.Enabled != nil {
 		rs.Enabled = *doc.Enabled
@@ -255,63 +286,78 @@ func RulesetFromDoc(doc *RulesetDoc, names Names) (*Ruleset, error) {
 	if doc.ID != "" {
 		id, err := uuid.Parse(doc.ID)
 		if err != nil {
-			return nil, fmt.Errorf("policy: ruleset id: %w", err)
+			f.add("id", ErrBadID, doc.ID)
 		}
 		rs.ID = id
 	}
 	if rs.Scope == nil {
 		rs.Scope = Selector{}
 	}
-	for i, rd := range doc.Rules {
-		r := Rule{Description: rd.Description, Enabled: true}
-		if rd.Enabled != nil {
-			r.Enabled = *rd.Enabled
-		}
-		if rd.ID != "" {
-			id, err := uuid.Parse(rd.ID)
-			if err != nil {
-				return nil, fmt.Errorf("policy: rules[%d].id: %w", i, err)
-			}
-			r.ID = id
-		}
-		dir, err := ParseDirection(rd.Direction)
-		if err != nil {
-			return nil, fmt.Errorf("policy: rules[%d].direction: %w", i, err)
-		}
-		r.Direction = dir
-		for j, pd := range rd.Peers {
-			p := Peer{}
-			switch {
-			case pd.Workloads != nil:
-				p.Kind, p.Workloads = PeerWorkloads, Selector(pd.Workloads)
-			case pd.AddressGroup != "":
-				id, ok := ResolveID(pd.AddressGroup, names.AddressGroupByName)
-				if !ok {
-					return nil, fmt.Errorf("policy: rules[%d].peers[%d]: %w: %q", i, j, ErrUnknownAddressGroup, pd.AddressGroup)
-				}
-				p.Kind, p.AddressGroupID = PeerAddressGroup, id
-			case pd.CIDR != "":
-				p.Kind, p.CIDR = PeerCIDR, pd.CIDR
-			}
-			r.Peers = append(r.Peers, p)
-		}
-		for j, name := range rd.Services {
-			id, ok := ResolveID(name, names.ServiceByName)
-			if !ok {
-				return nil, fmt.Errorf("policy: rules[%d].services[%d]: %w: %q", i, j, ErrUnknownService, name)
-			}
-			r.ServiceIDs = append(r.ServiceIDs, id)
-		}
-		for j, ed := range rd.Entries {
-			e, err := entryFromDoc(ed)
-			if err != nil {
-				return nil, fmt.Errorf("policy: rules[%d].entries[%d]: %w", i, j, err)
-			}
-			r.Entries = append(r.Entries, e)
-		}
-		rs.Rules = append(rs.Rules, r)
+	for i := range doc.Rules {
+		rs.Rules = append(rs.Rules, ruleFromDoc(f, fmt.Sprintf("rules[%d]", i), &doc.Rules[i], names))
+	}
+	if err := f.result(); err != nil {
+		return nil, err
 	}
 	return rs, nil
+}
+
+// RuleFromDoc converts one rule document, reporting findings relative to
+// the rule.
+func RuleFromDoc(doc *RuleDoc, names Names) (*Rule, error) {
+	f := &Findings{}
+	r := ruleFromDoc(f, "", doc, names)
+	f.Rebase("")
+	if err := f.result(); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+func ruleFromDoc(f *Findings, path string, rd *RuleDoc, names Names) Rule {
+	r := Rule{Description: rd.Description, Enabled: true}
+	if rd.Enabled != nil {
+		r.Enabled = *rd.Enabled
+	}
+	if rd.ID != "" {
+		id, err := uuid.Parse(rd.ID)
+		if err != nil {
+			f.add(join(path, "id"), ErrBadID, rd.ID)
+		}
+		r.ID = id
+	}
+	dir, err := ParseDirection(rd.Direction)
+	if err != nil {
+		f.add(join(path, "direction"), ErrBadDirection, rd.Direction)
+	}
+	r.Direction = dir
+	for j, pd := range rd.Peers {
+		p := Peer{}
+		switch {
+		case pd.Workloads != nil:
+			p.Kind, p.Workloads = PeerWorkloads, Selector(pd.Workloads)
+		case pd.AddressGroup != "":
+			id, ok := ResolveID(pd.AddressGroup, names.AddressGroupByName)
+			if !ok {
+				f.add(fmt.Sprintf("%s[%d].address_group", join(path, "peers"), j), ErrUnknownAddressGroup, pd.AddressGroup)
+			}
+			p.Kind, p.AddressGroupID = PeerAddressGroup, id
+		case pd.CIDR != "":
+			p.Kind, p.CIDR = PeerCIDR, pd.CIDR
+		}
+		r.Peers = append(r.Peers, p)
+	}
+	for j, name := range rd.Services {
+		id, ok := ResolveID(name, names.ServiceByName)
+		if !ok {
+			f.add(fmt.Sprintf("%s[%d]", join(path, "services"), j), ErrUnknownService, name)
+		}
+		r.ServiceIDs = append(r.ServiceIDs, id)
+	}
+	for j, ed := range rd.Entries {
+		r.Entries = append(r.Entries, entryFromDoc(f, fmt.Sprintf("%s[%d]", join(path, "entries"), j), ed))
+	}
+	return r
 }
 
 // RulesetToDoc converts a ruleset to its document form, using names where
@@ -319,38 +365,52 @@ func RulesetFromDoc(doc *RulesetDoc, names Names) (*Ruleset, error) {
 func RulesetToDoc(rs *Ruleset, names Names) *RulesetDoc {
 	enabled := rs.Enabled
 	doc := &RulesetDoc{ID: rs.ID.String(), Name: rs.Name, Description: rs.Description, Enabled: &enabled, Scope: rs.Scope, Rules: []RuleDoc{}}
+	if !rs.UpdatedAt.IsZero() {
+		doc.Version = VersionOf(rs.UpdatedAt)
+		doc.CreatedAt = rs.CreatedAt.UTC().Format(time.RFC3339Nano)
+		doc.UpdatedAt = rs.UpdatedAt.UTC().Format(time.RFC3339Nano)
+	}
 	for i := range rs.Rules {
-		r := &rs.Rules[i]
-		en := r.Enabled
-		rd := RuleDoc{ID: r.ID.String(), Direction: DirectionName(r.Direction), Enabled: &en, Description: r.Description, Peers: []PeerDoc{}}
-		for _, p := range r.Peers {
-			switch p.Kind {
-			case PeerWorkloads:
-				rd.Peers = append(rd.Peers, PeerDoc{Workloads: p.Workloads})
-			case PeerAddressGroup:
-				name, ok := names.AddressGroupName[p.AddressGroupID]
-				if !ok {
-					name = p.AddressGroupID.String()
-				}
-				rd.Peers = append(rd.Peers, PeerDoc{AddressGroup: name})
-			case PeerCIDR:
-				rd.Peers = append(rd.Peers, PeerDoc{CIDR: p.CIDR})
-			case PeerUnspecified:
-			}
-		}
-		for _, id := range r.ServiceIDs {
-			name, ok := names.ServiceName[id]
-			if !ok {
-				name = id.String()
-			}
-			rd.Services = append(rd.Services, name)
-		}
-		for _, e := range r.Entries {
-			rd.Entries = append(rd.Entries, entryToDoc(e))
-		}
-		doc.Rules = append(doc.Rules, rd)
+		doc.Rules = append(doc.Rules, *RuleToDoc(&rs.Rules[i], names))
 	}
 	return doc
+}
+
+// RuleToDoc converts one rule to its document form.
+func RuleToDoc(r *Rule, names Names) *RuleDoc {
+	en := r.Enabled
+	rd := &RuleDoc{ID: r.ID.String(), Direction: DirectionName(r.Direction), Enabled: &en, Description: r.Description, Peers: []PeerDoc{}}
+	if !r.UpdatedAt.IsZero() {
+		rd.Version = VersionOf(r.UpdatedAt)
+		rd.CreatedAt = r.CreatedAt.UTC().Format(time.RFC3339Nano)
+		rd.UpdatedAt = r.UpdatedAt.UTC().Format(time.RFC3339Nano)
+	}
+	for _, p := range r.Peers {
+		switch p.Kind {
+		case PeerWorkloads:
+			rd.Peers = append(rd.Peers, PeerDoc{Workloads: p.Workloads})
+		case PeerAddressGroup:
+			name, ok := names.AddressGroupName[p.AddressGroupID]
+			if !ok {
+				name = p.AddressGroupID.String()
+			}
+			rd.Peers = append(rd.Peers, PeerDoc{AddressGroup: name})
+		case PeerCIDR:
+			rd.Peers = append(rd.Peers, PeerDoc{CIDR: p.CIDR})
+		case PeerUnspecified:
+		}
+	}
+	for _, id := range r.ServiceIDs {
+		name, ok := names.ServiceName[id]
+		if !ok {
+			name = id.String()
+		}
+		rd.Services = append(rd.Services, name)
+	}
+	for _, e := range r.Entries {
+		rd.Entries = append(rd.Entries, entryToDoc(e))
+	}
+	return rd
 }
 
 // ErrNoDocument is returned when a command expects a document and none is

@@ -19,6 +19,7 @@ type Querier interface {
 	// change without anything polling (ADR-0002).
 	AcquireRenderLock(ctx context.Context, key int64) error
 	AddAddressGroupCIDR(ctx context.Context, arg AddAddressGroupCIDRParams) error
+	AddModeChangeWorkload(ctx context.Context, arg AddModeChangeWorkloadParams) error
 	AddProvisioningTokenLabel(ctx context.Context, arg AddProvisioningTokenLabelParams) error
 	AddRule(ctx context.Context, arg AddRuleParams) error
 	AddRulePeer(ctx context.Context, arg AddRulePeerParams) error
@@ -36,6 +37,11 @@ type Querier interface {
 	// Address groups: named CIDR sets for peers that are not managed workloads
 	// (ADR-0018).
 	CreateAddressGroup(ctx context.Context, arg CreateAddressGroupParams) error
+	// Recorded bulk mode changes (ADR-0007 as amended): the intent as
+	// submitted, the set it resolved to, and what changed. Written inside the
+	// render transaction that flips the modes, so the record and the flip are
+	// one unit.
+	CreateModeChange(ctx context.Context, arg CreateModeChangeParams) error
 	CreateOperatorSession(ctx context.Context, arg CreateOperatorSessionParams) error
 	CreateOperatorToken(ctx context.Context, arg CreateOperatorTokenParams) error
 	// Provisioning tokens (ADR-0016). Only the SHA-256 hash of a token is ever
@@ -51,7 +57,7 @@ type Querier interface {
 	// carried in the credential's URI SAN; labels are assigned at enrollment from
 	// the provisioning token's scope and are never read from a certificate.
 	CreateWorkload(ctx context.Context, arg CreateWorkloadParams) error
-	DeleteAddressGroup(ctx context.Context, id uuid.UUID) (int64, error)
+	DeleteAddressGroup(ctx context.Context, arg DeleteAddressGroupParams) (int64, error)
 	DeleteAddressGroupCIDRs(ctx context.Context, addressGroupID uuid.UUID) error
 	// Retention: expired sessions are removed on the same schedule as aged
 	// flow windows (ADR-0019, ADR-0021).
@@ -62,14 +68,15 @@ type Querier interface {
 	DeleteFlowWindowsBefore(ctx context.Context, arg DeleteFlowWindowsBeforeParams) (int64, error)
 	DeleteOperatorSession(ctx context.Context, idHash []byte) (int64, error)
 	DeleteRules(ctx context.Context, rulesetID uuid.UUID) error
-	DeleteRuleset(ctx context.Context, id uuid.UUID) (int64, error)
+	DeleteRuleset(ctx context.Context, arg DeleteRulesetParams) (int64, error)
 	DeleteRulesetScopeMatches(ctx context.Context, rulesetID uuid.UUID) error
-	DeleteService(ctx context.Context, id uuid.UUID) (int64, error)
+	DeleteService(ctx context.Context, arg DeleteServiceParams) (int64, error)
 	DeleteServiceEntries(ctx context.Context, serviceID uuid.UUID) error
 	DeleteWorkloadAddresses(ctx context.Context, workloadID uuid.UUID) error
 	DeleteWorkloadLabels(ctx context.Context, workloadID uuid.UUID) error
 	DeleteWorkloadListeningServices(ctx context.Context, workloadID uuid.UUID) error
 	GetAddressGroup(ctx context.Context, id uuid.UUID) (AddressGroup, error)
+	GetModeChange(ctx context.Context, id uuid.UUID) (ModeChange, error)
 	// Operator surface (ADR-0021). Passwords are stored as argon2id strings;
 	// session identifiers and operator tokens only as SHA-256 digests. No query
 	// here touches a plaintext credential.
@@ -82,6 +89,10 @@ type Querier interface {
 	GetRuleset(ctx context.Context, id uuid.UUID) (Ruleset, error)
 	GetService(ctx context.Context, id uuid.UUID) (Service, error)
 	GetWorkload(ctx context.Context, id uuid.UUID) (Workload, error)
+	// The modes of a resolved set before it is flipped, and the flip itself,
+	// by explicit id: the set was resolved once, in this transaction, and a
+	// label change committed meanwhile does not move it.
+	GetWorkloadModes(ctx context.Context, workloadIds []uuid.UUID) ([]GetWorkloadModesRow, error)
 	GetWorkloadPolicy(ctx context.Context, workloadID uuid.UUID) (WorkloadPolicy, error)
 	// One workload with its latest rendered version, for the detail read.
 	GetWorkloadWithPolicy(ctx context.Context, id uuid.UUID) (GetWorkloadWithPolicyRow, error)
@@ -109,6 +120,7 @@ type Querier interface {
 	// peer; a zero protocol means every service.
 	ListFlowWindowPage(ctx context.Context, arg ListFlowWindowPageParams) ([]FlowWindow, error)
 	ListFlowWindows(ctx context.Context, arg ListFlowWindowsParams) ([]FlowWindow, error)
+	ListModeChangeWorkloads(ctx context.Context, modeChangeID uuid.UUID) ([]ModeChangeWorkload, error)
 	ListOperatorTokens(ctx context.Context) ([]OperatorToken, error)
 	ListProvisioningTokenLabels(ctx context.Context, tokenID uuid.UUID) ([]ProvisioningTokenLabel, error)
 	ListProvisioningTokens(ctx context.Context) ([]ProvisioningToken, error)
@@ -186,12 +198,21 @@ type Querier interface {
 	RollupFlowsBySrcDst(ctx context.Context, arg RollupFlowsBySrcDstParams) ([]RollupFlowsBySrcDstRow, error)
 	SetOperator(ctx context.Context, arg SetOperatorParams) (Operator, error)
 	SetWorkloadMode(ctx context.Context, arg SetWorkloadModeParams) (int64, error)
+	SetWorkloadModes(ctx context.Context, arg SetWorkloadModesParams) (int64, error)
 	SetWorkloadSyncState(ctx context.Context, arg SetWorkloadSyncStateParams) (int64, error)
 	// Retention runs singly across replicas: whichever replica acquires the
 	// lock prunes, the others skip this round (ADR-0017).
 	TryAcquireRetentionLock(ctx context.Context, key int64) (bool, error)
+	// Conditional writes: expected is the updated_at the caller last read, or
+	// NULL for an unconditional write.
 	UpdateAddressGroup(ctx context.Context, arg UpdateAddressGroupParams) (int64, error)
+	// A conditional write: expected is the updated_at the caller last read,
+	// or NULL for an unconditional write (the command line's default). Zero
+	// rows with a NULL expected means the ruleset does not exist; zero rows
+	// with one set means either that or a version the caller did not see.
 	UpdateRuleset(ctx context.Context, arg UpdateRulesetParams) (int64, error)
+	// Conditional writes: expected is the updated_at the caller last read, or
+	// NULL for an unconditional write.
 	UpdateService(ctx context.Context, arg UpdateServiceParams) (int64, error)
 	UpsertFlowTotal(ctx context.Context, arg []UpsertFlowTotalParams) *UpsertFlowTotalBatchResults
 	UpsertWorkloadPolicy(ctx context.Context, arg UpsertWorkloadPolicyParams) error

@@ -97,29 +97,29 @@ func TestAuthoredModelRoundTrip(t *testing.T) {
 	}
 
 	// Referenced objects cannot be deleted; unreferenced ones can.
-	if err := s.DeleteService(ctx, svc.ID); !errors.Is(err, policy.ErrInUse) {
+	if err := s.DeleteService(ctx, svc.ID, ""); !errors.Is(err, policy.ErrInUse) {
 		t.Fatalf("delete referenced service err = %v", err)
 	}
-	if err := s.DeleteAddressGroup(ctx, grp.ID); !errors.Is(err, policy.ErrInUse) {
+	if err := s.DeleteAddressGroup(ctx, grp.ID, ""); !errors.Is(err, policy.ErrInUse) {
 		t.Fatalf("delete referenced group err = %v", err)
 	}
 	// Update replaces rules wholesale.
 	rs.Rules = nil
 	rs.Enabled = false
-	if err := s.UpdateRuleset(ctx, rs); err != nil {
+	if err := s.UpdateRuleset(ctx, rs, ""); err != nil {
 		t.Fatal(err)
 	}
 	back, _ = s.GetRuleset(ctx, rs.ID)
 	if back.Enabled || len(back.Rules) != 0 {
 		t.Fatalf("updated ruleset = %+v", back)
 	}
-	if err := s.DeleteService(ctx, svc.ID); err != nil {
+	if err := s.DeleteService(ctx, svc.ID, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.DeleteRuleset(ctx, rs.ID); err != nil {
+	if err := s.DeleteRuleset(ctx, rs.ID, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.DeleteRuleset(ctx, rs.ID); !errors.Is(err, policy.ErrRulesetUnknown) {
+	if err := s.DeleteRuleset(ctx, rs.ID, ""); !errors.Is(err, policy.ErrRulesetUnknown) {
 		t.Fatalf("second delete err = %v", err)
 	}
 	if _, err := s.GetService(ctx, svc.ID); !errors.Is(err, policy.ErrServiceUnknown) {

@@ -13,8 +13,8 @@ import (
 )
 
 const addRule = `-- name: AddRule :exec
-INSERT INTO rules (id, ruleset_id, ordinal, direction, enabled, description)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO rules (id, ruleset_id, ordinal, direction, enabled, description, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 `
 
 type AddRuleParams struct {
@@ -24,6 +24,8 @@ type AddRuleParams struct {
 	Direction   int32
 	Enabled     bool
 	Description string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 func (q *Queries) AddRule(ctx context.Context, arg AddRuleParams) error {
@@ -34,6 +36,8 @@ func (q *Queries) AddRule(ctx context.Context, arg AddRuleParams) error {
 		arg.Direction,
 		arg.Enabled,
 		arg.Description,
+		arg.CreatedAt,
+		arg.UpdatedAt,
 	)
 	return err
 }
@@ -179,11 +183,16 @@ func (q *Queries) DeleteRules(ctx context.Context, rulesetID uuid.UUID) error {
 
 const deleteRuleset = `-- name: DeleteRuleset :execrows
 DELETE FROM rulesets
-WHERE id = $1
+WHERE id = $1 AND ($2::timestamptz IS NULL OR updated_at = $2::timestamptz)
 `
 
-func (q *Queries) DeleteRuleset(ctx context.Context, id uuid.UUID) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteRuleset, id)
+type DeleteRulesetParams struct {
+	ID       uuid.UUID
+	Expected *time.Time
+}
+
+func (q *Queries) DeleteRuleset(ctx context.Context, arg DeleteRulesetParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteRuleset, arg.ID, arg.Expected)
 	if err != nil {
 		return 0, err
 	}
@@ -338,7 +347,7 @@ func (q *Queries) ListAllRuleServiceRefs(ctx context.Context) ([]RuleServiceRef,
 }
 
 const listAllRules = `-- name: ListAllRules :many
-SELECT id, ruleset_id, ordinal, direction, enabled, description FROM rules
+SELECT id, ruleset_id, ordinal, direction, enabled, description, created_at, updated_at FROM rules
 ORDER BY ruleset_id, ordinal
 `
 
@@ -358,6 +367,8 @@ func (q *Queries) ListAllRules(ctx context.Context) ([]Rule, error) {
 			&i.Direction,
 			&i.Enabled,
 			&i.Description,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -430,7 +441,7 @@ func (q *Queries) ListRulesets(ctx context.Context) ([]Ruleset, error) {
 const updateRuleset = `-- name: UpdateRuleset :execrows
 UPDATE rulesets
 SET name = $2, description = $3, enabled = $4, updated_at = $5
-WHERE id = $1
+WHERE id = $1 AND ($6::timestamptz IS NULL OR updated_at = $6::timestamptz)
 `
 
 type UpdateRulesetParams struct {
@@ -439,8 +450,13 @@ type UpdateRulesetParams struct {
 	Description string
 	Enabled     bool
 	UpdatedAt   time.Time
+	Expected    *time.Time
 }
 
+// A conditional write: expected is the updated_at the caller last read,
+// or NULL for an unconditional write (the command line's default). Zero
+// rows with a NULL expected means the ruleset does not exist; zero rows
+// with one set means either that or a version the caller did not see.
 func (q *Queries) UpdateRuleset(ctx context.Context, arg UpdateRulesetParams) (int64, error) {
 	result, err := q.db.Exec(ctx, updateRuleset,
 		arg.ID,
@@ -448,6 +464,7 @@ func (q *Queries) UpdateRuleset(ctx context.Context, arg UpdateRulesetParams) (i
 		arg.Description,
 		arg.Enabled,
 		arg.UpdatedAt,
+		arg.Expected,
 	)
 	if err != nil {
 		return 0, err

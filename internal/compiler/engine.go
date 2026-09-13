@@ -83,31 +83,42 @@ func (e *Engine) log() *slog.Logger {
 // changed. It is synchronous: when it returns, every changed version is
 // durable and announced.
 func (e *Engine) Render(ctx context.Context) (*Report, error) {
-	report := &Report{}
+	var report *Report
 	err := e.Store.RenderTx(ctx, func(ctx context.Context, tx Tx) error {
-		in, err := tx.LoadInputs(ctx)
-		if err != nil {
-			return err
-		}
-		previous, err := tx.LoadPolicies(ctx)
-		if err != nil {
-			return err
-		}
-		now := e.now()
-		for _, o := range Plan(previous, Render(in)) {
-			report.Workloads++
-			if !o.Changed {
-				continue
-			}
-			if err := tx.SavePolicy(ctx, o.ID, o.Policy, now); err != nil {
-				return err
-			}
-			report.Changed = append(report.Changed, Change{ID: o.ID, Version: o.Policy.GetVersion(), Changes: len(o.Changes)})
-		}
-		return nil
+		var err error
+		report, err = e.RenderIn(ctx, tx)
+		return err
 	})
 	if err != nil {
 		return nil, fmt.Errorf("compiler: render: %w", err)
+	}
+	return report, nil
+}
+
+// RenderIn renders inside a transaction the caller already holds under
+// the render lock, for a mutation that must be applied and rendered as
+// one unit (a bulk mode change). Changed versions are announced when the
+// caller's transaction commits.
+func (e *Engine) RenderIn(ctx context.Context, tx Tx) (*Report, error) {
+	report := &Report{}
+	in, err := tx.LoadInputs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	previous, err := tx.LoadPolicies(ctx)
+	if err != nil {
+		return nil, err
+	}
+	now := e.now()
+	for _, o := range Plan(previous, Render(in)) {
+		report.Workloads++
+		if !o.Changed {
+			continue
+		}
+		if err := tx.SavePolicy(ctx, o.ID, o.Policy, now); err != nil {
+			return nil, err
+		}
+		report.Changed = append(report.Changed, Change{ID: o.ID, Version: o.Policy.GetVersion(), Changes: len(o.Changes)})
 	}
 	for _, c := range report.Changed {
 		e.log().Info("policy rendered", "workload_id", c.ID, "version", c.Version, "changes", c.Changes)

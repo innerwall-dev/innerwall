@@ -14,6 +14,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/innerwall-dev/innerwall/internal/compiler"
+	"github.com/innerwall-dev/innerwall/internal/fleet"
 	"github.com/innerwall-dev/innerwall/internal/identity"
 	"github.com/innerwall-dev/innerwall/internal/policy"
 	"github.com/innerwall-dev/innerwall/internal/store"
@@ -24,9 +25,10 @@ import (
 // announces changed workloads to the running control plane over the
 // database, so this process never talks to the gateway directly.
 type authoring struct {
-	st  *store.Store
-	svc *policy.Authoring
-	eng *compiler.Engine
+	st    *store.Store
+	svc   *policy.Authoring
+	fleet *fleet.Service
+	eng   *compiler.Engine
 }
 
 func openAuthoring(ctx context.Context, flagURL string) (*authoring, error) {
@@ -35,7 +37,7 @@ func openAuthoring(ctx context.Context, flagURL string) (*authoring, error) {
 		return nil, err
 	}
 	eng := &compiler.Engine{Store: st}
-	return &authoring{st: st, svc: &policy.Authoring{Store: st, Renderer: renderAdapter{eng}}, eng: eng}, nil
+	return &authoring{st: st, svc: &policy.Authoring{Store: st, Renderer: renderAdapter{eng}}, fleet: &fleet.Service{Store: st, Engine: eng}, eng: eng}, nil
 }
 
 func (a *authoring) close() { a.st.Close() }
@@ -146,7 +148,9 @@ func runServiceWrite(ctx context.Context, verb string, args []string) error {
 	if len(svc.Entries) == 0 {
 		svc.Entries = existing.Entries
 	}
-	if err := a.svc.UpdateService(ctx, svc); err != nil {
+	// The write is conditioned on the version just read, so an edit that
+	// lands between the read and the write is refused, not overwritten.
+	if err := a.svc.UpdateService(ctx, svc, policy.VersionOf(existing.UpdatedAt)); err != nil {
 		return err
 	}
 	fmt.Printf("service %s (%s) updated\n", svc.ID, svc.Name)
@@ -183,7 +187,7 @@ func runServiceDelete(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := a.svc.DeleteService(ctx, svc.ID); err != nil {
+	if err := a.svc.DeleteService(ctx, svc.ID, policy.VersionOf(svc.UpdatedAt)); err != nil {
 		return err
 	}
 	fmt.Printf("service %s (%s) deleted\n", svc.ID, svc.Name)
@@ -305,7 +309,7 @@ func runAddressGroupWrite(ctx context.Context, verb string, args []string) error
 	if len(g.CIDRs) == 0 {
 		g.CIDRs = existing.CIDRs
 	}
-	if err := a.svc.UpdateAddressGroup(ctx, g); err != nil {
+	if err := a.svc.UpdateAddressGroup(ctx, g, policy.VersionOf(existing.UpdatedAt)); err != nil {
 		return err
 	}
 	fmt.Printf("address group %s (%s) updated\n", g.ID, g.Name)
@@ -342,7 +346,7 @@ func runAddressGroupDelete(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := a.svc.DeleteAddressGroup(ctx, g.ID); err != nil {
+	if err := a.svc.DeleteAddressGroup(ctx, g.ID, policy.VersionOf(g.UpdatedAt)); err != nil {
 		return err
 	}
 	fmt.Printf("address group %s (%s) deleted\n", g.ID, g.Name)
@@ -475,17 +479,21 @@ func runRulesetWrite(ctx context.Context, verb string, args []string) error {
 		fmt.Printf("ruleset %s (%s) created with %d rules\n", rs.ID, rs.Name, len(rs.Rules))
 		return nil
 	}
+	// A ruleset named on the command line is written against the version
+	// just read; a document that carries its own id is written
+	// unconditionally, which is the operator's explicit choice.
+	expect := ""
 	if fs.NArg() == 1 {
 		existing, err := a.lookupRuleset(ctx, fs.Arg(0))
 		if err != nil {
 			return err
 		}
-		rs.ID = existing.ID
+		rs.ID, expect = existing.ID, policy.VersionOf(existing.UpdatedAt)
 	}
 	if rs.ID == uuid.Nil {
 		return usageError("usage: innerwall ruleset update <id|name> -f <document>, or set \"id\" in the document")
 	}
-	if err := a.svc.UpdateRuleset(ctx, rs); err != nil {
+	if err := a.svc.UpdateRuleset(ctx, rs, expect); err != nil {
 		return err
 	}
 	fmt.Printf("ruleset %s (%s) updated with %d rules\n", rs.ID, rs.Name, len(rs.Rules))
@@ -526,7 +534,7 @@ func runRulesetDelete(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := a.svc.DeleteRuleset(ctx, rs.ID); err != nil {
+	if err := a.svc.DeleteRuleset(ctx, rs.ID, policy.VersionOf(rs.UpdatedAt)); err != nil {
 		return err
 	}
 	fmt.Printf("ruleset %s (%s) deleted\n", rs.ID, rs.Name)

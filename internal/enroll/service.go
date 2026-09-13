@@ -97,6 +97,18 @@ func (s *Service) leafTTL() time.Duration {
 	return DefaultLeafTTL
 }
 
+// ListTokens returns every provisioning token, newest first: hashes and
+// metadata, never a plaintext.
+func (s *Service) ListTokens(ctx context.Context) ([]Token, error) {
+	return s.Store.ListTokens(ctx)
+}
+
+// RevokeToken revokes a token as of now. Future enrollments with it are
+// refused; workloads it already enrolled are untouched (ADR-0016).
+func (s *Service) RevokeToken(ctx context.Context, id uuid.UUID) error {
+	return s.Store.RevokeToken(ctx, id, s.now())
+}
+
 // MintToken creates a token scoped to labels with the given lifetime
 // (DefaultTokenTTL if zero) and returns the plaintext exactly once.
 func (s *Service) MintToken(ctx context.Context, name string, labels []Label, ttl time.Duration) (plaintext string, tok Token, err error) {
