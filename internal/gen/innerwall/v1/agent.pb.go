@@ -973,8 +973,14 @@ type Heartbeat struct {
 	// pressure). Non-zero values tell the operator that the flow map is
 	// incomplete before they trust it for policy authoring.
 	DroppedFlowRecords uint64 `protobuf:"varint,2,opt,name=dropped_flow_records,json=droppedFlowRecords,proto3" json:"dropped_flow_records,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// The reason the most recent automatic credential renewal failed, or
+	// empty when the last attempt succeeded or none has been due yet. A
+	// workload that keeps reporting a reason is heading for expiry and
+	// re-enrollment; surfacing it here lets the operator act before the
+	// credential lapses (ADR-0016).
+	CredentialRenewalError string `protobuf:"bytes,3,opt,name=credential_renewal_error,json=credentialRenewalError,proto3" json:"credential_renewal_error,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *Heartbeat) Reset() {
@@ -1019,6 +1025,13 @@ func (x *Heartbeat) GetDroppedFlowRecords() uint64 {
 		return x.DroppedFlowRecords
 	}
 	return 0
+}
+
+func (x *Heartbeat) GetCredentialRenewalError() string {
+	if x != nil {
+		return x.CredentialRenewalError
+	}
+	return ""
 }
 
 // Server-initiated commands. Modeled as a oneof of messages rather than an
@@ -1483,10 +1496,11 @@ const file_innerwall_v1_agent_proto_rawDesc = "" +
 	"\ferror_detail\x18\x03 \x01(\tR\verrorDetail\"\x8f\x01\n" +
 	"\x0fInventoryReport\x12-\n" +
 	"\x05facts\x18\x01 \x01(\v2\x17.innerwall.v1.HostFactsR\x05facts\x12M\n" +
-	"\x12listening_services\x18\x02 \x03(\v2\x1e.innerwall.v1.ListeningServiceR\x11listeningServices\"d\n" +
+	"\x12listening_services\x18\x02 \x03(\v2\x1e.innerwall.v1.ListeningServiceR\x11listeningServices\"\x9e\x01\n" +
 	"\tHeartbeat\x12%\n" +
 	"\x0euptime_seconds\x18\x01 \x01(\x04R\ruptimeSeconds\x120\n" +
-	"\x14dropped_flow_records\x18\x02 \x01(\x04R\x12droppedFlowRecords\"\x87\x01\n" +
+	"\x14dropped_flow_records\x18\x02 \x01(\x04R\x12droppedFlowRecords\x128\n" +
+	"\x18credential_renewal_error\x18\x03 \x01(\tR\x16credentialRenewalError\"\x87\x01\n" +
 	"\tDirective\x127\n" +
 	"\treconnect\x18\x01 \x01(\v2\x17.innerwall.v1.ReconnectH\x00R\treconnect\x124\n" +
 	"\breenroll\x18\x02 \x01(\v2\x16.innerwall.v1.ReenrollH\x00R\breenrollB\v\n" +

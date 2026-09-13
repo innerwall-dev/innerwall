@@ -180,6 +180,12 @@ message Heartbeat {
   // pressure). Non-zero values tell the operator that the flow map is
   // incomplete before they trust it for policy authoring.
   uint64 dropped_flow_records = 2;
+  // The reason the most recent automatic credential renewal failed, or
+  // empty when the last attempt succeeded or none has been due yet. A
+  // workload that keeps reporting a reason is heading for expiry and
+  // re-enrollment; surfacing it here lets the operator act before the
+  // credential lapses (ADR-0016).
+  string credential_renewal_error = 3;
 }
 
 // Server-initiated commands. Modeled as a oneof of messages rather than an

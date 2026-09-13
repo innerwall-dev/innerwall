@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -148,6 +149,17 @@ type Renewer struct {
 	Renew func(ctx context.Context, key *ecdsa.PrivateKey, opts RenewOptions) (*RenewResult, error)
 	// Renewed, when set, is called after each successful renewal.
 	Renewed func(leaf *x509.Certificate)
+
+	lastError atomic.Value // string
+}
+
+// LastError returns the reason the most recent renewal attempt failed, or
+// empty when the last attempt succeeded or none has been due. The daemon
+// carries it on every heartbeat so the control plane sees a workload
+// heading for expiry before it gets there.
+func (r *Renewer) LastError() string {
+	v, _ := r.lastError.Load().(string)
+	return v
 }
 
 func (r *Renewer) now() time.Time {
@@ -224,10 +236,12 @@ func (r *Renewer) Run(ctx context.Context) error {
 		}
 		if err != nil {
 			attempt++
+			r.lastError.Store(err.Error())
 			r.log().Error("credential renewal failed; will retry", "error", err, "attempt", attempt, "expires", leaf.NotAfter)
 			continue
 		}
 		attempt = 0
+		r.lastError.Store("")
 		newLeaf := r.Holder.Leaf()
 		r.log().Info("credential renewed", "serial", newLeaf.SerialNumber.Text(16), "expires", newLeaf.NotAfter)
 		if r.Renewed != nil {
