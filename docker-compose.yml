@@ -5,9 +5,12 @@
 # configuration: here it lives in the innerwall-state volume, and every
 # replica of this stack would mount the same one.
 #
-# The control plane applies migrations, creates its signing authority on
-# first start (persisted in the innerwall-state volume), and serves the agent
-# gateway. The REST/JSON façade and UI are wired in by later milestones.
+# The control plane applies migrations, creates its signing authority and a
+# self-signed operator certificate on first start (both persisted in the
+# innerwall-state volume; the certificate's fingerprint is logged), and
+# serves the agent gateway and the operator surface. Set the operator
+# password once with `docker compose exec innerwall /innerwall operator
+# set-password`. The console lands with a later milestone.
 
 services:
   postgres:
@@ -39,7 +42,7 @@ services:
     volumes:
       - innerwall-state:/var/lib/innerwall
     ports:
-      # REST/JSON façade and embedded UI.
+      # Operator surface: REST/JSON façade and console, TLS only.
       - "127.0.0.1:8080:8080"
       # Agent gateway (gRPC over mTLS).
       - "8443:8443"
