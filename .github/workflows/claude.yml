@@ -1,8 +1,10 @@
 # Coding-agent workflows (ADR-0014):
 #   claude      — interactive: responds to @claude mentions on issues and PRs.
-#   adr-review  — automation: reviews every PR against the Accepted ADRs in
-#                 docs/adr/ and posts findings as a PR comment. Advisory only;
-#                 findings never fail the build.
+#   adr-review  — automation: reviews every PR's changes against the Accepted
+#                 ADRs in docs/adr/ and posts findings as a PR comment. The
+#                 review is anchored to the diff; it re-reads the whole ADR
+#                 record only when the record itself (docs/adr/, CLAUDE.md)
+#                 changes. Advisory only; findings never fail the build.
 #
 # Both jobs authenticate through workload identity federation using the job's
 # OIDC token. No static credential is configured anywhere in this workflow: a
@@ -21,6 +23,16 @@ on:
     types: [opened, assigned]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+    # Only adr-review runs on this event. A pull request whose every changed
+    # file is generated output or a lockfile carries no decision to review, so
+    # it does not trigger the run. Any other changed file alongside these still
+    # triggers it. adr-review is advisory, not a required check, so a skipped
+    # run never blocks a merge.
+    paths-ignore:
+      - "internal/gen/**"
+      - "internal/store/db/**"
+      - "go.sum"
+      - "ui/package-lock.json"
 
 jobs:
   claude:
@@ -51,6 +63,11 @@ jobs:
   adr-review:
     if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    # A new push makes the in-flight review stale; cancel it rather than pay
+    # for both. Keyed per pull request and scoped to this job only.
+    concurrency:
+      group: adr-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     permissions:
       id-token: write
       contents: read
@@ -73,20 +90,29 @@ jobs:
           prompt: |
             You are reviewing pull request #${{ github.event.pull_request.number }} in ${{ github.repository }} for conformance with the project's architecture decision records.
 
-            The ADRs in docs/adr/ are the source of truth for this project. Each Accepted ADR is immutable; a change that contradicts one is allowed only when the same pull request adds a superseding ADR (next number, a `Supersedes: ADR-XXXX` header, and the old ADR marked Superseded). CLAUDE.md distills the ADRs into hard rules and vocabulary rules; ARCHITECTURE.md describes the system they produce.
+            The ADRs in docs/adr/ are the source of truth for this project. An Accepted ADR's core decision is immutable; a change that contradicts one is allowed only when the same pull request adds a superseding ADR (next number, a `Supersedes: ADR-XXXX` header, and the old ADR marked Superseded). Everything else is an in-place amendment recorded under an `## Amendments` heading, as docs/adr/README.md defines. CLAUDE.md distills the ADRs into hard rules and vocabulary rules; ARCHITECTURE.md describes the system they produce.
 
             Steps:
-            1. Read docs/adr/README.md, every ADR in docs/adr/, and CLAUDE.md.
+            1. Read docs/adr/README.md and CLAUDE.md.
             2. Read the pull request diff with `gh pr diff ${{ github.event.pull_request.number }}` and the description with `gh pr view ${{ github.event.pull_request.number }}`.
-            3. For each change, decide whether it contradicts an Accepted ADR. Contradictions include, but are not limited to: an ORM or query builder or runtime SQL generation; polling loops in steady state; firewall changes outside the owned nftables table or non-atomic rule application; an agent that fails open or closed rather than static; agent self-update code; per-connection flow shipping; flow access that bypasses the FlowStore interface; UI code that reaches anything other than the public REST façade; hand-added REST routes not defined in proto/; outbound policy compilation in v1; mutable attributes in certificates; control-plane state that matters beyond a single process; unsigned policy bundles or removal of region_id; Makefile targets with logic; references to other products or companies anywhere in the repository; a hand-edited generated file; an edit to an already-Accepted ADR.
-            4. If a contradiction is present, check whether the pull request adds a superseding ADR that covers it.
+            3. Choose the review mode from the files the diff touches:
+               - Full-corpus audit, only when the diff touches anything under docs/adr/ (docs/adr/README.md included) or CLAUDE.md: read every ADR in docs/adr/ and check the whole record, not just the diff: every ADR states its current decision, status lines and `Supersedes:` headers agree with each other, amendment notes follow the convention in docs/adr/README.md, and CLAUDE.md's hard rules still match the ADRs they cite.
+               - Diff-anchored review, the default for every other pull request: review the changes only. Read the ADRs the change bears on (CLAUDE.md's hard rules cite them by number; the titles are the file names in docs/adr/) and any document the diff modifies or references. Do not re-read or re-audit documents the pull request does not change.
+            4. For each change, decide whether it contradicts an Accepted ADR. Contradictions include, but are not limited to: an ORM or query builder or runtime SQL generation; polling loops in steady state; firewall changes outside the owned nftables table or non-atomic rule application; an agent that fails open or closed rather than static; agent self-update code; per-connection flow shipping; flow access that bypasses the FlowStore interface; UI code that reaches anything other than the public REST façade; hand-added REST routes not defined in proto/; outbound policy compilation in v1; mutable attributes in certificates; control-plane state that matters beyond a single process; unsigned policy bundles or removal of region_id; Makefile targets with logic; references to other products or companies anywhere in the repository; a hand-edited generated file; an edit to an Accepted ADR's core decision, or an amendment that does not follow the in-place amendment convention in docs/adr/README.md.
+            5. In either mode, also report a document the change leaves inconsistent with the record it belongs to, and a dangling reference the change introduces (an ADR number, file, or heading that does not exist).
+            6. If a contradiction is present, check whether the pull request adds a superseding ADR that covers it.
 
             Post exactly one comment on the pull request using `gh pr comment ${{ github.event.pull_request.number }} --body`, updating it if you already posted one. Structure it as:
-            - A one-line verdict: "No ADR contradictions found" or "ADR review: N finding(s)".
+            - A one-line verdict, naming the mode used: "No ADR contradictions found" or "ADR review: N finding(s)".
             - For each finding: the ADR number and title, the file and line, what the change does, why it contradicts the ADR, and whether a superseding ADR is present. Quote the ADR text you are relying on.
             - If a superseding ADR is present, note whether it follows the format in docs/adr/README.md.
 
             Stay within the ADRs: do not review style, naming, or test coverage. Do not modify files. This review is advisory; it informs the human reviewers and does not block the merge.
+          # The action's own `model` input is deprecated in favor of `--model`.
+          # The turn cap is a backstop against wandering the corpus, not a
+          # budget: even a full-corpus audit that reads one document per turn
+          # fits well inside it.
           claude_args: |
+            --model claude-sonnet-5
             --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(gh api:*),Read,Glob,Grep"
             --max-turns 40
