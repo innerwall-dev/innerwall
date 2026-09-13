@@ -6,7 +6,7 @@
 
 ADR-0004 fixed the identity model: token-gated enrollment with no trust-on-first-use window, a control-plane-assigned identity carried in a URI SAN, short-lived credentials, and a signing authority behind an interface. ADR-0015 then fixed the wire contract that carries it: a provisioning token scoped to a label set that may enroll many workloads, a certificate signing request on enrollment and renewal, and identity derived only from the connection credential.
 
-Implementing both made three things concrete that ADR-0004 left open or stated differently, and each is the kind of detail a later change could quietly undo: the exact form of the identity URI, the exact rule for what a signing request may contribute to a certificate, and where on the listener the authentication boundary is enforced. This ADR restates the identity model in full with those decisions fixed, so that one record is the source of truth. Where ADR-0004 and this ADR differ, this ADR governs; everything in ADR-0004 not contradicted here is carried forward.
+Implementing both made three things concrete that ADR-0004 left open or stated differently, and each is the kind of detail a later change could quietly undo: the exact form of the identity URI, the exact rule for what a signing request may contribute to a certificate, and where on the listener the authentication boundary is enforced. This ADR restates the identity model in full with those decisions fixed, so that one record is the source of truth. It implements ADR-0004's identity semantics at the signing boundary; ADR-0004 remains Accepted, and everything in it not made precise here is carried forward.
 
 ## Decision
 
@@ -26,7 +26,7 @@ Implementing both made three things concrete that ADR-0004 left open or stated d
 
 ## Consequences
 
-- ADR-0004 is superseded. Its identity model survives in full; the URI form it named is replaced by the one above, and its token consumption rule is replaced by ADR-0015's reusable scoped token.
+- ADR-0004 stands, implemented here at the signing boundary. Its identity model survives in full; the URI form it named is made precise by the one above, and its token consumption rule gives way to ADR-0015's reusable scoped token.
 - ADR-0005 is superseded by ADR-0017 to carry decision 7: signing-key material is operator-provisioned on each replica rather than stored in Postgres. Two replicas that each generate their own authority are misconfigured, not two valid deployments; the deploy guide says so, and an external key backend removes the question.
 - The signing-request rule is enforced in one function and tested by one hostile-request test. A backend that bypasses that function is a reviewable diff, not a subtle drift.
 - The identity string has one owner. Changing its form is a change to one package and its round-trip tests, and every consumer follows.
@@ -37,5 +37,5 @@ Implementing both made three things concrete that ADR-0004 left open or stated d
 
 ## Amendments
 
-- **2026-09-13 (PR #5): relationship to ADR-0004.** This record implements ADR-0004's identity semantics at the signing boundary; it does not supersede ADR-0004. The `Supersedes: ADR-0004` header is removed, and the sentences in Context ("Where ADR-0004 and this ADR differ, this ADR governs") and Consequences ("ADR-0004 is superseded") are withdrawn. ADR-0004 remains Accepted.
+- **2026-09-13 (PR #5): relationship to ADR-0004.** This record implements ADR-0004's identity semantics at the signing boundary; it does not supersede ADR-0004. The `Supersedes: ADR-0004` header is removed, and the Context sentence that read "Where ADR-0004 and this ADR differ, this ADR governs" and the Consequences line that opened "ADR-0004 is superseded" are corrected in place to say so; the prior text is in git history. ADR-0004 remains Accepted.
 - **2026-09-13 (PR #5): automatic renewal.** Decision 4 anticipated the daemon's renewal point as "roughly half of lifetime". The daemon renews automatically in the last third of the certificate's lifetime, at a jittered point, through the existing `RenewCredential` path, and swaps the renewed credential in without dropping its stream. A failed renewal retries with backoff; an expired credential is reported and the daemon does not enroll itself.

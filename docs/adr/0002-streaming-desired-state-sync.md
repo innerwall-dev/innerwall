@@ -16,5 +16,9 @@ A central plane serving thousands of endpoints fails predictably when the protoc
 
 - The dominant failure mode of chatty central APIs is designed out rather than rate-limited.
 - Desired-vs-actual version is queryable; drift detection and rollback are structural features.
-- Long-lived connections make the gateway stateful-ish: a presence table is required so any replica can route "push to agent X" (see ADR-0005).
+- Long-lived connections make the gateway stateful for the life of a stream: a render's announcement reaches the replica holding a workload's stream through the database notification channel, so any replica can push to any agent it holds without a presence table (see ADR-0017, as amended).
 - Firewalls between agents and the control plane must permit long-lived outbound TLS; documentation must cover keepalives and middlebox timeouts.
+
+## Amendments
+
+- **2026-09-13 (PR #5).** The consequence that required a presence table for routing pushes is corrected in place: pushes reach the replica holding a stream through the database notification channel, per ADR-0017's amended propagation design. The core decision, one persistent stream per agent carrying desired-state deltas with full-jitter backoff and nothing polling, stands.
