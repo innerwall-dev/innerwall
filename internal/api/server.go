@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/innerwall-dev/innerwall/internal/operator"
+	"github.com/innerwall-dev/innerwall/internal/readmodel"
 )
 
 // APIPrefix is where the surface is mounted. Every other path belongs to
@@ -24,6 +26,8 @@ const maxBodyBytes = 64 << 10
 // Deps is what the operator surface is built from.
 type Deps struct {
 	Operators *operator.Service
+	// Reads is the read model the read endpoints call.
+	Reads *readmodel.Reader
 	// Site is the label the console header shows; empty when none is
 	// configured.
 	Site string
@@ -42,6 +46,7 @@ type Deps struct {
 // domain functions the command line calls, holding no logic of its own.
 type Server struct {
 	operators *operator.Service
+	reads     *readmodel.Reader
 	site      string
 	auth      *Authenticator
 	throttle  *Throttle
@@ -58,6 +63,7 @@ func New(d Deps) *Server {
 	}
 	return &Server{
 		operators: d.Operators,
+		reads:     d.Reads,
 		site:      d.Site,
 		auth:      &Authenticator{Operators: d.Operators, Log: d.Log},
 		throttle:  &Throttle{Limit: d.LoginAttempts, Window: d.LoginWindow, Now: d.Now},
@@ -73,6 +79,11 @@ func (s *Server) Handler() http.Handler {
 	routes.handle(http.MethodPost, APIPrefix+"/session", s.createSession)
 	routes.handle(http.MethodDelete, APIPrefix+"/session", s.deleteSession)
 	routes.handle(http.MethodGet, APIPrefix+"/me", s.getMe)
+	routes.handle(http.MethodGet, APIPrefix+"/flows/rollup", s.getFlowsRollup)
+	routes.handle(http.MethodGet, APIPrefix+"/flows", s.getFlows)
+	routes.handle(http.MethodGet, APIPrefix+"/workloads", s.getWorkloads)
+	routes.handle(http.MethodGet, APIPrefix+"/workloads/{id}", s.getWorkload)
+	routes.handle(http.MethodGet, APIPrefix+"/workloads/{id}/rendered-policy", s.getRenderedPolicy)
 
 	root := http.NewServeMux()
 	root.Handle(APIPrefix+"/", CrossOriginGuard(s.throttle.Middleware(s.auth.Middleware(routes))))
@@ -80,35 +91,106 @@ func (s *Server) Handler() http.Handler {
 	return root
 }
 
-// router matches an exact method and path. It answers a known path with an
+// router matches a method and a path against fixed patterns. A pattern
+// is a path whose segments are literals or one-segment parameters written
+// {name}; a literal segment outranks a parameter at the same position, so
+// registration order does not matter. It answers a known path with an
 // unsupported method with 405 and an Allow header, and anything else with
 // 404, both as problem documents; the standard multiplexer answers both in
 // plain text, which the surface never speaks.
 type router struct {
-	routes map[string]map[string]http.HandlerFunc // path → method → handler
+	routes []*route
 }
 
-func newRouter() *router { return &router{routes: map[string]map[string]http.HandlerFunc{}} }
+type route struct {
+	pattern  string
+	segments []string
+	methods  map[string]http.HandlerFunc
+}
 
-func (r *router) handle(method, path string, h http.HandlerFunc) {
-	if r.routes[path] == nil {
-		r.routes[path] = map[string]http.HandlerFunc{}
+func newRouter() *router { return &router{} }
+
+func (r *router) handle(method, pattern string, h http.HandlerFunc) {
+	for _, rt := range r.routes {
+		if rt.pattern == pattern {
+			rt.methods[method] = h
+			return
+		}
 	}
-	r.routes[path][method] = h
+	r.routes = append(r.routes, &route{pattern: pattern, segments: strings.Split(pattern, "/"), methods: map[string]http.HandlerFunc{method: h}})
+}
+
+type pathParamsKey struct{}
+
+// pathParam returns the value the {name} segment matched, or "".
+func pathParam(r *http.Request, name string) string {
+	params, _ := r.Context().Value(pathParamsKey{}).(map[string]string)
+	return params[name]
+}
+
+// match reports whether path fits the route and the parameters it binds.
+func (rt *route) match(path string) (map[string]string, bool) {
+	segments := strings.Split(path, "/")
+	if len(segments) != len(rt.segments) {
+		return nil, false
+	}
+	var params map[string]string
+	for i, want := range rt.segments {
+		got := segments[i]
+		if strings.HasPrefix(want, "{") && strings.HasSuffix(want, "}") {
+			if got == "" {
+				return nil, false
+			}
+			if params == nil {
+				params = map[string]string{}
+			}
+			params[want[1:len(want)-1]] = got
+			continue
+		}
+		if got != want {
+			return nil, false
+		}
+	}
+	return params, true
+}
+
+// literalness counts the literal segments of a route, so that the most
+// specific match wins.
+func (rt *route) literalness() int {
+	n := 0
+	for _, s := range rt.segments {
+		if !strings.HasPrefix(s, "{") {
+			n++
+		}
+	}
+	return n
 }
 
 func (r *router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	methods, ok := r.routes[req.URL.Path]
-	if !ok {
+	var best *route
+	var params map[string]string
+	for _, rt := range r.routes {
+		p, ok := rt.match(req.URL.Path)
+		if !ok {
+			continue
+		}
+		if best == nil || rt.literalness() > best.literalness() {
+			best, params = rt, p
+		}
+	}
+	if best == nil {
 		writeProblem(w, problemNotFound)
 		return
 	}
-	if h, ok := methods[req.Method]; ok {
+	if h, ok := best.methods[req.Method]; ok {
+		if params != nil {
+			req = req.WithContext(context.WithValue(req.Context(), pathParamsKey{}, params))
+		}
 		h(w, req)
 		return
 	}
-	allowed := make([]string, 0, len(methods))
-	for m := range methods {
+	allowed := make([]string, 0, len(best.methods))
+	for m := range best.methods {
 		allowed = append(allowed, m)
 	}
 	sort.Strings(allowed)
@@ -209,7 +291,7 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, sessionCookie(id, sess.ExpiresAt.Sub(sess.CreatedAt)))
 	s.log.Info("operator logged in")
-	writeJSON(w, http.StatusOK, s.me(&operator.Principal{DisplayName: op.DisplayName}))
+	writeJSON(w, s.me(&operator.Principal{DisplayName: op.DisplayName}))
 }
 
 // deleteSession is DELETE /api/v1/session: revoke the current session and
@@ -220,7 +302,7 @@ func (s *Server) deleteSession(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, problemInternal)
 		return
 	}
-	writeJSON(w, http.StatusOK, struct{}{})
+	writeJSON(w, struct{}{})
 }
 
 // getMe is GET /api/v1/me: the authenticated operator and the site label.
@@ -232,5 +314,5 @@ func (s *Server) getMe(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, problemUnauthenticated)
 		return
 	}
-	writeJSON(w, http.StatusOK, s.me(p))
+	writeJSON(w, s.me(p))
 }

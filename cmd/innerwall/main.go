@@ -24,9 +24,11 @@
 // Authoring commands write Postgres directly and render there; the running
 // control plane learns of changed policy through the database and pushes
 // it to connected agents (ADR-0018). The operator surface serves the
-// session and identity endpoints of the REST façade (ADR-0021); its read
-// and write endpoints follow, and until then the flows commands are the
-// only query surface.
+// session and identity endpoints of the REST surface (ADR-0021) and the
+// read model behind the console's screens (flow rollups, flow pages,
+// workloads, rendered policy); the flows and workload commands read
+// through the same read model, so the two transports cannot drift. The
+// write endpoints follow.
 package main
 
 import (

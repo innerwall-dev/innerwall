@@ -63,6 +63,7 @@ Never edit generated code. Change the source, regenerate, commit both.
 cmd/innerwall/            control-plane main
 cmd/innerwall-agent/      agent main
 internal/api              operator surface: REST/JSON handlers, auth middleware, listener TLS
+internal/readmodel        operator read model: rollups, flow pages, workloads, rendered policy (shared by the surface and the command line); readmodeltest/ holds its doubles
 internal/gateway          agent gRPC surface: enrollment, renewal, the sync stream and its pushes
 internal/compiler         renders the authored model into per-workload policies; versions by diff
 internal/policy           authored model (services, address groups, rulesets), admission, documents
@@ -73,7 +74,7 @@ internal/ca               Authority interface; fileca/ is the file-backed implem
 internal/identity         workload identity and its URI SAN form (the only place it is built or parsed)
 internal/enroll           provisioning tokens, enrollment, renewal
 internal/registry         workloads: labels, mode, facts and addresses, sync status
-internal/store            queries/ (SQL), migrations/ (goose), db/ (sqlc output); storetest/ opens a test database
+internal/store            queries/ (SQL), migrations/ (goose), db/ (sqlc output); storetest/ opens a test database and seeds a recognizable fleet
 internal/agent            credential/ (enroll, renew, holder, renewal timer), sync/ (daemon), enforce/ (policy store), inventory/, collect/, health/
 internal/gen              buf output (generated; never edited)
 proto/innerwall/v1        the API contract (buf.yaml and buf.gen.yaml at the repo root)
