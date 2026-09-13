@@ -113,6 +113,6 @@ jobs:
           # budget: even a full-corpus audit that reads one document per turn
           # fits well inside it.
           claude_args: |
-            --model claude-sonnet-4-6
+            --model claude-sonnet-5
             --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(gh api:*),Read,Glob,Grep"
             --max-turns 40
