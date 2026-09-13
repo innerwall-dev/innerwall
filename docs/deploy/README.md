@@ -19,7 +19,7 @@ innerwall-agent enroll --server localhost:8443 --token <token> --bootstrap-ca ./
 innerwall-agent daemon --server localhost:8443 --state-dir ./agent-state
 ```
 
-The bootstrap anchor is the authority's certificate, handed to the agent out of band with the token; without it the agent would send the token to whatever answered at the address. The daemon holds the sync stream, applies policy as it is pushed (into an in-memory store until enforcement lands; every applied change is logged), reports inventory and heartbeats, renews its credential when less than a third of its lifetime remains, and observes inbound connections through the kernel's connection tracker, aggregating them per reporting window and shipping them on a stream of their own. Observation needs the daemon to run as root (the connection-tracking events are a privileged netlink subscription), and byte counts need the kernel's per-connection accounting (`sysctl net.netfilter.nf_conntrack_acct=1`); without it connections are counted and bytes are zero, and the daemon says so at start. Windows the control plane cannot receive are held in a bounded in-memory buffer (`--flow-buffer-records`); beyond it the oldest are dropped and the count is reported on the heartbeat. It exits, with the reason, when the credential has expired or the control plane directs re-enrollment; both need a new provisioning token. `innerwall-agent renew` remains for rotating a credential by hand.
+The bootstrap anchor is the authority's certificate, handed to the agent out of band with the token; without it the agent would send the token to whatever answered at the address. The daemon holds the sync stream, applies policy as it is pushed into the nftables table it owns (`inet innerwall`; every applied change is logged and the policy is persisted in the state directory), reports inventory and heartbeats, renews its credential when less than a third of its lifetime remains, and observes inbound connections through the kernel's connection tracker and the terminal rule's log, aggregating them per reporting window and shipping them on a stream of their own. Observation needs the daemon to run as root (the connection-tracking events are a privileged netlink subscription), and byte counts need the kernel's per-connection accounting (`sysctl net.netfilter.nf_conntrack_acct=1`); without it connections are counted and bytes are zero, and the daemon says so at start. Windows the control plane cannot receive are held in a bounded in-memory buffer (`--flow-buffer-records`); beyond it the oldest are dropped and the count is reported on the heartbeat. It exits, with the reason, when the credential has expired or the control plane directs re-enrollment; both need a new provisioning token. `innerwall-agent renew` remains for rotating a credential by hand.
 
 Policy is authored with the control-plane command line against the database; the running control plane learns of every change through Postgres and pushes it to connected agents (ADR-0018):
 
@@ -38,7 +38,15 @@ docker compose exec innerwall /innerwall workload set-mode <workload-id> simulat
 docker compose exec innerwall /innerwall policy show <workload-id>
 ```
 
-Only inbound rules are admitted (ADR-0010). Stored flows are read with the `flows` commands, which are the query shapes the operator console will issue (ADR-0019):
+Only inbound rules are admitted (ADR-0010). A workload in `visibility` mode has no verdict chain installed; `simulation` installs the enforced ruleset with the terminal rule accepting and reporting what enforcement would drop as `would_block`; `enforced` drops it and reports `blocked` (ADR-0020). The agent re-applies its last acknowledged policy from disk on every start, before it dials the control plane, and leaves the kernel rules in place when it exits. Root on the host removes them with the local kill switch:
+
+```sh
+innerwall-agent down --state-dir ./agent-state
+```
+
+It deletes the owned table and nothing else, and says so: the persisted policy stays on disk, a running daemon re-applies it on its next update and a restarted one on start, so stopping enforcement for good means stopping the daemon too. The agent claims the connection mark on connections its rules accept; a host that already uses connection marks for something else should be looked at before enforcement is switched on. The other firewall tables on the host are never touched: the agent's chain runs at input priority `filter + 10`, after the host's own filter chains, and a packet must be accepted by both.
+
+Stored flows are read with the `flows` commands, which are the query shapes the operator console will issue (ADR-0019):
 
 ```sh
 docker compose exec innerwall /innerwall flows list <workload-id> --since 1h
