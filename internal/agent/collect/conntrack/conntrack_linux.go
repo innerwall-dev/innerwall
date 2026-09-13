@@ -139,6 +139,12 @@ func (s *Source) classify(ev ct.Event, now time.Time) (collect.Observation, bool
 	}
 	switch ev.Type {
 	case ct.EventNew:
+		if o.Decision == innerwallv1.PolicyDecision_POLICY_DECISION_WOULD_BLOCK {
+			// Attempts that simulation would have dropped are counted
+			// by the log path, one per packet, exactly as enforcement
+			// counts drops; conntrack contributes their bytes only.
+			return collect.Observation{}, false
+		}
 		o.Connections = 1
 	case ct.EventDestroy:
 		o.Bytes = f.CountersOrig.Bytes + f.CountersReply.Bytes

@@ -14,7 +14,7 @@ These are the constraints a plausible-looking change is most likely to violate. 
 
 - **No ORM, no query builders, no runtime SQL generation.** Hand-written SQL in `internal/store/queries/`, sqlc-generated Go, goose migrations. Every production query lives in the repo. (ADR-0006)
 - **No polling loops anywhere in steady state.** Agents hold one persistent gRPC sync stream for policy, which moves as versioned desired-state deltas; flow telemetry travels on its own `ReportFlows` RPC so it can never head-of-line-block a policy update; every reconnect uses exponential backoff with full jitter. (ADR-0002, ADR-0015)
-- **Agents never touch firewall state outside the Innerwall-owned nftables table**, and ruleset application is atomic — full-table replacement, never incremental mutation of live rules. (ADR-0003)
+- **Agents never touch firewall state outside the Innerwall-owned nftables table**, and every ruleset application is one kernel transaction — a full apply replaces the table as a unit; a peer-only change updates a rule's named sets inside the owned table in one transaction; nothing ever edits live rules one at a time or leaves a mixture of versions installed. (ADR-0003, ADR-0020)
 - **Agents fail static — never open, never closed.** Last-ACKed policy persists to disk and survives restarts and reboots. The local kill switch must always work without the control plane. (ADR-0011)
 - **No agent self-update code.** Not a flag, not a stub, not "for later." (ADR-0011)
 - **Flows are aggregated at the agent** into `(src, dst, port, proto, count, bytes)` windows before shipping. Never ship per-connection records. (ADR-0009)

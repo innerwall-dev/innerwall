@@ -1,0 +1,45 @@
+table inet innerwall {}
+delete table inet innerwall
+table inet innerwall {
+	set r_0191e5c0_0000_7000_8000_000000000001_tcp_v4 {
+		type ipv4_addr
+		flags interval
+		elements = { 10.0.0.20/32, 192.168.1.0/24 }
+	}
+	set r_0191e5c0_0000_7000_8000_000000000001_tcp_v6 {
+		type ipv6_addr
+		flags interval
+		elements = { fd00::20/128 }
+	}
+	set r_0191e5c0_0000_7000_8000_000000000002_udp_v4 {
+		type ipv4_addr
+		flags interval
+		elements = { 10.0.0.0/24 }
+	}
+	set r_0191e5c0_0000_7000_8000_000000000002_udp_v6 {
+		type ipv6_addr
+		flags interval
+	}
+	set r_0191e5c0_0000_7000_8000_000000000003_icmp_v4 {
+		type ipv4_addr
+		flags interval
+		elements = { 10.0.0.0/8 }
+	}
+	set r_0191e5c0_0000_7000_8000_000000000003_icmp_v6 {
+		type ipv6_addr
+		flags interval
+		elements = { fd00::/64 }
+	}
+	chain inbound {
+		type filter hook input priority filter + 10; policy accept;
+		iif "lo" accept
+		ct state established,related accept
+		ip saddr @r_0191e5c0_0000_7000_8000_000000000001_tcp_v4 tcp dport { 80, 443, 8000-8010 } ct mark set (ct mark & 0x0000ffff) | 0x00010000 accept comment "innerwall rule 0191e5c0-0000-7000-8000-000000000001/tcp mark 1"
+		ip6 saddr @r_0191e5c0_0000_7000_8000_000000000001_tcp_v6 tcp dport { 80, 443, 8000-8010 } ct mark set (ct mark & 0x0000ffff) | 0x00010000 accept comment "innerwall rule 0191e5c0-0000-7000-8000-000000000001/tcp mark 1"
+		ip saddr @r_0191e5c0_0000_7000_8000_000000000002_udp_v4 udp dport { 53 } ct mark set (ct mark & 0x0000ffff) | 0x00020000 accept comment "innerwall rule 0191e5c0-0000-7000-8000-000000000002/udp mark 2"
+		ip6 saddr @r_0191e5c0_0000_7000_8000_000000000002_udp_v6 udp dport { 53 } ct mark set (ct mark & 0x0000ffff) | 0x00020000 accept comment "innerwall rule 0191e5c0-0000-7000-8000-000000000002/udp mark 2"
+		ip saddr @r_0191e5c0_0000_7000_8000_000000000003_icmp_v4 meta l4proto icmp ct mark set (ct mark & 0x0000ffff) | 0x00030000 accept comment "innerwall rule 0191e5c0-0000-7000-8000-000000000003/icmp mark 3"
+		ip6 saddr @r_0191e5c0_0000_7000_8000_000000000003_icmp_v6 meta l4proto ipv6-icmp ct mark set (ct mark & 0x0000ffff) | 0x00030000 accept comment "innerwall rule 0191e5c0-0000-7000-8000-000000000003/icmp mark 3"
+		log prefix "innerwall " group 200 drop comment "innerwall terminal enforced"
+	}
+}

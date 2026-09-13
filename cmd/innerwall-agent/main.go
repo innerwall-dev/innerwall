@@ -7,10 +7,13 @@
 //
 //	enroll   exchange a provisioning token for a workload credential
 //	renew    rotate the workload credential over mutual TLS
-//	daemon   hold the sync stream, apply policy, report inventory, renew
+//	daemon   hold the sync stream, apply policy to the owned nftables table,
+//	         collect and report flows, report inventory, renew
+//	down     the local kill switch: delete the owned nftables table
 //
-// Flow collection and firewall enforcement are wired in by later
-// milestones behind the interfaces the daemon already uses.
+// The daemon re-applies its last acknowledged policy from disk before it
+// dials anything, and leaves the kernel rules in place when it exits;
+// only `down` removes them (ADR-0011).
 package main
 
 import (
@@ -53,7 +56,8 @@ usage: innerwall-agent <command> [flags]
 commands:
   enroll     exchange a provisioning token for a workload credential
   renew      rotate the workload credential
-  daemon     run the agent: sync stream, inventory, heartbeats, renewal
+  daemon     run the agent: sync stream, enforcement, flows, inventory, renewal
+  down       local kill switch: delete the owned nftables table (root outranks the platform)
   version    print the version
 
 Run "innerwall-agent <command> -h" for the flags of a command.
@@ -72,6 +76,8 @@ func run(ctx context.Context, args []string) error {
 		return runRenew(ctx, args[1:])
 	case "daemon":
 		return runDaemon(ctx, args[1:])
+	case "down":
+		return runDown(ctx, args[1:])
 	case "version":
 		fmt.Println("innerwall-agent", version)
 		return nil

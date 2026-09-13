@@ -4,11 +4,33 @@ import (
 	"context"
 	"log/slog"
 	"math/rand/v2"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 )
+
+// Sources runs several sources as one stream of observations. Each
+// member is restarted on its own failure with jittered backoff, so one
+// source that cannot run (a missing kernel facility) never stops another.
+type Sources []Source
+
+// Run implements Source. It returns when ctx ends and never reports an
+// error: a member's failures are logged and retried.
+func (ss Sources) Run(ctx context.Context, emit func(Observation)) error {
+	var wg sync.WaitGroup
+	for i, s := range ss {
+		wg.Add(1)
+		go func(i int, s Source) {
+			defer wg.Done()
+			rng := rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), uint64(i))) //nolint:gosec // jitter, not secrecy
+			runWithRestart(ctx, s, slog.Default(), time.Second, time.Minute, rng, emit)
+		}(i, s)
+	}
+	wg.Wait()
+	return nil
+}
 
 // DefaultWindow is the aggregation window before the control plane has
 // said otherwise in HelloAck.
@@ -77,7 +99,7 @@ func (c *Collector) Run(ctx context.Context) error {
 	rng := rand.New(rand.NewPCG(uint64(c.now().UnixNano()), 2)) //nolint:gosec // jitter, not secrecy
 
 	agg := NewAggregator(c.now())
-	go c.runSource(ctx, agg, base, limit, rng)
+	go runWithRestart(ctx, c.Source, c.log(), base, limit, rng, agg.Add)
 
 	timer := time.NewTimer(c.Window())
 	defer timer.Stop()
@@ -97,16 +119,18 @@ func (c *Collector) Run(ctx context.Context) error {
 	}
 }
 
-func (c *Collector) runSource(ctx context.Context, agg *Aggregator, base, limit time.Duration, rng *rand.Rand) {
+// runWithRestart runs src until ctx ends, restarting it after every
+// failure with jittered backoff.
+func runWithRestart(ctx context.Context, src Source, log *slog.Logger, base, limit time.Duration, rng *rand.Rand, emit func(Observation)) {
 	attempt := 0
 	for {
-		err := c.Source.Run(ctx, agg.Add)
+		err := src.Run(ctx, emit)
 		if ctx.Err() != nil {
 			return
 		}
 		attempt++
 		wait := backoff(attempt, base, limit, rng)
-		c.log().Error("flow source stopped; restarting", "error", err, "attempt", attempt, "wait", wait)
+		log.Error("flow source stopped; restarting", "error", err, "attempt", attempt, "wait", wait)
 		select {
 		case <-ctx.Done():
 			return

@@ -25,7 +25,7 @@ func runEnroll(ctx context.Context, args []string) error {
 	server := fs.String("server", "", "control-plane address, host:port")
 	token := fs.String("token", "", "provisioning token (default $"+envToken+", which keeps it out of the process list)")
 	bootstrapCA := fs.String("bootstrap-ca", "", "PEM trust anchor for the control plane, delivered out of band with the token; empty uses the system trust store")
-	stateDir := fs.String("state-dir", envOr(envStateDir, defaultStateDir), "directory for the key, credential, and bundle")
+	stateDir := fs.String("state-dir", stateDirDefault(), "directory for the key, credential, and bundle")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -89,7 +89,7 @@ func runEnroll(ctx context.Context, args []string) error {
 func runRenew(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall-agent renew", flag.ContinueOnError)
 	server := fs.String("server", "", "control-plane address, host:port")
-	stateDir := fs.String("state-dir", envOr(envStateDir, defaultStateDir), "directory holding the key, credential, and bundle")
+	stateDir := fs.String("state-dir", stateDirDefault(), "directory holding the key, credential, and bundle")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -118,9 +118,11 @@ func runRenew(ctx context.Context, args []string) error {
 	return nil
 }
 
-func envOr(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
+// stateDirDefault is the state directory flag's default: the environment
+// override when set, else the packaged location.
+func stateDirDefault() string {
+	if v := os.Getenv(envStateDir); v != "" {
 		return v
 	}
-	return fallback
+	return defaultStateDir
 }
