@@ -15,11 +15,13 @@
 //	ruleset        author rulesets from JSON documents
 //	workload       inspect workloads; set labels and enforcement mode
 //	policy         force a render; show a workload's rendered policy
+//	flows          query stored flow records: a workload's windows, a rollup
+//	               over a label scope, a workload's totals since first seen
 //
 // Authoring commands write Postgres directly and render there; the running
 // control plane learns of changed policy through the database and pushes
-// it to connected agents (ADR-0018). Flow ingestion and the REST façade are
-// wired in by later milestones.
+// it to connected agents (ADR-0018). The REST façade is wired in by a later
+// milestone; until then the flows commands are the only query surface.
 package main
 
 import (
@@ -77,6 +79,7 @@ commands:
   ruleset        create | update | delete | get | list rulesets (JSON documents)
   workload       list | status | set-labels | set-mode
   policy         render | show
+  flows          list | rollup | totals
   version        print the version
 
 Run "innerwall <command> -h" for the flags of a command.
@@ -107,6 +110,8 @@ func run(ctx context.Context, args []string) error {
 		return runWorkload(ctx, args[1:])
 	case "policy":
 		return runPolicy(ctx, args[1:])
+	case "flows":
+		return runFlows(ctx, args[1:])
 	case "version":
 		fmt.Println("innerwall", version)
 		return nil
