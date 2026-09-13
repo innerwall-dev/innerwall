@@ -4,7 +4,7 @@ Open-source microsegmentation for heterogeneous server estates: VMs, bare metal,
 
 A small agent on each workload observes network flows and programs the operating system's native firewall. A control plane turns label-based policy into per-host rulesets, pushes them over persistent streams, and renders the estate's real traffic as a live dependency map.
 
-**Status:** pre-release. Enrollment, the sync stream, and policy authoring from the command line work end to end; flow telemetry, enforcement, and the UI follow. See [ROADMAP.md](ROADMAP.md).
+**Status:** pre-release. Enrollment, the sync stream, policy authoring from the command line, and flow telemetry from the host to queryable storage work end to end; enforcement and the UI follow. See [ROADMAP.md](ROADMAP.md).
 
 ## Why
 
