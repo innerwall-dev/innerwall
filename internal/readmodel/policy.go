@@ -12,15 +12,15 @@ import (
 	"github.com/innerwall-dev/innerwall/internal/rendered"
 )
 
-// RulesetRef names the authored ruleset a rendered rule came from, with
-// the authored object's timestamps. It is nil on a rendered rule whose
-// authored rule no longer exists, which can happen between a delete and
-// the render it triggers.
+// RulesetRef names the authored ruleset a rendered rule came from. It is
+// nil on a rendered rule whose authored rule no longer exists, which can
+// happen between a delete and the render it triggers. It carries no
+// timestamps: nothing persisted records when a rule was created or last
+// changed, and the ruleset's instants are not the rule's; per-rule
+// instants arrive with the authoring schema.
 type RulesetRef struct {
-	ID        uuid.UUID
-	Name      string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID   uuid.UUID
+	Name string
 }
 
 // RenderedRule is one resolved inbound permission as the agent holds it
@@ -116,7 +116,7 @@ func (s *Reader) RenderedPolicy(ctx context.Context, id identity.WorkloadID) (*R
 			if a, ok := authored[authoredID]; ok {
 				rule.Description = a.Description
 				rs := owner[authoredID]
-				rule.Ruleset = &RulesetRef{ID: rs.ID, Name: rs.Name, CreatedAt: rs.CreatedAt, UpdatedAt: rs.UpdatedAt}
+				rule.Ruleset = &RulesetRef{ID: rs.ID, Name: rs.Name}
 			}
 		}
 		out.Rules = append(out.Rules, rule)

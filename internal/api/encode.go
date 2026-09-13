@@ -340,10 +340,8 @@ type portRangeJSON struct {
 }
 
 type rulesetRefJSON struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 type renderedRuleJSON struct {
@@ -382,7 +380,7 @@ func renderedPolicyJSON(p *readmodel.RenderedPolicy) renderedPolicyResponse {
 			rj.Ports = append(rj.Ports, portRangeJSON{Start: pr.Start, End: pr.End})
 		}
 		if r.Ruleset != nil {
-			rj.Ruleset = &rulesetRefJSON{ID: r.Ruleset.ID.String(), Name: r.Ruleset.Name, CreatedAt: timestamp(r.Ruleset.CreatedAt), UpdatedAt: timestamp(r.Ruleset.UpdatedAt)}
+			rj.Ruleset = &rulesetRefJSON{ID: r.Ruleset.ID.String(), Name: r.Ruleset.Name}
 		}
 		out.Rules = append(out.Rules, rj)
 	}

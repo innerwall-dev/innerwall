@@ -350,12 +350,19 @@ func TestWorkloadEndpoints(t *testing.T) {
 		t.Fatalf("rendered policy = %d %v", resp.status, body)
 	}
 	r0 := field(body, "rules.0").(map[string]any)
-	if r0["id"] != s.fx.ruleID || r0["verdict"] != "allowed" || r0["protocol"] != "tcp" || field(r0, "ports.0.start") != float64(5432) || field(r0, "peer_cidrs.0") != "10.0.0.10/32" || field(r0, "ruleset.name") != "web-to-db" || field(r0, "ruleset.updated_at") != "2026-09-13T11:00:00Z" || r0["description"] != "postgres from web" {
+	if r0["id"] != s.fx.ruleID || r0["verdict"] != "allowed" || r0["protocol"] != "tcp" || field(r0, "ports.0.start") != float64(5432) || field(r0, "peer_cidrs.0") != "10.0.0.10/32" || field(r0, "ruleset.name") != "web-to-db" || field(r0, "ruleset.id") == nil || r0["description"] != "postgres from web" {
 		t.Fatalf("rule 0 = %v", r0)
 	}
 	for k := range r0 {
 		if strings.Contains(k, "count") {
 			t.Fatalf("rendered policy carries a count: %s", k)
+		}
+	}
+	// No per-rule instants exist in persisted state, and the ruleset's
+	// are not substituted for them.
+	for k := range field(r0, "ruleset").(map[string]any) {
+		if strings.HasSuffix(k, "_at") {
+			t.Fatalf("rendered rule carries a timestamp it has no persisted source for: ruleset.%s", k)
 		}
 	}
 	resp, body = s.get(t, "/api/v1/workloads/"+s.fx.web.String()+"/rendered-policy")
