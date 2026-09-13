@@ -3,9 +3,10 @@
 // (ADR-0021). Its handlers are hand-shaped over the shared domain layer
 // (ADR-0007 as amended): they carry the semantics a browser-facing surface
 // needs and hold no domain logic, calling the same domain functions the
-// command line calls. Design rules for estate-scale automation: bulk
-// endpoints, cursor pagination everywhere, async jobs for anything that
-// fans out.
+// command line calls. Design rules for estate scale: aggregation is
+// server-side, unbounded reads paginate by cursor, a fan-out mutation
+// returns a recorded intent and never blocks on convergence, and bulk
+// operations exist only where the console's screens demand them.
 //
 // The package owns the listener's transport rules: TLS only; a middleware
 // that resolves a session cookie or a bearer operator token to the one
