@@ -5,7 +5,7 @@
 // only with a verified workload credential. An interceptor enforces that
 // split per service and is the only place identity is derived from a
 // connection; handlers read it from the request context and nowhere else
-// (ADR-0020).
+// (ADR-0016).
 //
 // The sync stream (ADR-0002, ADR-0015) lives here too: one live stream per
 // workload, registered in an in-process map so that a render's

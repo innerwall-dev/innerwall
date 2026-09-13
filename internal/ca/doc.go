@@ -2,7 +2,7 @@
 // Authority interface that enrollment and renewal sign through, and the two
 // rules every implementation shares: a certificate signing request contributes
 // only its public key, and identity is granted by the control plane, never
-// requested by the enrollee (ADR-0020). Certificates carry identity only: one
+// requested by the enrollee (ADR-0016). Certificates carry identity only: one
 // URI SAN with a control-plane-assigned UUID. Mutable attributes never enter a
 // certificate.
 //

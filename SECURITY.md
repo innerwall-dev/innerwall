@@ -12,7 +12,7 @@ Supported versions: the latest minor release. Pre-1.0, fixes land on `main` and 
 
 ## Trust model (summary)
 
-The full model lives in `ARCHITECTURE.md` §11 and ADR-0020/0011; the load-bearing properties:
+The full model lives in `ARCHITECTURE.md` §11 and ADR-0016/0011; the load-bearing properties:
 
 - **The agent is root-privileged by necessity** (it programs the host firewall) and minimized by design: static binary, no listening ports (outbound-only dialing), no runtime downloads, **no self-update**.
 - **Fail static.** Control-plane loss never changes enforcement on any host; last-known policy persists locally.

@@ -1,7 +1,7 @@
 // Package credential is the agent's side of enrollment and renewal: it
 // generates the workload keypair, builds certificate signing requests,
 // calls the control plane, and keeps the resulting credential in a state
-// directory the daemon reads (ADR-0020).
+// directory the daemon reads (ADR-0016).
 //
 // The private key is generated here and never leaves the host. The
 // control plane sees only a CSR, and the CSR contributes only its public

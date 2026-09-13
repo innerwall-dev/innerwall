@@ -35,7 +35,7 @@ Direction, not dates. Ordering follows ADR-0001: every milestone before enforcem
 - **Windows agent** — second enforcement backend behind the enforcer interface (ADR-0003)
 - **Columnar FlowStore** implementation when a real estate's query latency demands it (ADR-0009)
 - **Relay tier** with signed-bundle caching; **regional federation** with per-region intermediates (ADR-0012)
-- External signing backends behind the existing interface (ADR-0020)
+- External signing backends behind the existing interface (ADR-0016)
 
 ## Non-goals (deliberate)
 - No orchestrator dependency — heterogeneous server estates are the point

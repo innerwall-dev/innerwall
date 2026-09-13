@@ -1,5 +1,5 @@
 # The supported v1 deployment: one control-plane binary and one Postgres
-# (ADR-0019). All durable state lives in Postgres; the control plane is
+# (ADR-0017). All durable state lives in Postgres; the control plane is
 # stateless and can be replaced or scaled to N replicas behind a load balancer.
 # The one exception is the signing authority's key, which is operator
 # configuration: here it lives in the innerwall-state volume, and every

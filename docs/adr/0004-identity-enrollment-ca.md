@@ -1,6 +1,6 @@
 # ADR-0004: Token-gated enrollment, SPIFFE-style identity, embedded CA behind an interface
 
-**Status:** Superseded by ADR-0016
+**Status:** Accepted
 
 ## Context
 
@@ -20,3 +20,7 @@ The only hard identity problem is the first certificate. Trust-on-first-use (acc
 - Enrollment trust anchors in an operator-generated, scoped, expiring secret — auditable and revocable pre-use.
 - Short TTLs make agent renewal a hot path; the CA endpoint is availability-critical for renewals (fail-static covers enforcement regardless — ADR-0011).
 - The interface commits us to keeping enrollment logic CA-agnostic.
+
+## Amendments
+
+- **2026-09-13 (PR #5).** ADR-0016 implements this record's identity semantics at the signing boundary (the exact URI form, the signing-request rule, the listener boundary, and the token as the carrier of enrollment-policy constraints); it does not supersede this record, and the earlier `Superseded by ADR-0016` status line is corrected.

@@ -42,7 +42,7 @@ const offlineWriteTimeout = 5 * time.Second
 // session is one live sync stream: the in-process record that lets a
 // render's announcement find the stream to push to. It holds only stream
 // state: what was last sent on this stream. Everything durable is in the
-// registry (ADR-0019).
+// registry (ADR-0017).
 type session struct {
 	id     identity.WorkloadID
 	ctx    context.Context

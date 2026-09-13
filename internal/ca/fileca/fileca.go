@@ -33,7 +33,7 @@ const (
 
 	// DefaultRootTTL is the lifetime of a generated root. The root is
 	// long-lived because rotating it means re-enrolling every workload;
-	// the credentials it issues are short-lived (ADR-0020).
+	// the credentials it issues are short-lived (ADR-0016).
 	DefaultRootTTL = 10 * 365 * 24 * time.Hour
 
 	dirMode  os.FileMode = 0o700

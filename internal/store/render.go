@@ -27,7 +27,7 @@ const PolicyChannel = "innerwall_policy"
 
 // renderLockKey is the advisory lock every render transaction takes, so
 // that renders in any two processes (the control plane and the command
-// line, or two replicas) are serialized (ADR-0019).
+// line, or two replicas) are serialized (ADR-0017).
 const renderLockKey int64 = 0x1_4e4e_4552_5741 // arbitrary, fixed
 
 // RenderTx implements compiler.Store.

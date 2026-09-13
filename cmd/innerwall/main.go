@@ -2,7 +2,7 @@
 // service, agent gateway, policy compiler, flow ingestion, and signing
 // authority. All durable state lives in Postgres; replicas are stateless and
 // interchangeable. The signing authority's key is the one exception:
-// operator-provisioned configuration, identical on every replica (ADR-0019).
+// operator-provisioned configuration, identical on every replica (ADR-0017).
 //
 // Subcommands:
 //

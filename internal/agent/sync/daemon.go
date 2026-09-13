@@ -21,7 +21,7 @@ import (
 
 // ErrReenrollRequired is returned by Run when the control plane directs
 // the workload to re-enroll. The daemon cannot do that itself: enrollment
-// needs a provisioning token delivered out of band (ADR-0020).
+// needs a provisioning token delivered out of band (ADR-0016).
 var ErrReenrollRequired = errors.New("sync: control plane directed re-enrollment; enroll again with a new provisioning token")
 
 // Dialer opens a connection to the control plane. The default dials gRPC

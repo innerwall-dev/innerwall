@@ -7,7 +7,7 @@
 //
 // Every component that formats or parses that URI goes through this package.
 // Nothing else in the repository builds or inspects the string, so the
-// representation can only ever change in one place (ADR-0020).
+// representation can only ever change in one place (ADR-0016).
 package identity
 
 import (
@@ -123,7 +123,7 @@ func ParseURIString(s string) (WorkloadID, error) {
 // FromCertificate extracts the workload identity a certificate binds. The
 // certificate must carry exactly one URI SAN and it must parse; the subject,
 // common name, and every other field are ignored, because the URI SAN is the
-// only place identity lives (ADR-0020).
+// only place identity lives (ADR-0016).
 func FromCertificate(cert *x509.Certificate) (WorkloadID, error) {
 	if cert == nil {
 		return WorkloadID{}, ErrNoIdentity

@@ -1,7 +1,6 @@
 # ADR-0016: Enrollment, workload identity, and credential issuance
 
-**Status:** Superseded by ADR-0020
-**Supersedes:** ADR-0004
+**Status:** Accepted
 
 ## Context
 
@@ -35,3 +34,8 @@ Implementing both made three things concrete that ADR-0004 left open or stated d
 - Short lifetimes make renewal a hot path and the authority availability-critical for renewals. Enforcement is unaffected by either (ADR-0011). Revocation of a token stops future enrollments and nothing else; a deny-list of workload identities, for locking out an enrolled workload before its credential expires, is a registry feature that lands with the sync stream.
 - Adding a method to the agent service requires nothing of the boundary; adding a service reachable without a credential requires a deliberate change to the interceptor's one exception, which is the review point.
 - The bootstrap anchor is one more artifact for the installer to carry. Its absence in a development setting is a usability cost accepted so that a token is never sent to an unverified endpoint by default.
+
+## Amendments
+
+- **2026-09-13 (PR #5): relationship to ADR-0004.** This record implements ADR-0004's identity semantics at the signing boundary; it does not supersede ADR-0004. The `Supersedes: ADR-0004` header is removed, and the sentences in Context ("Where ADR-0004 and this ADR differ, this ADR governs") and Consequences ("ADR-0004 is superseded") are withdrawn. ADR-0004 remains Accepted.
+- **2026-09-13 (PR #5): automatic renewal.** Decision 4 anticipated the daemon's renewal point as "roughly half of lifetime". The daemon renews automatically in the last third of the certificate's lifetime, at a jittered point, through the existing `RenewCredential` path, and swaps the renewed credential in without dropping its stream. A failed renewal retries with backoff; an expired credential is reported and the daemon does not enroll itself.
