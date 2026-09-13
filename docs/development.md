@@ -27,6 +27,7 @@ The Makefile is a thin dispatcher. Every target wraps a tool in one to three lin
 | `make build` | Static (CGO disabled) build of both binaries into `bin/` |
 | `make test` | `go test -race ./...` |
 | `make lint` | golangci-lint, `buf lint`, and Biome (`biome ci`) over `ui/` |
+| `make openapi` | Lints the operator surface contract, `api/openapi.yaml` (spec lint only) |
 | `make proto` | `buf generate` from `proto/` into `internal/gen/` |
 | `make sqlc` | `sqlc generate` from `internal/store/queries/` into `internal/store/db/` |
 | `make ui` | `npm ci` and a production Vite build into `ui/dist/` |
@@ -51,6 +52,7 @@ Never edit generated code. Change the source, regenerate, commit both.
 `.github/workflows/ci.yml` runs on every push to `main` and every PR:
 
 - `build`, `test`, `lint` (Go + Biome), `ui` (production build). The `test` job runs a Postgres service container and sets `INNERWALL_TEST_DATABASE_URL`; tests that need a database skip when it is unset, so `make test` works offline and runs the integration tests when you point that variable at a disposable database. Database tests hold a session-level advisory lock for their duration, so the packages `go test` runs in parallel take turns on the one database rather than truncating each other's tables.
+- `openapi`: `scripts/check-openapi.sh`, which lints `api/openapi.yaml` as OpenAPI 3.1 against the rules in `api/vacuum-ruleset.yaml`. That is a check on the document alone; a Go test in `internal/api` checks the document against the routes the surface mounts and the closed sets it names. Nothing conforms responses to the document at runtime.
 - `proto`: `buf lint`, `buf build`, and `scripts/check-proto-breaking.sh`, which runs `buf breaking` against `main` and fails unless the PR title or body references an ADR (`ADR-NNNN`)
 - `drift`: `scripts/check-drift.sh`, which runs `make proto sqlc` and fails on any diff or untracked generated file
 - `dco`: `scripts/check-dco.sh`, which requires a `Signed-off-by` trailer on every commit in the PR
@@ -62,8 +64,10 @@ Never edit generated code. Change the source, regenerate, commit both.
 ```
 cmd/innerwall/            control-plane main
 cmd/innerwall-agent/      agent main
-internal/api              operator surface: REST/JSON handlers, auth middleware, listener TLS
+api/openapi.yaml          the operator surface contract, hand-authored OpenAPI 3.1; api/vacuum-ruleset.yaml is its lint ruleset
+internal/api              operator surface: REST/JSON handlers (reads and writes), auth middleware, listener TLS
 internal/readmodel        operator read model: rollups, flow pages, workloads, rendered policy (shared by the surface and the command line); readmodeltest/ holds its doubles
+internal/fleet            operator write domain over the registry and the renderer: label edits, bulk mode changes, selector preview, dry-run render; fleettest/ holds an in-memory store for it and for policy
 internal/gateway          agent gRPC surface: enrollment, renewal, the sync stream and its pushes
 internal/compiler         renders the authored model into per-workload policies; versions by diff
 internal/policy           authored model (services, address groups, rulesets), admission, documents

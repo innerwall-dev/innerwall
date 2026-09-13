@@ -1,7 +1,7 @@
 # Thin dispatcher. Every target is a 1–3-line wrapper over a real tool;
 # anything with logic lives in scripts/.
 
-.PHONY: build test test-netns lint proto sqlc ui dev drift tools migrate
+.PHONY: build test test-netns lint openapi proto sqlc ui dev drift tools migrate
 
 build:
 	CGO_ENABLED=0 go build -trimpath -o bin/ ./cmd/...
@@ -16,6 +16,9 @@ lint:
 	golangci-lint run ./...
 	buf lint
 	npm --prefix ui run lint
+
+openapi:
+	scripts/check-openapi.sh
 
 proto:
 	buf generate

@@ -1,0 +1,2136 @@
+openapi: 3.1.0
+info:
+  title: Innerwall operator surface
+  version: "1"
+  summary: The public REST/JSON surface of the Innerwall control plane.
+  description: |
+    The operator surface is what the console and automation consume: one
+    TLS-only listener beside the agent gateway, serving these endpoints under
+    `/api/v1` (ADR-0021). The handlers behind them hold no domain logic; each
+    calls the same domain function the control plane's command line calls, so
+    the two transports cannot diverge on what is admitted or what is written
+    (ADR-0007 as amended). This document describes the implementation as it
+    is; where the two disagree, the disagreement is a defect in one of them,
+    never something to paper over here.
+
+    ## Authentication
+
+    Every endpoint except `POST /session` requires a credential: the session
+    cookie a login sets, or an operator token as a bearer credential. Both
+    resolve to the one operator; authorization is binary. A request without
+    a valid credential is a `401` problem of type `unauthenticated`. Requests
+    that are not reads are refused as `403 cross-origin` when a browser marks
+    them as coming from another origin.
+
+    ## Errors
+
+    Every error is a problem document (`application/problem+json`) with a
+    stable `type` a client branches on, an HTTP `status`, a `title`, and an
+    optional `detail` for people. Types are URNs under
+    `urn:innerwall:problem:`; they are identifiers, not locations. Some
+    problems carry extensions: a `validation` problem carries `errors`, one
+    finding per field to fix, each with a `path` into the request body, the
+    stable name of the `rule` it breaks, and a `message`; a
+    `precondition-failed` problem carries `current_version`; a
+    `match-count-mismatch` problem carries `expected` and `matched`.
+
+    ## Versions and conditional writes
+
+    Every authored object (ruleset, rule, service, address group) and a
+    workload's label set carries an opaque `version`, also returned as the
+    response's `ETag`. Updating or deleting an existing resource requires
+    `If-Match` with that version: a write without it is `428
+    precondition-required`; a write naming a version the resource no longer
+    holds is `412 precondition-failed` with the current version, so the
+    client re-reads and decides. The wildcard `*` names no version and is
+    refused as `428`; a weak tag never matches. Creating a resource needs no
+    precondition. An authored object's version is derived from the instant of
+    its last write, so every write moves it; a rule's version is its own, not
+    its ruleset's. A label set's version is a digest of the set.
+
+    ## Cursors
+
+    Unbounded reads paginate by an opaque cursor: a page carries
+    `next_cursor`, null on the last page, which the client passes back as
+    `cursor` to continue. A cursor is interpreted only by the read that
+    issued it; one handed to another read is a `400 invalid-parameter`.
+
+    ## Mutations that fan out
+
+    `POST /mode-changes` records an intent and returns an acknowledgment of
+    it. There is no job resource and no status endpoint: convergence is
+    observed on the workload reads, as each workload's applied version
+    against its latest rendered version.
+
+    ## Deliberately absent
+
+    Generic bulk operations, any endpoint that sets or resets the operator
+    password (the command line on the host does that), any job or progress
+    resource, and a resend-snapshot action (see the pull request that carried
+    this document for why it is deferred).
+  contact:
+    name: Innerwall maintainers
+    url: https://github.com/innerwall-dev/innerwall
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: https://{host}/api/v1
+    description: The operator listener of a control plane.
+    variables:
+      host:
+        default: localhost:8080
+tags:
+  - name: session
+    description: Logging in and out, and who is logged in.
+  - name: flows
+    description: Flow rollups and flow pages, from what ingestion stored.
+  - name: workloads
+    description: The fleet, one workload, its rendered policy, and its labels.
+  - name: policy
+    description: Authoring rulesets, rules, services, and address groups; previewing and dry-running.
+  - name: mode-changes
+    description: Bulk enforcement-mode changes as recorded intents.
+  - name: tokens
+    description: Provisioning tokens and operator tokens.
+security:
+  - session: []
+  - bearer: []
+paths:
+  /session:
+    post:
+      operationId: createSession
+      tags: [session]
+      summary: Log in with the operator password.
+      description: |
+        The one endpoint reachable without a credential. On success a session
+        cookie is set (unreadable by scripts, TLS only, not sent cross-site)
+        with a fixed seven-day lifetime, and the operator is returned. A
+        control plane with no password refuses with `403 no-password` and
+        never offers to set one. Attempts are throttled per source address;
+        beyond the limit the answer is `429 too-many-attempts` with
+        `Retry-After`.
+      security: []
+      requestBody:
+        required: true
+        description: The operator password.
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Logged in; the cookie is set.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          description: The password is not correct (`invalid-credentials`).
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: No password has been set (`no-password`), or the request was cross-origin (`cross-origin`).
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Too many attempts from this source in the window (`too-many-attempts`).
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    delete:
+      operationId: deleteSession
+      tags: [session]
+      summary: Log out.
+      description: Revokes the session the request authenticated with, if it was a session, and clears the cookie either way.
+      responses:
+        "200":
+          description: Logged out.
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+  /me:
+    get:
+      operationId: getMe
+      tags: [session]
+      summary: The authenticated operator and the site label.
+      responses:
+        "200":
+          description: The operator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+  /flows/rollup:
+    get:
+      operationId: getFlowsRollup
+      tags: [flows]
+      summary: A grouped rollup of stored flow windows.
+      description: |
+        One of a closed set of named groupings over the windows in a range,
+        aggregated in the store and bounded: at most `limit` groups in the
+        requested order, with the totals of the whole and `truncated` set when
+        more groups exist. `effective_from` and `effective_to` are the bounds
+        of the windows actually covered, null when none were. Peers are what
+        ingestion resolved and stored; only the current display name of a
+        stored identity is added.
+      parameters:
+        - name: group_by
+          in: query
+          required: true
+          description: The grouping. The set is closed; nothing else is accepted.
+          schema:
+            type: string
+            enum: ["rule", "rule,peer", "src,dst", "dst,service"]
+        - $ref: "#/components/parameters/from"
+        - $ref: "#/components/parameters/to"
+        - $ref: "#/components/parameters/verdict"
+        - $ref: "#/components/parameters/direction"
+        - name: workload
+          in: query
+          description: Restrict to one workload.
+          schema:
+            $ref: "#/components/schemas/WorkloadID"
+        - $ref: "#/components/parameters/label"
+        - $ref: "#/components/parameters/service"
+        - name: order
+          in: query
+          description: The order groups are ranked in before the limit applies.
+          schema:
+            type: string
+            enum: [connections, recent]
+            default: connections
+        - name: limit
+          in: query
+          description: Maximum groups returned; the store's default and maximum apply.
+          schema:
+            type: integer
+            minimum: 1
+            default: 200
+            maximum: 1000
+      responses:
+        "200":
+          description: The rollup.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rollup"
+        "400":
+          $ref: "#/components/responses/InvalidParameter"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /flows:
+    get:
+      operationId: getFlows
+      tags: [flows]
+      summary: One page of a workload's stored flow windows.
+      description: There is no unbounded form; `workload` is required.
+      parameters:
+        - name: workload
+          in: query
+          required: true
+          description: The workload whose windows are listed.
+          schema:
+            $ref: "#/components/schemas/WorkloadID"
+        - $ref: "#/components/parameters/from"
+        - $ref: "#/components/parameters/to"
+        - $ref: "#/components/parameters/verdict"
+        - $ref: "#/components/parameters/direction"
+        - name: peer
+          in: query
+          description: Restrict to one stored peer key (a workload id, an address group id, or a bare address).
+          schema:
+            type: string
+        - $ref: "#/components/parameters/service"
+        - $ref: "#/components/parameters/cursor"
+        - name: limit
+          in: query
+          description: Page size; the store's default and maximum apply.
+          schema:
+            type: integer
+            minimum: 1
+            default: 100
+            maximum: 500
+      responses:
+        "200":
+          description: One page, newest window first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FlowsPage"
+        "400":
+          $ref: "#/components/responses/InvalidParameter"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /workloads:
+    get:
+      operationId: listWorkloads
+      tags: [workloads]
+      summary: One page of the fleet in fleet order.
+      description: |
+        Fleet order is the order the fleet screen shows: the workloads needing
+        attention first (degraded, offline, pending, synced), most recently
+        seen first within a state.
+      parameters:
+        - $ref: "#/components/parameters/label"
+        - name: mode
+          in: query
+          description: Restrict to workloads in this enforcement mode.
+          schema:
+            $ref: "#/components/schemas/Mode"
+        - name: sync_state
+          in: query
+          description: Restrict to workloads in this sync state.
+          schema:
+            $ref: "#/components/schemas/SyncState"
+        - $ref: "#/components/parameters/cursor"
+        - name: limit
+          in: query
+          description: Page size; the read model's default and maximum apply.
+          schema:
+            type: integer
+            minimum: 1
+            default: 100
+            maximum: 500
+      responses:
+        "200":
+          description: One page of workloads.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [workloads, next_cursor]
+                properties:
+                  workloads:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Workload"
+                  next_cursor:
+                    type: [string, "null"]
+        "400":
+          $ref: "#/components/responses/InvalidParameter"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+  /workloads/{id}:
+    parameters:
+      - $ref: "#/components/parameters/workloadID"
+    get:
+      operationId: getWorkload
+      tags: [workloads]
+      summary: One workload, in the shape the list uses.
+      responses:
+        "200":
+          description: The workload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workload"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /workloads/{id}/rendered-policy:
+    parameters:
+      - $ref: "#/components/parameters/workloadID"
+    get:
+      operationId: getRenderedPolicy
+      tags: [workloads]
+      summary: The persisted rendered policy of one workload.
+      description: Configuration only, no counts; the console pairs it with a rollup. A workload with no persisted policy yet is reported at version zero with no rules.
+      responses:
+        "200":
+          description: The rendered policy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RenderedPolicy"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /workloads/{id}/labels:
+    parameters:
+      - $ref: "#/components/parameters/workloadID"
+    get:
+      operationId: getWorkloadLabels
+      tags: [workloads]
+      summary: A workload's labels, as the resource a label edit is conditioned on.
+      responses:
+        "200":
+          description: The labels and their version.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Labels"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: putWorkloadLabels
+      tags: [workloads]
+      summary: Replace a workload's labels.
+      description: A label change moves the workload in and out of selectors, so the change renders; affected workloads' versions advance.
+      parameters:
+        - $ref: "#/components/parameters/ifMatch"
+      requestBody:
+        required: true
+        description: The complete label set that replaces the current one.
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [labels]
+              properties:
+                labels:
+                  $ref: "#/components/schemas/LabelMap"
+      responses:
+        "200":
+          description: The labels as persisted, with their new version.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Labels"
+        "400":
+          $ref: "#/components/responses/Validation"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "428":
+          $ref: "#/components/responses/PreconditionRequired"
+  /rulesets:
+    get:
+      operationId: listRulesets
+      tags: [policy]
+      summary: Every ruleset, and the version of the state a policy editor authors against.
+      description: |
+        `state_version` is a digest of everything a render reads: each
+        workload's labels, addresses, and mode, and each authored object's
+        last write. A dry run reports the version it computed against, so an
+        editor that started from this value can tell when the state moved.
+      responses:
+        "200":
+          description: The rulesets.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [rulesets, state_version]
+                properties:
+                  rulesets:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Ruleset"
+                  state_version:
+                    $ref: "#/components/schemas/StateVersion"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+    post:
+      operationId: createRuleset
+      tags: [policy]
+      summary: Create a ruleset with its rules.
+      description: The whole ruleset is admitted before anything is persisted, and every workload is rendered after.
+      requestBody:
+        $ref: "#/components/requestBodies/Ruleset"
+      responses:
+        "201":
+          description: The ruleset as persisted.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+            Location:
+              $ref: "#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ruleset"
+        "400":
+          $ref: "#/components/responses/Validation"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "409":
+          $ref: "#/components/responses/DuplicateName"
+  /rulesets/{id}:
+    parameters:
+      - $ref: "#/components/parameters/id"
+    get:
+      operationId: getRuleset
+      tags: [policy]
+      summary: One ruleset with its rules.
+      responses:
+        "200":
+          description: The ruleset.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ruleset"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: putRuleset
+      tags: [policy]
+      summary: Replace a ruleset and all of its rules.
+      description: A rule that keeps its id keeps its `created_at`, and its `updated_at` and version move only when the rule itself changed; a rule without an id is new.
+      parameters:
+        - $ref: "#/components/parameters/ifMatch"
+      requestBody:
+        $ref: "#/components/requestBodies/Ruleset"
+      responses:
+        "200":
+          description: The ruleset as persisted.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ruleset"
+        "400":
+          $ref: "#/components/responses/Validation"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/DuplicateName"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "428":
+          $ref: "#/components/responses/PreconditionRequired"
+    delete:
+      operationId: deleteRuleset
+      tags: [policy]
+      summary: Delete a ruleset and its rules.
+      parameters:
+        - $ref: "#/components/parameters/ifMatch"
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "428":
+          $ref: "#/components/responses/PreconditionRequired"
+  /rulesets/{id}/rules:
+    parameters:
+      - $ref: "#/components/parameters/id"
+    post:
+      operationId: createRule
+      tags: [policy]
+      summary: Add one rule to a ruleset.
+      description: The ruleset is written as a unit, conditioned on the version it was read at inside the control plane, so a concurrent edit is refused rather than overwritten. Findings are relative to the rule.
+      requestBody:
+        $ref: "#/components/requestBodies/Rule"
+      responses:
+        "201":
+          description: The rule as persisted.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+            Location:
+              $ref: "#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rule"
+        "400":
+          $ref: "#/components/responses/Validation"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+  /rulesets/{id}/rules/{rule_id}:
+    parameters:
+      - $ref: "#/components/parameters/id"
+      - name: rule_id
+        in: path
+        required: true
+        description: The rule's id.
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getRule
+      tags: [policy]
+      summary: One rule.
+      responses:
+        "200":
+          description: The rule.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rule"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: putRule
+      tags: [policy]
+      summary: Replace one rule, conditioned on the rule's own version.
+      parameters:
+        - $ref: "#/components/parameters/ifMatch"
+      requestBody:
+        $ref: "#/components/requestBodies/Rule"
+      responses:
+        "200":
+          description: The rule as persisted.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rule"
+        "400":
+          $ref: "#/components/responses/Validation"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "428":
+          $ref: "#/components/responses/PreconditionRequired"
+    delete:
+      operationId: deleteRule
+      tags: [policy]
+      summary: Remove one rule, conditioned on the rule's own version.
+      parameters:
+        - $ref: "#/components/parameters/ifMatch"
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "428":
+          $ref: "#/components/responses/PreconditionRequired"
+  /services:
+    get:
+      operationId: listServices
+      tags: [policy]
+      summary: Every named service.
+      responses:
+        "200":
+          description: The services.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [services]
+                properties:
+                  services:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Service"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+    post:
+      operationId: createService
+      tags: [policy]
+      summary: Create a named service.
+      requestBody:
+        $ref: "#/components/requestBodies/Service"
+      responses:
+        "201":
+          description: The service as persisted.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+            Location:
+              $ref: "#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Service"
+        "400":
+          $ref: "#/components/responses/Validation"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "409":
+          $ref: "#/components/responses/DuplicateName"
+  /services/{id}:
+    parameters:
+      - $ref: "#/components/parameters/id"
+    get:
+      operationId: getService
+      tags: [policy]
+      summary: One service.
+      responses:
+        "200":
+          description: The service.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Service"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: putService
+      tags: [policy]
+      summary: Replace a service's name and entries.
+      parameters:
+        - $ref: "#/components/parameters/ifMatch"
+      requestBody:
+        $ref: "#/components/requestBodies/Service"
+      responses:
+        "200":
+          description: The service as persisted.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Service"
+        "400":
+          $ref: "#/components/responses/Validation"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/DuplicateName"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "428":
+          $ref: "#/components/responses/PreconditionRequired"
+    delete:
+      operationId: deleteService
+      tags: [policy]
+      summary: Delete a service no rule references.
+      parameters:
+        - $ref: "#/components/parameters/ifMatch"
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/InUse"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "428":
+          $ref: "#/components/responses/PreconditionRequired"
+  /address-groups:
+    get:
+      operationId: listAddressGroups
+      tags: [policy]
+      summary: Every address group.
+      responses:
+        "200":
+          description: The address groups.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [address_groups]
+                properties:
+                  address_groups:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AddressGroup"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+    post:
+      operationId: createAddressGroup
+      tags: [policy]
+      summary: Create an address group.
+      description: CIDRs are persisted in canonical masked form, without duplicates.
+      requestBody:
+        $ref: "#/components/requestBodies/AddressGroup"
+      responses:
+        "201":
+          description: The address group as persisted.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+            Location:
+              $ref: "#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddressGroup"
+        "400":
+          $ref: "#/components/responses/Validation"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "409":
+          $ref: "#/components/responses/DuplicateName"
+  /address-groups/{id}:
+    parameters:
+      - $ref: "#/components/parameters/id"
+    get:
+      operationId: getAddressGroup
+      tags: [policy]
+      summary: One address group.
+      responses:
+        "200":
+          description: The address group.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddressGroup"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: putAddressGroup
+      tags: [policy]
+      summary: Replace an address group's name and members.
+      parameters:
+        - $ref: "#/components/parameters/ifMatch"
+      requestBody:
+        $ref: "#/components/requestBodies/AddressGroup"
+      responses:
+        "200":
+          description: The address group as persisted.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddressGroup"
+        "400":
+          $ref: "#/components/responses/Validation"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/DuplicateName"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "428":
+          $ref: "#/components/responses/PreconditionRequired"
+    delete:
+      operationId: deleteAddressGroup
+      tags: [policy]
+      summary: Delete an address group no rule references.
+      parameters:
+        - $ref: "#/components/parameters/ifMatch"
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/InUse"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "428":
+          $ref: "#/components/responses/PreconditionRequired"
+  /mode-changes:
+    post:
+      operationId: createModeChange
+      tags: [mode-changes]
+      summary: Change the enforcement mode of a set of workloads.
+      description: |
+        Exactly one of `selector` or `workload_ids` selects the set;
+        `expected_match_count` is required and must equal what the selection
+        resolves to on the control plane, otherwise the change is refused as
+        `409 match-count-mismatch` with both numbers (preview the selector
+        first). In one transaction the control plane resolves the selection
+        through the renderer's own scope match, records the intent as the set
+        it resolved to, flips the desired mode of exactly that set by id, and
+        renders, so a label change committed meanwhile cannot move the set.
+        The response acknowledges the recorded intent and says nothing about
+        convergence, which is observed on the workload reads as applied
+        version against latest.
+      requestBody:
+        required: true
+        description: The selection, the mode to reach, and the expected size of the selection.
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModeChangeRequest"
+      responses:
+        "200":
+          description: The recorded intent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModeChangeAck"
+        "400":
+          $ref: "#/components/responses/Validation"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "409":
+          description: The selection resolved to a different number of workloads than expected (`match-count-mismatch`).
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              example:
+                type: "urn:innerwall:problem:match-count-mismatch"
+                title: Match count mismatch
+                status: 409
+                expected: 2
+                matched: 3
+  /selectors/preview:
+    post:
+      operationId: previewSelector
+      tags: [policy]
+      summary: What a selector resolves to now.
+      description: Read-only in effect; a POST because the selector is a structured body. The resolution is the same one a mode change uses, so a preview and the change it precedes cannot differ.
+      requestBody:
+        required: true
+        description: The selector to resolve.
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [selector]
+              properties:
+                selector:
+                  $ref: "#/components/schemas/Selector"
+      responses:
+        "200":
+          description: The matched workloads.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [matched, count]
+                properties:
+                  matched:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WorkloadRef"
+                  count:
+                    type: integer
+        "400":
+          $ref: "#/components/responses/Validation"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+  /policies/render-dryrun:
+    post:
+      operationId: renderDryRun
+      tags: [policy]
+      summary: Render a hypothetical policy set and report what would change, persisting nothing.
+      description: |
+        The request carries the complete set of rulesets as they would be
+        authored (services and address groups are the persisted ones,
+        referenced by id or name) and, optionally, the `state_version` the
+        author read before editing. The control plane admits the set exactly
+        as a write would, renders it against persisted state read as one
+        consistent snapshot, diffs every workload's result against its
+        persisted rendered policy through the same delta implementation the
+        sync stream uses, and discards everything. No lock is held and no
+        version moves. `stale` is set when the request named a state version
+        other than the one computed against.
+      requestBody:
+        required: true
+        description: The complete hypothetical set of rulesets, and the state version the author read.
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rulesets]
+              properties:
+                state_version:
+                  $ref: "#/components/schemas/StateVersion"
+                rulesets:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/RulesetInput"
+      responses:
+        "200":
+          description: The per-workload deltas.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DryRunResult"
+        "400":
+          $ref: "#/components/responses/Validation"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+  /provisioning-tokens:
+    get:
+      operationId: listProvisioningTokens
+      tags: [tokens]
+      summary: Every provisioning token, metadata only.
+      description: A secret is never listed; only its digest is stored. Provisioning tokens carry no listing prefix.
+      responses:
+        "200":
+          description: The tokens, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tokens]
+                properties:
+                  tokens:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ProvisioningToken"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+    post:
+      operationId: mintProvisioningToken
+      tags: [tokens]
+      summary: Mint a provisioning token.
+      description: The secret is in this response and nowhere else, ever. A token assigns its labels to every workload it enrolls and may enroll any number while valid.
+      requestBody:
+        required: true
+        description: The token's name, the labels it assigns, and its lifetime.
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                labels:
+                  $ref: "#/components/schemas/LabelMap"
+                ttl_seconds:
+                  type: integer
+                  minimum: 0
+                  description: Lifetime; the default (30 days) when zero or absent.
+      responses:
+        "201":
+          description: The token, with its secret.
+          headers:
+            Location:
+              $ref: "#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ProvisioningToken"
+                  - type: object
+                    required: [token]
+                    properties:
+                      token:
+                        type: string
+                        description: The secret, prefixed `iw_`. Shown once.
+        "400":
+          $ref: "#/components/responses/Validation"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+  /provisioning-tokens/{id}:
+    parameters:
+      - $ref: "#/components/parameters/id"
+    delete:
+      operationId: revokeProvisioningToken
+      tags: [tokens]
+      summary: Revoke a provisioning token.
+      description: Revocation, not deletion; the token stays listed as revoked. Future enrollments with it are refused; workloads it already enrolled are untouched.
+      responses:
+        "204":
+          description: Revoked.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/AlreadyRevoked"
+  /operator-tokens:
+    get:
+      operationId: listOperatorTokens
+      tags: [tokens]
+      summary: Every operator token, prefix and metadata only.
+      responses:
+        "200":
+          description: The tokens, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tokens]
+                properties:
+                  tokens:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/OperatorToken"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+    post:
+      operationId: mintOperatorToken
+      tags: [tokens]
+      summary: Mint an operator token for automation.
+      description: The secret is in this response and nowhere else, ever. It is presented as a bearer credential and resolves to the same principal a session does.
+      requestBody:
+        required: true
+        description: The token's name and its lifetime.
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                ttl_seconds:
+                  type: integer
+                  minimum: 0
+                  description: Lifetime; the token does not expire when zero or absent.
+      responses:
+        "201":
+          description: The token, with its secret.
+          headers:
+            Location:
+              $ref: "#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/OperatorToken"
+                  - type: object
+                    required: [token]
+                    properties:
+                      token:
+                        type: string
+                        description: The secret, prefixed `iwo_`. Shown once.
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+  /operator-tokens/{id}:
+    parameters:
+      - $ref: "#/components/parameters/id"
+    delete:
+      operationId: revokeOperatorToken
+      tags: [tokens]
+      summary: Revoke an operator token.
+      description: Revocation, not deletion; the token stays listed as revoked and no longer authenticates.
+      responses:
+        "204":
+          description: Revoked.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/AlreadyRevoked"
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: innerwall_session
+      description: The session cookie a login sets.
+    bearer:
+      type: http
+      scheme: bearer
+      description: An operator token (`iwo_...`) as a bearer credential.
+  headers:
+    ETag:
+      description: The resource's version, quoted. Pass it back as `If-Match` on a write.
+      schema:
+        type: string
+    Location:
+      description: Where the created resource is.
+      schema:
+        type: string
+  parameters:
+    id:
+      name: id
+      in: path
+      required: true
+      description: The object's id.
+      schema:
+        type: string
+        format: uuid
+    workloadID:
+      name: id
+      in: path
+      required: true
+      description: The workload's id.
+      schema:
+        $ref: "#/components/schemas/WorkloadID"
+    ifMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: The version the caller last read, as the resource's entity tag. Required on every update and delete.
+      schema:
+        type: string
+    from:
+      name: from
+      in: query
+      description: Start of the range (RFC 3339). Defaults to a day before `to`.
+      schema:
+        type: string
+        format: date-time
+    to:
+      name: to
+      in: query
+      description: End of the range (RFC 3339), exclusive. Defaults to now.
+      schema:
+        type: string
+        format: date-time
+    verdict:
+      name: verdict
+      in: query
+      description: Restrict to records with this verdict.
+      schema:
+        $ref: "#/components/schemas/Verdict"
+    direction:
+      name: direction
+      in: query
+      description: Restrict to records in this direction (only inbound is produced in this version).
+      schema:
+        type: string
+        enum: [inbound, outbound]
+    label:
+      name: label
+      in: query
+      description: A `key=value` requirement; repeat to AND keys, repeat a key to OR its values. Restricts to the workloads the selector currently matches.
+      schema:
+        type: array
+        items:
+          type: string
+      style: form
+      explode: true
+    service:
+      name: service
+      in: query
+      description: A destination service, `<protocol>/<port>` such as `tcp/5432`, or `icmp`.
+      schema:
+        type: string
+    cursor:
+      name: cursor
+      in: query
+      description: The `next_cursor` of the previous page.
+      schema:
+        type: string
+  requestBodies:
+    Ruleset:
+      required: true
+      description: A ruleset with its rules, in the document form the command line reads.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/RulesetInput"
+    Rule:
+      required: true
+      description: One rule, in the document form the command line reads.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/RuleInput"
+    Service:
+      required: true
+      description: A service's name and entries.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [name, entries]
+            properties:
+              name:
+                type: string
+              entries:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Entry"
+    AddressGroup:
+      required: true
+      description: An address group's name and member CIDRs.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [name, cidrs]
+            properties:
+              name:
+                type: string
+              cidrs:
+                type: array
+                items:
+                  type: string
+  responses:
+    Unauthenticated:
+      description: No valid credential was presented (`unauthenticated`).
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    NotFound:
+      description: No such resource (`not-found`). A malformed id is not found, since nothing has it.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    InvalidRequest:
+      description: The body is not a JSON document of the expected shape (`invalid-request`).
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    InvalidParameter:
+      description: A query or path parameter cannot be read (`invalid-parameter`); `detail` names it.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Validation:
+      description: The body was read and refused by admission (`validation`); `errors` lists every finding.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+          example:
+            type: "urn:innerwall:problem:validation"
+            title: Validation failed
+            status: 400
+            detail: the request was refused by admission; see errors
+            errors:
+              - path: rules[0].peers[1].cidr
+                rule: cidr
+                message: address is not a valid CIDR (nope)
+    PreconditionRequired:
+      description: The write carries no `If-Match` (`precondition-required`).
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    PreconditionFailed:
+      description: The resource no longer holds the version `If-Match` named (`precondition-failed`); `current_version` is what it holds now.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+          example:
+            type: "urn:innerwall:problem:precondition-failed"
+            title: Precondition failed
+            status: 412
+            current_version: "1789300800007000000"
+    DuplicateName:
+      description: Another object of the kind already has that name, or a rule with that id already exists (`duplicate-name`).
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    InUse:
+      description: A rule references the object, so it cannot be deleted (`in-use`).
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    AlreadyRevoked:
+      description: The token is already revoked (`already-revoked`).
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+  schemas:
+    Problem:
+      description: An error document (RFC 9457 shape) with a stable type and, for some conditions, an extension a client acts on.
+      type: object
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          description: The stable identifier of the condition.
+          enum:
+            - "urn:innerwall:problem:unauthenticated"
+            - "urn:innerwall:problem:invalid-credentials"
+            - "urn:innerwall:problem:no-password"
+            - "urn:innerwall:problem:cross-origin"
+            - "urn:innerwall:problem:too-many-attempts"
+            - "urn:innerwall:problem:invalid-request"
+            - "urn:innerwall:problem:invalid-parameter"
+            - "urn:innerwall:problem:validation"
+            - "urn:innerwall:problem:precondition-required"
+            - "urn:innerwall:problem:precondition-failed"
+            - "urn:innerwall:problem:match-count-mismatch"
+            - "urn:innerwall:problem:duplicate-name"
+            - "urn:innerwall:problem:in-use"
+            - "urn:innerwall:problem:already-revoked"
+            - "urn:innerwall:problem:not-found"
+            - "urn:innerwall:problem:method-not-allowed"
+            - "urn:innerwall:problem:internal"
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        errors:
+          type: array
+          description: On a `validation` problem, one finding per field to fix.
+          items:
+            $ref: "#/components/schemas/Finding"
+        current_version:
+          type: string
+          description: On a `precondition-failed` problem, the version the resource holds now.
+        expected:
+          type: integer
+          description: On a `match-count-mismatch` problem, what the caller expected.
+        matched:
+          type: integer
+          description: On a `match-count-mismatch` problem, what the selection resolved to.
+    Finding:
+      description: One admission failure of a refused write.
+      type: object
+      required: [path, rule, message]
+      properties:
+        path:
+          type: string
+          description: Where in the request body, e.g. `rules[1].peers[0].cidr`.
+        rule:
+          type: string
+          description: The stable name of the admission rule broken, e.g. `cidr`, `selector-empty`, `direction-outbound`.
+        message:
+          type: string
+    Me:
+      description: The operator as the console shows it, and the site label configured on the control plane.
+      type: object
+      required: [display_name, site]
+      properties:
+        display_name:
+          type: [string, "null"]
+        site:
+          type: string
+    WorkloadID:
+      type: string
+      format: uuid
+      description: A workload identity, the UUID the control plane assigned at enrollment.
+    Version:
+      type: string
+      description: An opaque resource version; also the entity tag.
+    StateVersion:
+      type: string
+      description: The version of the state a render reads, derived and never stored.
+    Timestamp:
+      type: string
+      format: date-time
+      description: RFC 3339, UTC.
+    Mode:
+      description: "An enforcement mode: observe only, evaluate without dropping, or enforce."
+      type: string
+      enum: [visibility, simulation, enforced]
+    SyncState:
+      description: A workload's convergence with its rendered policy, as its stream reports it.
+      type: string
+      enum: [synced, pending, degraded, offline]
+    Verdict:
+      description: "The decision a flow received: observed (visibility), allowed, would_block (simulation), or blocked (enforced)."
+      type: string
+      enum: [observed, allowed, would_block, blocked]
+    Protocol:
+      description: A transport protocol.
+      type: string
+      enum: [tcp, udp, icmp]
+    LabelMap:
+      description: Labels as a key to value object.
+      type: object
+      additionalProperties:
+        type: string
+    Selector:
+      type: object
+      description: Label requirements ANDed across keys; a key's values are ORed. An empty selector matches nothing and is refused.
+      additionalProperties:
+        type: array
+        items:
+          type: string
+    Labels:
+      description: A workload's labels with the version a label edit is conditioned on.
+      type: object
+      required: [labels, version]
+      properties:
+        labels:
+          $ref: "#/components/schemas/LabelMap"
+        version:
+          $ref: "#/components/schemas/Version"
+    WorkloadRef:
+      description: A workload named by id, with its current hostname and labels.
+      type: object
+      required: [id, hostname, labels]
+      properties:
+        id:
+          $ref: "#/components/schemas/WorkloadID"
+        hostname:
+          type: string
+        labels:
+          $ref: "#/components/schemas/LabelMap"
+    Entry:
+      type: object
+      required: [protocol]
+      description: One protocol with the ports it permits. No ports means every port; a protocol without ports (icmp) lists none.
+      properties:
+        protocol:
+          $ref: "#/components/schemas/Protocol"
+        ports:
+          type: array
+          items:
+            type: string
+            description: A port (`5432`) or an inclusive range (`6000-6010`).
+    Peer:
+      type: object
+      description: The remote end of a rule; exactly one property is set. An address group may be given by id or, on the way in, by name; the control plane writes ids.
+      properties:
+        workloads:
+          $ref: "#/components/schemas/Selector"
+        address_group:
+          type: string
+        cidr:
+          type: string
+    RuleInput:
+      type: object
+      required: [direction, peers]
+      description: A rule as authored. Services may be given by id or, on the way in, by name; at least one of `services` or `entries` is required. Version and timestamps are ignored on the way in.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Kept across an edit of the ruleset; a rule without one is new.
+        direction:
+          type: string
+          enum: [inbound]
+          description: Only inbound is admitted in this version (ADR-0010).
+        enabled:
+          type: boolean
+          default: true
+        description:
+          type: string
+        peers:
+          type: array
+          items:
+            $ref: "#/components/schemas/Peer"
+        services:
+          type: array
+          items:
+            type: string
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/Entry"
+    Rule:
+      description: A rule as persisted, with its own version and instants.
+      allOf:
+        - $ref: "#/components/schemas/RuleInput"
+        - type: object
+          required: [id, version, created_at, updated_at]
+          properties:
+            version:
+              $ref: "#/components/schemas/Version"
+            created_at:
+              $ref: "#/components/schemas/Timestamp"
+            updated_at:
+              $ref: "#/components/schemas/Timestamp"
+    RulesetInput:
+      description: A ruleset as authored; the ruleset is admitted and written as a unit with its rules.
+      type: object
+      required: [name, scope, rules]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Ignored on create; the path names the ruleset on update.
+        name:
+          type: string
+        description:
+          type: string
+        enabled:
+          type: boolean
+          default: true
+        scope:
+          $ref: "#/components/schemas/Selector"
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/RuleInput"
+    Ruleset:
+      description: A ruleset as persisted, with its version and instants and those of each rule.
+      allOf:
+        - $ref: "#/components/schemas/RulesetInput"
+        - type: object
+          required: [id, version, created_at, updated_at]
+          properties:
+            rules:
+              type: array
+              items:
+                $ref: "#/components/schemas/Rule"
+            version:
+              $ref: "#/components/schemas/Version"
+            created_at:
+              $ref: "#/components/schemas/Timestamp"
+            updated_at:
+              $ref: "#/components/schemas/Timestamp"
+    Service:
+      description: A named, reusable set of protocol and port entries that rules reference.
+      type: object
+      required: [id, name, entries, version, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/Entry"
+        version:
+          $ref: "#/components/schemas/Version"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+    AddressGroup:
+      description: A named set of CIDRs for peers that are not managed workloads.
+      type: object
+      required: [id, name, cidrs, version, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        cidrs:
+          type: array
+          items:
+            type: string
+        version:
+          $ref: "#/components/schemas/Version"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+    ModeChangeRequest:
+      description: A bulk enforcement-mode change as the operator submits it.
+      type: object
+      required: [target_mode, expected_match_count]
+      properties:
+        selector:
+          $ref: "#/components/schemas/Selector"
+        workload_ids:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkloadID"
+        target_mode:
+          $ref: "#/components/schemas/Mode"
+        expected_match_count:
+          type: integer
+          minimum: 0
+    ModeChangeAck:
+      type: object
+      required: [mode_change_id, matched, desired_updated]
+      description: An acknowledgment of the recorded intent; never a statement of progress.
+      properties:
+        mode_change_id:
+          type: string
+          format: uuid
+        matched:
+          type: integer
+          description: The size of the resolved set.
+        desired_updated:
+          type: integer
+          description: How many of them were not already in the target mode.
+    PortRange:
+      description: An inclusive port range; a single port has start equal to end.
+      type: object
+      required: [start, end]
+      properties:
+        start:
+          type: integer
+        end:
+          type: integer
+    RenderedRuleDelta:
+      description: One resolved rule as a dry run reports it.
+      type: object
+      required: [id, protocol, ports, peer_cidrs]
+      properties:
+        id:
+          type: string
+          description: The resolved rule id, `<authored rule id>/<protocol>`.
+        protocol:
+          $ref: "#/components/schemas/Protocol"
+        ports:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortRange"
+        peer_cidrs:
+          type: array
+          items:
+            type: string
+    DryRunResult:
+      description: What rendering the hypothetical set would change, per workload.
+      type: object
+      required: [state_version, stale, workloads]
+      properties:
+        state_version:
+          $ref: "#/components/schemas/StateVersion"
+        stale:
+          type: boolean
+        workloads:
+          type: array
+          description: Only workloads whose rendered policy would differ.
+          items:
+            type: object
+            required: [workload, version, mode, added, removed, changed]
+            properties:
+              workload:
+                $ref: "#/components/schemas/WorkloadRef"
+              version:
+                type: integer
+                description: The persisted version the diff is against; zero when none is rendered yet.
+              mode:
+                type: [object, "null"]
+                required: [from, to]
+                properties:
+                  from:
+                    $ref: "#/components/schemas/Mode"
+                  to:
+                    $ref: "#/components/schemas/Mode"
+              added:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RenderedRuleDelta"
+              removed:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RenderedRuleDelta"
+              changed:
+                type: array
+                items:
+                  type: object
+                  required: [before, after]
+                  properties:
+                    before:
+                      $ref: "#/components/schemas/RenderedRuleDelta"
+                    after:
+                      $ref: "#/components/schemas/RenderedRuleDelta"
+    TokenState:
+      description: "A token's state now: valid, expired, revoked, or otherwise unusable."
+      type: string
+      enum: [valid, expired, revoked, invalid]
+    ProvisioningToken:
+      description: "A provisioning token as listed: metadata only; the secret is never stored."
+      type: object
+      required: [id, name, labels, state, created_at, expires_at, revoked_at, use_count, last_used_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        labels:
+          $ref: "#/components/schemas/LabelMap"
+        state:
+          $ref: "#/components/schemas/TokenState"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+        revoked_at:
+          type: [string, "null"]
+          format: date-time
+        use_count:
+          type: integer
+        last_used_at:
+          type: [string, "null"]
+          format: date-time
+    OperatorToken:
+      description: "An operator token as listed: its prefix and metadata; the secret is never stored."
+      type: object
+      required: [id, prefix, name, state, created_at, expires_at, revoked_at, last_used_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        prefix:
+          type: string
+          description: The prefix and a few leading characters, enough to tell tokens apart in a list.
+        name:
+          type: string
+        state:
+          $ref: "#/components/schemas/TokenState"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+        revoked_at:
+          type: [string, "null"]
+          format: date-time
+        last_used_at:
+          type: [string, "null"]
+          format: date-time
+    Counters:
+      description: Summed counts of a group or of a whole rollup.
+      type: object
+      required: [flow_count, connection_count, byte_count]
+      properties:
+        flow_count:
+          type: integer
+          description: Stored records.
+        connection_count:
+          type: integer
+        byte_count:
+          type: integer
+    RuleRef:
+      type: [object, "null"]
+      required: [id]
+      description: A resolved rule as flow records name it; null for the group of records no rule admitted.
+      properties:
+        id:
+          type: string
+        authored_rule_id:
+          type: string
+        protocol:
+          $ref: "#/components/schemas/Protocol"
+    PeerRef:
+      type: object
+      required: [kind, labels]
+      description: A resolved peer as ingestion stored it, with the current display name of the identity.
+      properties:
+        kind:
+          type: string
+          enum: [unknown, workload, address_group]
+        workload_id:
+          $ref: "#/components/schemas/WorkloadID"
+        address_group_id:
+          type: string
+          format: uuid
+        address:
+          type: string
+        name:
+          type: string
+        labels:
+          $ref: "#/components/schemas/LabelMap"
+    ServiceKey:
+      description: A destination protocol and port; port is zero for a protocol without ports.
+      type: object
+      required: [protocol, port]
+      properties:
+        protocol:
+          $ref: "#/components/schemas/Protocol"
+        port:
+          type: integer
+    Rollup:
+      description: A grouped, bounded rollup of stored windows over a range.
+      type: object
+      required: [from, to, effective_from, effective_to, group_by, groups, group_count, truncated, totals]
+      properties:
+        from:
+          $ref: "#/components/schemas/Timestamp"
+        to:
+          $ref: "#/components/schemas/Timestamp"
+        effective_from:
+          type: [string, "null"]
+          format: date-time
+        effective_to:
+          type: [string, "null"]
+          format: date-time
+        group_by:
+          type: array
+          description: The dimensions of the grouping, in order.
+          items:
+            type: string
+            enum: [rule, peer, src, dst, service]
+        groups:
+          type: array
+          items:
+            allOf:
+              - $ref: "#/components/schemas/Counters"
+              - type: object
+                required: [keys, first_seen, last_seen]
+                properties:
+                  keys:
+                    type: object
+                    description: One property per dimension of the grouping.
+                    properties:
+                      rule:
+                        $ref: "#/components/schemas/RuleRef"
+                      peer:
+                        $ref: "#/components/schemas/PeerRef"
+                      src:
+                        $ref: "#/components/schemas/PeerRef"
+                      dst:
+                        $ref: "#/components/schemas/WorkloadRef"
+                      service:
+                        $ref: "#/components/schemas/ServiceKey"
+                  first_seen:
+                    $ref: "#/components/schemas/Timestamp"
+                  last_seen:
+                    $ref: "#/components/schemas/Timestamp"
+        group_count:
+          type: integer
+          description: How many groups exist in the range, whether or not they were returned.
+        truncated:
+          type: boolean
+        totals:
+          $ref: "#/components/schemas/Counters"
+    Flow:
+      description: One stored flow record of one reporting window, as ingestion resolved it.
+      type: object
+      required: [id, window_start, window_end, peer, src_address, dst_address, service, direction, verdict, rule, connection_count, byte_count, first_seen, last_seen]
+      properties:
+        id:
+          type: integer
+        window_start:
+          $ref: "#/components/schemas/Timestamp"
+        window_end:
+          $ref: "#/components/schemas/Timestamp"
+        peer:
+          $ref: "#/components/schemas/PeerRef"
+        src_address:
+          type: string
+        dst_address:
+          type: string
+        service:
+          $ref: "#/components/schemas/ServiceKey"
+        direction:
+          type: string
+          enum: [inbound, outbound]
+        verdict:
+          $ref: "#/components/schemas/Verdict"
+        rule:
+          $ref: "#/components/schemas/RuleRef"
+        connection_count:
+          type: integer
+        byte_count:
+          type: integer
+        first_seen:
+          $ref: "#/components/schemas/Timestamp"
+        last_seen:
+          $ref: "#/components/schemas/Timestamp"
+        process_name:
+          type: string
+    FlowsPage:
+      description: One page of a workload's stored windows, newest first.
+      type: object
+      required: [workload, from, to, flows, next_cursor]
+      properties:
+        workload:
+          $ref: "#/components/schemas/WorkloadRef"
+        from:
+          $ref: "#/components/schemas/Timestamp"
+        to:
+          $ref: "#/components/schemas/Timestamp"
+        flows:
+          type: array
+          items:
+            $ref: "#/components/schemas/Flow"
+        next_cursor:
+          type: [string, "null"]
+    Workload:
+      description: A workload as the fleet list and the detail read share it.
+      type: object
+      required: [id, hostname, labels, mode, enrolled_at, addresses, os, agent, listening_services, sync, health]
+      properties:
+        id:
+          $ref: "#/components/schemas/WorkloadID"
+        hostname:
+          type: string
+        labels:
+          $ref: "#/components/schemas/LabelMap"
+        mode:
+          $ref: "#/components/schemas/Mode"
+        enrolled_at:
+          $ref: "#/components/schemas/Timestamp"
+        addresses:
+          type: array
+          items:
+            type: string
+        os:
+          type: [object, "null"]
+          properties:
+            family:
+              type: string
+            name:
+              type: string
+            version:
+              type: string
+            kernel_version:
+              type: string
+            architecture:
+              type: string
+        agent:
+          type: object
+          required: [version, capabilities]
+          properties:
+            version:
+              type: string
+            capabilities:
+              type: array
+              items:
+                type: string
+        listening_services:
+          type: array
+          items:
+            type: object
+            required: [protocol, port, process_name, process_path]
+            properties:
+              protocol:
+                $ref: "#/components/schemas/Protocol"
+              port:
+                type: integer
+              process_name:
+                type: string
+              process_path:
+                type: string
+        sync:
+          type: object
+          required: [state, applied_version, latest_version, latest_rendered_at, error]
+          description: Convergence with the rendered policy; `latest_version` ahead of `applied_version` is drift in flight.
+          properties:
+            state:
+              $ref: "#/components/schemas/SyncState"
+            applied_version:
+              type: integer
+            latest_version:
+              type: integer
+            latest_rendered_at:
+              type: [string, "null"]
+              format: date-time
+            error:
+              type: string
+        health:
+          type: object
+          required: [last_seen_at, credential, dropped_flow_records]
+          properties:
+            last_seen_at:
+              type: [string, "null"]
+              format: date-time
+            credential:
+              type: object
+              required: [state, expires_at, last_renewed_at, last_error]
+              properties:
+                state:
+                  type: string
+                  enum: [renews, renewal-failed, expired]
+                expires_at:
+                  $ref: "#/components/schemas/Timestamp"
+                last_renewed_at:
+                  type: [string, "null"]
+                  format: date-time
+                last_error:
+                  type: string
+            dropped_flow_records:
+              type: integer
+    RenderedPolicy:
+      description: A workload's persisted rendered policy as configuration.
+      type: object
+      required: [workload, version, mode, rendered_at, terminal_verdict, rules]
+      properties:
+        workload:
+          $ref: "#/components/schemas/WorkloadRef"
+        version:
+          type: integer
+        mode:
+          $ref: "#/components/schemas/Mode"
+        rendered_at:
+          type: [string, "null"]
+          format: date-time
+        terminal_verdict:
+          $ref: "#/components/schemas/Verdict"
+          description: What traffic no rule admits receives under the mode.
+        rules:
+          type: array
+          items:
+            type: object
+            required: [id, ruleset, description, created_at, updated_at, protocol, ports, peer_cidrs, verdict]
+            properties:
+              id:
+                type: string
+              authored_rule_id:
+                type: string
+              created_at:
+                type: [string, "null"]
+                format: date-time
+                description: The authored rule's own instant; null when the authored rule no longer exists.
+              updated_at:
+                type: [string, "null"]
+                format: date-time
+                description: When the authored rule itself last changed; null when it no longer exists.
+              ruleset:
+                type: [object, "null"]
+                required: [id, name]
+                description: The authored ruleset the rule came from; null when the authored rule no longer exists.
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  name:
+                    type: string
+              description:
+                type: string
+              protocol:
+                $ref: "#/components/schemas/Protocol"
+              ports:
+                type: array
+                description: Empty when the rule permits every port of the protocol.
+                items:
+                  $ref: "#/components/schemas/PortRange"
+              peer_cidrs:
+                type: array
+                items:
+                  type: string
+              verdict:
+                $ref: "#/components/schemas/Verdict"

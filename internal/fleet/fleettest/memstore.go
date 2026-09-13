@@ -20,6 +20,7 @@ import (
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 	"github.com/innerwall-dev/innerwall/internal/identity"
 	"github.com/innerwall-dev/innerwall/internal/policy"
+	"github.com/innerwall-dev/innerwall/internal/readmodel"
 	"github.com/innerwall-dev/innerwall/internal/registry"
 	"github.com/innerwall-dev/innerwall/internal/rendered"
 )
@@ -623,4 +624,105 @@ func (m *MemStore) Workload(id identity.WorkloadID) *registry.Workload {
 		}
 	}
 	return nil
+}
+
+// --- readmodel.Store ---------------------------------------------------------
+//
+// The same fixtures serve the read model, so a transport test can write
+// through the domains and observe the result through the reads.
+
+var _ readmodel.Store = (*MemStore)(nil)
+
+// ListWorkloadLabelIndex implements readmodel.Store.
+func (m *MemStore) ListWorkloadLabelIndex(context.Context) (map[identity.WorkloadID]map[string]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make(map[identity.WorkloadID]map[string]string, len(m.Workloads))
+	for i := range m.Workloads {
+		out[m.Workloads[i].ID] = m.Workloads[i].LabelMap()
+	}
+	return out, nil
+}
+
+func (m *MemStore) record(w *registry.Workload) readmodel.WorkloadRecord {
+	rec := readmodel.WorkloadRecord{Workload: cloneWorkload(*w), SyncRank: syncRank(w.SyncState), SeenKey: time.Unix(0, 0).UTC()}
+	if w.LastSeenAt != nil {
+		rec.SeenKey = w.LastSeenAt.UTC()
+	}
+	if p, ok := m.Policies[w.ID]; ok {
+		rec.LatestVersion = p.GetVersion()
+	}
+	return rec
+}
+
+func syncRank(s innerwallv1.SyncState) int32 {
+	switch s {
+	case innerwallv1.SyncState_SYNC_STATE_DEGRADED:
+		return 0
+	case innerwallv1.SyncState_SYNC_STATE_OFFLINE:
+		return 1
+	case innerwallv1.SyncState_SYNC_STATE_PENDING:
+		return 2
+	case innerwallv1.SyncState_SYNC_STATE_SYNCED:
+		return 3
+	case innerwallv1.SyncState_SYNC_STATE_UNSPECIFIED:
+		return 4
+	default:
+		return 4
+	}
+}
+
+// GetWorkloadRecord implements readmodel.Store.
+func (m *MemStore) GetWorkloadRecord(_ context.Context, id identity.WorkloadID) (*readmodel.WorkloadRecord, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := range m.Workloads {
+		if m.Workloads[i].ID == id {
+			rec := m.record(&m.Workloads[i])
+			return &rec, nil
+		}
+	}
+	return nil, registry.ErrWorkloadUnknown
+}
+
+// ListWorkloadPage implements readmodel.Store with the fleet order and
+// the cursor semantics of the Postgres statement.
+func (m *MemStore) ListWorkloadPage(_ context.Context, q readmodel.WorkloadPageQuery) ([]readmodel.WorkloadRecord, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	want := map[identity.WorkloadID]bool{}
+	for _, id := range q.IDs {
+		want[id] = true
+	}
+	var out []readmodel.WorkloadRecord
+	for i := range m.Workloads {
+		w := &m.Workloads[i]
+		if (len(want) > 0 && !want[w.ID]) || (q.Mode != 0 && w.Mode != q.Mode) || (q.SyncState != 0 && w.SyncState != q.SyncState) {
+			continue
+		}
+		r := m.record(w)
+		if a := q.After; a != nil {
+			after := r.SyncRank > a.SyncRank || (r.SyncRank == a.SyncRank && (r.SeenKey.Before(a.SeenKey) || (r.SeenKey.Equal(a.SeenKey) && r.ID.String() > a.ID.String())))
+			if !after {
+				continue
+			}
+		}
+		out = append(out, r)
+	}
+	slices.SortStableFunc(out, func(a, b readmodel.WorkloadRecord) int {
+		switch {
+		case a.SyncRank != b.SyncRank:
+			return int(a.SyncRank - b.SyncRank)
+		case !a.SeenKey.Equal(b.SeenKey):
+			if a.SeenKey.After(b.SeenKey) {
+				return -1
+			}
+			return 1
+		}
+		return cmpString(a.ID.String(), b.ID.String())
+	})
+	if q.Limit > 0 && len(out) > q.Limit {
+		out = out[:q.Limit]
+	}
+	return out, nil
 }

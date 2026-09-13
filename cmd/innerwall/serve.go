@@ -18,10 +18,12 @@ import (
 	"github.com/innerwall-dev/innerwall/internal/ca/fileca"
 	"github.com/innerwall-dev/innerwall/internal/compiler"
 	"github.com/innerwall-dev/innerwall/internal/enroll"
+	"github.com/innerwall-dev/innerwall/internal/fleet"
 	"github.com/innerwall-dev/innerwall/internal/flowstore"
 	"github.com/innerwall-dev/innerwall/internal/gateway"
 	"github.com/innerwall-dev/innerwall/internal/ingest"
 	"github.com/innerwall-dev/innerwall/internal/operator"
+	"github.com/innerwall-dev/innerwall/internal/policy"
 	"github.com/innerwall-dev/innerwall/internal/readmodel"
 	"github.com/innerwall-dev/innerwall/internal/store"
 	"github.com/innerwall-dev/innerwall/ui"
@@ -31,6 +33,14 @@ const (
 	serverCertFile = "server.crt"
 	serverKeyFile  = "server.key"
 )
+
+// renderer narrows the engine to the authoring service's interface.
+type renderer struct{ eng *compiler.Engine }
+
+func (r renderer) Render(ctx context.Context) error {
+	_, err := r.eng.Render(ctx)
+	return err
+}
 
 func runServe(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall serve", flag.ContinueOnError)
@@ -107,13 +117,16 @@ func runServe(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	operators := &operator.Service{Store: st}
-	reads := &readmodel.Reader{Store: st, Flows: st.Flows()}
-	apiSrv := api.New(api.Deps{Operators: operators, Reads: reads, Site: *site, Log: log.With("service", "api")})
-	httpServer := api.NewHTTPServer(api.ServerTLSConfig(operatorCert), apiSrv.Handler())
-
 	svc := &enroll.Service{Store: st, Authority: authority, LeafTTL: *leafTTL}
 	engine := &compiler.Engine{Store: st, Log: log}
+	operators := &operator.Service{Store: st}
+	reads := &readmodel.Reader{Store: st, Flows: st.Flows()}
+	// The write endpoints call the same domain functions the command
+	// line's authoring commands call (ADR-0007 as amended).
+	authoring := &policy.Authoring{Store: st, Renderer: renderer{engine}}
+	fleetSvc := &fleet.Service{Store: st, Engine: engine}
+	apiSrv := api.New(api.Deps{Operators: operators, Reads: reads, Authoring: authoring, Fleet: fleetSvc, Enroll: svc, Site: *site, Log: log.With("service", "api")})
+	httpServer := api.NewHTTPServer(api.ServerTLSConfig(operatorCert), apiSrv.Handler())
 	srv := gateway.New(gateway.Deps{
 		Enroll:   svc,
 		Registry: st,

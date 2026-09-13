@@ -1,6 +1,7 @@
 # Continuous integration: build, test, the network-namespace enforcement
-# suite, lint (Go, UI), proto (lint, build, breaking-change gate),
-# generated-code drift, and DCO sign-off. Tool versions here are
+# suite, lint (Go, UI), the operator surface contract (spec lint), proto
+# (lint, build, breaking-change gate), generated-code drift, and DCO
+# sign-off. Tool versions here are
 # mirrored in scripts/install-tools.sh so local regeneration matches CI.
 name: ci
 
@@ -98,6 +99,19 @@ jobs:
           cache: npm
           cache-dependency-path: ui/package-lock.json
       - run: make ui
+
+  openapi:
+    name: operator surface contract
+    runs-on: ubuntu-latest
+    # Spec lint only: the document parses as OpenAPI 3.1 and passes the
+    # linter's rules. A Go test in internal/api checks it against the
+    # mounted routes; nothing conforms responses to it at runtime.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: make openapi
 
   drift:
     name: generated-code drift

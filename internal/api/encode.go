@@ -349,6 +349,8 @@ type renderedRuleJSON struct {
 	AuthoredRuleID string          `json:"authored_rule_id,omitempty"`
 	Ruleset        *rulesetRefJSON `json:"ruleset"`
 	Description    string          `json:"description"`
+	CreatedAt      *string         `json:"created_at"`
+	UpdatedAt      *string         `json:"updated_at"`
 	Protocol       string          `json:"protocol"`
 	Ports          []portRangeJSON `json:"ports"`
 	PeerCIDRs      []string        `json:"peer_cidrs"`
@@ -371,8 +373,8 @@ func renderedPolicyJSON(p *readmodel.RenderedPolicy) renderedPolicyResponse {
 	}
 	for i := range p.Rules {
 		r := &p.Rules[i]
-		rj := renderedRuleJSON{ID: r.ID, AuthoredRuleID: r.AuthoredRuleID, Description: r.Description, Protocol: policy.ProtocolName(r.Protocol),
-			Ports: make([]portRangeJSON, 0, len(r.Ports)), PeerCIDRs: r.PeerCIDRs, Verdict: readmodel.VerdictName(r.Verdict)}
+		rj := renderedRuleJSON{ID: r.ID, AuthoredRuleID: r.AuthoredRuleID, Description: r.Description, CreatedAt: optionalTimestamp(r.CreatedAt), UpdatedAt: optionalTimestamp(r.UpdatedAt),
+			Protocol: policy.ProtocolName(r.Protocol), Ports: make([]portRangeJSON, 0, len(r.Ports)), PeerCIDRs: r.PeerCIDRs, Verdict: readmodel.VerdictName(r.Verdict)}
 		if rj.PeerCIDRs == nil {
 			rj.PeerCIDRs = []string{}
 		}
