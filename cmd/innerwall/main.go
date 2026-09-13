@@ -7,6 +7,7 @@
 // Subcommands:
 //
 //	serve          run the agent gateway (enrollment, renewal, the sync stream)
+//	               and the operator surface (REST/JSON façade, console)
 //	migrate        apply pending database migrations
 //	ca init        create the file-backed signing authority and a server certificate
 //	token          mint, list, and revoke provisioning tokens
@@ -22,8 +23,10 @@
 //
 // Authoring commands write Postgres directly and render there; the running
 // control plane learns of changed policy through the database and pushes
-// it to connected agents (ADR-0018). The REST façade is wired in by a later
-// milestone; until then the flows commands are the only query surface.
+// it to connected agents (ADR-0018). The operator surface serves the
+// session and identity endpoints of the REST façade (ADR-0021); its read
+// and write endpoints follow, and until then the flows commands are the
+// only query surface.
 package main
 
 import (
@@ -42,9 +45,11 @@ var version = "dev"
 const (
 	envDatabaseURL = "INNERWALL_DATABASE_URL"
 	envCADir       = "INNERWALL_CA_DIR"
+	envSite        = "INNERWALL_SITE"
 
-	defaultCADir  = "/var/lib/innerwall/ca"
-	defaultListen = ":8443"
+	defaultCADir          = "/var/lib/innerwall/ca"
+	defaultListen         = ":8443"
+	defaultOperatorListen = ":8080"
 )
 
 func main() {
@@ -72,7 +77,7 @@ func usage() {
 usage: innerwall <command> [flags]
 
 commands:
-  serve          run the agent gateway
+  serve          run the agent gateway and the operator surface
   migrate        apply pending database migrations
   ca init        create the signing authority and server certificate
   token          mint | list | revoke provisioning tokens
