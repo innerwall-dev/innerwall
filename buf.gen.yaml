@@ -10,11 +10,6 @@ plugins:
   - local: [go, tool, protoc-gen-go-grpc]
     out: internal/gen
     opt: paths=source_relative
-  # REST bindings come from the gateway binding files beside the services
-  # they bind (ADR-0007, ADR-0021); a service without a binding gets no
-  # route and no generated handler.
   - local: [go, tool, protoc-gen-grpc-gateway]
     out: internal/gen
-    opt:
-      - paths=source_relative
-      - grpc_api_configuration=proto/innerwall/v1/operator_http.yaml
+    opt: paths=source_relative

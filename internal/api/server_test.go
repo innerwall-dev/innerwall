@@ -158,19 +158,6 @@ func TestLoginLogoutFlow(t *testing.T) {
 	if c.Name != api.SessionCookie || c.Value == "" || !c.HttpOnly || !c.Secure || c.SameSite != http.SameSiteLaxMode || c.Path != "/" || c.MaxAge != int(operator.DefaultSessionTTL/time.Second) {
 		t.Fatalf("session cookie attributes: %s", resp.header.Get("Set-Cookie"))
 	}
-	for _, k := range resp.header {
-		for _, v := range k {
-			if strings.HasPrefix(strings.ToLower(v), "grpc-metadata") {
-				t.Fatalf("internal metadata leaked into headers: %v", resp.header)
-			}
-		}
-	}
-	for k := range resp.header {
-		if strings.HasPrefix(strings.ToLower(k), "grpc-metadata") {
-			t.Fatalf("internal metadata leaked into headers: %v", resp.header)
-		}
-	}
-
 	// The cookie authenticates; the browser sends it on its own.
 	resp, body = s.do(t, browser, request{method: http.MethodGet, path: "/api/v1/me"})
 	if resp.status != http.StatusOK || body["display_name"] != "Ada" || body["site"] != "lab" {
@@ -384,7 +371,26 @@ func TestRoutingAndMountPoint(t *testing.T) {
 	if resp.header.Get("Content-Type") != api.ContentTypeProblem {
 		t.Fatalf("unknown path content type %q", resp.header.Get("Content-Type"))
 	}
-	// A malformed body on the one public route is an invalid request.
+	// A malformed body on the one public route is an invalid request, as
+	// is a body holding more than one document.
 	resp, body = s.do(t, c, request{method: http.MethodPost, path: "/api/v1/session", body: `{"password":`})
 	expectProblem(t, resp, body, http.StatusBadRequest, api.ProblemInvalidRequest)
+	resp, body = s.do(t, c, request{method: http.MethodPost, path: "/api/v1/session", body: `{"password":"x"} {"password":"y"}`})
+	expectProblem(t, resp, body, http.StatusBadRequest, api.ProblemInvalidRequest)
+
+	// A known path with an unsupported method is 405 with Allow, once
+	// authenticated; an unknown path under the prefix is 404.
+	s.setPassword(t, "Ada")
+	token, _, err := s.operators.MintToken(context.Background(), "t", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bearer := map[string]string{"Authorization": "Bearer " + token}
+	resp, body = s.do(t, c, request{method: http.MethodPut, path: "/api/v1/me", headers: bearer})
+	expectProblem(t, resp, body, http.StatusMethodNotAllowed, api.ProblemMethodNotAllowed)
+	if resp.header.Get("Allow") != "GET" {
+		t.Fatalf("Allow %q", resp.header.Get("Allow"))
+	}
+	resp, body = s.do(t, c, request{method: http.MethodGet, path: "/api/v1/nothing", headers: bearer})
+	expectProblem(t, resp, body, http.StatusNotFound, api.ProblemNotFound)
 }

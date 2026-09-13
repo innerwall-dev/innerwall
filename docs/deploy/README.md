@@ -8,7 +8,7 @@ One control-plane binary and one Postgres, co-located or adjacent (ADR-0017). `d
 make dev
 ```
 
-It starts Postgres with a persistent volume and builds the control plane from source. The control plane reads its Postgres connection string from `INNERWALL_DATABASE_URL`. Ports: the operator surface (REST/JSON façade and, once it lands, the console) on 8080 over TLS (bound to localhost in the compose file), the agent gateway on 8443.
+It starts Postgres with a persistent volume and builds the control plane from source. The control plane reads its Postgres connection string from `INNERWALL_DATABASE_URL`. Ports: the operator surface (REST/JSON API and, once it lands, the console) on 8080 over TLS (bound to localhost in the compose file), the agent gateway on 8443.
 
 On first start the control plane applies migrations, creates its signing authority in the `innerwall-state` volume, and serves the agent gateway on 8443. Enrolling an agent from the host:
 
@@ -58,7 +58,7 @@ Windows older than `--flow-retention` (30 days by default) are deleted by a job 
 
 ## Operator surface
 
-The control plane serves the operator-facing REST/JSON façade on `--operator-listen` (`:8080` by default), over TLS and nothing else (ADR-0021). Give it a certificate with `--operator-tls-cert` and `--operator-tls-key`; without them it generates a self-signed certificate on first start, keeps it as `operator.crt` and `operator.key` beside the signing authority (so the compose stack's `innerwall-state` volume carries it), and logs its SHA-256 fingerprint. Verify that fingerprint in the browser before trusting the first connection; a deployment with several replicas provisions the same pair on each, as it does the authority directory. A generated certificate that has expired is replaced on the next start, with the new fingerprint logged.
+The control plane serves the operator-facing REST/JSON API on `--operator-listen` (`:8080` by default), over TLS and nothing else (ADR-0021). Give it a certificate with `--operator-tls-cert` and `--operator-tls-key`; without them it generates a self-signed certificate on first start, keeps it as `operator.crt` and `operator.key` beside the signing authority (so the compose stack's `innerwall-state` volume carries it), and logs its SHA-256 fingerprint. Verify that fingerprint in the browser before trusting the first connection; a deployment with several replicas provisions the same pair on each, as it does the authority directory. A generated certificate that has expired is replaced on the next start, with the new fingerprint logged.
 
 Version 1 has one operator. Set the password on the control-plane host; there is no endpoint that does it, and until it is set the login endpoint refuses with a problem the console recognizes as a fresh install:
 

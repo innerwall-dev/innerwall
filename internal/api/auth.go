@@ -8,9 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/metadata"
-
 	"github.com/innerwall-dev/innerwall/internal/operator"
 )
 
@@ -71,7 +68,7 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 			}
 			a.log().Debug("operator request refused", "method", r.Method, "path", r.URL.Path, "reason", err)
 			w.Header().Set("WWW-Authenticate", `Bearer realm="innerwall"`)
-			writeProblem(w, Problem{Type: ProblemUnauthenticated, Title: "Authentication required", Status: http.StatusUnauthorized})
+			writeProblem(w, problemUnauthenticated)
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), authKey{}, info)))
@@ -110,13 +107,14 @@ func (a *Authenticator) authenticate(r *http.Request) (*authInfo, error) {
 // EndSession revokes the session the request authenticated with, if it
 // was a session, and clears the cookie either way. It is the one place the
 // credential form is consulted, and it is not a handler.
-func (a *Authenticator) EndSession(ctx context.Context) error {
+func (a *Authenticator) EndSession(ctx context.Context, w http.ResponseWriter) error {
 	if info, ok := ctx.Value(authKey{}).(*authInfo); ok && info.sessionID != "" {
 		if err := a.Operators.DeleteSession(ctx, info.sessionID); err != nil {
 			return err
 		}
 	}
-	return grpc.SetHeader(ctx, metadata.Pairs(setCookieHeader, clearSessionCookie().String()))
+	http.SetCookie(w, clearSessionCookie())
+	return nil
 }
 
 func (a *Authenticator) log() *slog.Logger {
@@ -125,10 +123,6 @@ func (a *Authenticator) log() *slog.Logger {
 	}
 	return slog.Default()
 }
-
-// setCookieHeader is the metadata key a handler sets a cookie through; the
-// outgoing header matcher turns it into the HTTP header.
-const setCookieHeader = "set-cookie"
 
 // sessionCookie is the cookie a login sets: unreadable by scripts, sent
 // only over TLS, and not sent on cross-site navigations (ADR-0021).
