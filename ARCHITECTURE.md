@@ -70,13 +70,13 @@ Serves the UI and automation over a REST/JSON façade generated from the same pr
 
 ### 4.2 Agent gateway
 
-Terminates agent mTLS and holds one persistent bidirectional gRPC stream per agent (ADR-0002). Policy deltas go down; aggregated flows, heartbeats, and ruleset-version ACKs come up on the same stream. Because any stateless replica must be able to accept any agent, a small presence table (Postgres, with LISTEN/NOTIFY for change propagation at v1 scale) maps agent → replica so that "push to agent X" can find the connection.
+Terminates agent mTLS and holds one persistent bidirectional gRPC stream per agent (ADR-0002). Policy deltas go down; heartbeats, inventory reports, and version ACKs come up on the same stream; flow telemetry has its own RPC so it can never head-of-line-block a policy update (ADR-0015). Every stream begins with a snapshot of the workload's persisted rendered policy; deltas are sent only within that stream, pipelined without waiting for acknowledgements. A FAILED acknowledgement marks the workload degraded and is answered with a fresh snapshot, never a retried delta. The gateway keeps one in-process map from workload to live stream and nothing else: a render, in whichever process performed it, announces changed workloads on a Postgres notification channel, and the replica holding a workload's stream pushes the delta from what that stream last received to the persisted policy (ADR-0018). Because any stateless replica must be able to accept any agent, that is how "push to agent X" finds the connection without a presence table; a presence table becomes necessary only for directed operations on one specific stream.
 
 Reconnection storms are a first-class design case: a control-plane restart means every agent reconnects, each with a CPU-expensive mTLS handshake. Agents use exponential backoff with full jitter (`wait = random(0, min(cap, base × 2^attempt))`), which turns synchronized waves into a smooth trickle.
 
 ### 4.3 Policy compiler
 
-Consumes label-based rules plus current registry state and produces **per-agent compiled rulesets**, each with a monotonic version. Only the agents affected by a change are recompiled — the blast radius of compilation follows the blast radius of the edit. Agents ACK the version they run; desired vs. actual version is therefore a queryable fact, and sync drift is an alert, not a mystery. A Postgres advisory lock ensures a single active compiler across replicas.
+Consumes the authored model (rulesets with label selectors, services, address groups) plus current registry state and renders **per-workload policies**: label selectors resolve to the workloads that match them and to those workloads' current addresses as host routes, address groups to their CIDRs, services to one resolved rule per protocol, with the authored rule id kept for provenance. Rendering runs on every change, synchronously, inside one transaction under a Postgres advisory lock, and re-renders every workload; the previously persisted policy is diffed against the new one and a workload's version advances only when its rendered output changed (ADR-0018). The blast radius of a version bump therefore follows the blast radius of the edit even though the render does not; an inverted label index is the documented path to narrowing the render itself. Rendered policies and versions are durable in Postgres. Agents ACK the version they run; desired vs. actual version is a queryable fact, and sync drift is an alert, not a mystery. Compilation is inbound-only in v1 (ADR-0010); outbound rules are rejected at admission.
 
 ### 4.4 Flow ingestion
 
@@ -96,7 +96,7 @@ An embedded signing authority issues short-lived workload certificates. It sits 
 
 A single static Go binary (`innerwall-agent`), structured as four independent loops sharing local state:
 
-1. **Sync loop** — maintains the gRPC stream, receives policy deltas, persists the last-known compiled ruleset to disk, ACKs versions.
+1. **Sync loop** — maintains the gRPC stream, applies each snapshot or delta strictly in order as one complete policy through the installed-policy store, ACKs versions (FAILED with the reason when an apply is refused, staying on the last good version), reports inventory and heartbeats at the intervals the control plane sets, and reconnects with jittered backoff, always from a fresh snapshot. Persisting the last-known policy to disk lands with enforcement, behind the same store interface. A renewal timer beside it rotates the credential when less than a third of its lifetime remains and swaps it in without dropping the stream.
 2. **Collect loop** — reads flow data from conntrack (v1), aggregates in memory over the reporting window, ships batches upstream; buffers to local disk when disconnected. eBPF-based collection is a later, additive backend behind the same collector interface.
 3. **Reconcile loop** — converges the host firewall onto the desired ruleset. On Linux this means an **Innerwall-owned nftables table**, replaced atomically as a unit: rule application is all-or-nothing, never a partially applied ruleset, and never a mutation of tables owned by other software (ADR-0003).
 4. **Health loop** — heartbeats (piggybacked on the stream), resource self-accounting, and local safety controls.
@@ -116,7 +116,7 @@ The hard problem is the first certificate; everything after is routine mTLS rota
 - **Enrollment.** The agent generates its keypair locally (the private key never leaves the host), submits CSR + token + host facts over server-authenticated TLS, and receives a short-lived certificate plus the authority bundle. The trust anchor for that first connection is distributed out of band with the token: the token proves the agent to the control plane, the anchor proves the control plane to the agent.
 - **Identity lives in the cert; attributes live in the registry.** Certificates carry exactly one URI SAN, `innerwall://workload/<uuid>`, with a control-plane-assigned UUID; one package formats and parses it. Mutable facts — hostname, labels, enforcement state — never enter the certificate. Cert = authentication; registry = authorization.
 - **One listener, one boundary.** The enrollment service and the agent service share a TLS listener. Client certificates are verified when presented; a server interceptor requires one, with a parseable workload identity, for every service except enrollment, and hands the identity to handlers through the request context. Handlers read identity from nowhere else.
-- **Rotation over revocation.** 24h credential lifetimes with renewal via authenticated re-CSR over mutual TLS; the same identity is reissued with a fresh serial. Short lifetimes mostly obviate revocation machinery; a control-plane deny-list of workload IDs covers the rest. A workload that misses its renewal window re-enrolls.
+- **Rotation over revocation.** 24h credential lifetimes with renewal via authenticated re-CSR over mutual TLS; the same identity is reissued with a fresh serial. The daemon renews when less than a third of the lifetime remains, jittered, and swaps the credential in without dropping its stream (ADR-0016). Short lifetimes mostly obviate revocation machinery; a control-plane deny-list of workload IDs covers the rest. A workload that misses its renewal window re-enrolls.
 - **Designed-for edge cases:** clock skew (small `notBefore` backdating), cloned VM images presenting duplicate identities (detected on connect, forced re-enrollment), signing-key custody (the interface anticipates external key holders).
 
 Trust-on-first-use is explicitly rejected: an enrollment window where anyone reachable can register as anything is unacceptable for a system that will enforce policy and whose policy discloses network topology.
@@ -166,7 +166,7 @@ Two extensions exist today only as documented seams (ADR-0012):
 | Why visibility precedes enforcement | ADR-0001 |
 | Agent transport & desired-state sync | ADR-0002 |
 | Native-firewall enforcement | ADR-0003 |
-| Identity, enrollment, CA | ADR-0016 (supersedes ADR-0004) |
+| Identity, enrollment, CA, renewal | ADR-0004, ADR-0016 |
 | Control-plane shape & HA | ADR-0017 (supersedes ADR-0005) |
 | Data access layer | ADR-0006 |
 | API surface | ADR-0007 |
@@ -178,3 +178,4 @@ Two extensions exist today only as documented seams (ADR-0012):
 | License & provenance | ADR-0013 |
 | Docs & review workflow | ADR-0014 |
 | Agent wire contract | ADR-0015 |
+| Policy rendering, delta versioning, rendered state | ADR-0018 |

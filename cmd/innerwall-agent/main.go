@@ -7,9 +7,10 @@
 //
 //	enroll   exchange a provisioning token for a workload credential
 //	renew    rotate the workload credential over mutual TLS
+//	daemon   hold the sync stream, apply policy, report inventory, renew
 //
-// The daemon (sync, collect, reconcile, health) and its automatic renewal
-// timer are wired in by later milestones.
+// Flow collection and firewall enforcement are wired in by later
+// milestones behind the interfaces the daemon already uses.
 package main
 
 import (
@@ -52,6 +53,7 @@ usage: innerwall-agent <command> [flags]
 commands:
   enroll     exchange a provisioning token for a workload credential
   renew      rotate the workload credential
+  daemon     run the agent: sync stream, inventory, heartbeats, renewal
   version    print the version
 
 Run "innerwall-agent <command> -h" for the flags of a command.
@@ -68,6 +70,8 @@ func run(ctx context.Context, args []string) error {
 		return runEnroll(ctx, args[1:])
 	case "renew":
 		return runRenew(ctx, args[1:])
+	case "daemon":
+		return runDaemon(ctx, args[1:])
 	case "version":
 		fmt.Println("innerwall-agent", version)
 		return nil

@@ -14,19 +14,24 @@ import (
 
 	"github.com/innerwall-dev/innerwall/internal/agent/credential"
 	"github.com/innerwall-dev/innerwall/internal/ca/fileca"
+	"github.com/innerwall-dev/innerwall/internal/compiler"
 	"github.com/innerwall-dev/innerwall/internal/enroll"
 	"github.com/innerwall-dev/innerwall/internal/enroll/enrolltest"
 	"github.com/innerwall-dev/innerwall/internal/gateway"
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
+	"github.com/innerwall-dev/innerwall/internal/store"
 )
 
 // harness is a control plane on a loopback listener: file CA, enrollment
-// service over the given store, TLS as configured for production.
+// service over the given store, TLS as configured for production. With a
+// Postgres store it also serves the sync stream and routes render
+// announcements, exactly as `innerwall serve` does.
 type harness struct {
 	addr      string
 	authority *fileca.Authority
 	bundle    []byte
 	service   *enroll.Service
+	engine    *compiler.Engine
 }
 
 func newHarness(t *testing.T, st enroll.Store) *harness {
@@ -35,6 +40,13 @@ func newHarness(t *testing.T, st enroll.Store) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
+	return newHarnessWith(t, st, authority)
+}
+
+// newHarnessWith starts a control plane over an existing authority: a
+// restart, as far as enrolled agents can tell.
+func newHarnessWith(t *testing.T, st enroll.Store, authority *fileca.Authority) *harness {
+	t.Helper()
 	bundle, _ := authority.Bundle(context.Background())
 	certPEM, keyPEM, err := authority.IssueServerCertificate([]string{"127.0.0.1"}, time.Hour)
 	if err != nil {
@@ -49,15 +61,25 @@ func newHarness(t *testing.T, st enroll.Store) *harness {
 		t.Fatal(err)
 	}
 	svc := &enroll.Service{Store: st, Authority: authority, LeafTTL: time.Hour}
-	srv := gateway.NewGRPCServer(tlsCfg, gateway.New(svc, nil))
+	deps := gateway.Deps{Enroll: svc}
+	h := &harness{authority: authority, bundle: bundle, service: svc}
+	if pg, ok := st.(*store.Store); ok {
+		h.engine = &compiler.Engine{Store: pg}
+		deps.Registry, deps.Policies, deps.Engine, deps.Events = pg, pg, h.engine, pg
+	}
+	gw := gateway.New(deps)
+	srv := gateway.NewGRPCServer(tlsCfg, gw)
 
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	go func() { _ = srv.Serve(lis) }()
-	t.Cleanup(srv.Stop)
-	return &harness{addr: lis.Addr().String(), authority: authority, bundle: bundle, service: svc}
+	go func() { _ = gw.Run(ctx) }()
+	t.Cleanup(func() { cancel(); srv.Stop() })
+	h.addr = lis.Addr().String()
+	return h
 }
 
 // dial opens a connection with an optional client credential, trusting the

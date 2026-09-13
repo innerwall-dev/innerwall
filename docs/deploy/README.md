@@ -16,10 +16,29 @@ On first start the control plane applies migrations, creates its signing authori
 docker compose exec innerwall /innerwall token mint --name dev --label env=dev
 docker compose cp innerwall:/var/lib/innerwall/ca/ca.crt ./bootstrap-ca.crt
 innerwall-agent enroll --server localhost:8443 --token <token> --bootstrap-ca ./bootstrap-ca.crt --state-dir ./agent-state
-innerwall-agent renew --server localhost:8443 --state-dir ./agent-state
+innerwall-agent daemon --server localhost:8443 --state-dir ./agent-state
 ```
 
-The bootstrap anchor is the authority's certificate, handed to the agent out of band with the token; without it the agent would send the token to whatever answered at the address. The REST/JSON façade and UI are wired in by later milestones.
+The bootstrap anchor is the authority's certificate, handed to the agent out of band with the token; without it the agent would send the token to whatever answered at the address. The daemon holds the sync stream, applies policy as it is pushed (into an in-memory store until enforcement lands; every applied change is logged), reports inventory and heartbeats, and renews its credential when less than a third of its lifetime remains. It exits, with the reason, when the credential has expired or the control plane directs re-enrollment; both need a new provisioning token. `innerwall-agent renew` remains for rotating a credential by hand.
+
+Policy is authored with the control-plane command line against the database; the running control plane learns of every change through Postgres and pushes it to connected agents (ADR-0018):
+
+```sh
+docker compose exec innerwall /innerwall service create --name postgres --entry tcp:5432
+docker compose exec innerwall /innerwall address-group create --name corp --cidr 10.0.0.0/8
+cat > web-to-db.json <<'JSON'
+{"name": "web-to-db", "scope": {"role": ["db"]},
+ "rules": [{"direction": "inbound",
+            "peers": [{"workloads": {"role": ["web"]}}, {"address_group": "corp"}],
+            "services": ["postgres"]}]}
+JSON
+docker compose exec -T innerwall /innerwall ruleset create -f - < web-to-db.json
+docker compose exec innerwall /innerwall workload list
+docker compose exec innerwall /innerwall workload set-mode <workload-id> simulation
+docker compose exec innerwall /innerwall policy show <workload-id>
+```
+
+Only inbound rules are admitted (ADR-0010). The REST/JSON façade and UI are wired in by later milestones.
 
 Running more than one replica: the signing authority directory (`INNERWALL_CA_DIR`, created once by `innerwall ca init`) is configuration and must be identical on every replica, like the database connection string. `serve --init-ca` is a single-replica development convenience; two replicas that each initialise their own authority issue credentials the other will not accept (ADR-0017).
 

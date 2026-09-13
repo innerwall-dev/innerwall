@@ -92,7 +92,9 @@ func TestSignVerifiesAgainstBundleAndHonorsTTL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixed := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+	// A fixed instant inside the root's validity, derived from the root
+	// rather than the calendar so the test does not expire.
+	fixed := a.cert.NotBefore.Add(time.Hour).Truncate(time.Second)
 	a.now = func() time.Time { return fixed }
 
 	id, _ := identity.NewWorkloadID()

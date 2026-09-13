@@ -50,7 +50,7 @@ Never edit generated code. Change the source, regenerate, commit both.
 
 `.github/workflows/ci.yml` runs on every push to `main` and every PR:
 
-- `build`, `test`, `lint` (Go + Biome), `ui` (production build). The `test` job runs a Postgres service container and sets `INNERWALL_TEST_DATABASE_URL`; tests that need a database skip when it is unset, so `make test` works offline and runs the integration tests when you point that variable at a disposable database.
+- `build`, `test`, `lint` (Go + Biome), `ui` (production build). The `test` job runs a Postgres service container and sets `INNERWALL_TEST_DATABASE_URL`; tests that need a database skip when it is unset, so `make test` works offline and runs the integration tests when you point that variable at a disposable database. Database tests hold a session-level advisory lock for their duration, so the packages `go test` runs in parallel take turns on the one database rather than truncating each other's tables.
 - `proto`: `buf lint`, `buf build`, and `scripts/check-proto-breaking.sh`, which runs `buf breaking` against `main` and fails unless the PR title or body references an ADR (`ADR-NNNN`)
 - `drift`: `scripts/check-drift.sh`, which runs `make proto sqlc` and fails on any diff or untracked generated file
 - `dco`: `scripts/check-dco.sh`, which requires a `Signed-off-by` trailer on every commit in the PR
@@ -63,16 +63,18 @@ Never edit generated code. Change the source, regenerate, commit both.
 cmd/innerwall/            control-plane main
 cmd/innerwall-agent/      agent main
 internal/api              REST/JSON façade (generated gateway + handlers)
-internal/gateway          agent gRPC streams, presence
-internal/compiler         label rules → per-agent versioned rulesets
+internal/gateway          agent gRPC surface: enrollment, renewal, the sync stream and its pushes
+internal/compiler         renders the authored model into per-workload policies; versions by diff
+internal/policy           authored model (services, address groups, rulesets), admission, documents
+internal/rendered         rendered-model algebra: canonical form, Diff, Apply (shared with the agent)
 internal/ingest           flow enrichment, bidirectional dedupe
 internal/flowstore        FlowStore interface + Postgres implementation
 internal/ca               Authority interface; fileca/ is the file-backed implementation
 internal/identity         workload identity and its URI SAN form (the only place it is built or parsed)
 internal/enroll           provisioning tokens, enrollment, renewal
-internal/registry         workloads, agents, labels
+internal/registry         workloads: labels, mode, facts and addresses, sync status
 internal/store            queries/ (SQL), migrations/ (goose), db/ (sqlc output); storetest/ opens a test database
-internal/agent            credential/ (enroll, renew, state dir), sync/, collect/, enforce/, health/
+internal/agent            credential/ (enroll, renew, holder, renewal timer), sync/ (daemon), enforce/ (policy store), inventory/, collect/, health/
 internal/gen              buf output (generated; never edited)
 proto/innerwall/v1        the API contract (buf.yaml and buf.gen.yaml at the repo root)
 ui/                       Vite + React SPA; src/{map,policy,simulate,inventory,enroll}

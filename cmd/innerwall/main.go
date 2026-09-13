@@ -6,13 +6,20 @@
 //
 // Subcommands:
 //
-//	serve     run the agent gateway (enrollment and credential renewal)
-//	migrate   apply pending database migrations
-//	ca init   create the file-backed signing authority and a server certificate
-//	token     mint, list, and revoke provisioning tokens
+//	serve          run the agent gateway (enrollment, renewal, the sync stream)
+//	migrate        apply pending database migrations
+//	ca init        create the file-backed signing authority and a server certificate
+//	token          mint, list, and revoke provisioning tokens
+//	service        author reusable protocol/port sets
+//	address-group  author named CIDR sets
+//	ruleset        author rulesets from JSON documents
+//	workload       inspect workloads; set labels and enforcement mode
+//	policy         force a render; show a workload's rendered policy
 //
-// The desired-state stream, flow ingestion, and the REST façade are wired in
-// by later milestones.
+// Authoring commands write Postgres directly and render there; the running
+// control plane learns of changed policy through the database and pushes
+// it to connected agents (ADR-0018). Flow ingestion and the REST façade are
+// wired in by later milestones.
 package main
 
 import (
@@ -61,11 +68,16 @@ func usage() {
 usage: innerwall <command> [flags]
 
 commands:
-  serve      run the agent gateway
-  migrate    apply pending database migrations
-  ca init    create the signing authority and server certificate
-  token      mint | list | revoke provisioning tokens
-  version    print the version
+  serve          run the agent gateway
+  migrate        apply pending database migrations
+  ca init        create the signing authority and server certificate
+  token          mint | list | revoke provisioning tokens
+  service        create | update | delete | get | list services
+  address-group  create | update | delete | get | list address groups
+  ruleset        create | update | delete | get | list rulesets (JSON documents)
+  workload       list | status | set-labels | set-mode
+  policy         render | show
+  version        print the version
 
 Run "innerwall <command> -h" for the flags of a command.
 `, version)
@@ -85,6 +97,16 @@ func run(ctx context.Context, args []string) error {
 		return runCA(args[1:])
 	case "token":
 		return runToken(ctx, args[1:])
+	case "service":
+		return runService(ctx, args[1:])
+	case "address-group":
+		return runAddressGroup(ctx, args[1:])
+	case "ruleset":
+		return runRuleset(ctx, args[1:])
+	case "workload":
+		return runWorkload(ctx, args[1:])
+	case "policy":
+		return runPolicy(ctx, args[1:])
 	case "version":
 		fmt.Println("innerwall", version)
 		return nil
