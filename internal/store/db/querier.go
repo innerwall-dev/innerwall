@@ -83,6 +83,8 @@ type Querier interface {
 	GetService(ctx context.Context, id uuid.UUID) (Service, error)
 	GetWorkload(ctx context.Context, id uuid.UUID) (Workload, error)
 	GetWorkloadPolicy(ctx context.Context, workloadID uuid.UUID) (WorkloadPolicy, error)
+	// One workload with its latest rendered version, for the detail read.
+	GetWorkloadWithPolicy(ctx context.Context, id uuid.UUID) (GetWorkloadWithPolicyRow, error)
 	// Flow storage (ADR-0009, ADR-0019). These are the only statements that
 	// touch flow_windows and flow_totals; every caller goes through the
 	// FlowStore interface in internal/flowstore.
@@ -101,6 +103,11 @@ type Querier interface {
 	ListAllWorkloadAddresses(ctx context.Context) ([]WorkloadAddress, error)
 	ListAllWorkloadLabels(ctx context.Context) ([]WorkloadLabel, error)
 	ListFlowTotals(ctx context.Context, arg ListFlowTotalsParams) ([]FlowTotal, error)
+	// One page of a workload's windows, newest first, keyed by
+	// (window_start, id) so a page never shifts when new windows land. The
+	// first page passes a cursor beyond any row. An empty peer key means every
+	// peer; a zero protocol means every service.
+	ListFlowWindowPage(ctx context.Context, arg ListFlowWindowPageParams) ([]FlowWindow, error)
 	ListFlowWindows(ctx context.Context, arg ListFlowWindowsParams) ([]FlowWindow, error)
 	ListOperatorTokens(ctx context.Context) ([]OperatorToken, error)
 	ListProvisioningTokenLabels(ctx context.Context, tokenID uuid.UUID) ([]ProvisioningTokenLabel, error)
@@ -109,8 +116,22 @@ type Querier interface {
 	ListServiceEntries(ctx context.Context, serviceID uuid.UUID) ([]ServiceEntry, error)
 	ListServices(ctx context.Context) ([]Service, error)
 	ListWorkloadAddresses(ctx context.Context, workloadID uuid.UUID) ([]string, error)
+	ListWorkloadAddressesFor(ctx context.Context, workloadIds []uuid.UUID) ([]WorkloadAddress, error)
 	ListWorkloadLabels(ctx context.Context, workloadID uuid.UUID) ([]WorkloadLabel, error)
+	// The children of the workloads on one page, fetched once per page.
+	ListWorkloadLabelsFor(ctx context.Context, workloadIds []uuid.UUID) ([]WorkloadLabel, error)
 	ListWorkloadListeningServices(ctx context.Context, workloadID uuid.UUID) ([]WorkloadListeningService, error)
+	ListWorkloadListeningServicesFor(ctx context.Context, workloadIds []uuid.UUID) ([]WorkloadListeningService, error)
+	// --- operator read model (ADR-0007 as amended) -------------------------------
+	// One page of the fleet in the order the fleet screen shows it: the
+	// workloads needing attention first (degraded, then offline, then
+	// pending, then synced), most recently seen first within a state, then by
+	// id. The cursor is the (rank, last seen, id) of the last row served; the
+	// first page passes a rank below every row. A workload never seen sorts
+	// as if seen at the epoch. An empty id array means every workload; a zero
+	// mode or sync state means any. The latest rendered version rides along
+	// from workload_policies so sync drift is one read.
+	ListWorkloadPage(ctx context.Context, arg ListWorkloadPageParams) ([]ListWorkloadPageRow, error)
 	ListWorkloadPolicies(ctx context.Context) ([]WorkloadPolicy, error)
 	// --- inventory and status (ADR-0018) ------------------------------------------
 	ListWorkloads(ctx context.Context) ([]Workload, error)
@@ -136,6 +157,33 @@ type Querier interface {
 	// resolved peer and service (destination port and protocol). A decision of
 	// 0 means every decision.
 	RollupFlowWindows(ctx context.Context, arg RollupFlowWindowsParams) ([]RollupFlowWindowsRow, error)
+	// Grouped by the reporting workload and the service reached on it: the
+	// cells of the matrix.
+	RollupFlowsByDstService(ctx context.Context, arg RollupFlowsByDstServiceParams) ([]RollupFlowsByDstServiceRow, error)
+	// --- operator read model -----------------------------------------------------
+	//
+	// The rollups the operator surface and the command line issue (ADR-0007 as
+	// amended, ADR-0019 decision 4). Each grouping the surface offers is one
+	// named statement over the same windows; the caller picks the statement
+	// and never assembles one. Every rollup shares one filter convention: an
+	// empty workload id array means every workload, a zero decision or
+	// direction means any, and a zero protocol means every service (a service
+	// is one destination port and protocol). Ordering is by connection count
+	// unless order_by is 'recent', in which case the most recently seen group
+	// comes first. The window bounds actually covered, the number of groups,
+	// and the totals across every group ride on each row as window aggregates,
+	// so a truncated result still says how it relates to the whole. The
+	// decision-and-time and workload-and-time indexes serve all four.
+	// Grouped by the resolved rule that admitted the traffic; records with no
+	// matched rule form the group with the empty rule id.
+	RollupFlowsByRule(ctx context.Context, arg RollupFlowsByRuleParams) ([]RollupFlowsByRuleRow, error)
+	// Grouped by rule and the resolved peer that hit it. The label snapshot
+	// of a peer is the one stored with its most recently seen record.
+	RollupFlowsByRulePeer(ctx context.Context, arg RollupFlowsByRulePeerParams) ([]RollupFlowsByRulePeerRow, error)
+	// Grouped by the resolved source peer and the reporting workload: the
+	// edges of the dependency map. Inbound only in this version, so the
+	// source is the peer and the destination is the workload.
+	RollupFlowsBySrcDst(ctx context.Context, arg RollupFlowsBySrcDstParams) ([]RollupFlowsBySrcDstRow, error)
 	SetOperator(ctx context.Context, arg SetOperatorParams) (Operator, error)
 	SetWorkloadMode(ctx context.Context, arg SetWorkloadModeParams) (int64, error)
 	SetWorkloadSyncState(ctx context.Context, arg SetWorkloadSyncStateParams) (int64, error)

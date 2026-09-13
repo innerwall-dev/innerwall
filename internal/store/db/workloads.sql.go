@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const addWorkloadAddress = `-- name: AddWorkloadAddress :exec
@@ -160,6 +161,48 @@ func (q *Queries) GetWorkload(ctx context.Context, id uuid.UUID) (Workload, erro
 	return i, err
 }
 
+const getWorkloadWithPolicy = `-- name: GetWorkloadWithPolicy :one
+SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at, w.credential_serial, w.credential_expires_at, w.last_renewed_at, w.mode, w.facts, w.agent_version, w.agent_capabilities, w.last_seen_at, w.sync_state, w.applied_policy_version, w.sync_error, w.dropped_flow_records, w.credential_renewal_error, p.version AS latest_version, p.rendered_at AS latest_rendered_at
+FROM workloads w
+LEFT JOIN workload_policies p ON p.workload_id = w.id
+WHERE w.id = $1
+`
+
+type GetWorkloadWithPolicyRow struct {
+	Workload         Workload
+	LatestVersion    pgtype.Int8
+	LatestRenderedAt *time.Time
+}
+
+// One workload with its latest rendered version, for the detail read.
+func (q *Queries) GetWorkloadWithPolicy(ctx context.Context, id uuid.UUID) (GetWorkloadWithPolicyRow, error) {
+	row := q.db.QueryRow(ctx, getWorkloadWithPolicy, id)
+	var i GetWorkloadWithPolicyRow
+	err := row.Scan(
+		&i.Workload.ID,
+		&i.Workload.RegionID,
+		&i.Workload.ProvisioningTokenID,
+		&i.Workload.Hostname,
+		&i.Workload.EnrolledAt,
+		&i.Workload.CredentialSerial,
+		&i.Workload.CredentialExpiresAt,
+		&i.Workload.LastRenewedAt,
+		&i.Workload.Mode,
+		&i.Workload.Facts,
+		&i.Workload.AgentVersion,
+		&i.Workload.AgentCapabilities,
+		&i.Workload.LastSeenAt,
+		&i.Workload.SyncState,
+		&i.Workload.AppliedPolicyVersion,
+		&i.Workload.SyncError,
+		&i.Workload.DroppedFlowRecords,
+		&i.Workload.CredentialRenewalError,
+		&i.LatestVersion,
+		&i.LatestRenderedAt,
+	)
+	return i, err
+}
+
 const listAllWorkloadAddresses = `-- name: ListAllWorkloadAddresses :many
 SELECT workload_id, address FROM workload_addresses
 ORDER BY workload_id, address
@@ -236,6 +279,32 @@ func (q *Queries) ListWorkloadAddresses(ctx context.Context, workloadID uuid.UUI
 	return items, nil
 }
 
+const listWorkloadAddressesFor = `-- name: ListWorkloadAddressesFor :many
+SELECT workload_id, address FROM workload_addresses
+WHERE workload_id = ANY($1::uuid[])
+ORDER BY workload_id, address
+`
+
+func (q *Queries) ListWorkloadAddressesFor(ctx context.Context, workloadIds []uuid.UUID) ([]WorkloadAddress, error) {
+	rows, err := q.db.Query(ctx, listWorkloadAddressesFor, workloadIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WorkloadAddress{}
+	for rows.Next() {
+		var i WorkloadAddress
+		if err := rows.Scan(&i.WorkloadID, &i.Address); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listWorkloadLabels = `-- name: ListWorkloadLabels :many
 SELECT workload_id, key, value FROM workload_labels
 WHERE workload_id = $1
@@ -244,6 +313,33 @@ ORDER BY key
 
 func (q *Queries) ListWorkloadLabels(ctx context.Context, workloadID uuid.UUID) ([]WorkloadLabel, error) {
 	rows, err := q.db.Query(ctx, listWorkloadLabels, workloadID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WorkloadLabel{}
+	for rows.Next() {
+		var i WorkloadLabel
+		if err := rows.Scan(&i.WorkloadID, &i.Key, &i.Value); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWorkloadLabelsFor = `-- name: ListWorkloadLabelsFor :many
+SELECT workload_id, key, value FROM workload_labels
+WHERE workload_id = ANY($1::uuid[])
+ORDER BY workload_id, key
+`
+
+// The children of the workloads on one page, fetched once per page.
+func (q *Queries) ListWorkloadLabelsFor(ctx context.Context, workloadIds []uuid.UUID) ([]WorkloadLabel, error) {
+	rows, err := q.db.Query(ctx, listWorkloadLabelsFor, workloadIds)
 	if err != nil {
 		return nil, err
 	}
@@ -283,6 +379,160 @@ func (q *Queries) ListWorkloadListeningServices(ctx context.Context, workloadID 
 			&i.Port,
 			&i.ProcessName,
 			&i.ProcessPath,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWorkloadListeningServicesFor = `-- name: ListWorkloadListeningServicesFor :many
+SELECT workload_id, protocol, port, process_name, process_path FROM workload_listening_services
+WHERE workload_id = ANY($1::uuid[])
+ORDER BY workload_id, protocol, port
+`
+
+func (q *Queries) ListWorkloadListeningServicesFor(ctx context.Context, workloadIds []uuid.UUID) ([]WorkloadListeningService, error) {
+	rows, err := q.db.Query(ctx, listWorkloadListeningServicesFor, workloadIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WorkloadListeningService{}
+	for rows.Next() {
+		var i WorkloadListeningService
+		if err := rows.Scan(
+			&i.WorkloadID,
+			&i.Protocol,
+			&i.Port,
+			&i.ProcessName,
+			&i.ProcessPath,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWorkloadPage = `-- name: ListWorkloadPage :many
+
+SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at,
+       w.credential_serial, w.credential_expires_at, w.last_renewed_at,
+       w.mode, w.facts, w.agent_version, w.agent_capabilities, w.last_seen_at,
+       w.sync_state, w.applied_policy_version, w.sync_error, w.dropped_flow_records,
+       w.credential_renewal_error,
+       w.sync_rank::integer AS sync_rank, w.seen_key::timestamptz AS seen_key,
+       p.version AS latest_version, p.rendered_at AS latest_rendered_at
+FROM (
+    SELECT workloads.id, workloads.region_id, workloads.provisioning_token_id, workloads.hostname, workloads.enrolled_at, workloads.credential_serial, workloads.credential_expires_at, workloads.last_renewed_at, workloads.mode, workloads.facts, workloads.agent_version, workloads.agent_capabilities, workloads.last_seen_at, workloads.sync_state, workloads.applied_policy_version, workloads.sync_error, workloads.dropped_flow_records, workloads.credential_renewal_error,
+           CASE workloads.sync_state WHEN 3 THEN 0 WHEN 4 THEN 1 WHEN 2 THEN 2 WHEN 1 THEN 3 ELSE 4 END AS sync_rank,
+           coalesce(workloads.last_seen_at, '1970-01-01 00:00:00+00'::timestamptz) AS seen_key
+    FROM workloads
+) AS w
+LEFT JOIN workload_policies p ON p.workload_id = w.id
+WHERE (cardinality($1::uuid[]) = 0 OR w.id = ANY($1::uuid[]))
+  AND ($2::integer = 0 OR w.mode = $2::integer)
+  AND ($3::integer = 0 OR w.sync_state = $3::integer)
+  AND (w.sync_rank > $4::integer
+       OR (w.sync_rank = $4::integer
+           AND (w.seen_key < $5::timestamptz
+                OR (w.seen_key = $5::timestamptz AND w.id > $6::uuid))))
+ORDER BY w.sync_rank, w.seen_key DESC, w.id
+LIMIT $7
+`
+
+type ListWorkloadPageParams struct {
+	WorkloadIds []uuid.UUID
+	Mode        int32
+	SyncState   int32
+	CursorRank  int32
+	CursorSeen  time.Time
+	CursorID    uuid.UUID
+	RowLimit    int32
+}
+
+type ListWorkloadPageRow struct {
+	ID                     uuid.UUID
+	RegionID               string
+	ProvisioningTokenID    uuid.UUID
+	Hostname               string
+	EnrolledAt             time.Time
+	CredentialSerial       string
+	CredentialExpiresAt    time.Time
+	LastRenewedAt          *time.Time
+	Mode                   int32
+	Facts                  []byte
+	AgentVersion           string
+	AgentCapabilities      []string
+	LastSeenAt             *time.Time
+	SyncState              int32
+	AppliedPolicyVersion   int64
+	SyncError              string
+	DroppedFlowRecords     int64
+	CredentialRenewalError string
+	SyncRank               int32
+	SeenKey                time.Time
+	LatestVersion          pgtype.Int8
+	LatestRenderedAt       *time.Time
+}
+
+// --- operator read model (ADR-0007 as amended) -------------------------------
+// One page of the fleet in the order the fleet screen shows it: the
+// workloads needing attention first (degraded, then offline, then
+// pending, then synced), most recently seen first within a state, then by
+// id. The cursor is the (rank, last seen, id) of the last row served; the
+// first page passes a rank below every row. A workload never seen sorts
+// as if seen at the epoch. An empty id array means every workload; a zero
+// mode or sync state means any. The latest rendered version rides along
+// from workload_policies so sync drift is one read.
+func (q *Queries) ListWorkloadPage(ctx context.Context, arg ListWorkloadPageParams) ([]ListWorkloadPageRow, error) {
+	rows, err := q.db.Query(ctx, listWorkloadPage,
+		arg.WorkloadIds,
+		arg.Mode,
+		arg.SyncState,
+		arg.CursorRank,
+		arg.CursorSeen,
+		arg.CursorID,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListWorkloadPageRow{}
+	for rows.Next() {
+		var i ListWorkloadPageRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.RegionID,
+			&i.ProvisioningTokenID,
+			&i.Hostname,
+			&i.EnrolledAt,
+			&i.CredentialSerial,
+			&i.CredentialExpiresAt,
+			&i.LastRenewedAt,
+			&i.Mode,
+			&i.Facts,
+			&i.AgentVersion,
+			&i.AgentCapabilities,
+			&i.LastSeenAt,
+			&i.SyncState,
+			&i.AppliedPolicyVersion,
+			&i.SyncError,
+			&i.DroppedFlowRecords,
+			&i.CredentialRenewalError,
+			&i.SyncRank,
+			&i.SeenKey,
+			&i.LatestVersion,
+			&i.LatestRenderedAt,
 		); err != nil {
 			return nil, err
 		}

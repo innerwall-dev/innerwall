@@ -11,6 +11,7 @@ import (
 
 	"github.com/innerwall-dev/innerwall/internal/identity"
 	"github.com/innerwall-dev/innerwall/internal/policy"
+	"github.com/innerwall-dev/innerwall/internal/readmodel"
 	"github.com/innerwall-dev/innerwall/internal/registry"
 )
 
@@ -33,7 +34,7 @@ func runWorkload(ctx context.Context, args []string) error {
 }
 
 func syncStateName(s registry.Workload) string {
-	return strings.ToLower(strings.TrimPrefix(s.SyncState.String(), "SYNC_STATE_"))
+	return readmodel.SyncStateName(s.SyncState)
 }
 
 func labelString(labels []registry.Label) string {

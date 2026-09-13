@@ -154,6 +154,13 @@ type FlowStore interface {
 	ListWindows(ctx context.Context, q WindowQuery) ([]WindowRow, error)
 	// Rollup groups the windows of a workload set by peer and service.
 	Rollup(ctx context.Context, q RollupQuery) ([]RollupRow, error)
+	// RollupGroups aggregates windows under one of the named groupings,
+	// ordered and bounded as the query says. It returns ErrUnknownGroupBy
+	// for a grouping outside GroupBys.
+	RollupGroups(ctx context.Context, q GroupQuery) (*GroupResult, error)
+	// ListWindowPage returns one page of a workload's windows, newest
+	// first, continuing after the query's cursor.
+	ListWindowPage(ctx context.Context, q WindowPageQuery) ([]WindowRow, error)
 	// ListTotals returns a workload's cumulative flow keys, most recently
 	// seen first. A zero decision means every decision.
 	ListTotals(ctx context.Context, id identity.WorkloadID, decision innerwallv1.PolicyDecision) ([]Total, error)
