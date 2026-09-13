@@ -14,7 +14,8 @@ Rules the first migrations must respect:
 - `region_id` is reserved on every table that will ever be scoped by region,
   from the first migration, even while a single region is the only deployment
   (ADR-0012).
-- Flow tables are column-shaped and time-partitioned; retention is by partition
-  drop (ADR-0009).
+- Flow tables are column-shaped and keyed by window start; retention is a
+  bounded periodic delete, with partitioning as the recorded path when volume
+  demands it (ADR-0009, ADR-0019).
 - The policy schema carries a direction column even though v1 compiles inbound
   only (ADR-0010).

@@ -29,6 +29,7 @@ type Querier interface {
 	AddWorkloadAddress(ctx context.Context, arg AddWorkloadAddressParams) error
 	AddWorkloadLabel(ctx context.Context, arg AddWorkloadLabelParams) error
 	AddWorkloadListeningService(ctx context.Context, arg AddWorkloadListeningServiceParams) error
+	CountFlowWindows(ctx context.Context) (int64, error)
 	CountRulesReferencingAddressGroup(ctx context.Context, addressGroupID *uuid.UUID) (int64, error)
 	CountRulesReferencingService(ctx context.Context, serviceID uuid.UUID) (int64, error)
 	// Address groups: named CIDR sets for peers that are not managed workloads
@@ -49,6 +50,10 @@ type Querier interface {
 	CreateWorkload(ctx context.Context, arg CreateWorkloadParams) error
 	DeleteAddressGroup(ctx context.Context, id uuid.UUID) (int64, error)
 	DeleteAddressGroupCIDRs(ctx context.Context, addressGroupID uuid.UUID) error
+	// Retention: one bounded batch of the oldest windows before the horizon.
+	// The caller loops until a batch deletes nothing, so no single statement
+	// holds locks for the whole backlog (ADR-0019).
+	DeleteFlowWindowsBefore(ctx context.Context, arg DeleteFlowWindowsBeforeParams) (int64, error)
 	DeleteRules(ctx context.Context, rulesetID uuid.UUID) error
 	DeleteRuleset(ctx context.Context, id uuid.UUID) (int64, error)
 	DeleteRulesetScopeMatches(ctx context.Context, rulesetID uuid.UUID) error
@@ -64,6 +69,10 @@ type Querier interface {
 	GetService(ctx context.Context, id uuid.UUID) (Service, error)
 	GetWorkload(ctx context.Context, id uuid.UUID) (Workload, error)
 	GetWorkloadPolicy(ctx context.Context, workloadID uuid.UUID) (WorkloadPolicy, error)
+	// Flow storage (ADR-0009, ADR-0019). These are the only statements that
+	// touch flow_windows and flow_totals; every caller goes through the
+	// FlowStore interface in internal/flowstore.
+	InsertFlowWindows(ctx context.Context, arg []InsertFlowWindowsParams) (int64, error)
 	ListAddressGroupCIDRs(ctx context.Context, addressGroupID uuid.UUID) ([]AddressGroupCidr, error)
 	ListAddressGroups(ctx context.Context) ([]AddressGroup, error)
 	ListAllAddressGroupCIDRs(ctx context.Context) ([]AddressGroupCidr, error)
@@ -77,6 +86,8 @@ type Querier interface {
 	ListAllServiceEntries(ctx context.Context) ([]ServiceEntry, error)
 	ListAllWorkloadAddresses(ctx context.Context) ([]WorkloadAddress, error)
 	ListAllWorkloadLabels(ctx context.Context) ([]WorkloadLabel, error)
+	ListFlowTotals(ctx context.Context, arg ListFlowTotalsParams) ([]FlowTotal, error)
+	ListFlowWindows(ctx context.Context, arg ListFlowWindowsParams) ([]FlowWindow, error)
 	ListProvisioningTokenLabels(ctx context.Context, tokenID uuid.UUID) ([]ProvisioningTokenLabel, error)
 	ListProvisioningTokens(ctx context.Context) ([]ProvisioningToken, error)
 	ListRulesets(ctx context.Context) ([]Ruleset, error)
@@ -103,11 +114,20 @@ type Querier interface {
 	RecordWorkloadInventory(ctx context.Context, arg RecordWorkloadInventoryParams) (int64, error)
 	RecordWorkloadRenewal(ctx context.Context, arg RecordWorkloadRenewalParams) (int64, error)
 	RevokeProvisioningToken(ctx context.Context, arg RevokeProvisioningTokenParams) (int64, error)
+	// The rollup the operator console issues for a label scope: the scope is
+	// resolved to workload ids by the caller, and the rows are grouped by
+	// resolved peer and service (destination port and protocol). A decision of
+	// 0 means every decision.
+	RollupFlowWindows(ctx context.Context, arg RollupFlowWindowsParams) ([]RollupFlowWindowsRow, error)
 	SetWorkloadMode(ctx context.Context, arg SetWorkloadModeParams) (int64, error)
 	SetWorkloadSyncState(ctx context.Context, arg SetWorkloadSyncStateParams) (int64, error)
+	// Retention runs singly across replicas: whichever replica acquires the
+	// lock prunes, the others skip this round (ADR-0017).
+	TryAcquireRetentionLock(ctx context.Context, key int64) (bool, error)
 	UpdateAddressGroup(ctx context.Context, arg UpdateAddressGroupParams) (int64, error)
 	UpdateRuleset(ctx context.Context, arg UpdateRulesetParams) (int64, error)
 	UpdateService(ctx context.Context, arg UpdateServiceParams) (int64, error)
+	UpsertFlowTotal(ctx context.Context, arg []UpsertFlowTotalParams) *UpsertFlowTotalBatchResults
 	UpsertWorkloadPolicy(ctx context.Context, arg UpsertWorkloadPolicyParams) error
 }
 

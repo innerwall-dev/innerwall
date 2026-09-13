@@ -180,7 +180,7 @@ func TestRegistryAndRenderTx(t *testing.T) {
 	if err := s.RecordApplied(ctx, id, 4, innerwallv1.SyncState_SYNC_STATE_SYNCED, now); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.RecordHeartbeat(ctx, id, 7, now); err != nil {
+	if err := s.RecordHeartbeat(ctx, id, 7, "", now); err != nil {
 		t.Fatal(err)
 	}
 	w, _ = s.LookupWorkload(ctx, id)

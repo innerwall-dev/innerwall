@@ -23,6 +23,47 @@ type AddressGroupCidr struct {
 	Cidr           string
 }
 
+type FlowTotal struct {
+	RegionID        string
+	WorkloadID      uuid.UUID
+	PeerKind        int32
+	PeerKey         string
+	PeerLabels      []byte
+	DstPort         int32
+	Protocol        int32
+	Direction       int32
+	Decision        int32
+	MatchedRuleID   string
+	FirstSeen       time.Time
+	LastSeen        time.Time
+	ConnectionCount int64
+	ByteCount       int64
+	WindowCount     int64
+}
+
+type FlowWindow struct {
+	ID              int64
+	RegionID        string
+	WorkloadID      uuid.UUID
+	WindowStart     time.Time
+	WindowEnd       time.Time
+	PeerKind        int32
+	PeerKey         string
+	PeerLabels      []byte
+	SrcAddress      string
+	DstAddress      string
+	DstPort         int32
+	Protocol        int32
+	Direction       int32
+	Decision        int32
+	MatchedRuleID   string
+	ConnectionCount int64
+	ByteCount       int64
+	FirstSeen       time.Time
+	LastSeen        time.Time
+	ProcessName     string
+}
+
 type ProvisioningToken struct {
 	ID         uuid.UUID
 	RegionID   string
@@ -111,23 +152,24 @@ type ServiceEntry struct {
 }
 
 type Workload struct {
-	ID                   uuid.UUID
-	RegionID             string
-	ProvisioningTokenID  uuid.UUID
-	Hostname             string
-	EnrolledAt           time.Time
-	CredentialSerial     string
-	CredentialExpiresAt  time.Time
-	LastRenewedAt        *time.Time
-	Mode                 int32
-	Facts                []byte
-	AgentVersion         string
-	AgentCapabilities    []string
-	LastSeenAt           *time.Time
-	SyncState            int32
-	AppliedPolicyVersion int64
-	SyncError            string
-	DroppedFlowRecords   int64
+	ID                     uuid.UUID
+	RegionID               string
+	ProvisioningTokenID    uuid.UUID
+	Hostname               string
+	EnrolledAt             time.Time
+	CredentialSerial       string
+	CredentialExpiresAt    time.Time
+	LastRenewedAt          *time.Time
+	Mode                   int32
+	Facts                  []byte
+	AgentVersion           string
+	AgentCapabilities      []string
+	LastSeenAt             *time.Time
+	SyncState              int32
+	AppliedPolicyVersion   int64
+	SyncError              string
+	DroppedFlowRecords     int64
+	CredentialRenewalError string
 }
 
 type WorkloadAddress struct {

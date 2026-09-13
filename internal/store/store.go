@@ -16,6 +16,7 @@ import (
 	"github.com/pressly/goose/v3/lock"
 
 	"github.com/innerwall-dev/innerwall/internal/enroll"
+	"github.com/innerwall-dev/innerwall/internal/flowstore"
 	"github.com/innerwall-dev/innerwall/internal/identity"
 	"github.com/innerwall-dev/innerwall/internal/store/db"
 )
@@ -26,8 +27,9 @@ var migrations embed.FS
 // Store is the Postgres implementation of the domain persistence
 // interfaces. It is safe for concurrent use.
 type Store struct {
-	pool *pgxpool.Pool
-	q    *db.Queries
+	pool  *pgxpool.Pool
+	q     *db.Queries
+	flows *flowstore.Postgres
 }
 
 var _ enroll.Store = (*Store)(nil)
@@ -38,7 +40,7 @@ func Open(ctx context.Context, databaseURL string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: opening pool: %w", err)
 	}
-	s := &Store{pool: pool, q: db.New(pool)}
+	s := &Store{pool: pool, q: db.New(pool), flows: flowstore.NewPostgres(pool)}
 	if _, err := s.q.Ping(ctx); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("store: ping: %w", err)
@@ -48,6 +50,10 @@ func Open(ctx context.Context, databaseURL string) (*Store, error) {
 
 // Close releases the connection pool.
 func (s *Store) Close() { s.pool.Close() }
+
+// Flows returns the FlowStore over the same database. It is the only path
+// to flow data (ADR-0009).
+func (s *Store) Flows() *flowstore.Postgres { return s.flows }
 
 // Migrate applies every pending migration in internal/store/migrations. It is
 // idempotent: a fully migrated database is a no-op. Migrations run through

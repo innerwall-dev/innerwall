@@ -60,19 +60,20 @@ func listWorkloads(ctx context.Context, q *db.Queries) ([]registry.Workload, err
 
 func workloadFromRow(row *db.Workload, labels []registry.Label, addrs []netip.Addr) (*registry.Workload, error) {
 	w := &registry.Workload{
-		ID:                  identity.FromUUID(row.ID),
-		Hostname:            row.Hostname,
-		Labels:              labels,
-		Mode:                innerwallv1.EnforcementMode(row.Mode),
-		Addresses:           addrs,
-		Agent:               registry.AgentInfo{Version: row.AgentVersion, Capabilities: row.AgentCapabilities},
-		EnrolledAt:          row.EnrolledAt,
-		LastSeenAt:          row.LastSeenAt,
-		SyncState:           innerwallv1.SyncState(row.SyncState),
-		AppliedVersion:      uint64(row.AppliedPolicyVersion), //nolint:gosec // non-negative by construction
-		SyncError:           row.SyncError,
-		DroppedFlowRecords:  uint64(row.DroppedFlowRecords), //nolint:gosec // non-negative by construction
-		CredentialExpiresAt: row.CredentialExpiresAt,
+		ID:                     identity.FromUUID(row.ID),
+		Hostname:               row.Hostname,
+		Labels:                 labels,
+		Mode:                   innerwallv1.EnforcementMode(row.Mode),
+		Addresses:              addrs,
+		Agent:                  registry.AgentInfo{Version: row.AgentVersion, Capabilities: row.AgentCapabilities},
+		EnrolledAt:             row.EnrolledAt,
+		LastSeenAt:             row.LastSeenAt,
+		SyncState:              innerwallv1.SyncState(row.SyncState),
+		AppliedVersion:         uint64(row.AppliedPolicyVersion), //nolint:gosec // non-negative by construction
+		SyncError:              row.SyncError,
+		DroppedFlowRecords:     uint64(row.DroppedFlowRecords), //nolint:gosec // non-negative by construction
+		CredentialRenewalError: row.CredentialRenewalError,
+		CredentialExpiresAt:    row.CredentialExpiresAt,
 	}
 	if labels == nil {
 		w.Labels = []registry.Label{}
@@ -264,8 +265,8 @@ func (s *Store) RecordAgent(ctx context.Context, id identity.WorkloadID, agent r
 }
 
 // RecordHeartbeat implements registry.Store.
-func (s *Store) RecordHeartbeat(ctx context.Context, id identity.WorkloadID, dropped uint64, now time.Time) error {
-	n, err := s.q.RecordWorkloadHeartbeat(ctx, db.RecordWorkloadHeartbeatParams{ID: id.UUID(), LastSeenAt: &now, DroppedFlowRecords: int64(dropped)}) //nolint:gosec // counter
+func (s *Store) RecordHeartbeat(ctx context.Context, id identity.WorkloadID, dropped uint64, renewalError string, now time.Time) error {
+	n, err := s.q.RecordWorkloadHeartbeat(ctx, db.RecordWorkloadHeartbeatParams{ID: id.UUID(), LastSeenAt: &now, DroppedFlowRecords: int64(dropped), CredentialRenewalError: renewalError}) //nolint:gosec // counter
 	if err != nil {
 		return fmt.Errorf("store: recording heartbeat: %w", err)
 	}
