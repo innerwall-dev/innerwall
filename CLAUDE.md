@@ -13,7 +13,7 @@ You are working on **Innerwall**, an open-source microsegmentation platform: hos
 These are the constraints a plausible-looking change is most likely to violate. Each cites its ADR; a change that contradicts one requires a **superseding ADR in the same PR**.
 
 - **No ORM, no query builders, no runtime SQL generation.** Hand-written SQL in `internal/store/queries/`, sqlc-generated Go, goose migrations. Every production query lives in the repo. (ADR-0006)
-- **No polling loops anywhere in steady state.** Agents hold one persistent gRPC stream; policy moves as versioned desired-state deltas; reconnects use exponential backoff with full jitter. (ADR-0002)
+- **No polling loops anywhere in steady state.** Agents hold one persistent gRPC sync stream for policy, which moves as versioned desired-state deltas; flow telemetry travels on its own `ReportFlows` RPC so it can never head-of-line-block a policy update; every reconnect uses exponential backoff with full jitter. (ADR-0002, ADR-0015)
 - **Agents never touch firewall state outside the Innerwall-owned nftables table**, and ruleset application is atomic — full-table replacement, never incremental mutation of live rules. (ADR-0003)
 - **Agents fail static — never open, never closed.** Last-ACKed policy persists to disk and survives restarts and reboots. The local kill switch must always work without the control plane. (ADR-0011)
 - **No agent self-update code.** Not a flag, not a stub, not "for later." (ADR-0011)

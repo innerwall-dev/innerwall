@@ -19,7 +19,7 @@ innerwall-agent enroll --server localhost:8443 --token <token> --bootstrap-ca ./
 innerwall-agent daemon --server localhost:8443 --state-dir ./agent-state
 ```
 
-The bootstrap anchor is the authority's certificate, handed to the agent out of band with the token; without it the agent would send the token to whatever answered at the address. The daemon holds the sync stream, applies policy as it is pushed (into an in-memory store until enforcement lands; every applied change is logged), reports inventory and heartbeats, and renews its credential when less than a third of its lifetime remains. It exits, with the reason, when the credential has expired or the control plane directs re-enrollment; both need a new provisioning token. `innerwall-agent renew` remains for rotating a credential by hand.
+The bootstrap anchor is the authority's certificate, handed to the agent out of band with the token; without it the agent would send the token to whatever answered at the address. The daemon holds the sync stream, applies policy as it is pushed (into an in-memory store until enforcement lands; every applied change is logged), reports inventory and heartbeats, renews its credential when less than a third of its lifetime remains, and observes inbound connections through the kernel's connection tracker, aggregating them per reporting window and shipping them on a stream of their own. Observation needs the daemon to run as root (the connection-tracking events are a privileged netlink subscription), and byte counts need the kernel's per-connection accounting (`sysctl net.netfilter.nf_conntrack_acct=1`); without it connections are counted and bytes are zero, and the daemon says so at start. Windows the control plane cannot receive are held in a bounded in-memory buffer (`--flow-buffer-records`); beyond it the oldest are dropped and the count is reported on the heartbeat. It exits, with the reason, when the credential has expired or the control plane directs re-enrollment; both need a new provisioning token. `innerwall-agent renew` remains for rotating a credential by hand.
 
 Policy is authored with the control-plane command line against the database; the running control plane learns of every change through Postgres and pushes it to connected agents (ADR-0018):
 
@@ -38,7 +38,15 @@ docker compose exec innerwall /innerwall workload set-mode <workload-id> simulat
 docker compose exec innerwall /innerwall policy show <workload-id>
 ```
 
-Only inbound rules are admitted (ADR-0010). The REST/JSON façade and UI are wired in by later milestones.
+Only inbound rules are admitted (ADR-0010). Stored flows are read with the `flows` commands, which are the query shapes the operator console will issue (ADR-0019):
+
+```sh
+docker compose exec innerwall /innerwall flows list <workload-id> --since 1h
+docker compose exec innerwall /innerwall flows rollup --label role=db --decision observed --since 24h
+docker compose exec innerwall /innerwall flows totals <workload-id>
+```
+
+Windows older than `--flow-retention` (30 days by default) are deleted by a job that runs every `--flow-retention-interval` on whichever replica takes the lock first; totals since first seen are kept. The REST/JSON façade and UI are wired in by later milestones.
 
 Running more than one replica: the signing authority directory (`INNERWALL_CA_DIR`, created once by `innerwall ca init`) is configuration and must be identical on every replica, like the database connection string. `serve --init-ca` is a single-replica development convenience; two replicas that each initialise their own authority issue credentials the other will not accept (ADR-0017).
 

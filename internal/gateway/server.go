@@ -17,6 +17,7 @@ import (
 	"github.com/innerwall-dev/innerwall/internal/enroll"
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 	"github.com/innerwall-dev/innerwall/internal/identity"
+	"github.com/innerwall-dev/innerwall/internal/ingest"
 	"github.com/innerwall-dev/innerwall/internal/registry"
 )
 
@@ -36,15 +37,19 @@ type PolicyEvents interface {
 }
 
 // Deps is what the gateway is built from. Enroll is required. Registry,
-// Policies, Engine, and Events are required for the sync stream; a
-// deployment that serves enrollment only, such as a test harness, may
-// leave them nil, and Sync then refuses with FailedPrecondition.
+// Policies, Engine, and Events are required for the sync stream and Ingest
+// for flow telemetry; a deployment that serves enrollment only, such as a
+// test harness, may leave them nil, and the corresponding streams then
+// refuse with FailedPrecondition.
 type Deps struct {
 	Enroll   *enroll.Service
 	Registry registry.Store
 	Policies PolicyStore
 	Engine   *compiler.Engine
 	Events   PolicyEvents
+	// Ingest receives reported flow windows; ReportFlows refuses with
+	// FailedPrecondition when nil.
+	Ingest *ingest.Service
 	// SyncConfig is handed to every agent in HelloAck; DefaultSyncConfig
 	// when nil.
 	SyncConfig *innerwallv1.SyncConfig
@@ -63,6 +68,7 @@ type Server struct {
 	policies   PolicyStore
 	engine     *compiler.Engine
 	events     PolicyEvents
+	ingest     *ingest.Service
 	syncConfig *innerwallv1.SyncConfig
 	sessions   *sessions
 	log        *slog.Logger
@@ -86,6 +92,7 @@ func New(d Deps) *Server {
 		policies:   d.Policies,
 		engine:     d.Engine,
 		events:     d.Events,
+		ingest:     d.Ingest,
 		syncConfig: d.SyncConfig,
 		sessions:   &sessions{live: map[identity.WorkloadID]*session{}},
 		log:        d.Log,

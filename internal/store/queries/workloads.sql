@@ -87,7 +87,7 @@ ORDER BY protocol, port;
 
 -- name: RecordWorkloadHeartbeat :execrows
 UPDATE workloads
-SET last_seen_at = $2, dropped_flow_records = $3
+SET last_seen_at = $2, dropped_flow_records = $3, credential_renewal_error = $4
 WHERE id = $1;
 
 -- name: SetWorkloadSyncState :execrows

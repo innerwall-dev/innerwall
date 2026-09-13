@@ -128,6 +128,9 @@ func runWorkloadStatus(ctx context.Context, args []string) error {
 	fmt.Printf("credential      expires %s\n", wl.CredentialExpiresAt.UTC().Format(time.RFC3339))
 	fmt.Printf("agent           %s\n", wl.Agent.Version)
 	fmt.Printf("dropped flows   %d\n", wl.DroppedFlowRecords)
+	if wl.CredentialRenewalError != "" {
+		fmt.Printf("renewal error   %s\n", wl.CredentialRenewalError)
+	}
 	addrs := make([]string, 0, len(wl.Addresses))
 	for _, a := range wl.Addresses {
 		addrs = append(addrs, a.String())

@@ -55,6 +55,15 @@ type Config struct {
 	// Uptime reports the daemon's uptime for heartbeats; measured from
 	// New when nil.
 	Uptime func() time.Duration
+	// DroppedFlowRecords reports the flow records the collection loop has
+	// dropped to buffer pressure, carried on every heartbeat. Zero when nil.
+	DroppedFlowRecords func() uint64
+	// RenewalError reports the reason the last automatic credential
+	// renewal failed, or empty, carried on every heartbeat. Empty when nil.
+	RenewalError func() string
+	// OnSyncConfig is called with the configuration in every HelloAck, so
+	// the other loops adopt the control plane's parameters.
+	OnSyncConfig func(*innerwallv1.SyncConfig)
 }
 
 // Daemon is the agent's sync loop.
@@ -80,7 +89,7 @@ func New(cfg Config) *Daemon {
 		cfg.HelloTimeout = 30 * time.Second
 	}
 	if cfg.Dial == nil {
-		cfg.Dial = grpcDialer
+		cfg.Dial = DialGRPC
 	}
 	return &Daemon{
 		cfg:     cfg,
@@ -90,9 +99,10 @@ func New(cfg Config) *Daemon {
 	}
 }
 
-// grpcDialer is the production dialer: mutual TLS with the holder's
-// current credential, refreshed at each handshake.
-func grpcDialer(_ context.Context, server string, holder *credential.Holder) (innerwallv1.AgentServiceClient, io.Closer, error) {
+// DialGRPC is the production dialer: mutual TLS with the holder's
+// current credential, refreshed at each handshake. The flow reporter dials
+// with it too, on its own connection.
+func DialGRPC(_ context.Context, server string, holder *credential.Holder) (innerwallv1.AgentServiceClient, io.Closer, error) {
 	tlsCfg, err := holder.TLSConfig()
 	if err != nil {
 		return nil, nil, err
@@ -224,7 +234,10 @@ func (d *Daemon) runSession(ctx context.Context) error {
 		}
 		cfg = ack.GetConfig()
 	}
-	d.log.Info("sync stream established", "server", d.cfg.Server, "heartbeat_interval", cfg.GetHeartbeatIntervalSeconds(), "inventory_interval", cfg.GetInventoryReportIntervalSeconds())
+	d.log.Info("sync stream established", "server", d.cfg.Server, "heartbeat_interval", cfg.GetHeartbeatIntervalSeconds(), "inventory_interval", cfg.GetInventoryReportIntervalSeconds(), "flow_window", cfg.GetFlowAggregationWindowSeconds(), "flow_batch_max", cfg.GetFlowBatchMaxRecords())
+	if d.cfg.OnSyncConfig != nil {
+		d.cfg.OnSyncConfig(cfg)
+	}
 
 	heartbeat := newTicker(cfg.GetHeartbeatIntervalSeconds())
 	defer heartbeat.Stop()
@@ -244,10 +257,9 @@ func (d *Daemon) runSession(ctx context.Context) error {
 			}
 		case <-heartbeat.C:
 			if err := out.send(&innerwallv1.SyncRequest{Msg: &innerwallv1.SyncRequest_Heartbeat{Heartbeat: &innerwallv1.Heartbeat{
-				UptimeSeconds: uint64(d.uptime().Seconds()),
-				// Flow collection lands with enforcement; nothing is
-				// dropped because nothing is collected.
-				DroppedFlowRecords: 0,
+				UptimeSeconds:          uint64(d.uptime().Seconds()),
+				DroppedFlowRecords:     d.dropped(),
+				CredentialRenewalError: d.renewalError(),
 			}}}); err != nil {
 				return fmt.Errorf("sync: sending heartbeat: %w", err)
 			}
@@ -264,6 +276,20 @@ func (d *Daemon) runSession(ctx context.Context) error {
 			}
 		}
 	}
+}
+
+func (d *Daemon) dropped() uint64 {
+	if d.cfg.DroppedFlowRecords != nil {
+		return d.cfg.DroppedFlowRecords()
+	}
+	return 0
+}
+
+func (d *Daemon) renewalError() string {
+	if d.cfg.RenewalError != nil {
+		return d.cfg.RenewalError()
+	}
+	return ""
 }
 
 func (d *Daemon) uptime() time.Duration {

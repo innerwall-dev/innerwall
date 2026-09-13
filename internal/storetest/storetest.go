@@ -55,7 +55,7 @@ func Open(t *testing.T) *store.Store {
 	}
 	// Test fixture, not a production query: resets every table so tests
 	// start from nothing.
-	if _, err := conn.Exec(ctx, "TRUNCATE workload_listening_services, workload_addresses, workload_policies, rule_service_entries, rule_service_refs, rule_peer_matches, rule_peers, rules, ruleset_scope_matches, rulesets, address_group_cidrs, address_groups, service_entries, services, workload_labels, workloads, provisioning_token_labels, provisioning_tokens"); err != nil {
+	if _, err := conn.Exec(ctx, "TRUNCATE flow_totals, flow_windows, workload_listening_services, workload_addresses, workload_policies, rule_service_entries, rule_service_refs, rule_peer_matches, rule_peers, rules, ruleset_scope_matches, rulesets, address_group_cidrs, address_groups, service_entries, services, workload_labels, workloads, provisioning_token_labels, provisioning_tokens"); err != nil {
 		t.Fatalf("resetting test database: %v", err)
 	}
 	_ = conn.Close(ctx)

@@ -294,7 +294,7 @@ func (s *Server) handleMessage(ctx context.Context, log *slog.Logger, sess *sess
 		}
 		return nil
 	case *innerwallv1.SyncRequest_Heartbeat:
-		if err := s.registry.RecordHeartbeat(ctx, sess.id, m.Heartbeat.GetDroppedFlowRecords(), now); err != nil {
+		if err := s.registry.RecordHeartbeat(ctx, sess.id, m.Heartbeat.GetDroppedFlowRecords(), m.Heartbeat.GetCredentialRenewalError(), now); err != nil {
 			return status.Error(codes.Internal, "recording heartbeat")
 		}
 		return nil

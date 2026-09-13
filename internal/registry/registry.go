@@ -36,20 +36,23 @@ type AgentInfo struct {
 // Workload is the control plane's record of one workload: identity plus
 // everything mutable that lives beside it rather than in the credential.
 type Workload struct {
-	ID                  identity.WorkloadID
-	Hostname            string
-	Labels              []Label
-	Mode                innerwallv1.EnforcementMode
-	Facts               *innerwallv1.HostFacts
-	Addresses           []netip.Addr
-	Agent               AgentInfo
-	EnrolledAt          time.Time
-	LastSeenAt          *time.Time
-	SyncState           innerwallv1.SyncState
-	AppliedVersion      uint64
-	SyncError           string
-	DroppedFlowRecords  uint64
-	CredentialExpiresAt time.Time
+	ID                 identity.WorkloadID
+	Hostname           string
+	Labels             []Label
+	Mode               innerwallv1.EnforcementMode
+	Facts              *innerwallv1.HostFacts
+	Addresses          []netip.Addr
+	Agent              AgentInfo
+	EnrolledAt         time.Time
+	LastSeenAt         *time.Time
+	SyncState          innerwallv1.SyncState
+	AppliedVersion     uint64
+	SyncError          string
+	DroppedFlowRecords uint64
+	// CredentialRenewalError is the reason the agent's last automatic
+	// renewal failed, as its heartbeat reported it; empty when healthy.
+	CredentialRenewalError string
+	CredentialExpiresAt    time.Time
 }
 
 // LabelMap returns the labels as a map for selector matching.
@@ -83,8 +86,9 @@ type Store interface {
 	// RecordAgent stores what a Hello said: agent info and the version the
 	// agent claims to have applied.
 	RecordAgent(ctx context.Context, id identity.WorkloadID, agent AgentInfo, appliedVersion uint64, now time.Time) error
-	// RecordHeartbeat refreshes last-seen and the dropped-flow counter.
-	RecordHeartbeat(ctx context.Context, id identity.WorkloadID, droppedFlowRecords uint64, now time.Time) error
+	// RecordHeartbeat refreshes last-seen, the dropped-flow counter, and
+	// the renewal status the heartbeat carries.
+	RecordHeartbeat(ctx context.Context, id identity.WorkloadID, droppedFlowRecords uint64, renewalError string, now time.Time) error
 	// SetSyncState records the convergence state with an optional detail
 	// (the agent's error on a failed apply).
 	SetSyncState(ctx context.Context, id identity.WorkloadID, state innerwallv1.SyncState, detail string, now time.Time) error

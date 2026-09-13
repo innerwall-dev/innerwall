@@ -80,7 +80,7 @@ Consumes the authored model (rulesets with label selectors, services, address gr
 
 ### 4.4 Flow ingestion
 
-Receives pre-aggregated flow records from agents, enriches them (IP → workload identity via the registry), deduplicates bidirectionally (both endpoints of a connection report it), and writes to the FlowStore. Agent-side aggregation is the load-bearing decision here: agents roll flows up into `(src, dst, port, proto, count, bytes)` tuples over a 1–10 minute window before shipping, cutting central volume by orders of magnitude (ADR-0009).
+Receives pre-aggregated flow windows from agents on a telemetry stream of their own, validates them, resolves each record's source address once, at ingest, against the registry as it stands at that instant (a workload with a snapshot of its labels, else the most specific address group, else the bare address), and writes the window and its cumulative totals through the FlowStore in one transaction (ADR-0019). In v1 every flow is reported once, by its inbound end (ADR-0010), so nothing is deduplicated; when outbound observation lands, both ends report and ingestion reconciles them. Agent-side aggregation is the load-bearing decision here: agents roll flows up into `(src, dst, port, proto, count, bytes)` tuples over a 1–10 minute window before shipping, cutting central volume by orders of magnitude (ADR-0009). A scheduled job prunes windows older than a configurable horizon, one replica at a time under an advisory lock; totals are never pruned.
 
 ### 4.5 Identity / CA service
 
@@ -97,7 +97,7 @@ An embedded signing authority issues short-lived workload certificates. It sits 
 A single static Go binary (`innerwall-agent`), structured as four independent loops sharing local state:
 
 1. **Sync loop** — maintains the gRPC stream, applies each snapshot or delta strictly in order as one complete policy through the installed-policy store, ACKs versions (FAILED with the reason when an apply is refused, staying on the last good version), reports inventory and heartbeats at the intervals the control plane sets, and reconnects with jittered backoff, always from a fresh snapshot. Persisting the last-known policy to disk lands with enforcement, behind the same store interface. A renewal timer beside it rotates the credential when less than a third of its lifetime remains and swaps it in without dropping the stream.
-2. **Collect loop** — reads flow data from conntrack (v1), aggregates in memory over the reporting window, ships batches upstream; buffers to local disk when disconnected. eBPF-based collection is a later, additive backend behind the same collector interface.
+2. **Collect loop** — reads inbound connections from the kernel's connection tracker (v1) behind a source interface, aggregates in memory over the reporting window the control plane configures, holds closed windows in a buffer bounded in records (oldest dropped first, every drop counted into the heartbeat), and ships one window per `ReportFlows` stream on a connection of its own with its own backoff (ADR-0019). Buffering to local disk across restarts is additive behind the same buffer. eBPF-based collection is a later, additive backend behind the same source interface.
 3. **Reconcile loop** — converges the host firewall onto the desired ruleset. On Linux this means an **Innerwall-owned nftables table**, replaced atomically as a unit: rule application is all-or-nothing, never a partially applied ruleset, and never a mutation of tables owned by other software (ADR-0003).
 4. **Health loop** — heartbeats (piggybacked on the stream), resource self-accounting, and local safety controls.
 
@@ -130,8 +130,10 @@ Trust-on-first-use is explicitly rejected: an enrollment window where anyone rea
 
 ## 8. Flow data
 
-- **Schema:** aggregated tuples `(src workload, dst workload, dst port, proto, first_seen, last_seen, count, bytes)` — deliberately column-shaped and time-partitioned.
-- **v1 store: Postgres only** (ADR-0009), time-partitioned tables with partition-drop retention. With agent-side aggregation this comfortably serves tens of millions of flow records per day.
+- **Schema:** two column-shaped tables (ADR-0019). `flow_windows` holds one row per aggregated record per reporting window: workload, window bounds, the peer resolved at ingest (kind, identity, label snapshot), destination port, protocol, direction, decision, matched rule, counters, first and last seen. `flow_totals` holds one row per (workload, resolved peer, port, protocol, direction, decision), upserted at ingest with running counters and the first and last instants seen, and is never pruned.
+- **Peers are resolved at ingest**, never by a query-time join, because addresses are reassigned and labels change: a stored row is what the operator would have seen at the time.
+- **v1 store: Postgres only** (ADR-0009), retention by a bounded periodic delete of aged windows (30 days by default), with time partitioning as the recorded path when volume demands it. With agent-side aggregation this comfortably serves tens of millions of flow records per day.
+- **Query shapes the schema serves:** a workload's windows over a time range; a decision-filtered rollup over a label scope grouped by peer and service; a workload's totals since first seen. The `innerwall flows` commands issue exactly these until the API façade lands.
 - **The seam:** all access goes through a `FlowStore` interface, and the schema is written to port cleanly to a columnar store. A second stateful system enters the deployment only when a real estate's query latency demands it — and when it does, the read path moves wholesale, keeping analytical load permanently off the policy plane.
 
 ## 9. UI
@@ -179,3 +181,4 @@ Two extensions exist today only as documented seams (ADR-0012):
 | Docs & review workflow | ADR-0014 |
 | Agent wire contract | ADR-0015 |
 | Policy rendering, delta versioning, rendered state | ADR-0018 |
+| Flow storage, ingest-time resolution, retention | ADR-0019 |

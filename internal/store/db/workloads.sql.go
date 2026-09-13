@@ -130,7 +130,7 @@ func (q *Queries) DeleteWorkloadListeningServices(ctx context.Context, workloadI
 }
 
 const getWorkload = `-- name: GetWorkload :one
-SELECT id, region_id, provisioning_token_id, hostname, enrolled_at, credential_serial, credential_expires_at, last_renewed_at, mode, facts, agent_version, agent_capabilities, last_seen_at, sync_state, applied_policy_version, sync_error, dropped_flow_records FROM workloads
+SELECT id, region_id, provisioning_token_id, hostname, enrolled_at, credential_serial, credential_expires_at, last_renewed_at, mode, facts, agent_version, agent_capabilities, last_seen_at, sync_state, applied_policy_version, sync_error, dropped_flow_records, credential_renewal_error FROM workloads
 WHERE id = $1
 `
 
@@ -155,6 +155,7 @@ func (q *Queries) GetWorkload(ctx context.Context, id uuid.UUID) (Workload, erro
 		&i.AppliedPolicyVersion,
 		&i.SyncError,
 		&i.DroppedFlowRecords,
+		&i.CredentialRenewalError,
 	)
 	return i, err
 }
@@ -295,7 +296,7 @@ func (q *Queries) ListWorkloadListeningServices(ctx context.Context, workloadID 
 
 const listWorkloads = `-- name: ListWorkloads :many
 
-SELECT id, region_id, provisioning_token_id, hostname, enrolled_at, credential_serial, credential_expires_at, last_renewed_at, mode, facts, agent_version, agent_capabilities, last_seen_at, sync_state, applied_policy_version, sync_error, dropped_flow_records FROM workloads
+SELECT id, region_id, provisioning_token_id, hostname, enrolled_at, credential_serial, credential_expires_at, last_renewed_at, mode, facts, agent_version, agent_capabilities, last_seen_at, sync_state, applied_policy_version, sync_error, dropped_flow_records, credential_renewal_error FROM workloads
 ORDER BY enrolled_at, id
 `
 
@@ -327,6 +328,7 @@ func (q *Queries) ListWorkloads(ctx context.Context) ([]Workload, error) {
 			&i.AppliedPolicyVersion,
 			&i.SyncError,
 			&i.DroppedFlowRecords,
+			&i.CredentialRenewalError,
 		); err != nil {
 			return nil, err
 		}
@@ -394,18 +396,24 @@ func (q *Queries) RecordWorkloadApplied(ctx context.Context, arg RecordWorkloadA
 
 const recordWorkloadHeartbeat = `-- name: RecordWorkloadHeartbeat :execrows
 UPDATE workloads
-SET last_seen_at = $2, dropped_flow_records = $3
+SET last_seen_at = $2, dropped_flow_records = $3, credential_renewal_error = $4
 WHERE id = $1
 `
 
 type RecordWorkloadHeartbeatParams struct {
-	ID                 uuid.UUID
-	LastSeenAt         *time.Time
-	DroppedFlowRecords int64
+	ID                     uuid.UUID
+	LastSeenAt             *time.Time
+	DroppedFlowRecords     int64
+	CredentialRenewalError string
 }
 
 func (q *Queries) RecordWorkloadHeartbeat(ctx context.Context, arg RecordWorkloadHeartbeatParams) (int64, error) {
-	result, err := q.db.Exec(ctx, recordWorkloadHeartbeat, arg.ID, arg.LastSeenAt, arg.DroppedFlowRecords)
+	result, err := q.db.Exec(ctx, recordWorkloadHeartbeat,
+		arg.ID,
+		arg.LastSeenAt,
+		arg.DroppedFlowRecords,
+		arg.CredentialRenewalError,
+	)
 	if err != nil {
 		return 0, err
 	}
