@@ -19,13 +19,14 @@ import (
 	"github.com/innerwall-dev/innerwall/internal/enroll/enrolltest"
 	"github.com/innerwall-dev/innerwall/internal/gateway"
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
+	"github.com/innerwall-dev/innerwall/internal/ingest"
 	"github.com/innerwall-dev/innerwall/internal/store"
 )
 
 // harness is a control plane on a loopback listener: file CA, enrollment
 // service over the given store, TLS as configured for production. With a
-// Postgres store it also serves the sync stream and routes render
-// announcements, exactly as `innerwall serve` does.
+// Postgres store it also serves the sync stream, ingests flows, and routes
+// render announcements, exactly as `innerwall serve` does.
 type harness struct {
 	addr      string
 	authority *fileca.Authority
@@ -66,6 +67,7 @@ func newHarnessWith(t *testing.T, st enroll.Store, authority *fileca.Authority) 
 	if pg, ok := st.(*store.Store); ok {
 		h.engine = &compiler.Engine{Store: pg}
 		deps.Registry, deps.Policies, deps.Engine, deps.Events = pg, pg, h.engine, pg
+		deps.Ingest = &ingest.Service{Directory: pg, Flows: pg.Flows()}
 	}
 	gw := gateway.New(deps)
 	srv := gateway.NewGRPCServer(tlsCfg, gw)
