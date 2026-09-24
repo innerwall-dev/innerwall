@@ -5,6 +5,7 @@ import { Fleet } from "@/routes/fleet/Fleet";
 import { Login } from "@/routes/Login";
 import { Policy } from "@/routes/Policy";
 import { SimulationReview } from "@/routes/SimulationReview";
+import { WorkloadRoute } from "@/routes/workload/WorkloadDetail";
 import { Shell } from "@/shell/Shell";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 
@@ -23,6 +24,7 @@ export function App() {
 						<Route path="/map/*" element={<FlowMap />} />
 						<Route path="/workloads" element={<Fleet tab="fleet" />} />
 						<Route path="/workloads/tokens" element={<Fleet tab="tokens" />} />
+						<Route path="/workloads/:id/*" element={<WorkloadRoute />} />
 						<Route path="/policy/*" element={<Policy />} />
 						<Route path="*" element={<Navigate to="/simulation" replace />} />
 					</Route>

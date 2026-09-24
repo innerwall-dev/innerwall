@@ -26,12 +26,14 @@ const shown = 8;
 // an acknowledgement of the recorded intent, not of progress: the list
 // shows convergence as each workload's applied version meets latest.
 export function ModeChangeDialog({
+	title = "Change mode for selected",
 	open,
 	workloads,
 	onOpenChange,
 	onChanged,
 	onReload,
 }: {
+	title?: string;
 	open: boolean;
 	workloads: Workload[];
 	onOpenChange: (open: boolean) => void;
@@ -80,7 +82,7 @@ export function ModeChangeDialog({
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent width={560}>
-				<DialogHeader title="Change mode for selected">
+				<DialogHeader title={title}>
 					<p className="text-[12px] text-foreground-tertiary">
 						Sets the enforcement mode of{" "}
 						{workloads.length === 1
