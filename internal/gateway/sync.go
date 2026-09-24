@@ -35,8 +35,9 @@ func DefaultSyncConfig() *innerwallv1.SyncConfig {
 // cannot make the control plane retain unbounded state on its behalf.
 const sendQueueDepth = 64
 
-// offlineWriteTimeout bounds the status write that runs after a stream's
-// own context has already ended.
+// offlineWriteTimeout bounds a status write that may run after a stream's
+// own context has already ended: the offline mark, and the snapshot
+// instant of a snapshot already sent.
 const offlineWriteTimeout = 5 * time.Second
 
 // session is one live sync stream: the in-process record that lets a
@@ -180,7 +181,9 @@ func (s *Server) Sync(stream innerwallv1.AgentService_SyncServer) error {
 		}
 	}()
 
-	// Writer: the only goroutine that calls Send.
+	// Writer: the only goroutine that calls Send, and so the one place
+	// that knows a snapshot is on the stream. It stamps the instant of
+	// every snapshot it sends, whatever caused it (ADR-0018 as amended).
 	writeErr := make(chan error, 1)
 	go func() {
 		for {
@@ -193,6 +196,9 @@ func (s *Server) Sync(stream innerwallv1.AgentService_SyncServer) error {
 					cancel(err)
 					writeErr <- err
 					return
+				}
+				if msg.GetPolicyUpdate().GetSnapshot() != nil {
+					s.recordSnapshotSent(sctx, log, id)
 				}
 			}
 		}
@@ -393,6 +399,29 @@ func (s *Server) currentPolicy(ctx context.Context, id identity.WorkloadID) (*in
 	return p, nil
 }
 
+// recordSnapshotSent stamps the instant a snapshot went onto the stream of
+// id. The snapshot is sent by the time this runs, so the record is written
+// even when the stream ends meanwhile; a failure to write it is logged and
+// costs only the record, never the stream.
+func (s *Server) recordSnapshotSent(ctx context.Context, log *slog.Logger, id identity.WorkloadID) {
+	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), offlineWriteTimeout)
+	defer cancel()
+	if err := s.registry.RecordSnapshotSent(wctx, id, s.now()); err != nil {
+		log.Error("recording snapshot sent", "error", err)
+	}
+}
+
+// sendReconnect sends sess a Reconnect directive. The agent ends the
+// stream and opens a new one, which begins with a snapshot by the stream
+// lifecycle (ADR-0015). Nothing waits for that: the directive is a
+// request, and its outcome is the workload's snapshot instant advancing.
+func (s *Server) sendReconnect(sess *session) {
+	msg := &innerwallv1.SyncResponse{Msg: &innerwallv1.SyncResponse_Directive{Directive: &innerwallv1.Directive{Directive: &innerwallv1.Directive_Reconnect{Reconnect: &innerwallv1.Reconnect{}}}}}
+	if sess.enqueue(msg) {
+		s.log.Info("reconnect directed", "workload_id", sess.id)
+	}
+}
+
 // pushLatest sends the persisted policy to sess as a delta from the tip of
 // what the stream has already received, if it is newer. Runs whenever a
 // render announces the workload changed and whenever the announcement
@@ -426,10 +455,13 @@ func (s *Server) pushLatest(sess *session) {
 	log.Info("policy delta pushed", "from_version", delta.GetFromVersion(), "to_version", delta.GetToVersion(), "changes", len(delta.GetChanges()))
 }
 
-// Run listens for render announcements and routes each to the stream of
-// the workload it names, until ctx ends. It must run for pushes to happen;
-// without it, agents receive policy only at connect. Whenever the listener
-// (re)connects, every live stream is reconciled against persisted state.
+// Run listens for render announcements and directives and routes each to
+// the stream of the workload it names, until ctx ends. It must run for
+// pushes and directives to happen; without it, agents receive policy only
+// at connect. Whenever the listener (re)connects, every live stream is
+// reconciled against persisted state. A directive naming a workload whose
+// stream this replica does not hold is dropped here: another replica holds
+// it, or none does, and no replica can tell which.
 func (s *Server) Run(ctx context.Context) error {
 	if s.events == nil {
 		<-ctx.Done()
@@ -442,6 +474,10 @@ func (s *Server) Run(ctx context.Context) error {
 	}, func(c compiler.Announcement) {
 		if sess := s.sessions.get(c.ID); sess != nil {
 			go s.pushLatest(sess)
+		}
+	}, func(id identity.WorkloadID) {
+		if sess := s.sessions.get(id); sess != nil {
+			go s.sendReconnect(sess)
 		}
 	})
 }

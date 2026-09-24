@@ -22,8 +22,15 @@ import (
 var _ compiler.Store = (*Store)(nil)
 
 // PolicyChannel is the notification channel a render announces changed
-// workload policies on. The payload is "<workload-id> <version>".
+// workload policies on. The payload is "<workload-id> <version>". A
+// directive for one workload's stream rides the same channel as
+// "<workload-id> <directive>" (ADR-0018 as amended); a listener that does
+// not know a payload's form skips it.
 const PolicyChannel = "innerwall_policy"
+
+// reconnectDirective is the payload word that asks the replica holding a
+// workload's stream to send it a Reconnect directive.
+const reconnectDirective = "reconnect"
 
 // renderLockKey is the advisory lock every render transaction takes, so
 // that renders in any two processes (the control plane and the command
@@ -116,20 +123,36 @@ func (s *Store) GetWorkloadPolicy(ctx context.Context, id identity.WorkloadID) (
 	return p, nil
 }
 
-// ListenPolicyChanges delivers every render announcement to fn until ctx
-// ends. It holds one dedicated connection outside the pool; if that
+// DirectReconnect asks the replica holding the stream of id, if any
+// replica does, to send it a Reconnect directive. It is published on the
+// channel render announcements use and delivered at once. Nothing records
+// it and nothing confirms it: no replica knows which replica holds a
+// stream, so delivery is best-effort by design, and the outcome is
+// observed as the workload's last snapshot instant advancing.
+func (s *Store) DirectReconnect(ctx context.Context, id identity.WorkloadID) error {
+	if err := s.q.NotifyDirective(ctx, db.NotifyDirectiveParams{Channel: PolicyChannel, Payload: id.String() + " " + reconnectDirective}); err != nil {
+		return fmt.Errorf("store: directing reconnect: %w", err)
+	}
+	return nil
+}
+
+// ListenPolicyChanges delivers every render announcement to fn and every
+// reconnect directive to reconnect until ctx ends; a nil reconnect skips
+// directives. It holds one dedicated connection outside the pool; if that
 // connection fails it reconnects with jittered backoff and calls onReady
 // again, because announcements made while it was down are gone and the
-// caller must reconcile against persisted state. onReady is also called
-// once the first LISTEN is in place, so a caller can register streams only
-// after it can hear about their changes.
-func (s *Store) ListenPolicyChanges(ctx context.Context, log *slog.Logger, onReady func(), fn func(compiler.Announcement)) error {
+// caller must reconcile against persisted state. A directive made while
+// it was down is gone too, and nothing reconciles it: a directive is a
+// request, not state. onReady is also called once the first LISTEN is in
+// place, so a caller can register streams only after it can hear about
+// their changes.
+func (s *Store) ListenPolicyChanges(ctx context.Context, log *slog.Logger, onReady func(), fn func(compiler.Announcement), reconnect func(identity.WorkloadID)) error {
 	if log == nil {
 		log = slog.Default()
 	}
 	attempt := 0
 	for {
-		err := s.listenOnce(ctx, onReady, fn)
+		err := s.listenOnce(ctx, onReady, fn, reconnect)
 		if ctx.Err() != nil {
 			return nil
 		}
@@ -144,7 +167,7 @@ func (s *Store) ListenPolicyChanges(ctx context.Context, log *slog.Logger, onRea
 	}
 }
 
-func (s *Store) listenOnce(ctx context.Context, onReady func(), fn func(compiler.Announcement)) error {
+func (s *Store) listenOnce(ctx context.Context, onReady func(), fn func(compiler.Announcement), reconnect func(identity.WorkloadID)) error {
 	pooled, err := s.pool.Acquire(ctx)
 	if err != nil {
 		return fmt.Errorf("store: acquiring listener connection: %w", err)
@@ -168,6 +191,12 @@ func (s *Store) listenOnce(ctx context.Context, onReady func(), fn func(compiler
 		}
 		id, err := identity.ParseWorkloadID(idText)
 		if err != nil {
+			continue
+		}
+		if verText == reconnectDirective {
+			if reconnect != nil {
+				reconnect(id)
+			}
 			continue
 		}
 		ver, err := strconv.ParseUint(verText, 10, 64)

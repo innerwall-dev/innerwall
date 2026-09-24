@@ -34,6 +34,7 @@ import (
 type writeSurface struct {
 	*surface
 	mem            *fleettest.MemStore
+	directives     *fleettest.Directives
 	enrollStore    *enrolltest.MemStore
 	web, db, cache identity.WorkloadID
 	service        policy.Service
@@ -78,9 +79,10 @@ func newWriteSurface(t *testing.T) *writeSurface {
 	for i := range mem.Workloads {
 		mem.Workloads[i].AppliedVersion = 1
 	}
-	fleetSvc := &fleet.Service{Store: mem, Engine: engine, Now: tick}
-	enrollSvc := &enroll.Service{Store: ws.enrollStore, Now: func() time.Time { return now }}
 	reads := &readmodel.Reader{Store: mem, Flows: &readmodeltest.MemFlows{}, Now: func() time.Time { return now }}
+	ws.directives = &fleettest.Directives{}
+	fleetSvc := &fleet.Service{Store: mem, Engine: engine, Reads: reads, Directives: ws.directives, Now: tick}
+	enrollSvc := &enroll.Service{Store: ws.enrollStore, Now: func() time.Time { return now }}
 	ws.surface = newSurface(t, api.Deps{Reads: reads, Authoring: authoring, Fleet: fleetSvc, Enroll: enrollSvc})
 	ws.setPassword(t, "Ada")
 	token, _, err := ws.operators.MintToken(context.Background(), "writes", 0)
@@ -137,6 +139,7 @@ func TestWriteEndpointsRequireCredential(t *testing.T) {
 		{http.MethodGet, "/api/v1/services"}, {http.MethodPost, "/api/v1/services"}, {http.MethodGet, "/api/v1/services/" + id}, {http.MethodPut, "/api/v1/services/" + id}, {http.MethodDelete, "/api/v1/services/" + id},
 		{http.MethodGet, "/api/v1/address-groups"}, {http.MethodPost, "/api/v1/address-groups"}, {http.MethodGet, "/api/v1/address-groups/" + id}, {http.MethodPut, "/api/v1/address-groups/" + id}, {http.MethodDelete, "/api/v1/address-groups/" + id},
 		{http.MethodGet, "/api/v1/workloads/" + s.db.String() + "/labels"}, {http.MethodPut, "/api/v1/workloads/" + s.db.String() + "/labels"},
+		{http.MethodPost, "/api/v1/workloads/" + s.db.String() + "/resend-snapshot"},
 		{http.MethodPost, "/api/v1/mode-changes"}, {http.MethodPost, "/api/v1/selectors/preview"}, {http.MethodPost, "/api/v1/policies/render-dryrun"},
 		{http.MethodGet, "/api/v1/provisioning-tokens"}, {http.MethodPost, "/api/v1/provisioning-tokens"}, {http.MethodDelete, "/api/v1/provisioning-tokens/" + id},
 		{http.MethodGet, "/api/v1/operator-tokens"}, {http.MethodPost, "/api/v1/operator-tokens"}, {http.MethodDelete, "/api/v1/operator-tokens/" + id},

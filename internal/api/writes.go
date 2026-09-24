@@ -53,6 +53,7 @@ func (s *Server) writeProblemFor(w http.ResponseWriter, err error) {
 	var vm *policy.VersionMismatchError
 	var lv *registry.LabelsVersionError
 	var mc *fleet.MatchCountError
+	var off *fleet.AgentOfflineError
 	switch {
 	case policy.AsFindings(err) != nil:
 		writeProblem(w, validationProblem(policy.AsFindings(err)))
@@ -63,6 +64,8 @@ func (s *Server) writeProblemFor(w http.ResponseWriter, err error) {
 	case errors.As(err, &mc):
 		expected, matched := mc.Expected, mc.Matched
 		writeProblem(w, Problem{Type: ProblemMatchCountMismatch, Title: "Match count mismatch", Status: http.StatusConflict, Detail: "the selection resolved to a different number of workloads than expected; preview it again", Expected: &expected, Matched: &matched})
+	case errors.As(err, &off):
+		writeProblem(w, Problem{Type: ProblemAgentOffline, Title: "Agent offline", Status: http.StatusConflict, Detail: "the workload's agent is offline as the control plane last recorded it, so no reconnect was directed; it receives a fresh snapshot whenever it next connects", LastSeenAt: &nullableInstant{At: optionalTimestamp(off.LastSeenAt)}})
 	case errors.Is(err, policy.ErrRulesetUnknown), errors.Is(err, policy.ErrRuleUnknown), errors.Is(err, policy.ErrServiceUnknown), errors.Is(err, policy.ErrAddressGroupUnknown),
 		errors.Is(err, registry.ErrWorkloadUnknown), errors.Is(err, enroll.ErrTokenUnknown), errors.Is(err, operator.ErrTokenUnknown):
 		writeProblem(w, problemNotFound)
@@ -589,6 +592,24 @@ func (s *Server) putWorkloadLabels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.respondLabels(w, r, id)
+}
+
+// resendSnapshot is POST /api/v1/workloads/{id}/resend-snapshot: direct
+// the workload's agent to reconnect, so its stream restarts from a fresh
+// snapshot. The response carries the snapshot instant as it stood when
+// the directive was fired; delivery is best-effort, and the outcome is
+// observed on a later read of the workload as that instant advancing.
+func (s *Server) resendSnapshot(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathWorkloadID(w, r)
+	if !ok {
+		return
+	}
+	res, err := s.fleet.RequestReconnect(r.Context(), id)
+	if err != nil {
+		s.writeProblemFor(w, err)
+		return
+	}
+	writeJSON(w, resendSnapshotResponse{LastSnapshotSentAt: optionalTimestamp(res.LastSnapshotSentAt)})
 }
 
 // --- mode changes, preview, dry run ------------------------------------------

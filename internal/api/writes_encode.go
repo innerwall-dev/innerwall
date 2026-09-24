@@ -399,3 +399,9 @@ type mintedOperatorTokenJSON struct {
 type operatorTokensResponse struct {
 	Tokens []operatorTokenJSON `json:"tokens"`
 }
+
+// resendSnapshotResponse acknowledges a directed reconnect with the
+// workload's snapshot instant as it stood when the directive was fired.
+type resendSnapshotResponse struct {
+	LastSnapshotSentAt *string `json:"last_snapshot_sent_at"`
+}

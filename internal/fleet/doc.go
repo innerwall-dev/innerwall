@@ -14,4 +14,11 @@
 // convergence is observed on each workload's applied version against its
 // latest (ADR-0007 as amended). A dry run and a preview are pure reads of
 // persisted state: no lock is held across them and nothing is written.
+//
+// A directed reconnect asks the replica holding one workload's stream to
+// send it a Reconnect directive, over the notification bridge renders
+// announce on (ADR-0018 as amended). It writes nothing: there is no
+// presence table, so nothing can say for certain that a stream exists,
+// and the directive is a request whose outcome is observed as the
+// workload's last snapshot instant advancing.
 package fleet

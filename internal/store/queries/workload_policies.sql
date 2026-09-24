@@ -23,3 +23,10 @@ SET version = EXCLUDED.version, policy = EXCLUDED.policy, rendered_at = EXCLUDED
 
 -- name: NotifyPolicyChanged :exec
 SELECT pg_notify(sqlc.arg(channel)::text, sqlc.arg(payload)::text);
+
+-- A directive for the stream of one workload rides the same channel as
+-- render announcements, keyed by the workload; the replica holding that
+-- stream, if any, sends it (ADR-0018 as amended). It is sent outside any
+-- transaction, so it is delivered at once.
+-- name: NotifyDirective :exec
+SELECT pg_notify(sqlc.arg(channel)::text, sqlc.arg(payload)::text);

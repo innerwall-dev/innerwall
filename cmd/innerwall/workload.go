@@ -18,7 +18,7 @@ import (
 
 func runWorkload(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return usageError("usage: innerwall workload list|status|set-labels|set-mode [flags]")
+		return usageError("usage: innerwall workload list|status|set-labels|set-mode|resend-snapshot [flags]")
 	}
 	switch args[0] {
 	case "list":
@@ -29,8 +29,10 @@ func runWorkload(ctx context.Context, args []string) error {
 		return runWorkloadSetLabels(ctx, args[1:])
 	case "set-mode":
 		return runWorkloadSetMode(ctx, args[1:])
+	case "resend-snapshot":
+		return runWorkloadResendSnapshot(ctx, args[1:])
 	default:
-		return usageError("unknown workload command %q (list|status|set-labels|set-mode)", args[0])
+		return usageError("unknown workload command %q (list|status|set-labels|set-mode|resend-snapshot)", args[0])
 	}
 }
 
@@ -126,6 +128,7 @@ func runWorkloadStatus(ctx context.Context, args []string) error {
 	fmt.Printf("applied version %d\n", wl.AppliedVersion)
 	fmt.Printf("latest version  %d\n", latest)
 	fmt.Printf("last seen       %s\n", ago(wl.LastSeenAt, now))
+	fmt.Printf("last snapshot   %s\n", ago(wl.LastSnapshotSentAt, now))
 	fmt.Printf("enrolled        %s\n", wl.EnrolledAt.UTC().Format(time.RFC3339))
 	fmt.Printf("credential      expires %s\n", wl.CredentialExpiresAt.UTC().Format(time.RFC3339))
 	fmt.Printf("agent           %s\n", wl.Agent.Version)
@@ -214,5 +217,36 @@ func runWorkloadSetMode(ctx context.Context, args []string) error {
 		return err
 	}
 	fmt.Printf("workload %s mode set to %s (mode change %s; %d updated)\n", id, policy.ModeName(mode), res.ID, res.DesiredUpdated)
+	return nil
+}
+
+func runWorkloadResendSnapshot(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("innerwall workload resend-snapshot", flag.ContinueOnError)
+	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return usageError("usage: innerwall workload resend-snapshot <workload-id>")
+	}
+	id, err := identity.ParseWorkloadID(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	a, err := openAuthoring(ctx, *dbURL)
+	if err != nil {
+		return err
+	}
+	defer a.close()
+	// The refusals and the directive over the notification bridge are
+	// the domain's; the operator surface calls the same function. This
+	// process holds no streams: the replica holding the workload's
+	// stream, if any, sends the directive.
+	res, err := a.fleet.RequestReconnect(ctx, id)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("workload %s directed to reconnect; last snapshot sent %s\n", id, ago(res.LastSnapshotSentAt, time.Now()))
+	fmt.Println("delivery is not confirmed: the snapshot instant in `innerwall workload status` advances when the agent has reconnected")
 	return nil
 }

@@ -12,6 +12,7 @@ import (
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 	"github.com/innerwall-dev/innerwall/internal/identity"
 	"github.com/innerwall-dev/innerwall/internal/policy"
+	"github.com/innerwall-dev/innerwall/internal/readmodel"
 	"github.com/innerwall-dev/innerwall/internal/registry"
 )
 
@@ -75,6 +76,11 @@ type Store interface {
 type Service struct {
 	Store  Store
 	Engine *compiler.Engine
+	// Reads is the read model a directed reconnect judges the workload
+	// by, and Directives is where it sends one; RequestReconnect needs
+	// both, nothing else here uses them.
+	Reads      *readmodel.Reader
+	Directives Directives
 	// Now is the clock; time.Now if nil.
 	Now func() time.Time
 }

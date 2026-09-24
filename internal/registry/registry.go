@@ -56,6 +56,11 @@ type Workload struct {
 	// renewal failed, as its heartbeat reported it; empty when healthy.
 	CredentialRenewalError string
 	CredentialExpiresAt    time.Time
+	// LastSnapshotSentAt is when the sync path last sent this workload a
+	// snapshot, whatever caused it; nil when none has been recorded. It
+	// is a record of what the control plane did, written by the sync
+	// path alone.
+	LastSnapshotSentAt *time.Time
 }
 
 // ErrLabelsChanged is returned by a conditional label write whose expected
@@ -133,6 +138,9 @@ type Store interface {
 	SetSyncState(ctx context.Context, id identity.WorkloadID, state innerwallv1.SyncState, detail string, now time.Time) error
 	// RecordApplied stores an acknowledged version and the resulting state.
 	RecordApplied(ctx context.Context, id identity.WorkloadID, version uint64, state innerwallv1.SyncState, now time.Time) error
+	// RecordSnapshotSent stamps the instant the sync path sent the
+	// workload a snapshot. The sync path is its only caller.
+	RecordSnapshotSent(ctx context.Context, id identity.WorkloadID, at time.Time) error
 }
 
 // AddressesFromFacts derives the addresses a workload can be reached at

@@ -74,6 +74,7 @@ func workloadFromRow(row *db.Workload, labels []registry.Label, addrs []netip.Ad
 		DroppedFlowRecords:     uint64(row.DroppedFlowRecords), //nolint:gosec // non-negative by construction
 		CredentialRenewalError: row.CredentialRenewalError,
 		CredentialExpiresAt:    row.CredentialExpiresAt,
+		LastSnapshotSentAt:     row.LastSnapshotSentAt,
 	}
 	if labels == nil {
 		w.Labels = []registry.Label{}
@@ -314,6 +315,18 @@ func (s *Store) RecordApplied(ctx context.Context, id identity.WorkloadID, versi
 	n, err := s.q.RecordWorkloadApplied(ctx, db.RecordWorkloadAppliedParams{ID: id.UUID(), AppliedPolicyVersion: int64(version), SyncState: int32(state), LastSeenAt: &now}) //nolint:gosec // versions are small
 	if err != nil {
 		return fmt.Errorf("store: recording applied version: %w", err)
+	}
+	if n == 0 {
+		return registry.ErrWorkloadUnknown
+	}
+	return nil
+}
+
+// RecordSnapshotSent implements registry.Store.
+func (s *Store) RecordSnapshotSent(ctx context.Context, id identity.WorkloadID, at time.Time) error {
+	n, err := s.q.RecordWorkloadSnapshotSent(ctx, db.RecordWorkloadSnapshotSentParams{ID: id.UUID(), LastSnapshotSentAt: &at})
+	if err != nil {
+		return fmt.Errorf("store: recording snapshot sent: %w", err)
 	}
 	if n == 0 {
 		return registry.ErrWorkloadUnknown

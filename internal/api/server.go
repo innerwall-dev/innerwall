@@ -36,7 +36,8 @@ type Deps struct {
 	// ruleset, rule, service, and address group endpoints.
 	Authoring *policy.Authoring
 	// Fleet is the fleet write domain, behind label edits, mode
-	// changes, the selector preview, and the dry run.
+	// changes, the selector preview, the dry run, and the directed
+	// reconnect.
 	Fleet *fleet.Service
 	// Enroll is the enrollment domain, behind provisioning token
 	// management.
@@ -122,6 +123,7 @@ func (s *Server) mount(routes *router) {
 	routes.handle(http.MethodGet, APIPrefix+"/workloads/{id}/rendered-policy", s.getRenderedPolicy)
 	routes.handle(http.MethodGet, APIPrefix+"/workloads/{id}/labels", s.getWorkloadLabels)
 	routes.handle(http.MethodPut, APIPrefix+"/workloads/{id}/labels", s.putWorkloadLabels)
+	routes.handle(http.MethodPost, APIPrefix+"/workloads/{id}/resend-snapshot", s.resendSnapshot)
 	routes.handle(http.MethodGet, APIPrefix+"/rulesets", s.listRulesets)
 	routes.handle(http.MethodPost, APIPrefix+"/rulesets", s.createRuleset)
 	routes.handle(http.MethodGet, APIPrefix+"/rulesets/{id}", s.getRuleset)

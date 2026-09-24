@@ -222,6 +222,7 @@ type Workload struct {
 	SyncError              string
 	DroppedFlowRecords     int64
 	CredentialRenewalError string
+	LastSnapshotSentAt     *time.Time
 }
 
 type WorkloadAddress struct {

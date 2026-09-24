@@ -28,12 +28,13 @@ type PolicyStore interface {
 	GetWorkloadPolicy(ctx context.Context, id identity.WorkloadID) (*innerwallv1.WorkloadPolicy, error)
 }
 
-// PolicyEvents delivers render announcements. The store implements it over
-// the database's notification channel, so a render in any process reaches
+// PolicyEvents delivers render announcements and the directives addressed
+// to one workload's stream. The store implements it over the database's
+// notification channel, so a render or a directive in any process reaches
 // the replica holding the workload's stream without anything polling
-// (ADR-0002).
+// (ADR-0002, ADR-0018 as amended).
 type PolicyEvents interface {
-	ListenPolicyChanges(ctx context.Context, log *slog.Logger, onReady func(), fn func(compiler.Announcement)) error
+	ListenPolicyChanges(ctx context.Context, log *slog.Logger, onReady func(), fn func(compiler.Announcement), reconnect func(identity.WorkloadID)) error
 }
 
 // Deps is what the gateway is built from. Enroll is required. Registry,
