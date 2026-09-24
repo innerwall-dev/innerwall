@@ -303,10 +303,13 @@ describe("workload detail", () => {
 		const user = userEvent.setup();
 		renderApp(`/workloads/${db.id}`);
 		await screen.findByText("192.0.2.7");
-
-		expect(
-			screen.getByRole("tab", { name: /Inbound flows/ }),
-		).toHaveTextContent("Inbound flows7");
+		// The counts are their own reads; wait for them to land.
+		await screen.findByRole("button", { name: /would block/ });
+		await waitFor(() =>
+			expect(
+				screen.getByRole("tab", { name: /Inbound flows/ }),
+			).toHaveTextContent("Inbound flows7"),
+		);
 		expect(
 			screen.getByRole("button", { name: /^all\s*\d*$/ }),
 		).toHaveTextContent("all7");
@@ -382,7 +385,7 @@ describe("workload detail", () => {
 		const pg = (await screen.findByText("tcp/5432")).closest(
 			"tr",
 		) as HTMLElement;
-		expect(within(pg).getByText("435k conns")).toBeInTheDocument();
+		expect(await within(pg).findByText("435k conns")).toBeInTheDocument();
 		expect(within(pg).getByText("postgres from web")).toBeInTheDocument();
 		const exporter = screen.getByText("tcp/9100").closest("tr") as HTMLElement;
 		expect(
@@ -426,9 +429,11 @@ describe("workload detail", () => {
 		expect(within(gone).getByTestId("rule-instants")).toHaveTextContent(
 			"authored rule no longer exists",
 		);
-		expect(
-			screen.getByRole("tab", { name: /Applied policy/ }),
-		).toHaveTextContent("Applied policy2");
+		await waitFor(() =>
+			expect(
+				screen.getByRole("tab", { name: /Applied policy/ }),
+			).toHaveTextContent("Applied policy2"),
+		);
 	});
 
 	it("reports an unknown workload as such", async () => {

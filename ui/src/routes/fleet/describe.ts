@@ -21,15 +21,19 @@ export function syncNote(w: Workload, now = Date.now()): string {
 					: `v${s.applied_version} · v${s.latest_version} failed`;
 			}
 			return "apply failed";
-		case "pending":
-			return s.latest_rendered_at
-				? `v${s.latest_version} rendered ${ago(s.latest_rendered_at, now)}`
-				: `v${s.latest_version} pending`;
 		case "offline":
 			return w.health.last_seen_at
 				? `no stream for ${since(w.health.last_seen_at, now)}`
 				: "never connected";
 		default:
+			// A newer version than the one applied is drift in flight, whatever
+			// state the stream last reported: after a mode change the list
+			// shows it here until the agent applies it.
+			if (s.latest_version > s.applied_version) {
+				return s.latest_rendered_at
+					? `v${s.latest_version} rendered ${ago(s.latest_rendered_at, now)}`
+					: `v${s.latest_version} not yet applied`;
+			}
 			return "";
 	}
 }
