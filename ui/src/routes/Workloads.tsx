@@ -1,50 +1,59 @@
-import { NavLink } from "react-router";
-import { EmptyState } from "@/components/EmptyState";
+import { Link, NavLink } from "react-router";
+import { Centered, EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-// Fresh-install state of workloads (design screen 20): the fleet tabs
-// and the invitation to mint the first provisioning token. The fleet
-// table and the token screens arrive with the read screens; the mint
-// action is present and inert until then.
+// Fresh-install state of workloads (design screen 20): the fleet tabs,
+// the invitation to mint the first provisioning token, and the tokens
+// tab's own empty listing. The fleet table and minting arrive with the
+// fleet screens; the mint action is present and inert until then.
 export function Workloads({ tab }: { tab: "fleet" | "tokens" }) {
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			<div
-				className="flex h-[46px] shrink-0 items-end gap-1 border-b border-border px-4"
+				className="flex shrink-0 gap-0.5 border-b border-border px-6 pt-3"
 				role="tablist"
 			>
 				<Tab to="/workloads" label="Workloads" count={0} end />
 				<Tab to="/workloads/tokens" label="Provisioning tokens" count={0} />
 			</div>
 			{tab === "fleet" ? (
-				<EmptyState
-					title="No workloads enrolled"
-					actions={<MintButton />}
-					width={560}
-				>
-					Workloads appear here when an agent enrolls with a provisioning token.
-					The token's label scope becomes the workload's labels.
-				</EmptyState>
+				<Centered>
+					<EmptyState
+						title="No workloads enrolled"
+						width={560}
+						actions={
+							<Button asChild className="self-start">
+								<Link to="/workloads/tokens">Mint a provisioning token</Link>
+							</Button>
+						}
+					>
+						Workloads appear here when an agent enrolls with a provisioning
+						token. The token's label scope becomes the workload's labels.
+					</EmptyState>
+				</Centered>
 			) : (
-				<EmptyState title="No provisioning tokens" actions={<MintButton />}>
-					A provisioning token carries the labels an enrolling agent receives.
-					Mint one, run the installer on a host with it, and the workload
-					appears in the fleet.
-				</EmptyState>
+				<div className="flex flex-1 flex-col gap-[18px] overflow-auto px-6 pt-5 pb-8">
+					<div className="flex items-center gap-3">
+						<p className="max-w-[620px] text-[12px] text-foreground-tertiary">
+							A token enrolls any number of workloads within its label scope
+							until it expires or is revoked. The plaintext is shown exactly
+							once, at mint; only its hash is stored.
+						</p>
+						<Button
+							className="ml-auto"
+							aria-disabled="true"
+							title="Minting tokens arrives with the fleet screens"
+						>
+							Mint token
+						</Button>
+					</div>
+					<p className="py-5 text-[12px] text-muted-foreground">
+						No tokens yet. Mint one to enroll your first workload.
+					</p>
+				</div>
 			)}
 		</div>
-	);
-}
-
-function MintButton() {
-	return (
-		<Button
-			aria-disabled="true"
-			title="Minting tokens arrives with the fleet screens"
-		>
-			Mint a provisioning token
-		</Button>
 	);
 }
 
@@ -66,17 +75,15 @@ function Tab({
 			role="tab"
 			className={({ isActive }) =>
 				cn(
-					"-mb-px flex h-9 items-center gap-2 border-b-2 px-3 text-[13px]",
+					"-mb-px border-b-2 px-3 py-2 text-[12.5px]",
 					isActive
-						? "border-primary text-foreground"
+						? "border-[var(--checkbox-accent)] text-foreground"
 						: "border-transparent text-foreground-tertiary hover:text-foreground",
 				)
 			}
 		>
-			<span>{label}</span>
-			<span className="font-mono text-[11px] text-muted-foreground">
-				{count}
-			</span>
+			{label}
+			<span className="ml-1.5 font-mono text-muted-foreground">{count}</span>
 		</NavLink>
 	);
 }

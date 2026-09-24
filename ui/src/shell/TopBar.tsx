@@ -11,10 +11,10 @@ export interface Crumb {
 // and the account popover.
 export function TopBar({ crumbs }: { crumbs: Crumb[] }) {
 	return (
-		<header className="flex h-11 shrink-0 items-center gap-4 border-b border-border bg-surface-sidebar pr-4 pl-5">
+		<header className="flex h-11 shrink-0 items-center gap-3 border-b border-border bg-surface-sidebar px-5">
 			<nav
 				aria-label="Breadcrumb"
-				className="flex min-w-0 items-center gap-2 text-[13px]"
+				className="flex min-w-0 items-center gap-1.5 text-[12px] text-foreground-tertiary"
 			>
 				{crumbs.map((c, i) => (
 					<Fragment key={c.label}>
@@ -25,9 +25,7 @@ export function TopBar({ crumbs }: { crumbs: Crumb[] }) {
 						) : null}
 						<span
 							className={
-								i === crumbs.length - 1
-									? "truncate text-foreground"
-									: "text-foreground-tertiary"
+								i === crumbs.length - 1 ? "truncate text-foreground" : undefined
 							}
 						>
 							{c.label}
@@ -35,23 +33,21 @@ export function TopBar({ crumbs }: { crumbs: Crumb[] }) {
 					</Fragment>
 				))}
 			</nav>
-			<div className="ml-auto flex items-center gap-3">
-				<label className="flex h-8 w-[260px] items-center gap-1.5 rounded border border-input bg-card px-2.5 text-muted-foreground">
-					<span className="font-mono text-[12px]" aria-hidden="true">
-						⌕
-					</span>
-					<input
-						type="search"
-						placeholder="Search workloads, labels, rules…"
-						aria-label="Search"
-						disabled
-						title="Search arrives with the read screens"
-						className="min-w-0 flex-1 bg-transparent text-[12px] text-foreground placeholder:text-muted-foreground focus:outline-none disabled:cursor-default"
-					/>
-					<Kbd>⌘K</Kbd>
-				</label>
-				<AccountPopover />
-			</div>
+			<label className="ml-auto flex w-[260px] items-center gap-2 rounded border border-input px-2.5 py-[5px] text-[12px] text-muted-foreground">
+				<span className="font-mono" aria-hidden="true">
+					⌕
+				</span>
+				<input
+					type="search"
+					placeholder="Search workloads, labels, rules…"
+					aria-label="Search"
+					disabled
+					title="Search arrives with the read screens"
+					className="min-w-0 flex-1 bg-transparent p-0 text-[12px] text-foreground placeholder:text-muted-foreground focus:outline-none disabled:cursor-default"
+				/>
+				<Kbd>⌘K</Kbd>
+			</label>
+			<AccountPopover />
 		</header>
 	);
 }

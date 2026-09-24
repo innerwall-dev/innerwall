@@ -30,14 +30,12 @@ export function LogoMark() {
 }
 
 // The lockup: the mark and the wordmark, the one arrangement the console
-// shows its name in. The wordmark's cap line sits half a pixel above
-// where centering lands it; layout offsets snap to whole pixels, so the
-// half pixel is a translate, which a 1x screen snaps without softening.
+// shows its name in.
 export function Lockup() {
 	return (
-		<span className="flex h-[22px] items-center gap-2.5">
+		<span className="flex items-center gap-2.5">
 			<LogoMark />
-			<span className="-translate-y-[0.5px] text-[15px] font-semibold leading-none tracking-[-0.02em]">
+			<span className="text-[14px] font-semibold tracking-[0.01em]">
 				Innerwall
 			</span>
 		</span>

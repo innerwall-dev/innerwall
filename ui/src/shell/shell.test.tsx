@@ -69,6 +69,17 @@ describe("shell", () => {
 		expect(
 			screen.getByRole("tab", { name: /Provisioning tokens/ }),
 		).toBeInTheDocument();
+		await user.click(
+			screen.getByRole("link", { name: "Mint a provisioning token" }),
+		);
+		expect(
+			await screen.findByText(
+				"No tokens yet. Mint one to enroll your first workload.",
+			),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("navigation", { name: "Breadcrumb" }),
+		).toHaveTextContent("Workloads/Provisioning tokens");
 	});
 });
 

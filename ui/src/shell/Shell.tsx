@@ -9,6 +9,8 @@ function crumbsFor(pathname: string): Crumb[] {
 	if (pathname.startsWith("/simulation"))
 		return [{ label: "Simulation review" }];
 	if (pathname.startsWith("/map")) return [{ label: "Flow map" }];
+	if (pathname.startsWith("/workloads/tokens"))
+		return [{ label: "Workloads" }, { label: "Provisioning tokens" }];
 	if (pathname.startsWith("/workloads"))
 		return [{ label: "Workloads" }, { label: "Fleet" }];
 	if (pathname.startsWith("/policy")) return [{ label: "Policy" }];

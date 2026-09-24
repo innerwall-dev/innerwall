@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { useMe, useSession } from "@/auth/SessionProvider";
-import { Button } from "@/components/ui/button";
 import {
 	Popover,
 	PopoverContent,
@@ -24,6 +23,8 @@ export function initials(name: string | null): string {
 	return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+// Avatar is the initials disc. The trigger's is 28px with a hairline
+// that turns gold on hover; the popover's own is 30px.
 function Avatar({
 	name,
 	className,
@@ -34,7 +35,7 @@ function Avatar({
 	return (
 		<span
 			className={cn(
-				"inline-flex size-7 items-center justify-center rounded-full border border-input-strong bg-muted font-sans text-[11px] font-semibold text-foreground",
+				"inline-flex shrink-0 items-center justify-center rounded-full border border-input-strong bg-muted font-sans text-[11px] font-semibold text-foreground",
 				className,
 			)}
 			aria-hidden="true"
@@ -76,18 +77,23 @@ export function AccountPopover() {
 				<button
 					type="button"
 					aria-label="Account"
-					className="rounded-full transition-colors hover:ring-1 hover:ring-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+					className="group shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 				>
-					<Avatar name={me.display_name} />
+					<Avatar
+						name={me.display_name}
+						className="size-7 tracking-[0.02em] transition-colors group-hover:border-ring"
+					/>
 				</button>
 			</PopoverTrigger>
-			<PopoverContent className="w-[232px] p-3" aria-label="Account">
-				<div className="flex items-center gap-2.5 px-1 pt-0.5">
-					<Avatar name={me.display_name} />
-					<div className="min-w-0">
-						<div className="truncate text-[13px] font-semibold leading-tight">
-							{name}
-						</div>
+			<PopoverContent
+				className="flex w-[236px] flex-col gap-0.5 p-1.5"
+				sideOffset={8}
+				aria-label="Account"
+			>
+				<div className="mb-1 flex items-center gap-2.5 border-b border-input px-2.5 pt-2 pb-2.5">
+					<Avatar name={me.display_name} className="size-[30px]" />
+					<div className="flex min-w-0 flex-col">
+						<div className="truncate text-[13px] font-semibold">{name}</div>
 						<div
 							className="truncate font-mono text-[11px] text-muted-foreground"
 							data-testid="identity-line"
@@ -96,28 +102,26 @@ export function AccountPopover() {
 						</div>
 					</div>
 				</div>
-				<div className="my-3 border-t border-border" />
-				<div className="flex items-center justify-between px-1">
-					<span className="text-[13px]">Theme</span>
+				<div className="flex items-center justify-between px-2.5 py-[7px] text-[12.5px]">
+					<span>Theme</span>
 					<ThemeToggle theme={theme} onChange={setTheme} />
 				</div>
-				<div className="my-3 border-t border-border" />
-				<Button
-					variant="ghost"
-					className="h-8 w-full justify-start gap-3 px-1 text-[13px]"
+				<button
+					type="button"
+					className="flex cursor-pointer items-center gap-2.5 rounded px-2.5 py-[7px] text-left text-[12.5px] hover:bg-muted disabled:cursor-default disabled:opacity-50"
 					onClick={signOut}
 					disabled={signingOut}
 				>
 					<span
-						className="w-3 text-center font-mono text-[11px] text-foreground-glyph"
+						className="w-3.5 font-mono text-foreground-glyph"
 						aria-hidden="true"
 					>
 						→
 					</span>
 					Sign out
-				</Button>
+				</button>
 				{failure ? (
-					<p className="mt-1 px-1 text-[12px] text-destructive" role="alert">
+					<p className="px-2.5 pb-1 text-[12px] text-destructive" role="alert">
 						{failure}
 					</p>
 				) : null}
@@ -126,8 +130,8 @@ export function AccountPopover() {
 	);
 }
 
-// The segmented control: native radio inputs, visually a two-segment
-// switch whose checked segment is the gold fill.
+// The segmented control: native radio inputs, visually two segments in
+// one bordered group, the checked one the gold fill.
 function ThemeToggle({
 	theme,
 	onChange,
@@ -140,13 +144,14 @@ function ThemeToggle({
 		{ value: "light", label: "Light" },
 	];
 	return (
-		<fieldset className="inline-flex h-7 items-stretch overflow-hidden rounded border border-input p-0.5">
+		<fieldset className="flex overflow-hidden rounded border border-input-strong text-[11.5px]">
 			<legend className="sr-only">Theme</legend>
-			{options.map((o) => (
+			{options.map((o, i) => (
 				<label
 					key={o.value}
 					className={cn(
-						"inline-flex cursor-pointer items-center rounded-pill px-2.5 text-[12px] leading-none transition-colors",
+						"cursor-pointer px-2.5 py-[3px] transition-colors",
+						i > 0 && "border-l border-input-strong",
 						theme === o.value
 							? "bg-primary font-semibold text-primary-foreground"
 							: "text-foreground-tertiary hover:text-foreground",
