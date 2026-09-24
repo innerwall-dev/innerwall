@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -40,6 +41,16 @@ type renderer struct{ eng *compiler.Engine }
 func (r renderer) Render(ctx context.Context) error {
 	_, err := r.eng.Render(ctx)
 	return err
+}
+
+// consoleServed reports whether the embedded tree holds a console entry
+// point, for the startup log.
+func consoleServed(tree fs.FS) bool {
+	if tree == nil {
+		return false
+	}
+	_, err := fs.Stat(tree, "index.html")
+	return err == nil
 }
 
 func runServe(ctx context.Context, args []string) error {
@@ -121,11 +132,15 @@ func runServe(ctx context.Context, args []string) error {
 	engine := &compiler.Engine{Store: st, Log: log}
 	operators := &operator.Service{Store: st}
 	reads := &readmodel.Reader{Store: st, Flows: st.Flows()}
+	// The console is served at every path outside the API prefix; a
+	// build without one (the noconsole tag, or a checkout where `make
+	// console` has not run) answers those paths with a marked problem.
+	console := ui.Console()
 	// The write endpoints call the same domain functions the command
 	// line's authoring commands call (ADR-0007 as amended).
 	authoring := &policy.Authoring{Store: st, Renderer: renderer{engine}}
 	fleetSvc := &fleet.Service{Store: st, Engine: engine}
-	apiSrv := api.New(api.Deps{Operators: operators, Reads: reads, Authoring: authoring, Fleet: fleetSvc, Enroll: svc, Site: *site, Log: log.With("service", "api")})
+	apiSrv := api.New(api.Deps{Operators: operators, Reads: reads, Authoring: authoring, Fleet: fleetSvc, Enroll: svc, Site: *site, Console: console, Log: log.With("service", "api")})
 	httpServer := api.NewHTTPServer(api.ServerTLSConfig(operatorCert), apiSrv.Handler())
 	srv := gateway.New(gateway.Deps{
 		Enroll:   svc,
@@ -160,8 +175,7 @@ func runServe(ctx context.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("listening on %s: %w", *operatorListen, err)
 	}
-	uiEntries, _ := ui.Assets.ReadDir("dist")
-	log.Info("control plane serving", "version", version, "listen", lis.Addr().String(), "operator_listen", operatorLis.Addr().String(), "site", *site, "leaf_ttl", leafTTL.String(), "flow_retention", flowRetention.String(), "embedded_ui_entries", len(uiEntries))
+	log.Info("control plane serving", "version", version, "listen", lis.Addr().String(), "operator_listen", operatorLis.Addr().String(), "site", *site, "leaf_ttl", leafTTL.String(), "flow_retention", flowRetention.String(), "console", consoleServed(console))
 
 	errc := make(chan error, 2)
 	go func() { errc <- grpcServer.Serve(lis) }()

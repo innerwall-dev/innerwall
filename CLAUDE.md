@@ -38,7 +38,7 @@ These are the constraints a plausible-looking change is most likely to violate. 
 
 - `make build` / `make test` / `make lint` — the whole loop. `make dev` runs the compose stack (control plane + Postgres).
 - `make proto` regenerates from `proto/` (buf); `make sqlc` regenerates the store. **Never edit generated code** — CI regenerates and fails on drift.
-- UI: `make ui` builds; Biome handles lint + format in `ui/` (one `biome.json`, no eslint/prettier).
+- Console: `make console` builds it into `ui/dist/` for the embed; `-tags noconsole` swaps in a stub so Go-only work never needs Node. Biome handles lint + format in `ui/` (one `biome.json`, no eslint/prettier); `ui/src/tokens.css` is the palette, its token names and values verbatim from the design package, and colors are plain `var()` references to it.
 - Migrations: new goose file in `internal/store/migrations/`, never edit an applied one.
 
 ## Change protocol

@@ -2,6 +2,7 @@ package storetest
 
 import (
 	"context"
+	"fmt"
 	"net/netip"
 	"testing"
 	"time"
@@ -55,51 +56,71 @@ type Fleet struct {
 	WindowLength time.Duration
 }
 
-// SeedFleet populates s with the fleet described on Fleet. The store must
-// be empty.
+// FleetNow is the fixed clock SeedFleet seeds against.
+var FleetNow = time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
+
+// SeedFleet populates s with the fleet described on Fleet, relative to
+// FleetNow. The store must be empty.
 func SeedFleet(t *testing.T, s *store.Store) *Fleet {
 	t.Helper()
-	ctx := context.Background()
-	f := &Fleet{Now: time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC), WindowLength: 5 * time.Minute}
+	f, err := Seed(context.Background(), s, FleetNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+
+// Seed populates s with the fleet described on Fleet, every instant
+// relative to now. The store must be empty. It is the one implementation
+// behind SeedFleet and the development seed command, so a review against
+// a running control plane sees the same estate the tests do.
+func Seed(ctx context.Context, s *store.Store, now time.Time) (*Fleet, error) {
+	f := &Fleet{Now: now, WindowLength: 5 * time.Minute}
 	f.Window1, f.Window2 = f.Now.Add(-2*time.Hour), f.Now.Add(-time.Hour)
 	f.WebAddr, f.DBAddr, f.CacheAddr = netip.MustParseAddr("10.0.0.10"), netip.MustParseAddr("10.0.0.20"), netip.MustParseAddr("10.0.0.30")
 
 	_, hash, err := enroll.NewToken()
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	f.Token = enroll.Token{ID: uuid.New(), Hash: hash, Name: "prod", Labels: []enroll.Label{{Key: "env", Value: "prod"}}, CreatedAt: f.Now.Add(-48 * time.Hour), ExpiresAt: f.Now.Add(28 * 24 * time.Hour)}
 	if err := s.CreateToken(ctx, f.Token); err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 
-	enrollOne := func(hostname, role string, expires time.Time, addr netip.Addr, enrolledAt time.Time) identity.WorkloadID {
+	enrollOne := func(hostname, role string, expires time.Time, addr netip.Addr, enrolledAt time.Time) (identity.WorkloadID, error) {
 		id, err := identity.NewWorkloadID()
 		if err != nil {
-			t.Fatal(err)
+			return id, err
 		}
 		w := enroll.Workload{ID: id, TokenID: f.Token.ID, Hostname: hostname, Labels: []enroll.Label{{Key: "env", Value: "prod"}, {Key: "role", Value: role}}, EnrolledAt: enrolledAt, CredentialSerial: hostname + "-1", CredentialExpiresAt: expires}
 		if err := s.CreateWorkload(ctx, w, enrolledAt); err != nil {
-			t.Fatal(err)
+			return id, err
 		}
 		facts := &innerwallv1.HostFacts{Hostname: hostname, Os: &innerwallv1.OsInfo{Family: "linux", Name: "debian", Version: "13", KernelVersion: "6.12", Architecture: "amd64"}, Interfaces: []*innerwallv1.NetworkInterface{{Name: "eth0", Addresses: []string{addr.String() + "/24"}}}}
 		if _, err := s.RecordFacts(ctx, id, facts, enrolledAt); err != nil {
-			t.Fatal(err)
+			return id, err
 		}
-		return id
+		return id, nil
 	}
-	f.Web = enrollOne("web-1", "web", f.Now.Add(20*time.Hour), f.WebAddr, f.Now.Add(-36*time.Hour))
-	f.DB = enrollOne("db-1", "db", f.Now.Add(2*time.Hour), f.DBAddr, f.Now.Add(-30*time.Hour))
-	f.Cache = enrollOne("cache-1", "cache", f.Now.Add(-time.Hour), f.CacheAddr, f.Now.Add(-24*time.Hour))
+	if f.Web, err = enrollOne("web-1", "web", f.Now.Add(20*time.Hour), f.WebAddr, f.Now.Add(-36*time.Hour)); err != nil {
+		return nil, err
+	}
+	if f.DB, err = enrollOne("db-1", "db", f.Now.Add(2*time.Hour), f.DBAddr, f.Now.Add(-30*time.Hour)); err != nil {
+		return nil, err
+	}
+	if f.Cache, err = enrollOne("cache-1", "cache", f.Now.Add(-time.Hour), f.CacheAddr, f.Now.Add(-24*time.Hour)); err != nil {
+		return nil, err
+	}
 	if err := s.RecordListeningServices(ctx, f.DB, []registry.ListeningService{{Protocol: innerwallv1.Protocol_PROTOCOL_TCP, Port: 5432, ProcessName: "postgres", ProcessPath: "/usr/lib/postgresql/16/bin/postgres"}}, f.Now.Add(-5*time.Minute)); err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 
 	engine := &compiler.Engine{Store: s}
 	authoring := &policy.Authoring{Store: s, Renderer: renderer{engine}, Now: func() time.Time { return f.Now.Add(-12 * time.Hour) }}
 	f.Office = policy.AddressGroup{Name: "office", CIDRs: []string{"192.0.2.0/24"}}
 	if err := authoring.CreateAddressGroup(ctx, &f.Office); err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	f.Ruleset = policy.Ruleset{
 		Name: "web-to-db", Description: "web tier reaches the database", Enabled: true,
@@ -111,7 +132,7 @@ func SeedFleet(t *testing.T, s *store.Store) *Fleet {
 		}},
 	}
 	if err := authoring.CreateRuleset(ctx, &f.Ruleset); err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	for id, mode := range map[identity.WorkloadID]innerwallv1.EnforcementMode{
 		f.Web:   innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED,
@@ -119,59 +140,59 @@ func SeedFleet(t *testing.T, s *store.Store) *Fleet {
 		f.Cache: innerwallv1.EnforcementMode_ENFORCEMENT_MODE_VISIBILITY,
 	} {
 		if err := s.SetWorkloadMode(ctx, id, mode); err != nil {
-			t.Fatal(err)
+			return nil, err
 		}
 	}
 	if _, err := engine.Render(ctx); err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	dbPolicy, err := s.GetWorkloadPolicy(ctx, f.DB)
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	if dbPolicy == nil || len(dbPolicy.GetInboundRules()) != 1 {
-		t.Fatalf("db-1 rendered policy = %v, want one rule", dbPolicy)
+		return nil, fmt.Errorf("db-1 rendered policy = %v, want one rule", dbPolicy)
 	}
 	f.DBRuleID, f.DBVersion = dbPolicy.GetInboundRules()[0].GetRuleId(), dbPolicy.GetVersion()
 	webPolicy, err := s.GetWorkloadPolicy(ctx, f.Web)
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 
 	// Sync and health, as the gateway would have recorded them.
 	if err := s.RecordAgent(ctx, f.Web, registry.AgentInfo{Version: "0.3.0", Capabilities: []string{"nftables", "conntrack"}}, webPolicy.GetVersion(), f.Now.Add(-time.Minute)); err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	if err := s.RecordApplied(ctx, f.Web, webPolicy.GetVersion(), innerwallv1.SyncState_SYNC_STATE_SYNCED, f.Now.Add(-time.Minute)); err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	if err := s.RecordHeartbeat(ctx, f.Web, 0, "", f.Now.Add(-time.Minute)); err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	if err := s.RecordAgent(ctx, f.DB, registry.AgentInfo{Version: "0.3.0", Capabilities: []string{"nftables", "conntrack"}}, 0, f.Now.Add(-5*time.Minute)); err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	if err := s.SetSyncState(ctx, f.DB, innerwallv1.SyncState_SYNC_STATE_DEGRADED, "apply refused: set element exceeds the table's size", f.Now.Add(-5*time.Minute)); err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	if err := s.RecordHeartbeat(ctx, f.DB, 42, "renewal refused: authority unreachable", f.Now.Add(-5*time.Minute)); err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	if err := s.RecordAgent(ctx, f.Cache, registry.AgentInfo{Version: "0.2.0"}, 0, f.Now.Add(-3*time.Hour)); err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	if err := s.SetSyncState(ctx, f.Cache, innerwallv1.SyncState_SYNC_STATE_OFFLINE, "", f.Now.Add(-3*time.Hour)); err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 
 	// Flows, resolved at ingest against the registry as it now stands.
 	workloads, err := s.ListWorkloads(ctx)
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	groups, err := s.ListAddressGroups(ctx)
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	index := ingest.BuildIndex(workloads, groups)
 	record := func(src string, dst netip.Addr, port uint16, decision innerwallv1.PolicyDecision, rule string, conns, bytes uint64, start time.Time) flowstore.Record {
@@ -206,11 +227,11 @@ func SeedFleet(t *testing.T, s *store.Store) *Fleet {
 		}
 		for _, w := range windows {
 			if _, err := s.Flows().WriteWindow(ctx, w); err != nil {
-				t.Fatal(err)
+				return nil, err
 			}
 		}
 	}
-	return f
+	return f, nil
 }
 
 // renderer adapts the engine to the authoring service's Renderer.

@@ -1,7 +1,8 @@
-# Continuous integration: build, test, the network-namespace enforcement
-# suite, lint (Go, UI), the operator surface contract (spec lint), proto
-# (lint, build, breaking-change gate), generated-code drift, and DCO
-# sign-off. Tool versions here are
+# Continuous integration: the console (lint, test, production build),
+# build (the console embedded, and the noconsole stub), test, the
+# network-namespace enforcement suite, lint, the operator surface
+# contract (spec lint), proto (lint, build, breaking-change gate),
+# generated-code drift, and DCO sign-off. Tool versions here are
 # mirrored in scripts/install-tools.sh so local regeneration matches CI.
 name: ci
 
@@ -20,14 +21,46 @@ env:
   GOLANGCI_LINT_VERSION: "v2.5.0"
 
 jobs:
+  console:
+    runs-on: ubuntu-latest
+    # The console is built on a pinned Node ahead of the Go build, which
+    # embeds its output; the build artifact is handed over rather than
+    # rebuilt so the binary CI proves is the one the console job checked.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm --prefix ui ci --no-audit --no-fund
+      - run: npm --prefix ui run lint
+      - run: npm --prefix ui run test
+      - run: npm --prefix ui run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: console-dist
+          path: ui/dist
+          if-no-files-found: error
+          retention-days: 1
+
   build:
+    needs: console
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: console-dist
+          path: ui/dist
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
       - run: make build
+      # The stub build never needs Node; proving it compiles keeps Go-only
+      # iteration honest.
+      - run: make build-noconsole
+      - run: go build -tags dev ./cmd/innerwall
 
   test:
     runs-on: ubuntu-latest
@@ -81,24 +114,6 @@ jobs:
       - uses: golangci/golangci-lint-action@v8
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-      - run: npm --prefix ui ci --no-audit --no-fund
-      - run: npm --prefix ui run lint
-
-  ui:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-      - run: make ui
 
   openapi:
     name: operator surface contract

@@ -45,8 +45,8 @@ func ifMatch(w http.ResponseWriter, r *http.Request) (string, bool) {
 	return strings.Trim(raw, `"`), true
 }
 
-// etag is the entity tag of a resource version.
-func etag(version string) string { return `"` + version + `"` }
+// versionTag is the entity tag of a resource version.
+func versionTag(version string) string { return `"` + version + `"` }
 
 // writeProblemFor maps a domain error to its problem document.
 func (s *Server) writeProblemFor(w http.ResponseWriter, err error) {
@@ -183,7 +183,7 @@ func (s *Server) respondRuleset(w http.ResponseWriter, r *http.Request, id uuid.
 		s.writeProblemFor(w, err)
 		return
 	}
-	w.Header().Set("ETag", etag(policy.VersionOf(rs.UpdatedAt)))
+	w.Header().Set("ETag", versionTag(policy.VersionOf(rs.UpdatedAt)))
 	if status == http.StatusCreated {
 		w.Header().Set("Location", APIPrefix+"/rulesets/"+rs.ID.String())
 	}
@@ -272,7 +272,7 @@ func (s *Server) respondRule(w http.ResponseWriter, r *http.Request, rulesetID, 
 		if rs.Rules[i].ID != ruleID {
 			continue
 		}
-		w.Header().Set("ETag", etag(policy.VersionOf(rs.Rules[i].UpdatedAt)))
+		w.Header().Set("ETag", versionTag(policy.VersionOf(rs.Rules[i].UpdatedAt)))
 		if status == http.StatusCreated {
 			w.Header().Set("Location", APIPrefix+"/rulesets/"+rs.ID.String()+"/rules/"+ruleID.String())
 		}
@@ -395,7 +395,7 @@ func (s *Server) respondService(w http.ResponseWriter, r *http.Request, id uuid.
 		s.writeProblemFor(w, err)
 		return
 	}
-	w.Header().Set("ETag", etag(policy.VersionOf(svc.UpdatedAt)))
+	w.Header().Set("ETag", versionTag(policy.VersionOf(svc.UpdatedAt)))
 	if status == http.StatusCreated {
 		w.Header().Set("Location", APIPrefix+"/services/"+svc.ID.String())
 	}
@@ -480,7 +480,7 @@ func (s *Server) respondAddressGroup(w http.ResponseWriter, r *http.Request, id 
 		s.writeProblemFor(w, err)
 		return
 	}
-	w.Header().Set("ETag", etag(policy.VersionOf(g.UpdatedAt)))
+	w.Header().Set("ETag", versionTag(policy.VersionOf(g.UpdatedAt)))
 	if status == http.StatusCreated {
 		w.Header().Set("Location", APIPrefix+"/address-groups/"+g.ID.String())
 	}
@@ -555,7 +555,7 @@ func (s *Server) respondLabels(w http.ResponseWriter, r *http.Request, id identi
 		s.readProblem(w, err)
 		return
 	}
-	w.Header().Set("ETag", etag(registry.LabelsVersion(wl.Labels)))
+	w.Header().Set("ETag", versionTag(registry.LabelsVersion(wl.Labels)))
 	writeJSON(w, labelsResponse{Labels: labelMap(wl.Labels), Version: registry.LabelsVersion(wl.Labels)})
 }
 

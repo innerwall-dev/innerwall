@@ -20,6 +20,9 @@
 //	policy         force a render; show a workload's rendered policy
 //	flows          query stored flow records: a workload's windows, a rollup
 //	               over a label scope, a workload's totals since first seen
+//	dev            development-only commands, compiled in with the dev build
+//	               tag: seed loads the recognizable review fleet into a
+//	               disposable database so the console can be reviewed
 //
 // Authoring commands write Postgres directly and render there; the running
 // control plane learns of changed policy through the database and pushes
@@ -91,6 +94,7 @@ commands:
   workload       list | status | set-labels | set-mode
   policy         render | show
   flows          list | rollup | totals
+  dev            seed: load the recognizable review fleet (builds with -tags dev only)
   version        print the version
 
 Run "innerwall <command> -h" for the flags of a command.
@@ -125,6 +129,8 @@ func run(ctx context.Context, args []string) error {
 		return runPolicy(ctx, args[1:])
 	case "flows":
 		return runFlows(ctx, args[1:])
+	case "dev":
+		return runDev(ctx, args[1:])
 	case "version":
 		fmt.Println("innerwall", version)
 		return nil
