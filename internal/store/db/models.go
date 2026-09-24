@@ -16,6 +16,7 @@ type AddressGroup struct {
 	Name      string
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	Version   int64
 }
 
 type AddressGroupCidr struct {
@@ -110,15 +111,16 @@ type OperatorToken struct {
 }
 
 type ProvisioningToken struct {
-	ID         uuid.UUID
-	RegionID   string
-	TokenHash  []byte
-	Name       string
-	CreatedAt  time.Time
-	ExpiresAt  time.Time
-	RevokedAt  *time.Time
-	UseCount   int64
-	LastUsedAt *time.Time
+	ID          uuid.UUID
+	RegionID    string
+	TokenHash   []byte
+	Name        string
+	CreatedAt   time.Time
+	ExpiresAt   time.Time
+	RevokedAt   *time.Time
+	UseCount    int64
+	LastUsedAt  *time.Time
+	TokenPrefix *string
 }
 
 type ProvisioningTokenLabel struct {
@@ -136,6 +138,7 @@ type Rule struct {
 	Description string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	Version     int64
 }
 
 type RulePeer struct {
@@ -174,6 +177,7 @@ type Ruleset struct {
 	Enabled     bool
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	Version     int64
 }
 
 type RulesetScopeMatch struct {
@@ -188,6 +192,7 @@ type Service struct {
 	Name      string
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	Version   int64
 }
 
 type ServiceEntry struct {

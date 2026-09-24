@@ -5,7 +5,8 @@
 //
 // A provisioning token is the only credential an installer needs. It is
 // scoped to a label set, expires, is revocable, and may enroll many
-// workloads within its scope. The control plane stores only its hash. The
+// workloads within its scope. The control plane stores its hash, which
+// is what a presented token is looked up by, and a short listing hint. The
 // agent's private key never leaves its host; there is no trust-on-first-use
 // window (ADR-0004).
 //

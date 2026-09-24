@@ -183,7 +183,7 @@ func (s *Server) respondRuleset(w http.ResponseWriter, r *http.Request, id uuid.
 		s.writeProblemFor(w, err)
 		return
 	}
-	w.Header().Set("ETag", versionTag(policy.VersionOf(rs.UpdatedAt)))
+	w.Header().Set("ETag", versionTag(policy.FormatVersion(rs.Version)))
 	if status == http.StatusCreated {
 		w.Header().Set("Location", APIPrefix+"/rulesets/"+rs.ID.String())
 	}
@@ -272,7 +272,7 @@ func (s *Server) respondRule(w http.ResponseWriter, r *http.Request, rulesetID, 
 		if rs.Rules[i].ID != ruleID {
 			continue
 		}
-		w.Header().Set("ETag", versionTag(policy.VersionOf(rs.Rules[i].UpdatedAt)))
+		w.Header().Set("ETag", versionTag(policy.FormatVersion(rs.Rules[i].Version)))
 		if status == http.StatusCreated {
 			w.Header().Set("Location", APIPrefix+"/rulesets/"+rs.ID.String()+"/rules/"+ruleID.String())
 		}
@@ -395,7 +395,7 @@ func (s *Server) respondService(w http.ResponseWriter, r *http.Request, id uuid.
 		s.writeProblemFor(w, err)
 		return
 	}
-	w.Header().Set("ETag", versionTag(policy.VersionOf(svc.UpdatedAt)))
+	w.Header().Set("ETag", versionTag(policy.FormatVersion(svc.Version)))
 	if status == http.StatusCreated {
 		w.Header().Set("Location", APIPrefix+"/services/"+svc.ID.String())
 	}
@@ -480,7 +480,7 @@ func (s *Server) respondAddressGroup(w http.ResponseWriter, r *http.Request, id 
 		s.writeProblemFor(w, err)
 		return
 	}
-	w.Header().Set("ETag", versionTag(policy.VersionOf(g.UpdatedAt)))
+	w.Header().Set("ETag", versionTag(policy.FormatVersion(g.Version)))
 	if status == http.StatusCreated {
 		w.Header().Set("Location", APIPrefix+"/address-groups/"+g.ID.String())
 	}

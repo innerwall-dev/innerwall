@@ -71,15 +71,15 @@ func TestRuleTimestampsCarryAcrossEdits(t *testing.T) {
 	f.now = t0.Add(time.Hour)
 	rs.Rules[1].Description = "b, reworded"
 	rs.Rules = append(rs.Rules, f.rule("c"))
-	if err := f.auth.UpdateRuleset(ctx, rs, policy.VersionOf(t0)); err != nil {
+	if err := f.auth.UpdateRuleset(ctx, rs, "1"); err != nil {
 		t.Fatal(err)
 	}
 	back, err := f.store.GetRuleset(ctx, rs.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !back.CreatedAt.Equal(t0) || !back.UpdatedAt.Equal(f.now) {
-		t.Fatalf("ruleset instants = created %v updated %v", back.CreatedAt, back.UpdatedAt)
+	if !back.CreatedAt.Equal(t0) || !back.UpdatedAt.Equal(f.now) || back.Version != 2 || rs.Version != 2 {
+		t.Fatalf("ruleset after edit = created %v updated %v version %d (in hand %d)", back.CreatedAt, back.UpdatedAt, back.Version, rs.Version)
 	}
 	byID := map[uuid.UUID]policy.Rule{}
 	for _, r := range back.Rules {
@@ -95,9 +95,9 @@ func TestRuleTimestampsCarryAcrossEdits(t *testing.T) {
 		t.Fatalf("new rule instants = created %v updated %v", added.CreatedAt, added.UpdatedAt)
 	}
 	// A rule's version is its own: the kept rule's did not move, the
-	// changed rule's did.
-	if policy.VersionOf(byID[keptID].UpdatedAt) != policy.VersionOf(t0) || policy.VersionOf(byID[changedID].UpdatedAt) == policy.VersionOf(t0) {
-		t.Fatal("rule versions do not follow rule changes")
+	// changed rule's advanced by one, and the new rule starts at 1.
+	if byID[keptID].Version != 1 || byID[changedID].Version != 2 || back.Rules[2].Version != 1 {
+		t.Fatalf("rule versions = kept %d changed %d new %d", byID[keptID].Version, byID[changedID].Version, back.Rules[2].Version)
 	}
 }
 
@@ -105,15 +105,22 @@ func TestConditionalWrites(t *testing.T) {
 	ctx := context.Background()
 	f := newAuthoringFixture(t)
 	rs := f.ruleset(t, "to-db", f.rule("a"))
-	current := policy.VersionOf(rs.UpdatedAt)
+	current := policy.FormatVersion(rs.Version)
+	if current != "1" {
+		t.Fatalf("a created ruleset's version = %q", current)
+	}
 
-	// A stale version is refused and the current one is named.
+	// A stale version is refused and the current one is named. The token
+	// is compared byte-exact, never parsed: a string that would parse to
+	// the current integer is still not the current token.
 	f.now = f.now.Add(time.Minute)
 	rs.Description = "changed"
-	err := f.auth.UpdateRuleset(ctx, rs, "1")
-	var vm *policy.VersionMismatchError
-	if !errors.Is(err, policy.ErrVersionMismatch) || !errors.As(err, &vm) || vm.Current != current {
-		t.Fatalf("stale update err = %v", err)
+	for _, stale := range []string{"0", "01", "+1", " 1", "1.0", "x"} {
+		err := f.auth.UpdateRuleset(ctx, rs, stale)
+		var vm *policy.VersionMismatchError
+		if !errors.Is(err, policy.ErrVersionMismatch) || !errors.As(err, &vm) || vm.Current != current {
+			t.Fatalf("update with %q err = %v", stale, err)
+		}
 	}
 	if back, _ := f.store.GetRuleset(ctx, rs.ID); back.Description != "" {
 		t.Fatal("a refused write changed the ruleset")
@@ -123,7 +130,7 @@ func TestConditionalWrites(t *testing.T) {
 		t.Fatal(err)
 	}
 	back, _ := f.store.GetRuleset(ctx, rs.ID)
-	if back.Description != "changed" || policy.VersionOf(back.UpdatedAt) == current {
+	if back.Description != "changed" || policy.FormatVersion(back.Version) != "2" {
 		t.Fatalf("after update = %+v", back)
 	}
 	// The old version no longer deletes; the new one does. An
@@ -131,7 +138,7 @@ func TestConditionalWrites(t *testing.T) {
 	if err := f.auth.DeleteRuleset(ctx, rs.ID, current); !errors.Is(err, policy.ErrVersionMismatch) {
 		t.Fatalf("stale delete err = %v", err)
 	}
-	if err := f.auth.DeleteRuleset(ctx, rs.ID, policy.VersionOf(back.UpdatedAt)); err != nil {
+	if err := f.auth.DeleteRuleset(ctx, rs.ID, policy.FormatVersion(back.Version)); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.auth.DeleteRuleset(ctx, rs.ID, ""); !errors.Is(err, policy.ErrRulesetUnknown) {
@@ -144,7 +151,7 @@ func TestConditionalWrites(t *testing.T) {
 	if err := f.auth.UpdateService(ctx, &svc, "stale"); !errors.Is(err, policy.ErrVersionMismatch) {
 		t.Fatalf("stale service update err = %v", err)
 	}
-	if err := f.auth.UpdateService(ctx, &svc, policy.VersionOf(f.svc.UpdatedAt)); err != nil {
+	if err := f.auth.UpdateService(ctx, &svc, policy.FormatVersion(f.svc.Version)); err != nil || svc.Version != 2 {
 		t.Fatal(err)
 	}
 	g := policy.AddressGroup{Name: "office", CIDRs: []string{"192.0.2.0/24"}}
@@ -154,7 +161,7 @@ func TestConditionalWrites(t *testing.T) {
 	if err := f.auth.DeleteAddressGroup(ctx, g.ID, "stale"); !errors.Is(err, policy.ErrVersionMismatch) {
 		t.Fatalf("stale group delete err = %v", err)
 	}
-	if err := f.auth.DeleteAddressGroup(ctx, g.ID, policy.VersionOf(g.UpdatedAt)); err != nil {
+	if err := f.auth.DeleteAddressGroup(ctx, g.ID, policy.FormatVersion(g.Version)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -163,7 +170,7 @@ func TestRuleLevelOperations(t *testing.T) {
 	ctx := context.Background()
 	f := newAuthoringFixture(t)
 	rs := f.ruleset(t, "to-db", f.rule("a"))
-	rulesetVersion := policy.VersionOf(rs.UpdatedAt)
+	rulesetVersion := policy.FormatVersion(rs.Version)
 
 	f.now = f.now.Add(time.Minute)
 	added := f.rule("b")
@@ -174,7 +181,7 @@ func TestRuleLevelOperations(t *testing.T) {
 		t.Fatalf("created rule = %+v", added)
 	}
 	back, _ := f.store.GetRuleset(ctx, rs.ID)
-	if len(back.Rules) != 2 || back.Rules[1].ID != added.ID || policy.VersionOf(back.UpdatedAt) == rulesetVersion {
+	if len(back.Rules) != 2 || back.Rules[1].ID != added.ID || policy.FormatVersion(back.Version) == rulesetVersion {
 		t.Fatalf("ruleset after rule create = %+v", back)
 	}
 
@@ -183,17 +190,17 @@ func TestRuleLevelOperations(t *testing.T) {
 	added.Description = "b, reworded"
 	err := f.auth.UpdateRule(ctx, rs.ID, &added, "stale")
 	var vm *policy.VersionMismatchError
-	if !errors.As(err, &vm) || vm.Current != policy.VersionOf(back.Rules[1].UpdatedAt) {
+	if !errors.As(err, &vm) || vm.Current != policy.FormatVersion(back.Rules[1].Version) {
 		t.Fatalf("stale rule update err = %v", err)
 	}
-	if err := f.auth.UpdateRule(ctx, rs.ID, &added, policy.VersionOf(back.Rules[1].UpdatedAt)); err != nil {
+	if err := f.auth.UpdateRule(ctx, rs.ID, &added, policy.FormatVersion(back.Rules[1].Version)); err != nil {
 		t.Fatal(err)
 	}
-	if !added.UpdatedAt.Equal(f.now) || added.Description != "b, reworded" {
+	if !added.UpdatedAt.Equal(f.now) || added.Description != "b, reworded" || added.Version != 2 {
 		t.Fatalf("updated rule = %+v", added)
 	}
 	back, _ = f.store.GetRuleset(ctx, rs.ID)
-	if back.Rules[0].UpdatedAt.Equal(f.now) {
+	if back.Rules[0].UpdatedAt.Equal(f.now) || back.Rules[0].Version != 1 {
 		t.Fatal("editing one rule moved another's version")
 	}
 
@@ -217,7 +224,7 @@ func TestRuleLevelOperations(t *testing.T) {
 	if err := f.auth.DeleteRule(ctx, rs.ID, added.ID, "stale"); !errors.Is(err, policy.ErrVersionMismatch) {
 		t.Fatalf("stale rule delete err = %v", err)
 	}
-	if err := f.auth.DeleteRule(ctx, rs.ID, added.ID, policy.VersionOf(added.UpdatedAt)); err != nil {
+	if err := f.auth.DeleteRule(ctx, rs.ID, added.ID, policy.FormatVersion(added.Version)); err != nil {
 		t.Fatal(err)
 	}
 	if back, _ := f.store.GetRuleset(ctx, rs.ID); len(back.Rules) != 1 {
@@ -276,13 +283,13 @@ func TestFindingsAreCollected(t *testing.T) {
 
 func TestDocumentCarriesVersions(t *testing.T) {
 	now := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
-	rs := &policy.Ruleset{ID: uuid.New(), Name: "n", Enabled: true, Scope: policy.Selector{"role": {"db"}}, CreatedAt: now, UpdatedAt: now.Add(time.Hour), Rules: []policy.Rule{{ID: uuid.New(), Direction: innerwallv1.Direction_DIRECTION_INBOUND, Enabled: true, Peers: []policy.Peer{{Kind: policy.PeerCIDR, CIDR: "10.0.0.0/8"}}, ServiceIDs: []uuid.UUID{svcID}, CreatedAt: now, UpdatedAt: now.Add(2 * time.Hour)}}}
+	rs := &policy.Ruleset{ID: uuid.New(), Name: "n", Enabled: true, Scope: policy.Selector{"role": {"db"}}, CreatedAt: now, UpdatedAt: now.Add(time.Hour), Version: 3, Rules: []policy.Rule{{ID: uuid.New(), Direction: innerwallv1.Direction_DIRECTION_INBOUND, Enabled: true, Peers: []policy.Peer{{Kind: policy.PeerCIDR, CIDR: "10.0.0.0/8"}}, ServiceIDs: []uuid.UUID{svcID}, CreatedAt: now, UpdatedAt: now.Add(2 * time.Hour), Version: 2}}}
 	names := policy.NewNames([]policy.Service{{ID: svcID, Name: "postgres"}}, nil)
 	doc := policy.RulesetToDoc(rs, names)
-	if doc.Version != policy.VersionOf(rs.UpdatedAt) || doc.CreatedAt != "2026-09-13T12:00:00Z" || doc.UpdatedAt != "2026-09-13T13:00:00Z" {
+	if doc.Version != "3" || doc.CreatedAt != "2026-09-13T12:00:00Z" || doc.UpdatedAt != "2026-09-13T13:00:00Z" {
 		t.Fatalf("ruleset doc instants = %s %s %s", doc.Version, doc.CreatedAt, doc.UpdatedAt)
 	}
-	if doc.Rules[0].Version != policy.VersionOf(rs.Rules[0].UpdatedAt) || doc.Rules[0].UpdatedAt != "2026-09-13T14:00:00Z" || doc.Rules[0].Services[0] != "postgres" {
+	if doc.Rules[0].Version != "2" || doc.Rules[0].UpdatedAt != "2026-09-13T14:00:00Z" || doc.Rules[0].Services[0] != "postgres" {
 		t.Fatalf("rule doc = %+v", doc.Rules[0])
 	}
 	// The document round-trips through the decoder with the versions
@@ -310,11 +317,8 @@ func TestDocumentCarriesVersions(t *testing.T) {
 			t.Fatalf("finding %s = %q, want %q (all %v)", p, paths[p], r, paths)
 		}
 	}
-	if v, ok := policy.TimeOfVersion(doc.Version); !ok || !v.Equal(rs.UpdatedAt) {
-		t.Fatalf("TimeOfVersion(%s) = %v %v", doc.Version, v, ok)
-	}
-	if _, ok := policy.TimeOfVersion("abc"); ok {
-		t.Fatal("garbage parsed as a version")
+	if back.Version != 0 || back.Rules[0].Version != 0 {
+		t.Fatal("a version in a document was taken as input")
 	}
 }
 

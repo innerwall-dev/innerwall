@@ -79,7 +79,7 @@ func (a *Authoring) CreateService(ctx context.Context, s *Service) error {
 	if s.ID == uuid.Nil {
 		s.ID = uuid.New()
 	}
-	s.CreatedAt, s.UpdatedAt = a.now(), a.now()
+	s.CreatedAt, s.UpdatedAt, s.Version = a.now(), a.now(), 1
 	if err := a.Store.CreateService(ctx, s); err != nil {
 		return err
 	}
@@ -116,7 +116,7 @@ func (a *Authoring) CreateAddressGroup(ctx context.Context, g *AddressGroup) err
 		g.ID = uuid.New()
 	}
 	g.CIDRs = canonicalCIDRs(g.CIDRs)
-	g.CreatedAt, g.UpdatedAt = a.now(), a.now()
+	g.CreatedAt, g.UpdatedAt, g.Version = a.now(), a.now(), 1
 	if err := a.Store.CreateAddressGroup(ctx, g); err != nil {
 		return err
 	}
@@ -159,9 +159,9 @@ func (a *Authoring) CreateRuleset(ctx context.Context, rs *Ruleset) error {
 	}
 	assignRuleIDs(rs)
 	now := a.now()
-	rs.CreatedAt, rs.UpdatedAt = now, now
+	rs.CreatedAt, rs.UpdatedAt, rs.Version = now, now, 1
 	for i := range rs.Rules {
-		rs.Rules[i].CreatedAt, rs.Rules[i].UpdatedAt = now, now
+		rs.Rules[i].CreatedAt, rs.Rules[i].UpdatedAt, rs.Rules[i].Version = now, now, 1
 	}
 	if err := a.Store.CreateRuleset(ctx, rs); err != nil {
 		return err
@@ -171,8 +171,8 @@ func (a *Authoring) CreateRuleset(ctx context.Context, rs *Ruleset) error {
 
 // UpdateRuleset admits and persists a changed ruleset. Rules that keep
 // their id keep their provenance across the edit: their CreatedAt is
-// carried from the persisted rule, and their UpdatedAt advances only when
-// the rule itself changed. Rules without an id are new.
+// carried from the persisted rule, and their UpdatedAt and Version advance
+// only when the rule itself changed. Rules without an id are new.
 func (a *Authoring) UpdateRuleset(ctx context.Context, rs *Ruleset, expect string) error {
 	refs, err := a.References(ctx)
 	if err != nil {
@@ -187,7 +187,7 @@ func (a *Authoring) UpdateRuleset(ctx context.Context, rs *Ruleset, expect strin
 	}
 	assignRuleIDs(rs)
 	now := a.now()
-	carryRuleTimestamps(existing, rs, now)
+	carryRuleProvenance(existing, rs, now)
 	rs.CreatedAt, rs.UpdatedAt = existing.CreatedAt, now
 	if err := a.Store.UpdateRuleset(ctx, rs, expect); err != nil {
 		return err
@@ -216,7 +216,7 @@ func (a *Authoring) CreateRule(ctx context.Context, rulesetID uuid.UUID, r *Rule
 		r.ID = uuid.New()
 	}
 	rs.Rules = append(rs.Rules, *r)
-	if err := a.UpdateRuleset(ctx, rs, VersionOf(rs.UpdatedAt)); err != nil {
+	if err := a.UpdateRuleset(ctx, rs, FormatVersion(rs.Version)); err != nil {
 		return a.ruleWriteError(ctx, rulesetID, r.ID, err, len(rs.Rules)-1)
 	}
 	*r = rs.Rules[len(rs.Rules)-1]
@@ -234,11 +234,11 @@ func (a *Authoring) UpdateRule(ctx context.Context, rulesetID uuid.UUID, r *Rule
 	if idx < 0 {
 		return ErrRuleUnknown
 	}
-	if current := VersionOf(rs.Rules[idx].UpdatedAt); expect != "" && expect != current {
+	if current := FormatVersion(rs.Rules[idx].Version); expect != "" && expect != current {
 		return &VersionMismatchError{Current: current}
 	}
 	rs.Rules[idx] = *r
-	if err := a.UpdateRuleset(ctx, rs, VersionOf(rs.UpdatedAt)); err != nil {
+	if err := a.UpdateRuleset(ctx, rs, FormatVersion(rs.Version)); err != nil {
 		return a.ruleWriteError(ctx, rulesetID, r.ID, err, idx)
 	}
 	*r = rs.Rules[idx]
@@ -256,11 +256,11 @@ func (a *Authoring) DeleteRule(ctx context.Context, rulesetID, ruleID uuid.UUID,
 	if idx < 0 {
 		return ErrRuleUnknown
 	}
-	if current := VersionOf(rs.Rules[idx].UpdatedAt); expect != "" && expect != current {
+	if current := FormatVersion(rs.Rules[idx].Version); expect != "" && expect != current {
 		return &VersionMismatchError{Current: current}
 	}
 	rs.Rules = slices.Delete(rs.Rules, idx, idx+1)
-	if err := a.UpdateRuleset(ctx, rs, VersionOf(rs.UpdatedAt)); err != nil {
+	if err := a.UpdateRuleset(ctx, rs, FormatVersion(rs.Version)); err != nil {
 		return a.ruleWriteError(ctx, rulesetID, ruleID, err, -1)
 	}
 	return nil
@@ -285,16 +285,18 @@ func (a *Authoring) ruleWriteError(ctx context.Context, rulesetID, ruleID uuid.U
 	}
 	for i := range rs.Rules {
 		if rs.Rules[i].ID == ruleID {
-			return &VersionMismatchError{Current: VersionOf(rs.Rules[i].UpdatedAt)}
+			return &VersionMismatchError{Current: FormatVersion(rs.Rules[i].Version)}
 		}
 	}
 	return ErrRuleUnknown
 }
 
-// carryRuleTimestamps gives every rule of next its instants: a rule whose
-// id existed in prev keeps its CreatedAt and keeps its UpdatedAt unless
-// its content changed; every other rule is created now.
-func carryRuleTimestamps(prev, next *Ruleset, now time.Time) {
+// carryRuleProvenance gives every rule of next its instants and version: a
+// rule whose id existed in prev keeps its CreatedAt, and keeps its
+// UpdatedAt and Version unless its content changed, when the one moves to
+// now and the other advances by one; every other rule is created now at
+// version 1.
+func carryRuleProvenance(prev, next *Ruleset, now time.Time) {
 	before := make(map[uuid.UUID]*Rule, len(prev.Rules))
 	for i := range prev.Rules {
 		before[prev.Rules[i].ID] = &prev.Rules[i]
@@ -303,21 +305,22 @@ func carryRuleTimestamps(prev, next *Ruleset, now time.Time) {
 		r := &next.Rules[i]
 		old, ok := before[r.ID]
 		if !ok {
-			r.CreatedAt, r.UpdatedAt = now, now
+			r.CreatedAt, r.UpdatedAt, r.Version = now, now, 1
 			continue
 		}
 		r.CreatedAt = old.CreatedAt
 		if RuleEqual(old, r) {
-			r.UpdatedAt = old.UpdatedAt
+			r.UpdatedAt, r.Version = old.UpdatedAt, old.Version
 		} else {
-			r.UpdatedAt = now
+			r.UpdatedAt, r.Version = now, old.Version+1
 		}
 	}
 }
 
 // RuleEqual reports whether two rules say the same thing: same direction,
 // enablement, description, peers, services, and entries, in order.
-// Timestamps are not compared; they are a consequence of content changing.
+// Timestamps and versions are not compared; they are a consequence of
+// content changing.
 func RuleEqual(a, b *Rule) bool {
 	if a.Direction != b.Direction || a.Enabled != b.Enabled || a.Description != b.Description {
 		return false

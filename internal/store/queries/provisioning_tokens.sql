@@ -1,9 +1,10 @@
--- Provisioning tokens (ADR-0016). Only the SHA-256 hash of a token is ever
--- stored or looked up; no query here touches plaintext.
+-- Provisioning tokens (ADR-0016 as amended). A token is looked up only by
+-- its SHA-256 hash; beside it only token_prefix, the listing hint, is kept,
+-- NULL for tokens minted before it was. No query here touches plaintext.
 
 -- name: CreateProvisioningToken :one
-INSERT INTO provisioning_tokens (id, token_hash, name, expires_at)
-VALUES ($1, $2, $3, $4)
+INSERT INTO provisioning_tokens (id, token_hash, token_prefix, name, expires_at)
+VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
 -- name: AddProvisioningTokenLabel :exec

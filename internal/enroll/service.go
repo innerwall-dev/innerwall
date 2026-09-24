@@ -123,9 +123,11 @@ func (s *Service) MintToken(ctx context.Context, name string, labels []Label, tt
 		return "", Token{}, err
 	}
 	now := s.now()
+	hint := ListingHint(plaintext)
 	tok = Token{
 		ID:        uuid.New(),
 		Hash:      hash,
+		Prefix:    &hint,
 		Name:      name,
 		Labels:    labels,
 		CreatedAt: now,

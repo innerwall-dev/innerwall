@@ -44,9 +44,12 @@ info:
     holds is `412 precondition-failed` with the current version, so the
     client re-reads and decides. The wildcard `*` names no version and is
     refused as `428`; a weak tag never matches. Creating a resource needs no
-    precondition. An authored object's version is derived from the instant of
-    its last write, so every write moves it; a rule's version is its own, not
-    its ruleset's. A label set's version is a digest of the set.
+    precondition. An authored object's version counts its writes: it is 1
+    when the object is created and every write advances it by one, so every
+    write moves it; a rule's version is its own, not its ruleset's. A label
+    set's version is a digest of the set. Either way the token is compared
+    byte-exact against the one the resource holds and never interpreted, so
+    a client stores and returns it as given.
 
     ## Cursors
 
@@ -65,9 +68,8 @@ info:
     ## Deliberately absent
 
     Generic bulk operations, any endpoint that sets or resets the operator
-    password (the command line on the host does that), any job or progress
-    resource, and a resend-snapshot action (see the pull request that carried
-    this document for why it is deferred).
+    password (the command line on the host does that), and any job or
+    progress resource.
   contact:
     name: Innerwall maintainers
     url: https://github.com/innerwall-dev/innerwall
@@ -1017,8 +1019,8 @@ paths:
     get:
       operationId: listProvisioningTokens
       tags: [tokens]
-      summary: Every provisioning token, metadata only.
-      description: A secret is never listed; only its digest is stored. Provisioning tokens carry no listing prefix.
+      summary: Every provisioning token, prefix and metadata only.
+      description: A secret is never listed; its digest and a listing prefix are stored. A token minted before the prefix was kept lists a null prefix.
       responses:
         "200":
           description: The tokens, newest first.
@@ -1461,7 +1463,7 @@ components:
       description: A workload identity, the UUID the control plane assigned at enrollment.
     Version:
       type: string
-      description: An opaque resource version; also the entity tag.
+      description: An opaque resource version, compared byte-exact; also the entity tag.
     StateVersion:
       type: string
       description: The version of the state a render reads, derived and never stored.
@@ -1770,13 +1772,16 @@ components:
       type: string
       enum: [valid, expired, revoked, invalid]
     ProvisioningToken:
-      description: "A provisioning token as listed: metadata only; the secret is never stored."
+      description: "A provisioning token as listed: its prefix and metadata; the secret is never stored."
       type: object
-      required: [id, name, labels, state, created_at, expires_at, revoked_at, use_count, last_used_at]
+      required: [id, prefix, name, labels, state, created_at, expires_at, revoked_at, use_count, last_used_at]
       properties:
         id:
           type: string
           format: uuid
+        prefix:
+          type: [string, "null"]
+          description: The prefix and a few leading characters, enough to tell tokens apart in a list. Null for a token minted before the control plane kept this hint; none can be recovered from the stored digest.
         name:
           type: string
         labels:

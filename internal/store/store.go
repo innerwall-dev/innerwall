@@ -89,10 +89,11 @@ func Migrate(ctx context.Context, databaseURL string) error {
 func (s *Store) CreateToken(ctx context.Context, t enroll.Token) error {
 	return s.tx(ctx, func(q *db.Queries) error {
 		if _, err := q.CreateProvisioningToken(ctx, db.CreateProvisioningTokenParams{
-			ID:        t.ID,
-			TokenHash: t.Hash,
-			Name:      t.Name,
-			ExpiresAt: t.ExpiresAt,
+			ID:          t.ID,
+			TokenHash:   t.Hash,
+			TokenPrefix: t.Prefix,
+			Name:        t.Name,
+			ExpiresAt:   t.ExpiresAt,
 		}); err != nil {
 			return fmt.Errorf("store: creating token: %w", err)
 		}
@@ -170,6 +171,7 @@ func tokenFromRow(row db.ProvisioningToken) enroll.Token {
 	return enroll.Token{
 		ID:         row.ID,
 		Hash:       row.TokenHash,
+		Prefix:     row.TokenPrefix,
 		Name:       row.Name,
 		Labels:     []enroll.Label{},
 		CreatedAt:  row.CreatedAt,

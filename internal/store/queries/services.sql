@@ -4,16 +4,18 @@
 INSERT INTO services (id, name, created_at, updated_at)
 VALUES ($1, $2, $3, $3);
 
--- Conditional writes: expected is the updated_at the caller last read, or
--- NULL for an unconditional write.
--- name: UpdateService :execrows
+-- Conditional writes: expected is the version token the caller last read,
+-- compared byte-exact against the stored version's decimal form, or NULL
+-- for an unconditional write. Every write advances the version by one.
+-- name: UpdateService :one
 UPDATE services
-SET name = $2, updated_at = $3
-WHERE id = $1 AND (sqlc.narg(expected)::timestamptz IS NULL OR updated_at = sqlc.narg(expected)::timestamptz);
+SET name = $2, updated_at = $3, version = version + 1
+WHERE id = $1 AND (sqlc.narg(expected)::text IS NULL OR version::text = sqlc.narg(expected)::text)
+RETURNING version;
 
 -- name: DeleteService :execrows
 DELETE FROM services
-WHERE id = $1 AND (sqlc.narg(expected)::timestamptz IS NULL OR updated_at = sqlc.narg(expected)::timestamptz);
+WHERE id = $1 AND (sqlc.narg(expected)::text IS NULL OR version::text = sqlc.narg(expected)::text);
 
 -- name: GetService :one
 SELECT * FROM services

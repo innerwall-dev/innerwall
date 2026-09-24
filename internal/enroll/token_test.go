@@ -31,6 +31,11 @@ func TestNewTokenShapeAndHash(t *testing.T) {
 	if other == plain {
 		t.Fatal("two tokens collided")
 	}
+	// The listing hint is the prefix and the first eight characters of the
+	// body, the operator token's shape.
+	if hint := ListingHint(plain); hint != plain[:len(TokenPrefix)+8] || !strings.HasPrefix(hint, TokenPrefix) {
+		t.Fatalf("listing hint = %q for %q", hint, plain)
+	}
 }
 
 func TestHashTokenRejectsMalformed(t *testing.T) {

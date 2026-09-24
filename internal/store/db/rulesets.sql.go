@@ -13,8 +13,8 @@ import (
 )
 
 const addRule = `-- name: AddRule :exec
-INSERT INTO rules (id, ruleset_id, ordinal, direction, enabled, description, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO rules (id, ruleset_id, ordinal, direction, enabled, description, created_at, updated_at, version)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 `
 
 type AddRuleParams struct {
@@ -26,6 +26,7 @@ type AddRuleParams struct {
 	Description string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	Version     int64
 }
 
 func (q *Queries) AddRule(ctx context.Context, arg AddRuleParams) error {
@@ -38,6 +39,7 @@ func (q *Queries) AddRule(ctx context.Context, arg AddRuleParams) error {
 		arg.Description,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.Version,
 	)
 	return err
 }
@@ -183,12 +185,12 @@ func (q *Queries) DeleteRules(ctx context.Context, rulesetID uuid.UUID) error {
 
 const deleteRuleset = `-- name: DeleteRuleset :execrows
 DELETE FROM rulesets
-WHERE id = $1 AND ($2::timestamptz IS NULL OR updated_at = $2::timestamptz)
+WHERE id = $1 AND ($2::text IS NULL OR version::text = $2::text)
 `
 
 type DeleteRulesetParams struct {
 	ID       uuid.UUID
-	Expected *time.Time
+	Expected *string
 }
 
 func (q *Queries) DeleteRuleset(ctx context.Context, arg DeleteRulesetParams) (int64, error) {
@@ -210,7 +212,7 @@ func (q *Queries) DeleteRulesetScopeMatches(ctx context.Context, rulesetID uuid.
 }
 
 const getRuleset = `-- name: GetRuleset :one
-SELECT id, region_id, name, description, enabled, created_at, updated_at FROM rulesets
+SELECT id, region_id, name, description, enabled, created_at, updated_at, version FROM rulesets
 WHERE id = $1
 `
 
@@ -225,6 +227,7 @@ func (q *Queries) GetRuleset(ctx context.Context, id uuid.UUID) (Ruleset, error)
 		&i.Enabled,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Version,
 	)
 	return i, err
 }
@@ -347,7 +350,7 @@ func (q *Queries) ListAllRuleServiceRefs(ctx context.Context) ([]RuleServiceRef,
 }
 
 const listAllRules = `-- name: ListAllRules :many
-SELECT id, ruleset_id, ordinal, direction, enabled, description, created_at, updated_at FROM rules
+SELECT id, ruleset_id, ordinal, direction, enabled, description, created_at, updated_at, version FROM rules
 ORDER BY ruleset_id, ordinal
 `
 
@@ -369,6 +372,7 @@ func (q *Queries) ListAllRules(ctx context.Context) ([]Rule, error) {
 			&i.Description,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Version,
 		); err != nil {
 			return nil, err
 		}
@@ -406,7 +410,7 @@ func (q *Queries) ListAllRulesetScopeMatches(ctx context.Context) ([]RulesetScop
 }
 
 const listRulesets = `-- name: ListRulesets :many
-SELECT id, region_id, name, description, enabled, created_at, updated_at FROM rulesets
+SELECT id, region_id, name, description, enabled, created_at, updated_at, version FROM rulesets
 ORDER BY name, id
 `
 
@@ -427,6 +431,7 @@ func (q *Queries) ListRulesets(ctx context.Context) ([]Ruleset, error) {
 			&i.Enabled,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Version,
 		); err != nil {
 			return nil, err
 		}
@@ -438,10 +443,11 @@ func (q *Queries) ListRulesets(ctx context.Context) ([]Ruleset, error) {
 	return items, nil
 }
 
-const updateRuleset = `-- name: UpdateRuleset :execrows
+const updateRuleset = `-- name: UpdateRuleset :one
 UPDATE rulesets
-SET name = $2, description = $3, enabled = $4, updated_at = $5
-WHERE id = $1 AND ($6::timestamptz IS NULL OR updated_at = $6::timestamptz)
+SET name = $2, description = $3, enabled = $4, updated_at = $5, version = version + 1
+WHERE id = $1 AND ($6::text IS NULL OR version::text = $6::text)
+RETURNING version
 `
 
 type UpdateRulesetParams struct {
@@ -450,15 +456,17 @@ type UpdateRulesetParams struct {
 	Description string
 	Enabled     bool
 	UpdatedAt   time.Time
-	Expected    *time.Time
+	Expected    *string
 }
 
-// A conditional write: expected is the updated_at the caller last read,
-// or NULL for an unconditional write (the command line's default). Zero
-// rows with a NULL expected means the ruleset does not exist; zero rows
-// with one set means either that or a version the caller did not see.
+// A conditional write: expected is the version token the caller last
+// read, compared byte-exact against the stored version's decimal form, or
+// NULL for an unconditional write (the command line's default). Every
+// write advances the version by one and returns it. No row with a NULL
+// expected means the ruleset does not exist; no row with one set means
+// either that or a version the caller did not see.
 func (q *Queries) UpdateRuleset(ctx context.Context, arg UpdateRulesetParams) (int64, error) {
-	result, err := q.db.Exec(ctx, updateRuleset,
+	row := q.db.QueryRow(ctx, updateRuleset,
 		arg.ID,
 		arg.Name,
 		arg.Description,
@@ -466,8 +474,7 @@ func (q *Queries) UpdateRuleset(ctx context.Context, arg UpdateRulesetParams) (i
 		arg.UpdatedAt,
 		arg.Expected,
 	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+	var version int64
+	err := row.Scan(&version)
+	return version, err
 }

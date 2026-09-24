@@ -23,12 +23,14 @@ var (
 // a composite object (a service with its entries, a ruleset with its rules)
 // are atomic: the object is either fully persisted or not at all.
 //
-// Updates and deletes are conditional: expect is the version the caller
-// last read (VersionOf its UpdatedAt), and the write applies only when the
+// Updates and deletes are conditional: expect is the version token the
+// caller last read (FormatVersion of its Version), compared byte-exact
+// against the stored version's form, and the write applies only when the
 // object still holds it, refusing otherwise with a *VersionMismatchError
 // that names the current version. An empty expect writes unconditionally.
 // The check is made inside the write, so two callers holding the same
-// version cannot both succeed.
+// version cannot both succeed. Every update advances the stored version
+// by one and sets the new value on the object it was given.
 type Store interface {
 	CreateService(ctx context.Context, s *Service) error
 	UpdateService(ctx context.Context, s *Service, expect string) error

@@ -44,8 +44,9 @@ type Querier interface {
 	CreateModeChange(ctx context.Context, arg CreateModeChangeParams) error
 	CreateOperatorSession(ctx context.Context, arg CreateOperatorSessionParams) error
 	CreateOperatorToken(ctx context.Context, arg CreateOperatorTokenParams) error
-	// Provisioning tokens (ADR-0016). Only the SHA-256 hash of a token is ever
-	// stored or looked up; no query here touches plaintext.
+	// Provisioning tokens (ADR-0016 as amended). A token is looked up only by
+	// its SHA-256 hash; beside it only token_prefix, the listing hint, is kept,
+	// NULL for tokens minted before it was. No query here touches plaintext.
 	CreateProvisioningToken(ctx context.Context, arg CreateProvisioningTokenParams) (ProvisioningToken, error)
 	// Rulesets and their rules: the authored policy model (ADR-0018). A ruleset
 	// is written and replaced as a unit; its child rows are deleted and
@@ -203,16 +204,20 @@ type Querier interface {
 	// Retention runs singly across replicas: whichever replica acquires the
 	// lock prunes, the others skip this round (ADR-0017).
 	TryAcquireRetentionLock(ctx context.Context, key int64) (bool, error)
-	// Conditional writes: expected is the updated_at the caller last read, or
-	// NULL for an unconditional write.
+	// Conditional writes: expected is the version token the caller last read,
+	// compared byte-exact against the stored version's decimal form, or NULL
+	// for an unconditional write. Every write advances the version by one.
 	UpdateAddressGroup(ctx context.Context, arg UpdateAddressGroupParams) (int64, error)
-	// A conditional write: expected is the updated_at the caller last read,
-	// or NULL for an unconditional write (the command line's default). Zero
-	// rows with a NULL expected means the ruleset does not exist; zero rows
-	// with one set means either that or a version the caller did not see.
+	// A conditional write: expected is the version token the caller last
+	// read, compared byte-exact against the stored version's decimal form, or
+	// NULL for an unconditional write (the command line's default). Every
+	// write advances the version by one and returns it. No row with a NULL
+	// expected means the ruleset does not exist; no row with one set means
+	// either that or a version the caller did not see.
 	UpdateRuleset(ctx context.Context, arg UpdateRulesetParams) (int64, error)
-	// Conditional writes: expected is the updated_at the caller last read, or
-	// NULL for an unconditional write.
+	// Conditional writes: expected is the version token the caller last read,
+	// compared byte-exact against the stored version's decimal form, or NULL
+	// for an unconditional write. Every write advances the version by one.
 	UpdateService(ctx context.Context, arg UpdateServiceParams) (int64, error)
 	UpsertFlowTotal(ctx context.Context, arg []UpsertFlowTotalParams) *UpsertFlowTotalBatchResults
 	UpsertWorkloadPolicy(ctx context.Context, arg UpsertWorkloadPolicyParams) error

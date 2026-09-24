@@ -21,6 +21,12 @@ const TokenPrefix = "iw_"
 // tokenEntropyBytes is the random payload of a token: 256 bits.
 const tokenEntropyBytes = 32
 
+// listPrefixChars is how many characters of the random body are kept
+// beside the prefix as the listing hint: enough to tell tokens apart in a
+// table, far too few to matter to anyone guessing the rest. It matches the
+// operator token's (ADR-0021).
+const listPrefixChars = 8
+
 // DefaultTokenTTL is the lifetime of a token when the operator sets none.
 const DefaultTokenTTL = 30 * 24 * time.Hour
 
@@ -41,10 +47,13 @@ type Label struct {
 }
 
 // Token is the stored form of a provisioning token. It never carries the
-// plaintext: Hash is all the control plane keeps.
+// plaintext: Hash is what is looked up, and Prefix, the listing hint, is
+// what is listed. Prefix is nil for a token minted before hints were kept,
+// since none can be recovered from a digest.
 type Token struct {
 	ID         uuid.UUID
 	Hash       []byte
+	Prefix     *string
 	Name       string
 	Labels     []Label
 	CreatedAt  time.Time
@@ -67,6 +76,16 @@ func NewToken() (plaintext string, hash []byte, err error) {
 		return "", nil, err
 	}
 	return plaintext, hash, nil
+}
+
+// ListingHint is the part of a plaintext token kept for listing: the fixed
+// prefix and the first characters of the random body.
+func ListingHint(plaintext string) string {
+	n := len(TokenPrefix) + listPrefixChars
+	if len(plaintext) < n {
+		return plaintext
+	}
+	return plaintext[:n]
 }
 
 // HashToken validates the shape of a plaintext token and returns its SHA-256

@@ -182,8 +182,9 @@ func TestConditionalRequests(t *testing.T) {
 		resp, body = s.call(t, http.MethodDelete, path, "", h)
 		expectProblem(t, resp, body, http.StatusPreconditionRequired, api.ProblemPreconditionRequired)
 	}
-	// Stale, or weak: precondition failed, naming the current version.
-	for _, h := range []map[string]string{ifMatch(`"1"`), ifMatch("W/" + current), ifMatch(`"not-a-version"`)} {
+	// Stale, weak, or a form that is not byte-exact the current token:
+	// precondition failed, naming the current version.
+	for _, h := range []map[string]string{ifMatch(`"0"`), ifMatch(`"01"`), ifMatch("W/" + current), ifMatch(`"not-a-version"`)} {
 		resp, body = s.call(t, http.MethodPut, path, doc, h)
 		expectProblem(t, resp, body, http.StatusPreconditionFailed, api.ProblemPreconditionFailed)
 		if body["current_version"] != strings.Trim(current, `"`) {
@@ -201,8 +202,8 @@ func TestConditionalRequests(t *testing.T) {
 	next := resp.header.Get("ETag")
 	resp, body = s.call(t, http.MethodPut, path, doc, ifMatch(current))
 	expectProblem(t, resp, body, http.StatusPreconditionFailed, api.ProblemPreconditionFailed)
-	// A rewrite with no change still moves the version: it is the
-	// instant of the last write, not a digest.
+	// A rewrite with no change still moves the version: it counts
+	// writes, it is not a digest.
 	resp, _ = s.call(t, http.MethodPut, path, doc, ifMatch(strings.Trim(next, `"`)))
 	if resp.status != http.StatusOK {
 		t.Fatalf("bare version refused: %d", resp.status)
@@ -291,7 +292,7 @@ func TestRulesetAndRuleEndpoints(t *testing.T) {
 	update := jsonBody(map[string]any{"direction": "inbound", "description": "ssh from db", "peers": []map[string]any{{"workloads": map[string][]string{"role": {"db"}}}}, "entries": []map[string]any{{"protocol": "tcp", "ports": []string{"22"}}}})
 	resp, body = s.call(t, http.MethodPut, rulePath+"/"+ruleID, update, nil)
 	expectProblem(t, resp, body, http.StatusPreconditionRequired, api.ProblemPreconditionRequired)
-	resp, body = s.call(t, http.MethodPut, rulePath+"/"+ruleID, update, ifMatch(`"1"`))
+	resp, body = s.call(t, http.MethodPut, rulePath+"/"+ruleID, update, ifMatch(`"0"`))
 	expectProblem(t, resp, body, http.StatusPreconditionFailed, api.ProblemPreconditionFailed)
 	if body["current_version"] != strings.Trim(ruleTag, `"`) {
 		t.Fatalf("rule 412 names %v, want the rule's version %s", body["current_version"], ruleTag)
@@ -309,7 +310,7 @@ func TestRulesetAndRuleEndpoints(t *testing.T) {
 	}
 	resp, body = s.call(t, http.MethodPut, rulePath+"/"+uuid.NewString(), update, ifMatch(ruleTag))
 	expectProblem(t, resp, body, http.StatusNotFound, api.ProblemNotFound)
-	resp, _ = s.call(t, http.MethodDelete, rulePath+"/"+ruleID, "", ifMatch(`"1"`))
+	resp, _ = s.call(t, http.MethodDelete, rulePath+"/"+ruleID, "", ifMatch(`"0"`))
 	if resp.status != http.StatusPreconditionFailed {
 		t.Fatalf("delete with a wrong tag: %d", resp.status)
 	}
@@ -518,6 +519,9 @@ func TestTokenEndpoints(t *testing.T) {
 	if resp.status != http.StatusOK || len(field(body, "tokens").([]any)) != 1 || field(body, "tokens.0.id") != tokenID || field(body, "tokens.0.use_count") != float64(0) {
 		t.Fatalf("list: %d %v", resp.status, body)
 	}
+	if p := field(body, "tokens.0.prefix"); p != enroll.ListingHint(secret) || p == secret {
+		t.Fatalf("listed prefix = %v, want the listing hint of the minted secret", p)
+	}
 	raw, _ := json.Marshal(body)
 	if strings.Contains(string(raw), secret) || strings.Contains(string(raw), `"token"`) {
 		t.Fatalf("the list leaks the secret: %s", raw)
@@ -533,6 +537,28 @@ func TestTokenEndpoints(t *testing.T) {
 	_, body = s.call(t, http.MethodGet, "/api/v1/provisioning-tokens", "", nil)
 	if field(body, "tokens.0.state") != "revoked" || field(body, "tokens.0.revoked_at") == nil {
 		t.Fatalf("revoked token = %v", field(body, "tokens.0"))
+	}
+	// A token minted before hints were kept lists a null prefix; nothing
+	// is made up for it.
+	_, oldHash, _ := enroll.NewToken()
+	old := enroll.Token{ID: uuid.New(), Hash: oldHash, Name: "old", CreatedAt: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC), ExpiresAt: time.Date(2026, 9, 30, 0, 0, 0, 0, time.UTC)}
+	if err := s.enrollStore.CreateToken(context.Background(), old); err != nil {
+		t.Fatal(err)
+	}
+	_, body = s.call(t, http.MethodGet, "/api/v1/provisioning-tokens", "", nil)
+	var sawOld bool
+	for _, tok := range field(body, "tokens").([]any) {
+		m := tok.(map[string]any)
+		if m["id"] != old.ID.String() {
+			continue
+		}
+		sawOld = true
+		if v, ok := m["prefix"]; !ok || v != nil {
+			t.Fatalf("a token without a hint lists prefix %v (present %v)", v, ok)
+		}
+	}
+	if !sawOld {
+		t.Fatalf("pre-hint token not listed: %v", body)
 	}
 
 	// Operator tokens: symmetric, with a listing prefix, and the minted

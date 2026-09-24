@@ -103,7 +103,10 @@ func TestConditionalWritesAndRuleTimestamps(t *testing.T) {
 	if len(rs.Rules) != 1 || !rs.Rules[0].CreatedAt.Equal(authoredAt) || !rs.Rules[0].UpdatedAt.Equal(authoredAt) {
 		t.Fatalf("seeded rule instants = %v %v, want %v", rs.Rules[0].CreatedAt, rs.Rules[0].UpdatedAt, authoredAt)
 	}
-	current := policy.VersionOf(rs.UpdatedAt)
+	current := policy.FormatVersion(rs.Version)
+	if current != "1" {
+		t.Fatalf("seeded ruleset version = %q", current)
+	}
 	rs.Description = "changed"
 	rs.UpdatedAt = f.Now
 	err = s.UpdateRuleset(ctx, rs, "42")
@@ -111,11 +114,23 @@ func TestConditionalWritesAndRuleTimestamps(t *testing.T) {
 	if !errors.As(err, &vm) || vm.Current != current {
 		t.Fatalf("stale update err = %v", err)
 	}
-	if err := s.UpdateRuleset(ctx, rs, "not-a-version"); !errors.Is(err, policy.ErrVersionMismatch) {
-		t.Fatalf("garbage version err = %v", err)
+	// The comparison is byte-exact against the stored integer's decimal
+	// form: nothing parses the token, so forms that would parse to 1 do
+	// not match it.
+	for _, token := range []string{"not-a-version", "01", "+1", " 1", "1.0"} {
+		if err := s.UpdateRuleset(ctx, rs, token); !errors.Is(err, policy.ErrVersionMismatch) {
+			t.Fatalf("version %q err = %v", token, err)
+		}
 	}
 	if err := s.UpdateRuleset(ctx, rs, current); err != nil {
 		t.Fatal(err)
+	}
+	if back, _ := s.GetRuleset(ctx, rs.ID); rs.Version != 2 || back.Version != 2 {
+		t.Fatalf("version after one write = %d in hand, %d stored", rs.Version, back.Version)
+	}
+	// An unconditional write still advances the version.
+	if err := s.UpdateRuleset(ctx, rs, ""); err != nil || rs.Version != 3 {
+		t.Fatalf("unconditional write = %v, version %d", err, rs.Version)
 	}
 	if err := s.DeleteRuleset(ctx, rs.ID, current); !errors.Is(err, policy.ErrVersionMismatch) {
 		t.Fatalf("stale delete err = %v", err)
@@ -128,11 +143,11 @@ func TestConditionalWritesAndRuleTimestamps(t *testing.T) {
 	g := f.Office
 	g.Name = "hq"
 	g.UpdatedAt = f.Now
-	if err := s.UpdateAddressGroup(ctx, &g, "1"); !errors.Is(err, policy.ErrVersionMismatch) {
+	if err := s.UpdateAddressGroup(ctx, &g, "0"); !errors.Is(err, policy.ErrVersionMismatch) {
 		t.Fatalf("stale group err = %v", err)
 	}
-	if err := s.UpdateAddressGroup(ctx, &g, policy.VersionOf(f.Office.UpdatedAt)); err != nil {
-		t.Fatal(err)
+	if err := s.UpdateAddressGroup(ctx, &g, "1"); err != nil || g.Version != 2 {
+		t.Fatalf("group update = %v, version %d", err, g.Version)
 	}
 
 	// Labels are versioned by content.

@@ -79,7 +79,7 @@ type serviceDocJSON struct {
 }
 
 func serviceJSONOf(s *policy.Service) serviceDocJSON {
-	out := serviceDocJSON{ID: s.ID.String(), Name: s.Name, Entries: make([]policy.EntryDoc, 0, len(s.Entries)), Version: policy.VersionOf(s.UpdatedAt), CreatedAt: timestamp(s.CreatedAt), UpdatedAt: timestamp(s.UpdatedAt)}
+	out := serviceDocJSON{ID: s.ID.String(), Name: s.Name, Entries: make([]policy.EntryDoc, 0, len(s.Entries)), Version: policy.FormatVersion(s.Version), CreatedAt: timestamp(s.CreatedAt), UpdatedAt: timestamp(s.UpdatedAt)}
 	for _, e := range s.Entries {
 		out.Entries = append(out.Entries, policy.EntryToDoc(e))
 	}
@@ -111,7 +111,7 @@ type addressGroupJSON struct {
 }
 
 func addressGroupJSONOf(g *policy.AddressGroup) addressGroupJSON {
-	out := addressGroupJSON{ID: g.ID.String(), Name: g.Name, CIDRs: g.CIDRs, Version: policy.VersionOf(g.UpdatedAt), CreatedAt: timestamp(g.CreatedAt), UpdatedAt: timestamp(g.UpdatedAt)}
+	out := addressGroupJSON{ID: g.ID.String(), Name: g.Name, CIDRs: g.CIDRs, Version: policy.FormatVersion(g.Version), CreatedAt: timestamp(g.CreatedAt), UpdatedAt: timestamp(g.UpdatedAt)}
 	if out.CIDRs == nil {
 		out.CIDRs = []string{}
 	}
@@ -330,7 +330,10 @@ func (in *provisioningTokenInput) ttl() time.Duration {
 }
 
 type provisioningTokenJSON struct {
-	ID         string            `json:"id"`
+	ID string `json:"id"`
+	// Prefix is the listing hint; null for a token minted before hints
+	// were kept.
+	Prefix     *string           `json:"prefix"`
 	Name       string            `json:"name"`
 	Labels     map[string]string `json:"labels"`
 	State      string            `json:"state"`
@@ -347,7 +350,7 @@ func provisioningTokenJSONOf(t *enroll.Token, now time.Time) provisioningTokenJS
 		labels[l.Key] = l.Value
 	}
 	return provisioningTokenJSON{
-		ID: t.ID.String(), Name: t.Name, Labels: labels, State: tokenState(t.Check(now), enroll.ErrTokenRevoked, enroll.ErrTokenExpired),
+		ID: t.ID.String(), Prefix: t.Prefix, Name: t.Name, Labels: labels, State: tokenState(t.Check(now), enroll.ErrTokenRevoked, enroll.ErrTokenExpired),
 		CreatedAt: timestamp(t.CreatedAt), ExpiresAt: timestamp(t.ExpiresAt), RevokedAt: optionalTimestamp(t.RevokedAt), UseCount: t.UseCount, LastUsedAt: optionalTimestamp(t.LastUsedAt),
 	}
 }

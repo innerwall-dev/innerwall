@@ -6,18 +6,21 @@
 INSERT INTO rulesets (id, name, description, enabled, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $5);
 
--- A conditional write: expected is the updated_at the caller last read,
--- or NULL for an unconditional write (the command line's default). Zero
--- rows with a NULL expected means the ruleset does not exist; zero rows
--- with one set means either that or a version the caller did not see.
--- name: UpdateRuleset :execrows
+-- A conditional write: expected is the version token the caller last
+-- read, compared byte-exact against the stored version's decimal form, or
+-- NULL for an unconditional write (the command line's default). Every
+-- write advances the version by one and returns it. No row with a NULL
+-- expected means the ruleset does not exist; no row with one set means
+-- either that or a version the caller did not see.
+-- name: UpdateRuleset :one
 UPDATE rulesets
-SET name = $2, description = $3, enabled = $4, updated_at = $5
-WHERE id = $1 AND (sqlc.narg(expected)::timestamptz IS NULL OR updated_at = sqlc.narg(expected)::timestamptz);
+SET name = $2, description = $3, enabled = $4, updated_at = $5, version = version + 1
+WHERE id = $1 AND (sqlc.narg(expected)::text IS NULL OR version::text = sqlc.narg(expected)::text)
+RETURNING version;
 
 -- name: DeleteRuleset :execrows
 DELETE FROM rulesets
-WHERE id = $1 AND (sqlc.narg(expected)::timestamptz IS NULL OR updated_at = sqlc.narg(expected)::timestamptz);
+WHERE id = $1 AND (sqlc.narg(expected)::text IS NULL OR version::text = sqlc.narg(expected)::text);
 
 -- name: GetRuleset :one
 SELECT * FROM rulesets
@@ -40,8 +43,8 @@ SELECT * FROM ruleset_scope_matches
 ORDER BY ruleset_id, key;
 
 -- name: AddRule :exec
-INSERT INTO rules (id, ruleset_id, ordinal, direction, enabled, description, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
+INSERT INTO rules (id, ruleset_id, ordinal, direction, enabled, description, created_at, updated_at, version)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
 
 -- name: DeleteRules :exec
 DELETE FROM rules

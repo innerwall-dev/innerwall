@@ -115,6 +115,21 @@ func TestTokensAndWorkloads(t *testing.T) {
 	if len(list) != 1 || list[0].ID != tok.ID || len(list[0].Labels) != 2 {
 		t.Fatalf("list = %+v", list)
 	}
+	// A token stored without a listing hint (one minted before hints were
+	// kept) lists none; one stored with a hint lists it.
+	if list[0].Prefix != nil {
+		t.Fatalf("a token without a hint lists %q", *list[0].Prefix)
+	}
+	plain2, hash2, _ := enroll.NewToken()
+	hint := enroll.ListingHint(plain2)
+	hinted := enroll.Token{ID: uuid.New(), Hash: hash2, Prefix: &hint, Name: "hinted", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}
+	if err := s.CreateToken(ctx, hinted); err != nil {
+		t.Fatal(err)
+	}
+	back, err := s.FindTokenByHash(ctx, hash2)
+	if err != nil || back.Prefix == nil || *back.Prefix != hint {
+		t.Fatalf("hinted token = %+v, %v", back, err)
+	}
 }
 
 func TestMigrateIsIdempotent(t *testing.T) {

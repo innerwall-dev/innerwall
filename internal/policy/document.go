@@ -365,8 +365,10 @@ func ruleFromDoc(f *Findings, path string, rd *RuleDoc, names Names) Rule {
 func RulesetToDoc(rs *Ruleset, names Names) *RulesetDoc {
 	enabled := rs.Enabled
 	doc := &RulesetDoc{ID: rs.ID.String(), Name: rs.Name, Description: rs.Description, Enabled: &enabled, Scope: rs.Scope, Rules: []RuleDoc{}}
+	if rs.Version > 0 {
+		doc.Version = FormatVersion(rs.Version)
+	}
 	if !rs.UpdatedAt.IsZero() {
-		doc.Version = VersionOf(rs.UpdatedAt)
 		doc.CreatedAt = rs.CreatedAt.UTC().Format(time.RFC3339Nano)
 		doc.UpdatedAt = rs.UpdatedAt.UTC().Format(time.RFC3339Nano)
 	}
@@ -380,8 +382,10 @@ func RulesetToDoc(rs *Ruleset, names Names) *RulesetDoc {
 func RuleToDoc(r *Rule, names Names) *RuleDoc {
 	en := r.Enabled
 	rd := &RuleDoc{ID: r.ID.String(), Direction: DirectionName(r.Direction), Enabled: &en, Description: r.Description, Peers: []PeerDoc{}}
+	if r.Version > 0 {
+		rd.Version = FormatVersion(r.Version)
+	}
 	if !r.UpdatedAt.IsZero() {
-		rd.Version = VersionOf(r.UpdatedAt)
 		rd.CreatedAt = r.CreatedAt.UTC().Format(time.RFC3339Nano)
 		rd.UpdatedAt = r.UpdatedAt.UTC().Format(time.RFC3339Nano)
 	}

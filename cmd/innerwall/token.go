@@ -108,7 +108,7 @@ func runTokenList(ctx context.Context, args []string) error {
 	}
 	now := time.Now()
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintln(w, "ID\tNAME\tSTATE\tEXPIRES\tUSES\tLABELS")
+	_, _ = fmt.Fprintln(w, "ID\tPREFIX\tNAME\tSTATE\tEXPIRES\tUSES\tLABELS")
 	for i := range tokens {
 		t := &tokens[i]
 		state := "valid"
@@ -122,7 +122,12 @@ func runTokenList(ctx context.Context, args []string) error {
 			state = "invalid"
 		}
 		l := labelFlags(t.Labels)
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%s\n", t.ID, t.Name, state, t.ExpiresAt.UTC().Format(time.RFC3339), t.UseCount, l.String())
+		// A token minted before hints were kept has none to show.
+		prefix := "-"
+		if t.Prefix != nil {
+			prefix = *t.Prefix
+		}
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%d\t%s\n", t.ID, prefix, t.Name, state, t.ExpiresAt.UTC().Format(time.RFC3339), t.UseCount, l.String())
 	}
 	return w.Flush()
 }

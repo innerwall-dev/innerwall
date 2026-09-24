@@ -160,11 +160,13 @@ func (m *MemStore) restore(s snapshot) {
 
 // --- policy.Store ------------------------------------------------------------
 
-func versionOK(expect string, updatedAt time.Time) error {
-	if expect == "" || expect == policy.VersionOf(updatedAt) {
+// versionOK is the conditional check the Postgres statements make: the
+// token is compared byte-exact against the stored version's form.
+func versionOK(expect string, version int64) error {
+	if expect == "" || expect == policy.FormatVersion(version) {
 		return nil
 	}
-	return &policy.VersionMismatchError{Current: policy.VersionOf(updatedAt)}
+	return &policy.VersionMismatchError{Current: policy.FormatVersion(version)}
 }
 
 // CreateService implements policy.Store.
@@ -189,7 +191,7 @@ func (m *MemStore) UpdateService(_ context.Context, s *policy.Service, expect st
 	if idx < 0 {
 		return policy.ErrServiceUnknown
 	}
-	if err := versionOK(expect, m.Services[idx].UpdatedAt); err != nil {
+	if err := versionOK(expect, m.Services[idx].Version); err != nil {
 		return err
 	}
 	for i, x := range m.Services {
@@ -198,7 +200,7 @@ func (m *MemStore) UpdateService(_ context.Context, s *policy.Service, expect st
 		}
 	}
 	m.Writes++
-	s.CreatedAt = m.Services[idx].CreatedAt
+	s.CreatedAt, s.Version = m.Services[idx].CreatedAt, m.Services[idx].Version+1
 	m.Services[idx] = cloneService(*s)
 	return nil
 }
@@ -211,7 +213,7 @@ func (m *MemStore) DeleteService(_ context.Context, id uuid.UUID, expect string)
 	if idx < 0 {
 		return policy.ErrServiceUnknown
 	}
-	if err := versionOK(expect, m.Services[idx].UpdatedAt); err != nil {
+	if err := versionOK(expect, m.Services[idx].Version); err != nil {
 		return err
 	}
 	for _, rs := range m.Rulesets {
@@ -287,7 +289,7 @@ func (m *MemStore) UpdateAddressGroup(_ context.Context, g *policy.AddressGroup,
 	if idx < 0 {
 		return policy.ErrAddressGroupUnknown
 	}
-	if err := versionOK(expect, m.AddressGroups[idx].UpdatedAt); err != nil {
+	if err := versionOK(expect, m.AddressGroups[idx].Version); err != nil {
 		return err
 	}
 	for i, x := range m.AddressGroups {
@@ -296,7 +298,7 @@ func (m *MemStore) UpdateAddressGroup(_ context.Context, g *policy.AddressGroup,
 		}
 	}
 	m.Writes++
-	g.CreatedAt = m.AddressGroups[idx].CreatedAt
+	g.CreatedAt, g.Version = m.AddressGroups[idx].CreatedAt, m.AddressGroups[idx].Version+1
 	m.AddressGroups[idx] = cloneGroup(*g)
 	return nil
 }
@@ -309,7 +311,7 @@ func (m *MemStore) DeleteAddressGroup(_ context.Context, id uuid.UUID, expect st
 	if idx < 0 {
 		return policy.ErrAddressGroupUnknown
 	}
-	if err := versionOK(expect, m.AddressGroups[idx].UpdatedAt); err != nil {
+	if err := versionOK(expect, m.AddressGroups[idx].Version); err != nil {
 		return err
 	}
 	for _, rs := range m.Rulesets {
@@ -398,7 +400,7 @@ func (m *MemStore) UpdateRuleset(_ context.Context, rs *policy.Ruleset, expect s
 	if idx < 0 {
 		return policy.ErrRulesetUnknown
 	}
-	if err := versionOK(expect, m.Rulesets[idx].UpdatedAt); err != nil {
+	if err := versionOK(expect, m.Rulesets[idx].Version); err != nil {
 		return err
 	}
 	for i, x := range m.Rulesets {
@@ -410,6 +412,7 @@ func (m *MemStore) UpdateRuleset(_ context.Context, rs *policy.Ruleset, expect s
 		return err
 	}
 	m.Writes++
+	rs.Version = m.Rulesets[idx].Version + 1
 	m.Rulesets[idx] = cloneRuleset(*rs)
 	return nil
 }
@@ -422,7 +425,7 @@ func (m *MemStore) DeleteRuleset(_ context.Context, id uuid.UUID, expect string)
 	if idx < 0 {
 		return policy.ErrRulesetUnknown
 	}
-	if err := versionOK(expect, m.Rulesets[idx].UpdatedAt); err != nil {
+	if err := versionOK(expect, m.Rulesets[idx].Version); err != nil {
 		return err
 	}
 	m.Writes++

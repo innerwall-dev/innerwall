@@ -3,30 +3,20 @@ package policy
 import (
 	"errors"
 	"strconv"
-	"time"
 )
 
-// A resource version is the opaque string a conditional write names: the
-// version the caller last read, which the write applies against and
-// refuses when it has moved. For the authored objects it is derived from
-// the instant of the last write, which every authoring write advances, so
-// two versions of one object are never equal and the store can check the
-// condition inside the write itself. Callers compare versions and never
-// interpret them; the transport carries them as entity tags.
+// A resource version is the token a conditional write names: the version
+// the caller last read, which the write applies against and refuses when
+// it has moved. Every authored object carries a monotonic integer that
+// starts at 1 and advances by one with each write of the object, inside
+// the statement that writes it. The token is that integer's decimal form;
+// it is compared byte-exact against the stored value's form and never
+// parsed, so callers hold it as opaque and the transport carries it as an
+// entity tag.
 
-// VersionOf returns the version of an object last written at t.
-func VersionOf(t time.Time) string {
-	return strconv.FormatInt(t.UTC().UnixNano(), 10)
-}
-
-// TimeOfVersion is the inverse of VersionOf. It reports false for a string
-// that is not a version this package issued.
-func TimeOfVersion(v string) (time.Time, bool) {
-	n, err := strconv.ParseInt(v, 10, 64)
-	if err != nil {
-		return time.Time{}, false
-	}
-	return time.Unix(0, n).UTC(), true
+// FormatVersion returns the token for the stored version v.
+func FormatVersion(v int64) string {
+	return strconv.FormatInt(v, 10)
 }
 
 // ErrVersionMismatch is returned by a conditional write whose expected

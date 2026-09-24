@@ -150,7 +150,7 @@ func runServiceWrite(ctx context.Context, verb string, args []string) error {
 	}
 	// The write is conditioned on the version just read, so an edit that
 	// lands between the read and the write is refused, not overwritten.
-	if err := a.svc.UpdateService(ctx, svc, policy.VersionOf(existing.UpdatedAt)); err != nil {
+	if err := a.svc.UpdateService(ctx, svc, policy.FormatVersion(existing.Version)); err != nil {
 		return err
 	}
 	fmt.Printf("service %s (%s) updated\n", svc.ID, svc.Name)
@@ -187,7 +187,7 @@ func runServiceDelete(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := a.svc.DeleteService(ctx, svc.ID, policy.VersionOf(svc.UpdatedAt)); err != nil {
+	if err := a.svc.DeleteService(ctx, svc.ID, policy.FormatVersion(svc.Version)); err != nil {
 		return err
 	}
 	fmt.Printf("service %s (%s) deleted\n", svc.ID, svc.Name)
@@ -309,7 +309,7 @@ func runAddressGroupWrite(ctx context.Context, verb string, args []string) error
 	if len(g.CIDRs) == 0 {
 		g.CIDRs = existing.CIDRs
 	}
-	if err := a.svc.UpdateAddressGroup(ctx, g, policy.VersionOf(existing.UpdatedAt)); err != nil {
+	if err := a.svc.UpdateAddressGroup(ctx, g, policy.FormatVersion(existing.Version)); err != nil {
 		return err
 	}
 	fmt.Printf("address group %s (%s) updated\n", g.ID, g.Name)
@@ -346,7 +346,7 @@ func runAddressGroupDelete(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := a.svc.DeleteAddressGroup(ctx, g.ID, policy.VersionOf(g.UpdatedAt)); err != nil {
+	if err := a.svc.DeleteAddressGroup(ctx, g.ID, policy.FormatVersion(g.Version)); err != nil {
 		return err
 	}
 	fmt.Printf("address group %s (%s) deleted\n", g.ID, g.Name)
@@ -488,7 +488,7 @@ func runRulesetWrite(ctx context.Context, verb string, args []string) error {
 		if err != nil {
 			return err
 		}
-		rs.ID, expect = existing.ID, policy.VersionOf(existing.UpdatedAt)
+		rs.ID, expect = existing.ID, policy.FormatVersion(existing.Version)
 	}
 	if rs.ID == uuid.Nil {
 		return usageError("usage: innerwall ruleset update <id|name> -f <document>, or set \"id\" in the document")
@@ -534,7 +534,7 @@ func runRulesetDelete(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := a.svc.DeleteRuleset(ctx, rs.ID, policy.VersionOf(rs.UpdatedAt)); err != nil {
+	if err := a.svc.DeleteRuleset(ctx, rs.ID, policy.FormatVersion(rs.Version)); err != nil {
 		return err
 	}
 	fmt.Printf("ruleset %s (%s) deleted\n", rs.ID, rs.Name)

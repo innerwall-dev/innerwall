@@ -112,7 +112,7 @@ func indexRules(p *innerwallv1.WorkloadPolicy) map[string]*innerwallv1.ResolvedR
 // StateVersion is the version of the state a render reads: a digest over
 // everything in the inputs that can change a rendered policy (each
 // workload's labels, addresses, and mode; each authored object's id and
-// last write). A caller that authored against one state version can tell
+// version). A caller that authored against one state version can tell
 // from another that the persisted state has moved since, and a dry run
 // reports the version it computed against so that staleness is
 // detectable rather than silent. It is derived, never stored.
@@ -135,13 +135,13 @@ func StateVersion(in *Inputs) string {
 	}
 	lines := ws
 	for i := range in.Rulesets {
-		lines = append(lines, fmt.Sprintf("r %s %d", in.Rulesets[i].ID, in.Rulesets[i].UpdatedAt.UnixNano()))
+		lines = append(lines, fmt.Sprintf("r %s %d", in.Rulesets[i].ID, in.Rulesets[i].Version))
 	}
 	for i := range in.Services {
-		lines = append(lines, fmt.Sprintf("s %s %d", in.Services[i].ID, in.Services[i].UpdatedAt.UnixNano()))
+		lines = append(lines, fmt.Sprintf("s %s %d", in.Services[i].ID, in.Services[i].Version))
 	}
 	for i := range in.AddressGroups {
-		lines = append(lines, fmt.Sprintf("g %s %d", in.AddressGroups[i].ID, in.AddressGroups[i].UpdatedAt.UnixNano()))
+		lines = append(lines, fmt.Sprintf("g %s %d", in.AddressGroups[i].ID, in.AddressGroups[i].Version))
 	}
 	sort.Strings(lines)
 	for _, l := range lines {
