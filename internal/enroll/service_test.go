@@ -157,6 +157,21 @@ func TestMintTokenValidatesLabels(t *testing.T) {
 	}
 }
 
+func TestMintTokenKeepsListingHint(t *testing.T) {
+	svc, _ := newService(t)
+	plain, tok, err := svc.MintToken(context.Background(), "x", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tok.Prefix == nil || *tok.Prefix != enroll.ListingHint(plain) {
+		t.Fatalf("minted token prefix = %v, want %q", tok.Prefix, enroll.ListingHint(plain))
+	}
+	listed, err := svc.ListTokens(context.Background())
+	if err != nil || len(listed) != 1 || listed[0].Prefix == nil || *listed[0].Prefix != *tok.Prefix {
+		t.Fatalf("listed = %+v, %v", listed, err)
+	}
+}
+
 func TestRenew(t *testing.T) {
 	ctx := context.Background()
 	svc, st := newService(t)

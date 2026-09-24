@@ -39,7 +39,7 @@ func Reset(ctx context.Context, url string) error {
 		return fmt.Errorf("connecting to database: %w", err)
 	}
 	defer func() { _ = conn.Close(ctx) }()
-	if _, err := conn.Exec(ctx, "TRUNCATE operator_tokens, operator_sessions, operators, flow_totals, flow_windows, workload_listening_services, workload_addresses, workload_policies, rule_service_entries, rule_service_refs, rule_peer_matches, rule_peers, rules, ruleset_scope_matches, rulesets, address_group_cidrs, address_groups, service_entries, services, workload_labels, workloads, provisioning_token_labels, provisioning_tokens"); err != nil {
+	if _, err := conn.Exec(ctx, "TRUNCATE mode_change_workloads, mode_changes, operator_tokens, operator_sessions, operators, flow_totals, flow_windows, workload_listening_services, workload_addresses, workload_policies, rule_service_entries, rule_service_refs, rule_peer_matches, rule_peers, rules, ruleset_scope_matches, rulesets, address_group_cidrs, address_groups, service_entries, services, workload_labels, workloads, provisioning_token_labels, provisioning_tokens"); err != nil {
 		return fmt.Errorf("resetting database: %w", err)
 	}
 	return nil

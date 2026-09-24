@@ -12,7 +12,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/innerwall-dev/innerwall/internal/enroll"
+	"github.com/innerwall-dev/innerwall/internal/fleet"
 	"github.com/innerwall-dev/innerwall/internal/operator"
+	"github.com/innerwall-dev/innerwall/internal/policy"
 	"github.com/innerwall-dev/innerwall/internal/readmodel"
 )
 
@@ -29,6 +32,15 @@ type Deps struct {
 	Operators *operator.Service
 	// Reads is the read model the read endpoints call.
 	Reads *readmodel.Reader
+	// Authoring is the authored model's write domain, behind the
+	// ruleset, rule, service, and address group endpoints.
+	Authoring *policy.Authoring
+	// Fleet is the fleet write domain, behind label edits, mode
+	// changes, the selector preview, and the dry run.
+	Fleet *fleet.Service
+	// Enroll is the enrollment domain, behind provisioning token
+	// management.
+	Enroll *enroll.Service
 	// Site is the label the console header shows; empty when none is
 	// configured.
 	Site string
@@ -51,11 +63,15 @@ type Deps struct {
 type Server struct {
 	operators *operator.Service
 	reads     *readmodel.Reader
+	authoring *policy.Authoring
+	fleet     *fleet.Service
+	enroll    *enroll.Service
 	site      string
 	console   fs.FS
 	auth      *Authenticator
 	throttle  *Throttle
 	log       *slog.Logger
+	now       func() time.Time
 }
 
 // New constructs the surface.
@@ -69,11 +85,15 @@ func New(d Deps) *Server {
 	return &Server{
 		operators: d.Operators,
 		reads:     d.Reads,
+		authoring: d.Authoring,
+		fleet:     d.Fleet,
+		enroll:    d.Enroll,
 		site:      d.Site,
 		console:   d.Console,
 		auth:      &Authenticator{Operators: d.Operators, Log: d.Log},
 		throttle:  &Throttle{Limit: d.LoginAttempts, Window: d.LoginWindow, Now: d.Now},
 		log:       d.Log,
+		now:       d.Now,
 	}
 }
 
@@ -82,6 +102,16 @@ func New(d Deps) *Server {
 // in that order, and the console at every other path.
 func (s *Server) Handler() http.Handler {
 	routes := newRouter()
+	s.mount(routes)
+
+	root := http.NewServeMux()
+	root.Handle(APIPrefix+"/", CrossOriginGuard(s.throttle.Middleware(s.auth.Middleware(routes))))
+	root.Handle("/", ConsoleHandler(s.console))
+	return root
+}
+
+// mount registers every route of the surface.
+func (s *Server) mount(routes *router) {
 	routes.handle(http.MethodPost, APIPrefix+"/session", s.createSession)
 	routes.handle(http.MethodDelete, APIPrefix+"/session", s.deleteSession)
 	routes.handle(http.MethodGet, APIPrefix+"/me", s.getMe)
@@ -90,11 +120,52 @@ func (s *Server) Handler() http.Handler {
 	routes.handle(http.MethodGet, APIPrefix+"/workloads", s.getWorkloads)
 	routes.handle(http.MethodGet, APIPrefix+"/workloads/{id}", s.getWorkload)
 	routes.handle(http.MethodGet, APIPrefix+"/workloads/{id}/rendered-policy", s.getRenderedPolicy)
+	routes.handle(http.MethodGet, APIPrefix+"/workloads/{id}/labels", s.getWorkloadLabels)
+	routes.handle(http.MethodPut, APIPrefix+"/workloads/{id}/labels", s.putWorkloadLabels)
+	routes.handle(http.MethodGet, APIPrefix+"/rulesets", s.listRulesets)
+	routes.handle(http.MethodPost, APIPrefix+"/rulesets", s.createRuleset)
+	routes.handle(http.MethodGet, APIPrefix+"/rulesets/{id}", s.getRuleset)
+	routes.handle(http.MethodPut, APIPrefix+"/rulesets/{id}", s.putRuleset)
+	routes.handle(http.MethodDelete, APIPrefix+"/rulesets/{id}", s.deleteRuleset)
+	routes.handle(http.MethodPost, APIPrefix+"/rulesets/{id}/rules", s.createRule)
+	routes.handle(http.MethodGet, APIPrefix+"/rulesets/{id}/rules/{rule_id}", s.getRule)
+	routes.handle(http.MethodPut, APIPrefix+"/rulesets/{id}/rules/{rule_id}", s.putRule)
+	routes.handle(http.MethodDelete, APIPrefix+"/rulesets/{id}/rules/{rule_id}", s.deleteRule)
+	routes.handle(http.MethodGet, APIPrefix+"/services", s.listServices)
+	routes.handle(http.MethodPost, APIPrefix+"/services", s.createService)
+	routes.handle(http.MethodGet, APIPrefix+"/services/{id}", s.getService)
+	routes.handle(http.MethodPut, APIPrefix+"/services/{id}", s.putService)
+	routes.handle(http.MethodDelete, APIPrefix+"/services/{id}", s.deleteService)
+	routes.handle(http.MethodGet, APIPrefix+"/address-groups", s.listAddressGroups)
+	routes.handle(http.MethodPost, APIPrefix+"/address-groups", s.createAddressGroup)
+	routes.handle(http.MethodGet, APIPrefix+"/address-groups/{id}", s.getAddressGroup)
+	routes.handle(http.MethodPut, APIPrefix+"/address-groups/{id}", s.putAddressGroup)
+	routes.handle(http.MethodDelete, APIPrefix+"/address-groups/{id}", s.deleteAddressGroup)
+	routes.handle(http.MethodPost, APIPrefix+"/mode-changes", s.createModeChange)
+	routes.handle(http.MethodPost, APIPrefix+"/selectors/preview", s.previewSelector)
+	routes.handle(http.MethodPost, APIPrefix+"/policies/render-dryrun", s.renderDryRun)
+	routes.handle(http.MethodGet, APIPrefix+"/provisioning-tokens", s.listProvisioningTokens)
+	routes.handle(http.MethodPost, APIPrefix+"/provisioning-tokens", s.mintProvisioningToken)
+	routes.handle(http.MethodDelete, APIPrefix+"/provisioning-tokens/{id}", s.revokeProvisioningToken)
+	routes.handle(http.MethodGet, APIPrefix+"/operator-tokens", s.listOperatorTokens)
+	routes.handle(http.MethodPost, APIPrefix+"/operator-tokens", s.mintOperatorToken)
+	routes.handle(http.MethodDelete, APIPrefix+"/operator-tokens/{id}", s.revokeOperatorToken)
+}
 
-	root := http.NewServeMux()
-	root.Handle(APIPrefix+"/", CrossOriginGuard(s.throttle.Middleware(s.auth.Middleware(routes))))
-	root.Handle("/", ConsoleHandler(s.console))
-	return root
+// Routes lists every method and path pattern the surface serves, in the
+// form "METHOD /api/v1/path/{param}", so the hand-authored contract can be
+// checked against what is actually mounted.
+func (s *Server) Routes() []string {
+	r := newRouter()
+	s.mount(r)
+	var out []string
+	for _, rt := range r.routes {
+		for m := range rt.methods {
+			out = append(out, m+" "+rt.pattern)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // router matches a method and a path against fixed patterns. A pattern

@@ -15,9 +15,8 @@ import (
 // RulesetRef names the authored ruleset a rendered rule came from. It is
 // nil on a rendered rule whose authored rule no longer exists, which can
 // happen between a delete and the render it triggers. It carries no
-// timestamps: nothing persisted records when a rule was created or last
-// changed, and the ruleset's instants are not the rule's; per-rule
-// instants arrive with the authoring schema.
+// timestamps: the ruleset's instants are not the rule's, which the
+// rendered rule carries itself.
 type RulesetRef struct {
 	ID   uuid.UUID
 	Name string
@@ -33,7 +32,11 @@ type RenderedRule struct {
 	AuthoredRuleID string
 	Ruleset        *RulesetRef
 	Description    string
-	Protocol       innerwallv1.Protocol
+	// CreatedAt and UpdatedAt are the authored rule's own instants; nil
+	// when the authored rule no longer exists.
+	CreatedAt *time.Time
+	UpdatedAt *time.Time
+	Protocol  innerwallv1.Protocol
 	// Ports is empty when the rule permits every port of the protocol.
 	Ports     []policy.PortRange
 	PeerCIDRs []string
@@ -115,6 +118,8 @@ func (s *Reader) RenderedPolicy(ctx context.Context, id identity.WorkloadID) (*R
 			rule.AuthoredRuleID = authoredID
 			if a, ok := authored[authoredID]; ok {
 				rule.Description = a.Description
+				created, updated := a.CreatedAt, a.UpdatedAt
+				rule.CreatedAt, rule.UpdatedAt = &created, &updated
 				rs := owner[authoredID]
 				rule.Ruleset = &RulesetRef{ID: rs.ID, Name: rs.Name}
 			}

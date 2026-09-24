@@ -30,24 +30,27 @@ func (q *Queries) AddProvisioningTokenLabel(ctx context.Context, arg AddProvisio
 
 const createProvisioningToken = `-- name: CreateProvisioningToken :one
 
-INSERT INTO provisioning_tokens (id, token_hash, name, expires_at)
-VALUES ($1, $2, $3, $4)
-RETURNING id, region_id, token_hash, name, created_at, expires_at, revoked_at, use_count, last_used_at
+INSERT INTO provisioning_tokens (id, token_hash, token_prefix, name, expires_at)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, region_id, token_hash, name, created_at, expires_at, revoked_at, use_count, last_used_at, token_prefix
 `
 
 type CreateProvisioningTokenParams struct {
-	ID        uuid.UUID
-	TokenHash []byte
-	Name      string
-	ExpiresAt time.Time
+	ID          uuid.UUID
+	TokenHash   []byte
+	TokenPrefix *string
+	Name        string
+	ExpiresAt   time.Time
 }
 
-// Provisioning tokens (ADR-0016). Only the SHA-256 hash of a token is ever
-// stored or looked up; no query here touches plaintext.
+// Provisioning tokens (ADR-0016 as amended). A token is looked up only by
+// its SHA-256 hash; beside it only token_prefix, the listing hint, is kept,
+// NULL for tokens minted before it was. No query here touches plaintext.
 func (q *Queries) CreateProvisioningToken(ctx context.Context, arg CreateProvisioningTokenParams) (ProvisioningToken, error) {
 	row := q.db.QueryRow(ctx, createProvisioningToken,
 		arg.ID,
 		arg.TokenHash,
+		arg.TokenPrefix,
 		arg.Name,
 		arg.ExpiresAt,
 	)
@@ -62,12 +65,13 @@ func (q *Queries) CreateProvisioningToken(ctx context.Context, arg CreateProvisi
 		&i.RevokedAt,
 		&i.UseCount,
 		&i.LastUsedAt,
+		&i.TokenPrefix,
 	)
 	return i, err
 }
 
 const getProvisioningToken = `-- name: GetProvisioningToken :one
-SELECT id, region_id, token_hash, name, created_at, expires_at, revoked_at, use_count, last_used_at FROM provisioning_tokens
+SELECT id, region_id, token_hash, name, created_at, expires_at, revoked_at, use_count, last_used_at, token_prefix FROM provisioning_tokens
 WHERE id = $1
 `
 
@@ -84,12 +88,13 @@ func (q *Queries) GetProvisioningToken(ctx context.Context, id uuid.UUID) (Provi
 		&i.RevokedAt,
 		&i.UseCount,
 		&i.LastUsedAt,
+		&i.TokenPrefix,
 	)
 	return i, err
 }
 
 const getProvisioningTokenByHash = `-- name: GetProvisioningTokenByHash :one
-SELECT id, region_id, token_hash, name, created_at, expires_at, revoked_at, use_count, last_used_at FROM provisioning_tokens
+SELECT id, region_id, token_hash, name, created_at, expires_at, revoked_at, use_count, last_used_at, token_prefix FROM provisioning_tokens
 WHERE token_hash = $1
 `
 
@@ -106,6 +111,7 @@ func (q *Queries) GetProvisioningTokenByHash(ctx context.Context, tokenHash []by
 		&i.RevokedAt,
 		&i.UseCount,
 		&i.LastUsedAt,
+		&i.TokenPrefix,
 	)
 	return i, err
 }
@@ -162,7 +168,7 @@ func (q *Queries) ListProvisioningTokenLabels(ctx context.Context, tokenID uuid.
 }
 
 const listProvisioningTokens = `-- name: ListProvisioningTokens :many
-SELECT id, region_id, token_hash, name, created_at, expires_at, revoked_at, use_count, last_used_at FROM provisioning_tokens
+SELECT id, region_id, token_hash, name, created_at, expires_at, revoked_at, use_count, last_used_at, token_prefix FROM provisioning_tokens
 ORDER BY created_at DESC, id
 `
 
@@ -185,6 +191,7 @@ func (q *Queries) ListProvisioningTokens(ctx context.Context) ([]ProvisioningTok
 			&i.RevokedAt,
 			&i.UseCount,
 			&i.LastUsedAt,
+			&i.TokenPrefix,
 		); err != nil {
 			return nil, err
 		}

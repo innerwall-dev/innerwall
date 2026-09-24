@@ -16,6 +16,7 @@ type AddressGroup struct {
 	Name      string
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	Version   int64
 }
 
 type AddressGroupCidr struct {
@@ -64,6 +65,23 @@ type FlowWindow struct {
 	ProcessName     string
 }
 
+type ModeChange struct {
+	ID                 uuid.UUID
+	RegionID           string
+	CreatedAt          time.Time
+	TargetMode         int32
+	Selector           []byte
+	ExpectedMatchCount int32
+	Matched            int32
+	DesiredUpdated     int32
+}
+
+type ModeChangeWorkload struct {
+	ModeChangeID uuid.UUID
+	WorkloadID   uuid.UUID
+	PreviousMode int32
+}
+
 type Operator struct {
 	ID           bool
 	RegionID     string
@@ -93,15 +111,16 @@ type OperatorToken struct {
 }
 
 type ProvisioningToken struct {
-	ID         uuid.UUID
-	RegionID   string
-	TokenHash  []byte
-	Name       string
-	CreatedAt  time.Time
-	ExpiresAt  time.Time
-	RevokedAt  *time.Time
-	UseCount   int64
-	LastUsedAt *time.Time
+	ID          uuid.UUID
+	RegionID    string
+	TokenHash   []byte
+	Name        string
+	CreatedAt   time.Time
+	ExpiresAt   time.Time
+	RevokedAt   *time.Time
+	UseCount    int64
+	LastUsedAt  *time.Time
+	TokenPrefix *string
 }
 
 type ProvisioningTokenLabel struct {
@@ -117,6 +136,9 @@ type Rule struct {
 	Direction   int32
 	Enabled     bool
 	Description string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	Version     int64
 }
 
 type RulePeer struct {
@@ -155,6 +177,7 @@ type Ruleset struct {
 	Enabled     bool
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	Version     int64
 }
 
 type RulesetScopeMatch struct {
@@ -169,6 +192,7 @@ type Service struct {
 	Name      string
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	Version   int64
 }
 
 type ServiceEntry struct {

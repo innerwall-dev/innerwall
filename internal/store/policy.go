@@ -43,19 +43,42 @@ func (s *Store) CreateService(ctx context.Context, svc *policy.Service) error {
 	})
 }
 
+// expected is the version token a conditional statement compares
+// against, byte-exact, or nil for an unconditional write.
+func expected(expect string) *string {
+	if expect == "" {
+		return nil
+	}
+	return &expect
+}
+
+// versionMismatch reports why a conditional write touched no row: the
+// object is gone (unknown), or it holds a version the caller did not read.
+func versionMismatch(err error, unknown error, version int64) error {
+	if errors.Is(err, pgx.ErrNoRows) {
+		return unknown
+	}
+	if err != nil {
+		return fmt.Errorf("store: looking up object after a refused write: %w", err)
+	}
+	return &policy.VersionMismatchError{Current: policy.FormatVersion(version)}
+}
+
 // UpdateService implements policy.Store.
-func (s *Store) UpdateService(ctx context.Context, svc *policy.Service) error {
+func (s *Store) UpdateService(ctx context.Context, svc *policy.Service, expect string) error {
 	return s.tx(ctx, func(q *db.Queries) error {
-		n, err := q.UpdateService(ctx, db.UpdateServiceParams{ID: svc.ID, Name: svc.Name, UpdatedAt: svc.UpdatedAt})
+		version, err := q.UpdateService(ctx, db.UpdateServiceParams{ID: svc.ID, Name: svc.Name, UpdatedAt: svc.UpdatedAt, Expected: expected(expect)})
+		if errors.Is(err, pgx.ErrNoRows) {
+			row, err := q.GetService(ctx, svc.ID)
+			return versionMismatch(err, policy.ErrServiceUnknown, row.Version)
+		}
 		if err != nil {
 			if isPgCode(err, pgUniqueViolation) {
 				return fmt.Errorf("%w: service %q", policy.ErrDuplicateName, svc.Name)
 			}
 			return fmt.Errorf("store: updating service: %w", err)
 		}
-		if n == 0 {
-			return policy.ErrServiceUnknown
-		}
+		svc.Version = version
 		if err := q.DeleteServiceEntries(ctx, svc.ID); err != nil {
 			return fmt.Errorf("store: replacing service entries: %w", err)
 		}
@@ -121,8 +144,8 @@ type flatEntry = struct {
 }
 
 // DeleteService implements policy.Store.
-func (s *Store) DeleteService(ctx context.Context, id uuid.UUID) error {
-	n, err := s.q.DeleteService(ctx, id)
+func (s *Store) DeleteService(ctx context.Context, id uuid.UUID, expect string) error {
+	n, err := s.q.DeleteService(ctx, db.DeleteServiceParams{ID: id, Expected: expected(expect)})
 	if isPgCode(err, pgForeignKeyViolation) {
 		return fmt.Errorf("%w: service %s", policy.ErrInUse, id)
 	}
@@ -130,7 +153,8 @@ func (s *Store) DeleteService(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("store: deleting service: %w", err)
 	}
 	if n == 0 {
-		return policy.ErrServiceUnknown
+		row, err := s.q.GetService(ctx, id)
+		return versionMismatch(err, policy.ErrServiceUnknown, row.Version)
 	}
 	return nil
 }
@@ -152,7 +176,7 @@ func (s *Store) GetService(ctx context.Context, id uuid.UUID) (*policy.Service, 
 	for _, e := range entries {
 		flat = append(flat, flatEntry{e.Protocol, e.PortStart, e.PortEnd})
 	}
-	return &policy.Service{ID: row.ID, Name: row.Name, Entries: entriesFromRows(flat), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}, nil
+	return &policy.Service{ID: row.ID, Name: row.Name, Entries: entriesFromRows(flat), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, Version: row.Version}, nil
 }
 
 // ListServices implements policy.Store.
@@ -175,7 +199,7 @@ func listServices(ctx context.Context, q *db.Queries) ([]policy.Service, error) 
 	}
 	out := make([]policy.Service, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, policy.Service{ID: r.ID, Name: r.Name, Entries: entriesFromRows(flat[r.ID]), CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt})
+		out = append(out, policy.Service{ID: r.ID, Name: r.Name, Entries: entriesFromRows(flat[r.ID]), CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, Version: r.Version})
 	}
 	return out, nil
 }
@@ -196,18 +220,20 @@ func (s *Store) CreateAddressGroup(ctx context.Context, g *policy.AddressGroup) 
 }
 
 // UpdateAddressGroup implements policy.Store.
-func (s *Store) UpdateAddressGroup(ctx context.Context, g *policy.AddressGroup) error {
+func (s *Store) UpdateAddressGroup(ctx context.Context, g *policy.AddressGroup, expect string) error {
 	return s.tx(ctx, func(q *db.Queries) error {
-		n, err := q.UpdateAddressGroup(ctx, db.UpdateAddressGroupParams{ID: g.ID, Name: g.Name, UpdatedAt: g.UpdatedAt})
+		version, err := q.UpdateAddressGroup(ctx, db.UpdateAddressGroupParams{ID: g.ID, Name: g.Name, UpdatedAt: g.UpdatedAt, Expected: expected(expect)})
+		if errors.Is(err, pgx.ErrNoRows) {
+			row, err := q.GetAddressGroup(ctx, g.ID)
+			return versionMismatch(err, policy.ErrAddressGroupUnknown, row.Version)
+		}
 		if err != nil {
 			if isPgCode(err, pgUniqueViolation) {
 				return fmt.Errorf("%w: address group %q", policy.ErrDuplicateName, g.Name)
 			}
 			return fmt.Errorf("store: updating address group: %w", err)
 		}
-		if n == 0 {
-			return policy.ErrAddressGroupUnknown
-		}
+		g.Version = version
 		if err := q.DeleteAddressGroupCIDRs(ctx, g.ID); err != nil {
 			return fmt.Errorf("store: replacing address group cidrs: %w", err)
 		}
@@ -225,8 +251,8 @@ func addGroupCIDRs(ctx context.Context, q *db.Queries, g *policy.AddressGroup) e
 }
 
 // DeleteAddressGroup implements policy.Store.
-func (s *Store) DeleteAddressGroup(ctx context.Context, id uuid.UUID) error {
-	n, err := s.q.DeleteAddressGroup(ctx, id)
+func (s *Store) DeleteAddressGroup(ctx context.Context, id uuid.UUID, expect string) error {
+	n, err := s.q.DeleteAddressGroup(ctx, db.DeleteAddressGroupParams{ID: id, Expected: expected(expect)})
 	if isPgCode(err, pgForeignKeyViolation) {
 		return fmt.Errorf("%w: address group %s", policy.ErrInUse, id)
 	}
@@ -234,7 +260,8 @@ func (s *Store) DeleteAddressGroup(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("store: deleting address group: %w", err)
 	}
 	if n == 0 {
-		return policy.ErrAddressGroupUnknown
+		row, err := s.q.GetAddressGroup(ctx, id)
+		return versionMismatch(err, policy.ErrAddressGroupUnknown, row.Version)
 	}
 	return nil
 }
@@ -252,7 +279,7 @@ func (s *Store) GetAddressGroup(ctx context.Context, id uuid.UUID) (*policy.Addr
 	if err != nil {
 		return nil, fmt.Errorf("store: listing address group cidrs: %w", err)
 	}
-	g := &policy.AddressGroup{ID: row.ID, Name: row.Name, CIDRs: make([]string, 0, len(cidrs)), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
+	g := &policy.AddressGroup{ID: row.ID, Name: row.Name, CIDRs: make([]string, 0, len(cidrs)), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, Version: row.Version}
 	for _, c := range cidrs {
 		g.CIDRs = append(g.CIDRs, c.Cidr)
 	}
@@ -279,7 +306,7 @@ func listAddressGroups(ctx context.Context, q *db.Queries) ([]policy.AddressGrou
 	}
 	out := make([]policy.AddressGroup, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, policy.AddressGroup{ID: r.ID, Name: r.Name, CIDRs: byGroup[r.ID], CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt})
+		out = append(out, policy.AddressGroup{ID: r.ID, Name: r.Name, CIDRs: byGroup[r.ID], CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, Version: r.Version})
 	}
 	return out, nil
 }
@@ -300,18 +327,20 @@ func (s *Store) CreateRuleset(ctx context.Context, rs *policy.Ruleset) error {
 }
 
 // UpdateRuleset implements policy.Store.
-func (s *Store) UpdateRuleset(ctx context.Context, rs *policy.Ruleset) error {
+func (s *Store) UpdateRuleset(ctx context.Context, rs *policy.Ruleset, expect string) error {
 	return s.tx(ctx, func(q *db.Queries) error {
-		n, err := q.UpdateRuleset(ctx, db.UpdateRulesetParams{ID: rs.ID, Name: rs.Name, Description: rs.Description, Enabled: rs.Enabled, UpdatedAt: rs.UpdatedAt})
+		version, err := q.UpdateRuleset(ctx, db.UpdateRulesetParams{ID: rs.ID, Name: rs.Name, Description: rs.Description, Enabled: rs.Enabled, UpdatedAt: rs.UpdatedAt, Expected: expected(expect)})
+		if errors.Is(err, pgx.ErrNoRows) {
+			row, err := q.GetRuleset(ctx, rs.ID)
+			return versionMismatch(err, policy.ErrRulesetUnknown, row.Version)
+		}
 		if err != nil {
 			if isPgCode(err, pgUniqueViolation) {
 				return fmt.Errorf("%w: ruleset %q", policy.ErrDuplicateName, rs.Name)
 			}
 			return fmt.Errorf("store: updating ruleset: %w", err)
 		}
-		if n == 0 {
-			return policy.ErrRulesetUnknown
-		}
+		rs.Version = version
 		if err := q.DeleteRulesetScopeMatches(ctx, rs.ID); err != nil {
 			return fmt.Errorf("store: replacing ruleset scope: %w", err)
 		}
@@ -330,7 +359,10 @@ func addRulesetChildren(ctx context.Context, q *db.Queries, rs *policy.Ruleset) 
 	}
 	for i := range rs.Rules {
 		r := &rs.Rules[i]
-		if err := q.AddRule(ctx, db.AddRuleParams{ID: r.ID, RulesetID: rs.ID, Ordinal: int32(i), Direction: int32(r.Direction), Enabled: r.Enabled, Description: r.Description}); err != nil { //nolint:gosec // small counts
+		if err := q.AddRule(ctx, db.AddRuleParams{ID: r.ID, RulesetID: rs.ID, Ordinal: int32(i), Direction: int32(r.Direction), Enabled: r.Enabled, Description: r.Description, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, Version: r.Version}); err != nil { //nolint:gosec // small counts
+			if isPgCode(err, pgUniqueViolation) {
+				return fmt.Errorf("%w: rule %s", policy.ErrDuplicateRuleID, r.ID)
+			}
 			return fmt.Errorf("store: adding rule: %w", err)
 		}
 		for j := range r.Peers {
@@ -390,13 +422,14 @@ func sortedKeys(m map[string][]string) []string {
 }
 
 // DeleteRuleset implements policy.Store.
-func (s *Store) DeleteRuleset(ctx context.Context, id uuid.UUID) error {
-	n, err := s.q.DeleteRuleset(ctx, id)
+func (s *Store) DeleteRuleset(ctx context.Context, id uuid.UUID, expect string) error {
+	n, err := s.q.DeleteRuleset(ctx, db.DeleteRulesetParams{ID: id, Expected: expected(expect)})
 	if err != nil {
 		return fmt.Errorf("store: deleting ruleset: %w", err)
 	}
 	if n == 0 {
-		return policy.ErrRulesetUnknown
+		row, err := s.q.GetRuleset(ctx, id)
+		return versionMismatch(err, policy.ErrRulesetUnknown, row.Version)
 	}
 	return nil
 }
@@ -506,6 +539,9 @@ func listRulesets(ctx context.Context, q *db.Queries) ([]policy.Ruleset, error) 
 			Peers:       peerIndex[r.ID],
 			ServiceIDs:  refIndex[r.ID],
 			Entries:     entriesFromRows(entryIndex[r.ID]),
+			CreatedAt:   r.CreatedAt,
+			UpdatedAt:   r.UpdatedAt,
+			Version:     r.Version,
 		})
 	}
 	scopeIndex := map[uuid.UUID]policy.Selector{}
@@ -523,7 +559,7 @@ func listRulesets(ctx context.Context, q *db.Queries) ([]policy.Ruleset, error) 
 		}
 		out = append(out, policy.Ruleset{
 			ID: r.ID, Name: r.Name, Description: r.Description, Enabled: r.Enabled,
-			Scope: scope, Rules: ruleIndex[r.ID], CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+			Scope: scope, Rules: ruleIndex[r.ID], CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, Version: r.Version,
 		})
 	}
 	return out, nil

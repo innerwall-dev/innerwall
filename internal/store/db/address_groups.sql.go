@@ -60,11 +60,16 @@ func (q *Queries) CreateAddressGroup(ctx context.Context, arg CreateAddressGroup
 
 const deleteAddressGroup = `-- name: DeleteAddressGroup :execrows
 DELETE FROM address_groups
-WHERE id = $1
+WHERE id = $1 AND ($2::text IS NULL OR version::text = $2::text)
 `
 
-func (q *Queries) DeleteAddressGroup(ctx context.Context, id uuid.UUID) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteAddressGroup, id)
+type DeleteAddressGroupParams struct {
+	ID       uuid.UUID
+	Expected *string
+}
+
+func (q *Queries) DeleteAddressGroup(ctx context.Context, arg DeleteAddressGroupParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteAddressGroup, arg.ID, arg.Expected)
 	if err != nil {
 		return 0, err
 	}
@@ -82,7 +87,7 @@ func (q *Queries) DeleteAddressGroupCIDRs(ctx context.Context, addressGroupID uu
 }
 
 const getAddressGroup = `-- name: GetAddressGroup :one
-SELECT id, region_id, name, created_at, updated_at FROM address_groups
+SELECT id, region_id, name, created_at, updated_at, version FROM address_groups
 WHERE id = $1
 `
 
@@ -95,6 +100,7 @@ func (q *Queries) GetAddressGroup(ctx context.Context, id uuid.UUID) (AddressGro
 		&i.Name,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Version,
 	)
 	return i, err
 }
@@ -126,7 +132,7 @@ func (q *Queries) ListAddressGroupCIDRs(ctx context.Context, addressGroupID uuid
 }
 
 const listAddressGroups = `-- name: ListAddressGroups :many
-SELECT id, region_id, name, created_at, updated_at FROM address_groups
+SELECT id, region_id, name, created_at, updated_at, version FROM address_groups
 ORDER BY name, id
 `
 
@@ -145,6 +151,7 @@ func (q *Queries) ListAddressGroups(ctx context.Context) ([]AddressGroup, error)
 			&i.Name,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Version,
 		); err != nil {
 			return nil, err
 		}
@@ -181,22 +188,31 @@ func (q *Queries) ListAllAddressGroupCIDRs(ctx context.Context) ([]AddressGroupC
 	return items, nil
 }
 
-const updateAddressGroup = `-- name: UpdateAddressGroup :execrows
+const updateAddressGroup = `-- name: UpdateAddressGroup :one
 UPDATE address_groups
-SET name = $2, updated_at = $3
-WHERE id = $1
+SET name = $2, updated_at = $3, version = version + 1
+WHERE id = $1 AND ($4::text IS NULL OR version::text = $4::text)
+RETURNING version
 `
 
 type UpdateAddressGroupParams struct {
 	ID        uuid.UUID
 	Name      string
 	UpdatedAt time.Time
+	Expected  *string
 }
 
+// Conditional writes: expected is the version token the caller last read,
+// compared byte-exact against the stored version's decimal form, or NULL
+// for an unconditional write. Every write advances the version by one.
 func (q *Queries) UpdateAddressGroup(ctx context.Context, arg UpdateAddressGroupParams) (int64, error) {
-	result, err := q.db.Exec(ctx, updateAddressGroup, arg.ID, arg.Name, arg.UpdatedAt)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+	row := q.db.QueryRow(ctx, updateAddressGroup,
+		arg.ID,
+		arg.Name,
+		arg.UpdatedAt,
+		arg.Expected,
+	)
+	var version int64
+	err := row.Scan(&version)
+	return version, err
 }

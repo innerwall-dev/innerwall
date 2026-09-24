@@ -1,0 +1,8 @@
+# Lint rules for the operator surface contract. The recommended set, less
+# two rules the contract deliberately does not follow: property names are
+# snake_case by decision (ADR-0021), and examples are not carried in a
+# hand-authored document that the handler tests already exercise.
+extends: [[spectral:oas, recommended]]
+rules:
+  camel-case-properties: false
+  oas3-missing-example: false

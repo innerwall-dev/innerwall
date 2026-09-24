@@ -68,11 +68,16 @@ func (q *Queries) CreateService(ctx context.Context, arg CreateServiceParams) er
 
 const deleteService = `-- name: DeleteService :execrows
 DELETE FROM services
-WHERE id = $1
+WHERE id = $1 AND ($2::text IS NULL OR version::text = $2::text)
 `
 
-func (q *Queries) DeleteService(ctx context.Context, id uuid.UUID) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteService, id)
+type DeleteServiceParams struct {
+	ID       uuid.UUID
+	Expected *string
+}
+
+func (q *Queries) DeleteService(ctx context.Context, arg DeleteServiceParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteService, arg.ID, arg.Expected)
 	if err != nil {
 		return 0, err
 	}
@@ -90,7 +95,7 @@ func (q *Queries) DeleteServiceEntries(ctx context.Context, serviceID uuid.UUID)
 }
 
 const getService = `-- name: GetService :one
-SELECT id, region_id, name, created_at, updated_at FROM services
+SELECT id, region_id, name, created_at, updated_at, version FROM services
 WHERE id = $1
 `
 
@@ -103,6 +108,7 @@ func (q *Queries) GetService(ctx context.Context, id uuid.UUID) (Service, error)
 		&i.Name,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Version,
 	)
 	return i, err
 }
@@ -171,7 +177,7 @@ func (q *Queries) ListServiceEntries(ctx context.Context, serviceID uuid.UUID) (
 }
 
 const listServices = `-- name: ListServices :many
-SELECT id, region_id, name, created_at, updated_at FROM services
+SELECT id, region_id, name, created_at, updated_at, version FROM services
 ORDER BY name, id
 `
 
@@ -190,6 +196,7 @@ func (q *Queries) ListServices(ctx context.Context) ([]Service, error) {
 			&i.Name,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Version,
 		); err != nil {
 			return nil, err
 		}
@@ -201,22 +208,31 @@ func (q *Queries) ListServices(ctx context.Context) ([]Service, error) {
 	return items, nil
 }
 
-const updateService = `-- name: UpdateService :execrows
+const updateService = `-- name: UpdateService :one
 UPDATE services
-SET name = $2, updated_at = $3
-WHERE id = $1
+SET name = $2, updated_at = $3, version = version + 1
+WHERE id = $1 AND ($4::text IS NULL OR version::text = $4::text)
+RETURNING version
 `
 
 type UpdateServiceParams struct {
 	ID        uuid.UUID
 	Name      string
 	UpdatedAt time.Time
+	Expected  *string
 }
 
+// Conditional writes: expected is the version token the caller last read,
+// compared byte-exact against the stored version's decimal form, or NULL
+// for an unconditional write. Every write advances the version by one.
 func (q *Queries) UpdateService(ctx context.Context, arg UpdateServiceParams) (int64, error) {
-	result, err := q.db.Exec(ctx, updateService, arg.ID, arg.Name, arg.UpdatedAt)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+	row := q.db.QueryRow(ctx, updateService,
+		arg.ID,
+		arg.Name,
+		arg.UpdatedAt,
+		arg.Expected,
+	)
+	var version int64
+	err := row.Scan(&version)
+	return version, err
 }

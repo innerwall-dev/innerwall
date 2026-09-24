@@ -9,6 +9,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/innerwall-dev/innerwall/internal/fleet"
 	"github.com/innerwall-dev/innerwall/internal/identity"
 	"github.com/innerwall-dev/innerwall/internal/policy"
 	"github.com/innerwall-dev/innerwall/internal/readmodel"
@@ -165,13 +166,8 @@ func runWorkloadSetLabels(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	seen := map[string]struct{}{}
 	out := make([]registry.Label, 0, len(labels))
 	for _, l := range labels {
-		if _, dup := seen[l.Key]; dup {
-			return fmt.Errorf("duplicate label key %q", l.Key)
-		}
-		seen[l.Key] = struct{}{}
 		out = append(out, registry.Label{Key: l.Key, Value: l.Value})
 	}
 	a, err := openAuthoring(ctx, *dbURL)
@@ -179,11 +175,9 @@ func runWorkloadSetLabels(ctx context.Context, args []string) error {
 		return err
 	}
 	defer a.close()
-	if err := a.st.SetWorkloadLabels(ctx, id, out); err != nil {
-		return err
-	}
-	// A label change moves the workload in and out of selectors: render.
-	if _, err := a.eng.Render(ctx); err != nil {
+	// Admission, the replacement, and the render a label change triggers
+	// are the domain's; the operator surface calls the same function.
+	if err := a.fleet.SetLabels(ctx, id, out, ""); err != nil {
 		return err
 	}
 	fmt.Printf("workload %s labels set to [%s]\n", id, labelString(out))
@@ -212,12 +206,13 @@ func runWorkloadSetMode(ctx context.Context, args []string) error {
 		return err
 	}
 	defer a.close()
-	if err := a.st.SetWorkloadMode(ctx, id, mode); err != nil {
+	// One workload is a mode change whose selection is that id and whose
+	// expected count is one: the same recorded, rendered transaction the
+	// operator surface's bulk change runs.
+	res, err := a.fleet.ChangeMode(ctx, fleet.ModeChangeRequest{WorkloadIDs: []identity.WorkloadID{id}, TargetMode: mode, ExpectedMatchCount: 1}, true)
+	if err != nil {
 		return err
 	}
-	if _, err := a.eng.Render(ctx); err != nil {
-		return err
-	}
-	fmt.Printf("workload %s mode set to %s\n", id, policy.ModeName(mode))
+	fmt.Printf("workload %s mode set to %s (mode change %s; %d updated)\n", id, policy.ModeName(mode), res.ID, res.DesiredUpdated)
 	return nil
 }

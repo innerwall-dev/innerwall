@@ -27,11 +27,12 @@
 // Authoring commands write Postgres directly and render there; the running
 // control plane learns of changed policy through the database and pushes
 // it to connected agents (ADR-0018). The operator surface serves the
-// session and identity endpoints of the REST surface (ADR-0021) and the
-// read model behind the console's screens (flow rollups, flow pages,
-// workloads, rendered policy); the flows and workload commands read
-// through the same read model, so the two transports cannot drift. The
-// write endpoints follow.
+// session and identity endpoints of the REST surface (ADR-0021), the read
+// model behind the console's screens (flow rollups, flow pages, workloads,
+// rendered policy), and the write paths (authoring, label edits, bulk mode
+// changes, selector preview, dry-run render, token management). Every
+// command here and every handler there calls the same domain functions,
+// so the two transports cannot drift.
 package main
 
 import (
