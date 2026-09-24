@@ -6,7 +6,7 @@ import { useSession } from "@/auth/SessionProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LogoMark } from "@/shell/Logo";
+import { Lockup } from "@/shell/Logo";
 
 // The login screen. The password is the only credential a browser
 // presents (ADR-0021); the surface's refusals are rendered inline, and
@@ -85,10 +85,7 @@ export function Login() {
 		<div className="flex min-h-dvh items-center justify-center bg-background px-6 py-12 text-foreground">
 			<div className="w-full max-w-[380px] rounded-dialog border border-input-strong bg-card p-7 shadow-popover">
 				<div className="flex items-center gap-2.5">
-					<LogoMark size={28} />
-					<span className="text-[16px] font-semibold tracking-[-0.01em]">
-						Innerwall
-					</span>
+					<Lockup />
 					<span className="ml-auto font-mono text-[11px] text-muted-foreground">
 						operator console
 					</span>

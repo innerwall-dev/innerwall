@@ -2,7 +2,7 @@ import { NavLink } from "react-router";
 import { useMe } from "@/auth/SessionProvider";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { LogoMark } from "./Logo";
+import { Lockup } from "./Logo";
 
 // The four sections in product order. Glyphs are the mono decision and
 // mode glyphs the screens use; counts are wired when the read screens
@@ -22,14 +22,13 @@ export function Sidebar({
 	const me = useMe();
 	return (
 		<aside className="flex h-full w-[212px] shrink-0 flex-col border-r border-border bg-surface-sidebar">
-			<div className="flex h-11 items-center gap-2.5 border-b border-border pr-4 pl-4">
-				<LogoMark />
-				<span className="text-[15px] font-semibold leading-none tracking-[-0.01em]">
-					Innerwall
-				</span>
+			{/* The header is the design's 52px band over a 1px rule; the lockup
+			    sits on the 16px gutter from the top as well as the side. */}
+			<div className="flex h-[53px] shrink-0 items-start border-b border-border px-4 pt-4">
+				<Lockup />
 				{me.site ? (
 					<span
-						className="ml-auto font-mono text-[11px] text-muted-foreground"
+						className="ml-auto flex h-[22px] items-center font-mono text-[11px] text-muted-foreground"
 						data-testid="site-label"
 					>
 						{me.site}
