@@ -148,6 +148,11 @@ type Querier interface {
 	ListWorkloadPolicies(ctx context.Context) ([]WorkloadPolicy, error)
 	// --- inventory and status (ADR-0018) ------------------------------------------
 	ListWorkloads(ctx context.Context) ([]Workload, error)
+	// A directive for the stream of one workload rides the same channel as
+	// render announcements, keyed by the workload; the replica holding that
+	// stream, if any, sends it (ADR-0018 as amended). It is sent outside any
+	// transaction, so it is delivered at once.
+	NotifyDirective(ctx context.Context, arg NotifyDirectiveParams) error
 	NotifyPolicyChanged(ctx context.Context, arg NotifyPolicyChangedParams) error
 	// Queries are hand-written SQL compiled by sqlc into internal/store/db
 	// (ADR-0006). One file per concern; every production query lives here.
@@ -163,6 +168,9 @@ type Querier interface {
 	RecordWorkloadHeartbeatSeen(ctx context.Context, arg RecordWorkloadHeartbeatSeenParams) (int64, error)
 	RecordWorkloadInventory(ctx context.Context, arg RecordWorkloadInventoryParams) (int64, error)
 	RecordWorkloadRenewal(ctx context.Context, arg RecordWorkloadRenewalParams) (int64, error)
+	// Stamped by the sync path whenever it sends the workload a snapshot,
+	// whatever caused it; nothing else writes it (ADR-0018 as amended).
+	RecordWorkloadSnapshotSent(ctx context.Context, arg RecordWorkloadSnapshotSentParams) (int64, error)
 	RevokeOperatorToken(ctx context.Context, arg RevokeOperatorTokenParams) (int64, error)
 	RevokeProvisioningToken(ctx context.Context, arg RevokeProvisioningTokenParams) (int64, error)
 	// The rollup the operator console issues for a label scope: the scope is

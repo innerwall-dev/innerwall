@@ -105,6 +105,13 @@ UPDATE workloads
 SET last_seen_at = $2
 WHERE id = $1;
 
+-- Stamped by the sync path whenever it sends the workload a snapshot,
+-- whatever caused it; nothing else writes it (ADR-0018 as amended).
+-- name: RecordWorkloadSnapshotSent :execrows
+UPDATE workloads
+SET last_snapshot_sent_at = $2
+WHERE id = $1;
+
 -- --- operator read model (ADR-0007 as amended) -------------------------------
 
 -- One page of the fleet in the order the fleet screen shows it: the
@@ -120,7 +127,7 @@ SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at,
        w.credential_serial, w.credential_expires_at, w.last_renewed_at,
        w.mode, w.facts, w.agent_version, w.agent_capabilities, w.last_seen_at,
        w.sync_state, w.applied_policy_version, w.sync_error, w.dropped_flow_records,
-       w.credential_renewal_error,
+       w.credential_renewal_error, w.last_snapshot_sent_at,
        w.sync_rank::integer AS sync_rank, w.seen_key::timestamptz AS seen_key,
        p.version AS latest_version, p.rendered_at AS latest_rendered_at
 FROM (

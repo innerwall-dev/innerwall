@@ -32,7 +32,9 @@ info:
     finding per field to fix, each with a `path` into the request body, the
     stable name of the `rule` it breaks, and a `message`; a
     `precondition-failed` problem carries `current_version`; a
-    `match-count-mismatch` problem carries `expected` and `matched`.
+    `match-count-mismatch` problem carries `expected` and `matched`; an
+    `agent-offline` problem carries `last_seen_at`, null when the agent was
+    never seen.
 
     ## Versions and conditional writes
 
@@ -64,6 +66,19 @@ info:
     it. There is no job resource and no status endpoint: convergence is
     observed on the workload reads, as each workload's applied version
     against its latest rendered version.
+
+    ## Directed reconnect
+
+    `POST /workloads/{id}/resend-snapshot` asks the control-plane replica
+    holding the workload's sync stream to direct its agent to reconnect, so
+    the stream restarts from a fresh snapshot. It is a request, not a
+    command with a confirmation: no replica can know for certain that a
+    stream exists, so delivery is best-effort by design. The response
+    carries the workload's `last_snapshot_sent_at` as it stood when the
+    request was made; the outcome is observed on a later read of the
+    workload as `sync.last_snapshot_sent_at` advancing. A workload whose
+    agent is offline, as the control plane last recorded it, is refused
+    with the instant it was last seen.
 
     ## Deliberately absent
 
@@ -437,6 +452,48 @@ paths:
           $ref: "#/components/responses/PreconditionFailed"
         "428":
           $ref: "#/components/responses/PreconditionRequired"
+  /workloads/{id}/resend-snapshot:
+    parameters:
+      - $ref: "#/components/parameters/workloadID"
+    post:
+      operationId: resendSnapshot
+      tags: [workloads]
+      summary: Direct a workload's agent to reconnect and receive a fresh snapshot.
+      description: |
+        Fires a reconnect directive toward the replica holding the workload's
+        sync stream; the agent reconnects and its new stream begins with a
+        snapshot. Delivery is best-effort by design and nothing waits for it:
+        the response carries `last_snapshot_sent_at` as it stood when the
+        directive was fired (null when no snapshot has been recorded), and
+        the outcome is observed on a later read of the workload as
+        `sync.last_snapshot_sent_at` advancing. The control plane writes that
+        instant whenever it sends a snapshot, whatever the cause; this
+        endpoint never writes it. A workload whose agent is offline, as the
+        control plane last recorded it, is refused as `409 agent-offline`
+        with the instant it was last seen. That judgment approximates
+        whether a stream exists; it is not a presence check.
+      responses:
+        "200":
+          description: The directive was fired; the snapshot instant as it stood when it was.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResendSnapshotAck"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The workload's agent is offline as last recorded (`agent-offline`); nothing was sent. `last_seen_at` is when it was last heard from, null when never.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              example:
+                type: "urn:innerwall:problem:agent-offline"
+                title: Agent offline
+                status: 409
+                last_seen_at: "2026-09-24T18:02:11Z"
   /rulesets:
     get:
       operationId: listRulesets
@@ -1412,6 +1469,7 @@ components:
             - "urn:innerwall:problem:duplicate-name"
             - "urn:innerwall:problem:in-use"
             - "urn:innerwall:problem:already-revoked"
+            - "urn:innerwall:problem:agent-offline"
             - "urn:innerwall:problem:not-found"
             - "urn:innerwall:problem:method-not-allowed"
             - "urn:innerwall:problem:internal"
@@ -1435,6 +1493,10 @@ components:
         matched:
           type: integer
           description: On a `match-count-mismatch` problem, what the selection resolved to.
+        last_seen_at:
+          type: [string, "null"]
+          format: date-time
+          description: On an `agent-offline` problem, always present; when the agent was last heard from, null when it never was.
     Finding:
       description: One admission failure of a refused write.
       type: object
@@ -1679,6 +1741,15 @@ components:
         expected_match_count:
           type: integer
           minimum: 0
+    ResendSnapshotAck:
+      type: object
+      required: [last_snapshot_sent_at]
+      description: An acknowledgment that the reconnect directive was fired; never a statement that it arrived.
+      properties:
+        last_snapshot_sent_at:
+          type: [string, "null"]
+          format: date-time
+          description: The workload's snapshot instant as it stood when the directive was fired; null when none has been recorded.
     ModeChangeAck:
       type: object
       required: [mode_change_id, matched, desired_updated]
@@ -2042,7 +2113,7 @@ components:
                 type: string
         sync:
           type: object
-          required: [state, applied_version, latest_version, latest_rendered_at, error]
+          required: [state, applied_version, latest_version, latest_rendered_at, error, last_snapshot_sent_at]
           description: Convergence with the rendered policy; `latest_version` ahead of `applied_version` is drift in flight.
           properties:
             state:
@@ -2056,6 +2127,10 @@ components:
               format: date-time
             error:
               type: string
+            last_snapshot_sent_at:
+              type: [string, "null"]
+              format: date-time
+              description: When the control plane last sent the workload a snapshot, whatever the cause; null when none has been recorded.
         health:
           type: object
           required: [last_seen_at, credential, dropped_flow_records]

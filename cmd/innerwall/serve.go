@@ -139,7 +139,7 @@ func runServe(ctx context.Context, args []string) error {
 	// The write endpoints call the same domain functions the command
 	// line's authoring commands call (ADR-0007 as amended).
 	authoring := &policy.Authoring{Store: st, Renderer: renderer{engine}}
-	fleetSvc := &fleet.Service{Store: st, Engine: engine}
+	fleetSvc := &fleet.Service{Store: st, Engine: engine, Reads: reads, Directives: st}
 	apiSrv := api.New(api.Deps{Operators: operators, Reads: reads, Authoring: authoring, Fleet: fleetSvc, Enroll: svc, Site: *site, Console: console, Log: log.With("service", "api")})
 	httpServer := api.NewHTTPServer(api.ServerTLSConfig(operatorCert), apiSrv.Handler())
 	srv := gateway.New(gateway.Deps{

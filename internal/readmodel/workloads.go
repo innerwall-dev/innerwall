@@ -84,13 +84,17 @@ type CredentialStatus struct {
 
 // SyncStatus is a workload's convergence with its rendered policy: the
 // state the stream reports, the version the agent acknowledged against
-// the latest rendered one, and when that latest render happened.
+// the latest rendered one, when that latest render happened, and when the
+// sync path last sent the workload a snapshot.
 type SyncStatus struct {
 	State            innerwallv1.SyncState
 	AppliedVersion   uint64
 	LatestVersion    uint64
 	LatestRenderedAt *time.Time
 	Error            string
+	// LastSnapshotSentAt is nil when no snapshot has been recorded. A
+	// directed reconnect is observed as this instant advancing.
+	LastSnapshotSentAt *time.Time
 }
 
 // Health is what the agent's heartbeats and renewals have recorded.
@@ -217,7 +221,7 @@ func (s *Reader) workload(rec *WorkloadRecord, now time.Time) Workload {
 	w := Workload{
 		ID: rec.ID, Hostname: rec.Hostname, Labels: rec.Labels, Mode: rec.Mode, EnrolledAt: rec.EnrolledAt,
 		Addresses: rec.Addresses, Facts: rec.Facts, Agent: rec.Agent, ListeningServices: rec.ListeningServices,
-		Sync: SyncStatus{State: rec.SyncState, AppliedVersion: rec.AppliedVersion, LatestVersion: rec.LatestVersion, LatestRenderedAt: rec.LatestRenderedAt, Error: rec.SyncError},
+		Sync: SyncStatus{State: rec.SyncState, AppliedVersion: rec.AppliedVersion, LatestVersion: rec.LatestVersion, LatestRenderedAt: rec.LatestRenderedAt, Error: rec.SyncError, LastSnapshotSentAt: rec.LastSnapshotSentAt},
 		Health: Health{
 			LastSeenAt:         rec.LastSeenAt,
 			Credential:         credentialStatus(rec, now),

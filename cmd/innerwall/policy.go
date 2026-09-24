@@ -17,6 +17,7 @@ import (
 	"github.com/innerwall-dev/innerwall/internal/fleet"
 	"github.com/innerwall-dev/innerwall/internal/identity"
 	"github.com/innerwall-dev/innerwall/internal/policy"
+	"github.com/innerwall-dev/innerwall/internal/readmodel"
 	"github.com/innerwall-dev/innerwall/internal/store"
 )
 
@@ -37,7 +38,8 @@ func openAuthoring(ctx context.Context, flagURL string) (*authoring, error) {
 		return nil, err
 	}
 	eng := &compiler.Engine{Store: st}
-	return &authoring{st: st, svc: &policy.Authoring{Store: st, Renderer: renderAdapter{eng}}, fleet: &fleet.Service{Store: st, Engine: eng}, eng: eng}, nil
+	reads := &readmodel.Reader{Store: st, Flows: st.Flows()}
+	return &authoring{st: st, svc: &policy.Authoring{Store: st, Renderer: renderAdapter{eng}}, fleet: &fleet.Service{Store: st, Engine: eng, Reads: reads, Directives: st}, eng: eng}, nil
 }
 
 func (a *authoring) close() { a.st.Close() }

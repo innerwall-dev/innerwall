@@ -102,7 +102,7 @@ func TestContractClosedSets(t *testing.T) {
 	code := []string{
 		api.ProblemUnauthenticated, api.ProblemInvalidCredentials, api.ProblemNoPassword, api.ProblemCrossOrigin, api.ProblemTooManyAttempts,
 		api.ProblemInvalidRequest, api.ProblemInvalidParameter, api.ProblemValidation, api.ProblemPreconditionRequired, api.ProblemPreconditionFailed,
-		api.ProblemMatchCountMismatch, api.ProblemDuplicateName, api.ProblemInUse, api.ProblemAlreadyRevoked, api.ProblemNotFound, api.ProblemMethodNotAllowed, api.ProblemInternal,
+		api.ProblemMatchCountMismatch, api.ProblemDuplicateName, api.ProblemInUse, api.ProblemAlreadyRevoked, api.ProblemAgentOffline, api.ProblemNotFound, api.ProblemMethodNotAllowed, api.ProblemInternal,
 	}
 	sort.Strings(problemTypes)
 	sort.Strings(code)

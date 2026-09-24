@@ -11,8 +11,9 @@ const ContentTypeProblem = "application/problem+json"
 // Problem is an error document. Type is a stable identifier a client
 // branches on; the other fields are for people, except the extensions,
 // which carry what a client needs to act: the findings of a refused
-// write, the current version of a resource a stale write named, and the
-// two counts of a refused mode change.
+// write, the current version of a resource a stale write named, the two
+// counts of a refused mode change, and the last-seen instant of an agent
+// a directed reconnect found offline.
 type Problem struct {
 	Type   string `json:"type"`
 	Title  string `json:"title"`
@@ -27,6 +28,21 @@ type Problem struct {
 	// Expected and Matched are the counts of a match-count problem.
 	Expected *int `json:"expected,omitempty"`
 	Matched  *int `json:"matched,omitempty"`
+	// LastSeenAt is when the agent was last heard from, on an
+	// agent-offline problem, where it is always present and null when the
+	// agent never was.
+	LastSeenAt *nullableInstant `json:"last_seen_at,omitempty"`
+}
+
+// nullableInstant is an extension member that is present on its problem
+// type whether or not it holds an instant, so a client reads null rather
+// than an absent member.
+type nullableInstant struct {
+	At *string
+}
+
+func (n nullableInstant) MarshalJSON() ([]byte, error) {
+	return json.Marshal(n.At)
 }
 
 // Finding is one admission failure: where it is, which rule it breaks,
@@ -54,7 +70,8 @@ const problemTypeBase = "urn:innerwall:problem:"
 // whose selection resolved to a different number of workloads than the
 // operator expected. ProblemDuplicateName, ProblemInUse, and
 // ProblemAlreadyRevoked are the conflicts an authored or token write can
-// meet.
+// meet. ProblemAgentOffline is a directed reconnect refused because the
+// workload's agent is offline as last recorded.
 const (
 	ProblemUnauthenticated      = problemTypeBase + "unauthenticated"
 	ProblemInvalidCredentials   = problemTypeBase + "invalid-credentials"
@@ -70,6 +87,7 @@ const (
 	ProblemDuplicateName        = problemTypeBase + "duplicate-name"
 	ProblemInUse                = problemTypeBase + "in-use"
 	ProblemAlreadyRevoked       = problemTypeBase + "already-revoked"
+	ProblemAgentOffline         = problemTypeBase + "agent-offline"
 	ProblemNotFound             = problemTypeBase + "not-found"
 	ProblemMethodNotAllowed     = problemTypeBase + "method-not-allowed"
 	ProblemInternal             = problemTypeBase + "internal"

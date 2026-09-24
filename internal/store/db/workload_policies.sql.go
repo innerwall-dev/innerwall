@@ -74,6 +74,24 @@ func (q *Queries) ListWorkloadPolicies(ctx context.Context) ([]WorkloadPolicy, e
 	return items, nil
 }
 
+const notifyDirective = `-- name: NotifyDirective :exec
+SELECT pg_notify($1::text, $2::text)
+`
+
+type NotifyDirectiveParams struct {
+	Channel string
+	Payload string
+}
+
+// A directive for the stream of one workload rides the same channel as
+// render announcements, keyed by the workload; the replica holding that
+// stream, if any, sends it (ADR-0018 as amended). It is sent outside any
+// transaction, so it is delivered at once.
+func (q *Queries) NotifyDirective(ctx context.Context, arg NotifyDirectiveParams) error {
+	_, err := q.db.Exec(ctx, notifyDirective, arg.Channel, arg.Payload)
+	return err
+}
+
 const notifyPolicyChanged = `-- name: NotifyPolicyChanged :exec
 SELECT pg_notify($1::text, $2::text)
 `

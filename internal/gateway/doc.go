@@ -9,7 +9,7 @@
 //
 // The sync stream (ADR-0002, ADR-0015) lives here too: one live stream per
 // workload, registered in an in-process map so that a render's
-// announcement, delivered over the database's notification channel, finds
-// the stream to push to. Stream state is the only state held in process,
+// announcement, or a directive addressed to one workload, delivered over
+// the database's notification channel, finds the stream to push to. Stream state is the only state held in process,
 // and a reconnect rebuilds it from a snapshot. Flow ingestion follows.
 package gateway

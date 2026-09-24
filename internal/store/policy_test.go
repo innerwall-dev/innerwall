@@ -206,7 +206,7 @@ func TestRegistryAndRenderTx(t *testing.T) {
 	lctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go func() {
-		_ = s.ListenPolicyChanges(lctx, nil, func() { close(ready) }, func(c compiler.Announcement) { notified <- c })
+		_ = s.ListenPolicyChanges(lctx, nil, func() { close(ready) }, func(c compiler.Announcement) { notified <- c }, nil)
 	}()
 	<-ready
 
