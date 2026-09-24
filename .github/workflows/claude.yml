@@ -31,7 +31,6 @@ on:
     paths-ignore:
       - "internal/gen/**"
       - "internal/store/db/**"
-      - "ui/src/api/generated.ts"
       - "go.sum"
       - "ui/package-lock.json"
 
