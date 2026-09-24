@@ -1,11 +1,36 @@
-// Application shell. Surfaces land in product order (ADR-0001): flow map,
-// policy editor, simulation, inventory, enrollment. Each lives in its own
-// directory under src/ and talks only to the public REST façade (ADR-0007).
+import { Navigate, Route, Routes } from "react-router";
+import { SessionProvider } from "@/auth/SessionProvider";
+import { FlowMap } from "@/routes/FlowMap";
+import { Login } from "@/routes/Login";
+import { Policy } from "@/routes/Policy";
+import { SimulationReview } from "@/routes/SimulationReview";
+import { Workloads } from "@/routes/Workloads";
+import { Shell } from "@/shell/Shell";
+import { ThemeProvider } from "@/theme/ThemeProvider";
+
+// The console's routes. Everything but the login screen sits inside the
+// authenticated shell; the sections are in product order (ADR-0001) and
+// each talks only to the public REST surface (ADR-0007).
 export function App() {
 	return (
-		<main>
-			<h1>Innerwall</h1>
-			<p>Control-plane UI shell. Surfaces arrive with milestone M3.</p>
-		</main>
+		<ThemeProvider>
+			<SessionProvider>
+				<Routes>
+					<Route path="/login" element={<Login />} />
+					<Route element={<Shell />}>
+						<Route index element={<Navigate to="/simulation" replace />} />
+						<Route path="/simulation/*" element={<SimulationReview />} />
+						<Route path="/map/*" element={<FlowMap />} />
+						<Route path="/workloads" element={<Workloads tab="fleet" />} />
+						<Route
+							path="/workloads/tokens"
+							element={<Workloads tab="tokens" />}
+						/>
+						<Route path="/policy/*" element={<Policy />} />
+						<Route path="*" element={<Navigate to="/simulation" replace />} />
+					</Route>
+				</Routes>
+			</SessionProvider>
+		</ThemeProvider>
 	);
 }
