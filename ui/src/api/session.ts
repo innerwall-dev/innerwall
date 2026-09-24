@@ -1,5 +1,5 @@
 import { request } from "./client";
-import type { Me } from "./types";
+import type { Me } from "./schema";
 
 // The three endpoints of the session and identity surface (ADR-0021).
 

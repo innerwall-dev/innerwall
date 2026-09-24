@@ -15,7 +15,7 @@ Every commit must be signed off (`git commit -s`), certifying the [DCO](https://
 ## PR flow
 
 - Fork, branch, keep PRs focused — one logical change each.
-- `make build test lint` must pass locally; CI additionally checks generated-code drift (`make proto`, `make sqlc`) and DCO.
+- `make build test lint` must pass locally; CI additionally checks generated-code drift (`make proto`, `make sqlc`, `make console-api`) and DCO.
 - Never hand-edit generated code; change the source (`proto/`, `internal/store/queries/`) and regenerate.
 - UI changes: Biome is the only formatter/linter (`ui/biome.json`).
 - Automated review may comment on ADR conformance; treat it like any reviewer — respond, fix, or argue with a superseding ADR.

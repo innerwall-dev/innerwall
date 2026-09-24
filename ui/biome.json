@@ -6,7 +6,7 @@
 		"useIgnoreFile": true
 	},
 	"files": {
-		"includes": ["**", "!!**/dist", "!src/tokens.css"]
+		"includes": ["**", "!!**/dist", "!src/tokens.css", "!src/api/generated.ts"]
 	},
 	"formatter": {
 		"enabled": true,

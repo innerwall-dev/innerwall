@@ -3,7 +3,7 @@ import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router";
 import { vi } from "vitest";
 import { App } from "@/App";
-import type { Me, Problem } from "@/api/types";
+import type { Me, Problem, ProblemTypeURN } from "@/api/schema";
 
 // A scripted operator surface: each entry answers one request by method
 // and path, in order of registration, so a test states exactly what the
@@ -70,12 +70,23 @@ export function mockSurface(routes: Route[]) {
 
 export const operator: Me = { display_name: "A. Rao", site: "iad1" };
 
+// A problem type named without its URN prefix, from the description's
+// closed set.
+type ProblemName = ProblemTypeURN extends `urn:innerwall:problem:${infer N}`
+	? N
+	: never;
+
 export function problem(
-	type: string,
+	type: ProblemName,
 	status: number,
 	detail?: string,
 ): Problem {
-	return { type: `urn:innerwall:problem:${type}`, title: type, status, detail };
+	return {
+		type: `urn:innerwall:problem:${type}` as ProblemTypeURN,
+		title: type,
+		status,
+		detail,
+	};
 }
 
 // renderApp mounts the whole console at a path.

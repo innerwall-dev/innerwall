@@ -1,4 +1,4 @@
-import { type Problem, ProblemType } from "./types";
+import { type Problem, ProblemType } from "./schema";
 
 // The surface is mounted under one prefix on the console's own origin
 // (ADR-0021): every request is same-origin, carries the session cookie,
