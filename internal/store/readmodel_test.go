@@ -144,3 +144,35 @@ func ids(records []readmodel.WorkloadRecord) []identity.WorkloadID {
 	}
 	return out
 }
+
+// TestSeedTokens checks the seed's token listing: the prod token without
+// a listing hint, one revoked and one expired with hints, and only prod
+// used.
+func TestSeedTokens(t *testing.T) {
+	ctx := context.Background()
+	s := storetest.Open(t)
+	f := storetest.SeedFleet(t, s)
+
+	tokens, err := s.ListTokens(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[uuid.UUID]enroll.Token{}
+	for _, tok := range tokens {
+		byID[tok.ID] = tok
+	}
+	if len(tokens) != 3 {
+		t.Fatalf("tokens = %d, want 3", len(tokens))
+	}
+	if prod := byID[f.Token.ID]; prod.Prefix != nil || prod.UseCount != 3 {
+		t.Fatalf("prod = prefix %v, uses %d", prod.Prefix, prod.UseCount)
+	}
+	revoked := byID[f.RevokedToken.ID]
+	if revoked.RevokedAt == nil || revoked.Prefix == nil || revoked.UseCount != 0 {
+		t.Fatalf("revoked = %+v", revoked)
+	}
+	expired := byID[f.ExpiredToken.ID]
+	if !expired.ExpiresAt.Before(f.Now) || expired.RevokedAt != nil || expired.Prefix == nil || expired.LastUsedAt != nil {
+		t.Fatalf("expired = %+v", expired)
+	}
+}

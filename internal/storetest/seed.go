@@ -35,12 +35,20 @@ import (
 //     group, an unknown address, and web-1 on tcp/22.
 //   - cache-1 (role=cache, env=prod): visibility, offline for three
 //     hours, credential expired. Observes web-1 on tcp/6379.
+//
+// Three provisioning tokens give the token listing each of its states:
+// "prod", valid and the one every workload enrolled with, minted before
+// listing hints were kept so it lists without one; "legacy-import",
+// revoked; and "staging-trial", expired unused. Only "prod" enrolled
+// anything.
 type Fleet struct {
 	Now   time.Time
 	Token enroll.Token
-	Web   identity.WorkloadID
-	DB    identity.WorkloadID
-	Cache identity.WorkloadID
+	// RevokedToken and ExpiredToken enrolled nothing.
+	RevokedToken, ExpiredToken enroll.Token
+	Web                        identity.WorkloadID
+	DB                         identity.WorkloadID
+	Cache                      identity.WorkloadID
 	// Addresses of the three workloads.
 	WebAddr, DBAddr, CacheAddr netip.Addr
 	Office                     policy.AddressGroup
@@ -85,6 +93,24 @@ func Seed(ctx context.Context, s *store.Store, now time.Time) (*Fleet, error) {
 	}
 	f.Token = enroll.Token{ID: uuid.New(), Hash: hash, Name: "prod", Labels: []enroll.Label{{Key: "env", Value: "prod"}}, CreatedAt: f.Now.Add(-48 * time.Hour), ExpiresAt: f.Now.Add(28 * 24 * time.Hour)}
 	if err := s.CreateToken(ctx, f.Token); err != nil {
+		return nil, err
+	}
+	hinted := func(name string, labels []enroll.Label, expires time.Time) (enroll.Token, error) {
+		plain, hash, err := enroll.NewToken()
+		if err != nil {
+			return enroll.Token{}, err
+		}
+		hint := enroll.ListingHint(plain)
+		t := enroll.Token{ID: uuid.New(), Hash: hash, Prefix: &hint, Name: name, Labels: labels, ExpiresAt: expires}
+		return t, s.CreateToken(ctx, t)
+	}
+	if f.RevokedToken, err = hinted("legacy-import", nil, f.Now.Add(20*24*time.Hour)); err != nil {
+		return nil, err
+	}
+	if err := s.RevokeToken(ctx, f.RevokedToken.ID, f.Now.Add(-24*time.Hour)); err != nil {
+		return nil, err
+	}
+	if f.ExpiredToken, err = hinted("staging-trial", []enroll.Label{{Key: "env", Value: "staging"}}, f.Now.Add(-9*24*time.Hour)); err != nil {
 		return nil, err
 	}
 

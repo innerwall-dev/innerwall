@@ -66,7 +66,7 @@ make console                                # builds ui/dist/
 go run ./cmd/innerwall serve --init-ca --site iad1
 ```
 
-Then open `https://127.0.0.1:8080/` and accept the generated certificate (its fingerprint is in the startup log). The seed is the fleet the store tests use (`internal/storetest`): three workloads in three states, a ruleset rendered onto them, and two windows of flows, so the screens show the same states the tests assert on. The `dev` subcommand is compiled in only with `-tags dev`, and `make seed` builds it that way; it resets every table, so point it only at a disposable database. The operator password is not part of the seed.
+Then open `https://127.0.0.1:8080/` and accept the generated certificate (its fingerprint is in the startup log). The seed is the fleet the store tests use (`internal/storetest`): three workloads in three states, a ruleset rendered onto them, two windows of flows, and three provisioning tokens (valid, revoked, and expired), so the screens show the same states the tests assert on. The `dev` subcommand is compiled in only with `-tags dev`, and `make seed` builds it that way; it resets every table, so point it only at a disposable database. The operator password is not part of the seed.
 
 For iterating on the console itself, `npm --prefix ui run dev` serves it with hot reload and proxies `/api` to the control plane (`INNERWALL_OPERATOR_URL`, default `https://127.0.0.1:8080`), so the cookie and the origin guard behave as in production. `npm --prefix ui run test` runs Vitest; `npm --prefix ui run lint` runs Biome. Screen review is against both themes: `docs/img/console/` holds the scaffold's states beside the design shots.
 
