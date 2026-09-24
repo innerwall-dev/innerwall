@@ -51,7 +51,7 @@ Never edit generated code. Change the source, regenerate, commit both.
 
 ## The console
 
-`ui/` is a Vite + React + TypeScript application. The palette is `ui/src/tokens.css`, adopted verbatim from the design package and never restyled: every color in the stylesheet is a plain `var()` reference to a token, the dark theme is the `.dark` class on the root element, and the preference lives in `localStorage`. Do not let component tooling regenerate the stylesheet into a channel-based color convention; that silently breaks every color. Type is IBM Plex Sans and Mono, bundled from their packages, so the console makes no request outside its own origin. Components under `ui/src/components/ui/` follow the shape component tooling emits, with `components.json` pointing at the stylesheet, so a generated component drops in; the palette stays the tokens.
+`ui/` is a Vite + React + TypeScript application. The palette is `ui/src/tokens.css`, its token names and values adopted verbatim from the design package and never restyled: every color in the stylesheet is a plain `var()` reference to a token, the dark theme is the `.dark` class on the root element, and the preference lives in `localStorage`. Do not let component tooling regenerate the stylesheet into a channel-based color convention; that silently breaks every color. Type is IBM Plex Sans and Mono, bundled from their packages, so the console makes no request outside its own origin. Components under `ui/src/components/ui/` follow the shape component tooling emits, with `components.json` pointing at the stylesheet, so a generated component drops in; the palette stays the tokens.
 
 The review loop against a running control plane, from a checkout with Postgres reachable:
 
@@ -101,7 +101,7 @@ internal/gen              buf output (generated; never edited)
 proto/innerwall/v1        the API contract (buf.yaml and buf.gen.yaml at the repo root)
 ui/                       the operator console: Vite + React + TypeScript; src/{api,auth,theme,shell,routes,components}
 ui/embed.go               go:embed of ui/dist into the control plane; embed_noconsole.go is the stub behind the noconsole tag
-ui/src/tokens.css         the design tokens, verbatim; src/index.css maps them onto utilities
+ui/src/tokens.css         the design tokens, names and values verbatim; src/index.css maps them onto utilities
 deploy/install.sh         agent installer (provisioning token in)
 scripts/                  everything the Makefile calls that has logic
 docs/adr                  decisions; docs/deploy: running it; docs/img: diagrams

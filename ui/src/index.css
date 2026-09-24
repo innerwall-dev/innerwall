@@ -1,10 +1,10 @@
-/* The console's stylesheet. tokens.css is the palette, adopted verbatim
-   from the design package and never restyled here; this file maps its
-   custom properties onto utility names and sets the base typography.
-   The tokens are raw hex/rgba, so every mapping is a plain var()
-   reference: the theme block below is inline and reference so that the
-   utilities read the token at runtime (the .dark class switches every
-   color) and no token is re-emitted, redefined, or converted. */
+/* The console's stylesheet. tokens.css is the palette, its token names
+   and values adopted verbatim from the design package and never
+   restyled here; this file maps its custom properties onto utility names
+   and sets the base typography. The tokens are raw hex/rgba, so every
+   mapping is a plain var() reference: the theme block below is inline
+   so that the utilities read the token at runtime (the .dark class
+   switches every color) and no token is converted. */
 
 @import "tailwindcss";
 @import "./tokens.css";

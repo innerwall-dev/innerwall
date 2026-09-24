@@ -5,9 +5,11 @@
    nothing here is restyled.
 
    :root  = light theme      .dark = dark theme
-   Base palette follows the shadcn/ui naming convention so `tailwind.config`
-   can map hsl(var(--x)) → we ship raw hex/rgba instead (see snippet at end:
-   use the `<alpha-value>`-free color form).
+   Base palette names are the ones component generators expect (background,
+   foreground, card, popover, primary, …) so generated components pick them
+   up. Values are raw hex/rgba, not colour channels, so every utility maps
+   them with the plain var() form (see snippet at end: use the
+   `<alpha-value>`-free color form).
 
    Typography
    ----------
@@ -25,7 +27,7 @@
   --font-sans: "IBM Plex Sans", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
-  /* ---------- Base palette (shadcn/ui) — LIGHT ---------- */
+  /* ---------- Base palette — LIGHT ---------- */
   --background: #f5f5f4;            /* page */
   --foreground: #16161a;
   --card: #ffffff;                  /* panels, dialogs, pill/chip surfaces */
@@ -50,7 +52,7 @@
   --ring: #f2b632;                  /* hover/focus ring (avatar hover border) */
   --radius: 6px;                    /* buttons, inputs, popover items. pills 4px · chips 5px · popover 8px · dialog 10px */
 
-  /* Supporting neutrals the screens use beyond the shadcn set */
+  /* Supporting neutrals the screens use beyond the base palette */
   --surface-sidebar: #ebebe9;       /* sidebar, top bar, right drawer */
   --surface-nav-active: #fcfcfb;    /* active nav row, selected ruleset row */
   --surface-row-selected: #f7f7f6;  /* selected rollup row */
