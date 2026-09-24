@@ -57,8 +57,30 @@ async function toError(res: Response): Promise<ProblemError> {
 	);
 }
 
+// Query is a read's parameters; a repeated parameter (a label filter's
+// several requirements) is an array, and an absent value is left out.
+export type Query = Record<
+	string,
+	string | number | readonly string[] | null | undefined
+>;
+
+// withQuery appends the parameters to a path in the order given.
+export function withQuery(path: string, query?: Query): string {
+	const params = new URLSearchParams();
+	for (const [key, value] of Object.entries(query ?? {})) {
+		if (value === undefined || value === null || value === "") continue;
+		if (Array.isArray(value)) {
+			for (const v of value) params.append(key, v);
+		} else {
+			params.append(key, String(value));
+		}
+	}
+	const qs = params.toString();
+	return qs ? `${path}?${qs}` : path;
+}
+
 // request performs one call against the surface and returns its JSON
-// body, or throws a ProblemError.
+// body (nothing for a 204), or throws a ProblemError.
 export async function request<T>(
 	method: string,
 	path: string,
@@ -89,6 +111,9 @@ export async function request<T>(
 	}
 	if (!res.ok) {
 		throw await toError(res);
+	}
+	if (res.status === 204) {
+		return undefined as T;
 	}
 	return (await res.json()) as T;
 }

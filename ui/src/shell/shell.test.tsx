@@ -1,18 +1,11 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { mockSurface, operator, renderApp } from "@/test/harness";
+import { freshInstall, mockSurface, operator, renderApp } from "@/test/harness";
 import { storageKey } from "@/theme/ThemeProvider";
 import { initials } from "./AccountPopover";
 
-const signedIn = () =>
-	mockSurface([
-		{
-			method: "GET",
-			path: "/api/v1/me",
-			reply: { status: 200, json: operator },
-		},
-	]);
+const signedIn = () => mockSurface(freshInstall);
 
 describe("shell", () => {
 	it("shows the sections, the site label, and the screen's breadcrumb", async () => {
