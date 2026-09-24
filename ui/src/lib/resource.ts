@@ -61,7 +61,7 @@ export function useResource<T>(
 	return { resource, reload };
 }
 
-// useExpireOnUnauthenticated wraps a write so that a refusal meaning the
+// useWrite wraps a write so that a refusal meaning the
 // session is gone ends it, like a read's would, and anything else is
 // rethrown as a problem for the caller to render.
 export function useWrite(): <T>(write: () => Promise<T>) => Promise<T> {
