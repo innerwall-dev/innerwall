@@ -44,6 +44,8 @@ export function workload(
 			latest_rendered_at: minutesAgo(60),
 			error: "",
 			last_snapshot_sent_at: minutesAgo(60),
+			last_acked_at: null,
+			last_apply_failed_at: null,
 			...sync,
 		},
 		health: {

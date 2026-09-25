@@ -125,7 +125,7 @@ const office = flow({
 	rule: null,
 	src_address: "192.0.2.7",
 	peer: {
-		kind: "address_group",
+		kind: "group",
 		address_group_id: "dae0e910-3b78-4071-8980-60d76ff60010",
 		name: "office",
 		labels: {},
@@ -136,7 +136,7 @@ const stranger = flow({
 	verdict: "would_block",
 	rule: null,
 	src_address: "198.51.100.7",
-	peer: { kind: "unknown", address: "198.51.100.7", labels: {} },
+	peer: { kind: "address", address: "198.51.100.7", labels: {} },
 	service: { protocol: "tcp", port: 22 },
 	process_name: undefined,
 	connection_count: 9,
