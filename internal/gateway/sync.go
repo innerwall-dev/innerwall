@@ -314,9 +314,8 @@ func (s *Server) handleMessage(ctx context.Context, log *slog.Logger, sess *sess
 // handleAck records an acknowledgement and its instant. APPLIED moves the
 // workload to SYNCED when it names the tip of what was sent and PENDING
 // while more is in flight. FAILED records DEGRADED with the agent's
-// detail and answers
-// with a fresh snapshot of the current version, never a retried delta
-// (ADR-0015).
+// detail and answers with a fresh snapshot of the current version, never
+// a retried delta (ADR-0015).
 func (s *Server) handleAck(ctx context.Context, log *slog.Logger, sess *session, ack *innerwallv1.PolicyAck, now time.Time) error {
 	switch ack.GetStatus() {
 	case innerwallv1.AckStatus_ACK_STATUS_APPLIED:

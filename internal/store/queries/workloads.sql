@@ -96,7 +96,7 @@ SET sync_state = $2, sync_error = $3, last_seen_at = $4
 WHERE id = $1;
 
 -- An APPLIED acknowledgement: the version, the resulting state, and the
--- instant, which only this and the failure below write (migration 00007).
+-- instant. Nothing else writes last_acked_at (migration 00007).
 -- name: RecordWorkloadApplied :execrows
 UPDATE workloads
 SET applied_policy_version = $2, sync_state = $3, sync_error = '', last_seen_at = $4, last_acked_at = $4
@@ -104,6 +104,7 @@ WHERE id = $1;
 
 -- A FAILED acknowledgement: the degraded state, the agent's detail, and the
 -- instant. The applied version is untouched; the agent is still on it.
+-- Nothing else writes last_apply_failed_at (migration 00007).
 -- name: RecordWorkloadApplyFailed :execrows
 UPDATE workloads
 SET sync_state = $2, sync_error = $3, last_seen_at = $4, last_apply_failed_at = $4

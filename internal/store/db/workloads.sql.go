@@ -647,7 +647,7 @@ type RecordWorkloadAppliedParams struct {
 }
 
 // An APPLIED acknowledgement: the version, the resulting state, and the
-// instant, which only this and the failure below write (migration 00007).
+// instant. Nothing else writes last_acked_at (migration 00007).
 func (q *Queries) RecordWorkloadApplied(ctx context.Context, arg RecordWorkloadAppliedParams) (int64, error) {
 	result, err := q.db.Exec(ctx, recordWorkloadApplied,
 		arg.ID,
@@ -676,6 +676,7 @@ type RecordWorkloadApplyFailedParams struct {
 
 // A FAILED acknowledgement: the degraded state, the agent's detail, and the
 // instant. The applied version is untouched; the agent is still on it.
+// Nothing else writes last_apply_failed_at (migration 00007).
 func (q *Queries) RecordWorkloadApplyFailed(ctx context.Context, arg RecordWorkloadApplyFailedParams) (int64, error) {
 	result, err := q.db.Exec(ctx, recordWorkloadApplyFailed,
 		arg.ID,
