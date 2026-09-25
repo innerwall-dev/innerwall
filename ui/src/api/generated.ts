@@ -97,7 +97,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The authenticated operator and the site label. */
+        /** The authenticated operator, the site label, and the advertised agent gateway address. */
         get: operations["getMe"];
         put?: never;
         post?: never;
@@ -663,6 +663,8 @@ export interface components {
         /** @description The operator as the console shows it, and the site label configured on the control plane. */
         Me: {
             display_name: string | null;
+            /** @description The host:port agents reach the agent gateway at, as the operator configured it for the enroll command; null when none is configured. It is never derived from the bind address or the host's interfaces. */
+            gateway_address: string | null;
             site: string;
         };
         /**
@@ -713,8 +715,11 @@ export interface components {
             address?: string;
             /** Format: uuid */
             address_group_id?: string;
-            /** @enum {string} */
-            kind: "unknown" | "workload" | "address_group";
+            /**
+             * @description What the source address resolved to at ingest. `workload` sets `workload_id`; `group` (an address group) sets `address_group_id`; `address` (neither) sets `address` to the source address itself. `unknown` is a stored kind this control plane does not recognize, with the stored key in `address`.
+             * @enum {string}
+             */
+            kind: "workload" | "group" | "address" | "unknown";
             labels: components["schemas"]["LabelMap"];
             name?: string;
             workload_id?: components["schemas"]["WorkloadID"];
@@ -986,6 +991,16 @@ export interface components {
             sync: {
                 applied_version: number;
                 error: string;
+                /**
+                 * Format: date-time
+                 * @description When the agent last acknowledged applying a version; null when none has been recorded. The version an agent claims when its stream opens is not an acknowledgement.
+                 */
+                last_acked_at: string | null;
+                /**
+                 * Format: date-time
+                 * @description When the agent last reported a failed apply; null when none has been recorded. It remains after a later successful apply; `state` says whether the failure still stands.
+                 */
+                last_apply_failed_at: string | null;
                 /**
                  * Format: date-time
                  * @description When the control plane last sent the workload a snapshot, whatever the cause; null when none has been recorded.

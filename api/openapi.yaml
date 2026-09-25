@@ -192,7 +192,7 @@ paths:
     get:
       operationId: getMe
       tags: [session]
-      summary: The authenticated operator and the site label.
+      summary: The authenticated operator, the site label, and the advertised agent gateway address.
       responses:
         "200":
           description: The operator.
@@ -1513,12 +1513,15 @@ components:
     Me:
       description: The operator as the console shows it, and the site label configured on the control plane.
       type: object
-      required: [display_name, site]
+      required: [display_name, site, gateway_address]
       properties:
         display_name:
           type: [string, "null"]
         site:
           type: string
+        gateway_address:
+          type: [string, "null"]
+          description: The host:port agents reach the agent gateway at, as the operator configured it for the enroll command; null when none is configured. It is never derived from the bind address or the host's interfaces.
     WorkloadID:
       type: string
       format: uuid
@@ -1927,7 +1930,8 @@ components:
       properties:
         kind:
           type: string
-          enum: [unknown, workload, address_group]
+          enum: [workload, group, address, unknown]
+          description: What the source address resolved to at ingest. `workload` sets `workload_id`; `group` (an address group) sets `address_group_id`; `address` (neither) sets `address` to the source address itself. `unknown` is a stored kind this control plane does not recognize, with the stored key in `address`.
         workload_id:
           $ref: "#/components/schemas/WorkloadID"
         address_group_id:
@@ -2113,7 +2117,7 @@ components:
                 type: string
         sync:
           type: object
-          required: [state, applied_version, latest_version, latest_rendered_at, error, last_snapshot_sent_at]
+          required: [state, applied_version, latest_version, latest_rendered_at, error, last_snapshot_sent_at, last_acked_at, last_apply_failed_at]
           description: Convergence with the rendered policy; `latest_version` ahead of `applied_version` is drift in flight.
           properties:
             state:
@@ -2131,6 +2135,14 @@ components:
               type: [string, "null"]
               format: date-time
               description: When the control plane last sent the workload a snapshot, whatever the cause; null when none has been recorded.
+            last_acked_at:
+              type: [string, "null"]
+              format: date-time
+              description: When the agent last acknowledged applying a version; null when none has been recorded. The version an agent claims when its stream opens is not an acknowledgement.
+            last_apply_failed_at:
+              type: [string, "null"]
+              format: date-time
+              description: When the agent last reported a failed apply; null when none has been recorded. It remains after a later successful apply; `state` says whether the failure still stands.
         health:
           type: object
           required: [last_seen_at, credential, dropped_flow_records]
