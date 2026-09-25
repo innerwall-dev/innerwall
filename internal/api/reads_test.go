@@ -41,14 +41,16 @@ func newReadFixture(now time.Time) *readFixture {
 	db, _ := identity.NewWorkloadID()
 	seen := now.Add(-time.Minute)
 	renderedAt := now.Add(-30 * time.Minute)
+	acked := now.Add(-2 * time.Minute)
+	failed := now.Add(-2 * time.Hour)
 	rule := policy.Rule{ID: uuid.New(), Direction: innerwallv1.Direction_DIRECTION_INBOUND, Enabled: true, Description: "postgres from web"}
 	rs := policy.Ruleset{ID: uuid.New(), Name: "web-to-db", Enabled: true, Scope: policy.Selector{"role": {"db"}}, Rules: []policy.Rule{rule}, CreatedAt: now.Add(-2 * time.Hour), UpdatedAt: now.Add(-time.Hour)}
 	ruleID := rendered.RuleID(rule.ID.String(), innerwallv1.Protocol_PROTOCOL_TCP)
 	group := policy.AddressGroup{ID: uuid.New(), Name: "office", CIDRs: []string{"192.0.2.0/24"}}
 	st := &readmodeltest.MemStore{
 		Workloads: []readmodel.WorkloadRecord{
-			{Workload: registry.Workload{ID: web, Hostname: "web-1", Labels: []registry.Label{{Key: "env", Value: "prod"}, {Key: "role", Value: "web"}}, Mode: innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED, Addresses: []netip.Addr{netip.MustParseAddr("10.0.0.10")}, Agent: registry.AgentInfo{Version: "0.3.0", Capabilities: []string{"nftables"}}, EnrolledAt: now.Add(-24 * time.Hour), LastSeenAt: &seen, SyncState: innerwallv1.SyncState_SYNC_STATE_SYNCED, AppliedVersion: 3, CredentialExpiresAt: now.Add(20 * time.Hour)}, LatestVersion: 3, LatestRenderedAt: &renderedAt},
-			{Workload: registry.Workload{ID: db, Hostname: "db-1", Labels: []registry.Label{{Key: "env", Value: "prod"}, {Key: "role", Value: "db"}}, Mode: innerwallv1.EnforcementMode_ENFORCEMENT_MODE_SIMULATION, Facts: &innerwallv1.HostFacts{Os: &innerwallv1.OsInfo{Family: "linux", Name: "debian"}}, EnrolledAt: now.Add(-20 * time.Hour), SyncState: innerwallv1.SyncState_SYNC_STATE_DEGRADED, SyncError: "apply refused", CredentialExpiresAt: now.Add(2 * time.Hour), CredentialRenewalError: "authority unreachable", DroppedFlowRecords: 42}, LatestVersion: 5, LatestRenderedAt: &renderedAt, ListeningServices: []registry.ListeningService{{Protocol: innerwallv1.Protocol_PROTOCOL_TCP, Port: 5432, ProcessName: "postgres"}}},
+			{Workload: registry.Workload{ID: web, Hostname: "web-1", Labels: []registry.Label{{Key: "env", Value: "prod"}, {Key: "role", Value: "web"}}, Mode: innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED, Addresses: []netip.Addr{netip.MustParseAddr("10.0.0.10")}, Agent: registry.AgentInfo{Version: "0.3.0", Capabilities: []string{"nftables"}}, EnrolledAt: now.Add(-24 * time.Hour), LastSeenAt: &seen, SyncState: innerwallv1.SyncState_SYNC_STATE_SYNCED, AppliedVersion: 3, LastAckedAt: &acked, CredentialExpiresAt: now.Add(20 * time.Hour)}, LatestVersion: 3, LatestRenderedAt: &renderedAt},
+			{Workload: registry.Workload{ID: db, Hostname: "db-1", Labels: []registry.Label{{Key: "env", Value: "prod"}, {Key: "role", Value: "db"}}, Mode: innerwallv1.EnforcementMode_ENFORCEMENT_MODE_SIMULATION, Facts: &innerwallv1.HostFacts{Os: &innerwallv1.OsInfo{Family: "linux", Name: "debian"}}, EnrolledAt: now.Add(-20 * time.Hour), SyncState: innerwallv1.SyncState_SYNC_STATE_DEGRADED, SyncError: "apply refused", LastApplyFailedAt: &failed, CredentialExpiresAt: now.Add(2 * time.Hour), CredentialRenewalError: "authority unreachable", DroppedFlowRecords: 42}, LatestVersion: 5, LatestRenderedAt: &renderedAt, ListeningServices: []registry.ListeningService{{Protocol: innerwallv1.Protocol_PROTOCOL_TCP, Port: 5432, ProcessName: "postgres"}}},
 		},
 		AddressGroups: []policy.AddressGroup{group},
 		Rulesets:      []policy.Ruleset{rs},
@@ -99,6 +101,13 @@ func newReadSurface(t *testing.T) *readSurface {
 func (s *readSurface) get(t *testing.T, path string) (*reply, map[string]any) {
 	t.Helper()
 	return s.do(t, s.client(false), request{method: http.MethodGet, path: path, headers: s.bearer})
+}
+
+// hasNull reports whether obj carries key with a JSON null, as opposed to
+// leaving it out.
+func hasNull(obj map[string]any, key string) bool {
+	v, present := obj[key]
+	return present && v == nil
 }
 
 // field walks a dotted path through a decoded JSON document.
@@ -299,6 +308,11 @@ func TestWorkloadEndpoints(t *testing.T) {
 	if field(db, "sync.state") != "degraded" || field(db, "sync.applied_version") != float64(0) || field(db, "sync.latest_version") != float64(5) || field(db, "sync.latest_rendered_at") != "2026-09-13T11:30:00Z" || field(db, "sync.error") != "apply refused" {
 		t.Fatalf("db-1 sync = %v", db["sync"])
 	}
+	// The ack and failure instants are always present, null when none
+	// has been recorded.
+	if sync := db["sync"].(map[string]any); sync["last_apply_failed_at"] != "2026-09-13T10:00:00Z" || !hasNull(sync, "last_acked_at") {
+		t.Fatalf("db-1 instants = %v", sync)
+	}
 	if field(db, "health.credential.state") != "renewal-failed" || field(db, "health.credential.last_error") != "authority unreachable" || field(db, "health.credential.expires_at") != "2026-09-13T14:00:00Z" || field(db, "health.dropped_flow_records") != float64(42) || field(db, "health.last_seen_at") != nil {
 		t.Fatalf("db-1 health = %v", db["health"])
 	}
@@ -308,6 +322,9 @@ func TestWorkloadEndpoints(t *testing.T) {
 	web := field(body, "workloads.1").(map[string]any)
 	if field(web, "sync.state") != "synced" || field(web, "health.credential.state") != "renews" || field(web, "health.last_seen_at") != "2026-09-13T11:59:00Z" || field(web, "agent.capabilities.0") != "nftables" || field(web, "addresses.0") != "10.0.0.10" {
 		t.Fatalf("web-1 = %v", web)
+	}
+	if sync := web["sync"].(map[string]any); sync["last_acked_at"] != "2026-09-13T11:58:00Z" || !hasNull(sync, "last_apply_failed_at") {
+		t.Fatalf("web-1 instants = %v", sync)
 	}
 
 	for _, tc := range []struct{ query, param string }{{"mode=strict", "mode"}, {"sync_state=asleep", "sync_state"}, {"label=x", "label"}, {"cursor=x", "cursor"}, {"limit=many", "limit"}} {
@@ -329,7 +346,7 @@ func TestWorkloadEndpoints(t *testing.T) {
 
 	// Detail: the same shape.
 	resp, body = s.get(t, "/api/v1/workloads/"+s.fx.db.String())
-	if resp.status != http.StatusOK || body["hostname"] != "db-1" || field(body, "sync.state") != "degraded" || field(body, "health.credential.state") != "renewal-failed" {
+	if resp.status != http.StatusOK || body["hostname"] != "db-1" || field(body, "sync.state") != "degraded" || field(body, "sync.last_apply_failed_at") != "2026-09-13T10:00:00Z" || field(body, "health.credential.state") != "renewal-failed" {
 		t.Fatalf("detail = %d %v", resp.status, body)
 	}
 	resp, body = s.get(t, "/api/v1/workloads/"+uuid.NewString())
