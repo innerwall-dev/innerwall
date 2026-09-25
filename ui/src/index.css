@@ -159,3 +159,16 @@
 		accent-color: var(--checkbox-accent);
 	}
 }
+
+/* The flow map's graph library reads a few structural colors from its
+   own custom properties. They point at the tokens, so nothing the
+   library draws carries a color of its own; the map's nodes, edges, and
+   labels are the console's components and color themselves. */
+.react-flow {
+	--xy-background-color: transparent;
+	--xy-edge-stroke: var(--viz-edge-observed);
+	--xy-edge-stroke-selected: var(--viz-edge-observed);
+	--xy-node-border: 0;
+	--xy-node-background-color: transparent;
+	--xy-node-color: var(--viz-node-title);
+}

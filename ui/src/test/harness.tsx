@@ -109,7 +109,33 @@ export const freshInstall: Route[] = [
 		path: "/api/v1/rulesets",
 		reply: { status: 200, json: { rulesets: [], state_version: "0" } },
 	},
+	{
+		method: "GET",
+		path: "/api/v1/address-groups",
+		reply: { status: 200, json: { address_groups: [] } },
+	},
+	{
+		method: "GET",
+		path: "/api/v1/flows/rollup",
+		reply: (_body, query) => ({ status: 200, json: emptyRollup(query) }),
+	},
 ];
+
+// emptyRollup is a rollup over a range with nothing stored in it, in the
+// grouping the query asked for.
+export function emptyRollup(query: URLSearchParams) {
+	return {
+		from: query.get("from") ?? new Date(0).toISOString(),
+		to: query.get("to") ?? new Date().toISOString(),
+		effective_from: null,
+		effective_to: null,
+		group_by: (query.get("group_by") ?? "rule").split(","),
+		groups: [],
+		group_count: 0,
+		truncated: false,
+		totals: { flow_count: 0, connection_count: 0, byte_count: 0 },
+	};
+}
 
 // A problem type named without its URN prefix, from the description's
 // closed set.

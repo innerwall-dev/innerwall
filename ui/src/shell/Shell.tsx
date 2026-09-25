@@ -34,10 +34,20 @@ export function useShell(): ShellContext {
 }
 
 // crumbsFor names the screen for the top bar.
-function crumbsFor(pathname: string, open: OpenWorkload | null): Crumb[] {
+function crumbsFor(
+	pathname: string,
+	search: string,
+	open: OpenWorkload | null,
+): Crumb[] {
 	if (pathname.startsWith("/simulation"))
 		return [{ label: "Simulation review" }];
-	if (pathname.startsWith("/map")) return [{ label: "Flow map" }];
+	if (pathname.startsWith("/map")) {
+		// The map's scope, when it has one, names what the map shows.
+		const scope = new URLSearchParams(search).getAll("label");
+		return scope.length > 0
+			? [{ label: "Flow map" }, { label: scope.join(" ") }]
+			: [{ label: "Flow map" }];
+	}
 	if (pathname.startsWith("/workloads/tokens"))
 		return [{ label: "Workloads" }, { label: "Provisioning tokens" }];
 	const detail = matchPath("/workloads/:id/*", pathname);
@@ -113,7 +123,7 @@ function Frame() {
 		<div className="flex h-dvh w-full overflow-hidden bg-background text-foreground">
 			<Sidebar counts={counts} fleetEmpty={fleetEmpty} open={open} />
 			<div className="flex min-w-0 flex-1 flex-col">
-				<TopBar crumbs={crumbsFor(location.pathname, open)} />
+				<TopBar crumbs={crumbsFor(location.pathname, location.search, open)} />
 				<main className="relative flex min-h-0 flex-1 flex-col overflow-auto">
 					<Outlet context={context} />
 				</main>

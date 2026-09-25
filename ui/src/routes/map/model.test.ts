@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { workload } from "@/test/fixtures";
 import { addressGroup, peer, rollupOf, row, wref } from "@/test/map";
+import { peerSelector } from "./Drawer";
 import { shapeEdges } from "./geometry";
 import { layoutModel } from "./layout";
 import {
@@ -312,6 +313,56 @@ describe("selection", () => {
 		expect(resolveSelection(m, { kind: "edge", id: "g:z>g:b" })).toBeNull();
 		expect(resolveSelection(m, { kind: "node", id: "unknown" })).not.toBeNull();
 		expect(resolveSelection(m, { kind: "node", id: "g:z" })).toBeNull();
+	});
+});
+
+describe("rule from an edge", () => {
+	it("names the source by its group, and by the scope when every source carries it", () => {
+		const m = buildModel(
+			{ would_block: rollupOf([row(peer.workload(api1), checkout1, 3)]) },
+			[],
+			[],
+			"app",
+		);
+		const e = edge(m, "g:storefront-api>g:checkout");
+		const from = node(m, "g:storefront-api");
+		expect(peerSelector(e, from, "app", ["env=prod"])).toBe(
+			"app=storefront-api AND env=prod",
+		);
+		expect(peerSelector(e, from, "app", ["env=staging"])).toBe(
+			"app=storefront-api",
+		);
+	});
+
+	it("names unmanaged sources by group or address", () => {
+		const m = buildModel(
+			{
+				would_block: rollupOf([
+					row(peer.group(office.id, "office"), checkout1, 3),
+					row(peer.address("198.51.100.7"), checkout1, 3),
+					row(peer.address("2001:db8::7"), checkout1, 3),
+				]),
+			},
+			[],
+			[office],
+			"app",
+		);
+		expect(
+			peerSelector(
+				edge(m, "ag:ag-office>g:checkout"),
+				node(m, "ag:ag-office"),
+				"app",
+				[],
+			),
+		).toBe("address group office");
+		expect(
+			peerSelector(
+				edge(m, "unknown>g:checkout"),
+				node(m, "unknown"),
+				"app",
+				[],
+			),
+		).toMatch(/^cidr (198\.51\.100\.7\/32|2001:db8::7\/128) \(\+1\)$/);
 	});
 });
 
