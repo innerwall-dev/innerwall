@@ -77,7 +77,11 @@ export function mockSurface(routes: Route[]) {
 	return { calls, fetchMock };
 }
 
-export const operator: Me = { display_name: "A. Rao", site: "iad1" };
+export const operator: Me = {
+	display_name: "A. Rao",
+	site: "iad1",
+	gateway_address: null,
+};
 
 // signedIn is the identity read every authenticated screen starts from.
 export const signedIn: Route = {

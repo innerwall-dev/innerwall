@@ -196,6 +196,25 @@ func TestMeWithoutDisplayName(t *testing.T) {
 	if v, present := body["site"]; !present || v != "" {
 		t.Fatalf("site should be empty: %v", body)
 	}
+	// Unconfigured, the advertised gateway address is present and null;
+	// nothing is derived in its place.
+	if v, present := body["gateway_address"]; !present || v != nil {
+		t.Fatalf("gateway_address should be null: %v", body)
+	}
+}
+
+func TestMeCarriesAdvertisedGatewayAddress(t *testing.T) {
+	s := newSurface(t, api.Deps{Site: "lab", GatewayAddress: "gateway.lab.example:8443"})
+	s.setPassword(t, "Ada")
+	browser := s.client(true)
+	resp, body := s.do(t, browser, login(testPassword))
+	if resp.status != http.StatusOK || body["gateway_address"] != "gateway.lab.example:8443" {
+		t.Fatalf("login: %d %v", resp.status, body)
+	}
+	resp, body = s.do(t, browser, request{method: http.MethodGet, path: "/api/v1/me"})
+	if resp.status != http.StatusOK || body["gateway_address"] != "gateway.lab.example:8443" || body["site"] != "lab" {
+		t.Fatalf("me: %d %v", resp.status, body)
+	}
 }
 
 func TestMiddlewareMatrix(t *testing.T) {

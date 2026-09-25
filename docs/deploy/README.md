@@ -75,7 +75,7 @@ innerwall operator token revoke <token-id>
 curl -H "Authorization: Bearer iwo_..." https://localhost:8080/api/v1/me
 ```
 
-A browser logs in with `POST /api/v1/session` and receives a session cookie that lives seven days and is never extended; `DELETE /api/v1/session` ends it. Every error is a problem document (`application/problem+json`) whose `type` a client branches on. `--site` (or `INNERWALL_SITE`) sets the label the console header shows; `/api/v1/me` returns it with the operator's display name.
+A browser logs in with `POST /api/v1/session` and receives a session cookie that lives seven days and is never extended; `DELETE /api/v1/session` ends it. Every error is a problem document (`application/problem+json`) whose `type` a client branches on. `--site` (or `INNERWALL_SITE`) sets the label the console header shows; `/api/v1/me` returns it with the operator's display name. `--gateway-advertise-address` (or `INNERWALL_GATEWAY_ADVERTISE_ADDRESS`) states the `host:port` agents reach the agent gateway at, which `/api/v1/me` returns as `gateway_address` for the console's enroll command; the bind address (`--listen`) is not one, and when none is configured the field is null and the console shows a placeholder.
 
 The read endpoints, all behind the same credential, all `GET`, with timestamps in RFC 3339 UTC and `snake_case` fields:
 
@@ -84,7 +84,7 @@ The read endpoints, all behind the same credential, all `GET`, with timestamps i
 | `/api/v1/flows/rollup` | `group_by` (required: `rule`, `rule,peer`, `src,dst`, or `dst,service`), `from`/`to` (default the last day), `verdict`, `direction`, `workload`, `label` (repeatable `key=value`), `service` (`tcp/5432` or `icmp`), `order` (`connections` or `recent`), `limit` (default 200, at most 1000) | The requested and the actually covered range, the groups with their keys and counters, the group count, a `truncated` marker, and the totals across every group |
 | `/api/v1/flows` | `workload` (required), `from`/`to`, `verdict`, `direction`, `peer`, `service`, `cursor`, `limit` (default 100, at most 500) | One page of stored windows, newest first, with `next_cursor` |
 | `/api/v1/workloads` | `label` (repeatable), `mode`, `sync_state`, `cursor`, `limit` (default 100, at most 500) | One page of the fleet in attention order (degraded, offline, pending, synced; then most recently seen), with `next_cursor` |
-| `/api/v1/workloads/{id}` | | One workload in the list's shape: labels, mode, addresses, agent, listening services, sync state against the latest rendered version, and health (last seen, credential state, dropped flow records) |
+| `/api/v1/workloads/{id}` | | One workload in the list's shape: labels, mode, addresses, agent, listening services, sync state against the latest rendered version (with when the agent last acknowledged an applied version and last reported a failed apply), and health (last seen, credential state and last renewal, dropped flow records) |
 | `/api/v1/workloads/{id}/rendered-policy` | | The persisted rendered policy: version, mode, the terminal verdict of that mode, and the rules with their match criteria and provenance |
 
 Rule hit counters are `group_by=rule` scoped by `workload`; a simulation review's would-block traffic is `verdict=would_block`. A malformed parameter is a `urn:innerwall:problem:invalid-parameter` problem whose detail names the parameter. The command line issues the same rollup with `innerwall flows rollup --group-by`.

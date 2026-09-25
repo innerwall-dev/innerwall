@@ -95,6 +95,12 @@ type SyncStatus struct {
 	// LastSnapshotSentAt is nil when no snapshot has been recorded. A
 	// directed reconnect is observed as this instant advancing.
 	LastSnapshotSentAt *time.Time
+	// LastAckedAt is when the agent last acknowledged an applied
+	// version, and LastApplyFailedAt when it last reported a failed
+	// apply; each nil when none has been recorded. A failure instant
+	// outlives the failure: State says whether it still stands.
+	LastAckedAt       *time.Time
+	LastApplyFailedAt *time.Time
 }
 
 // Health is what the agent's heartbeats and renewals have recorded.
@@ -221,7 +227,8 @@ func (s *Reader) workload(rec *WorkloadRecord, now time.Time) Workload {
 	w := Workload{
 		ID: rec.ID, Hostname: rec.Hostname, Labels: rec.Labels, Mode: rec.Mode, EnrolledAt: rec.EnrolledAt,
 		Addresses: rec.Addresses, Facts: rec.Facts, Agent: rec.Agent, ListeningServices: rec.ListeningServices,
-		Sync: SyncStatus{State: rec.SyncState, AppliedVersion: rec.AppliedVersion, LatestVersion: rec.LatestVersion, LatestRenderedAt: rec.LatestRenderedAt, Error: rec.SyncError, LastSnapshotSentAt: rec.LastSnapshotSentAt},
+		Sync: SyncStatus{State: rec.SyncState, AppliedVersion: rec.AppliedVersion, LatestVersion: rec.LatestVersion, LatestRenderedAt: rec.LatestRenderedAt, Error: rec.SyncError, LastSnapshotSentAt: rec.LastSnapshotSentAt,
+			LastAckedAt: rec.LastAckedAt, LastApplyFailedAt: rec.LastApplyFailedAt},
 		Health: Health{
 			LastSeenAt:         rec.LastSeenAt,
 			Credential:         credentialStatus(rec, now),

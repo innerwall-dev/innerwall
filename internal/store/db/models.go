@@ -223,6 +223,8 @@ type Workload struct {
 	DroppedFlowRecords     int64
 	CredentialRenewalError string
 	LastSnapshotSentAt     *time.Time
+	LastAckedAt            *time.Time
+	LastApplyFailedAt      *time.Time
 }
 
 type WorkloadAddress struct {

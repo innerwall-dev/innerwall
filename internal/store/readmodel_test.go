@@ -111,7 +111,7 @@ func TestWorkloadPage(t *testing.T) {
 	if rec.Hostname != "db-1" || rec.LatestVersion != f.DBVersion || rec.LatestRenderedAt == nil || rec.CredentialRenewalError == "" || rec.DroppedFlowRecords != 42 || rec.LastRenewedAt != nil {
 		t.Fatalf("db-1 detail = %+v", rec)
 	}
-	if rec.SyncState != innerwallv1.SyncState_SYNC_STATE_DEGRADED || rec.SyncError == "" {
+	if rec.SyncState != innerwallv1.SyncState_SYNC_STATE_DEGRADED || rec.SyncError == "" || rec.LastApplyFailedAt == nil {
 		t.Fatalf("db-1 sync = %v %q", rec.SyncState, rec.SyncError)
 	}
 	if len(rec.ListeningServices) != 1 || rec.ListeningServices[0].ProcessName != "postgres" {
