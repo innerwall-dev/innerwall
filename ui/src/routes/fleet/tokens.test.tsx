@@ -1,15 +1,19 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import type { ProvisioningToken } from "@/api/schema";
+import type { Me, ProvisioningToken } from "@/api/schema";
 import { minutesAgo, token } from "@/test/fixtures";
-import { mockSurface, type Route, renderApp, signedIn } from "@/test/harness";
+import { mockSurface, operator, type Route, renderApp } from "@/test/harness";
 
 const secret = "iw_Qm8xZk3vT2pLw9sYh4RaN7cJe1Bd6FgUiVoXt0KqM5";
 
-function surface(tokens: () => ProvisioningToken[], extra: Route[] = []) {
+function surface(
+	tokens: () => ProvisioningToken[],
+	extra: Route[] = [],
+	me: Me = operator,
+) {
 	return mockSurface([
-		signedIn,
+		{ method: "GET", path: "/api/v1/me", reply: { status: 200, json: me } },
 		{
 			method: "GET",
 			path: "/api/v1/workloads",
@@ -209,6 +213,10 @@ describe("mint dialog", () => {
 			"This is the only time the plaintext is shown.",
 		);
 		expect(done).toHaveTextContent("--token iw_Qm8x…qM5");
+		// No advertised gateway address: the command keeps its placeholder
+		// and says where the value comes from.
+		expect(done).toHaveTextContent("--server <agent-gateway>");
+		expect(done).toHaveTextContent("set --gateway-advertise-address");
 		expect(done).toHaveTextContent(
 			"Expires in 7d · assigns app=search env=staging",
 		);
@@ -226,6 +234,43 @@ describe("mint dialog", () => {
 			await screen.findByRole("dialog", { name: "Mint a provisioning token" }),
 		).toBeInTheDocument();
 		expect(document.body).not.toHaveTextContent(secret);
+	});
+
+	it("prints the advertised gateway address in the enroll command", async () => {
+		surface(
+			() => [],
+			[
+				{
+					method: "POST",
+					path: "/api/v1/provisioning-tokens",
+					reply: {
+						status: 201,
+						json: {
+							...token({ name: "edge" }),
+							created_at: new Date().toISOString(),
+							token: secret,
+						},
+					},
+				},
+			],
+			{ ...operator, gateway_address: "gw.iad1.example:8443" },
+		);
+		const user = userEvent.setup();
+		renderApp("/workloads/tokens");
+		await user.click(await screen.findByRole("button", { name: "Mint token" }));
+		const form = await screen.findByRole("dialog", {
+			name: "Mint a provisioning token",
+		});
+		await user.type(within(form).getByLabelText("Name"), "edge");
+		await user.click(within(form).getByRole("button", { name: "Mint token" }));
+		const done = await screen.findByRole("dialog", {
+			name: "Token minted — copy it now",
+		});
+		expect(done).toHaveTextContent(
+			"innerwall-agent enroll --server gw.iad1.example:8443",
+		);
+		expect(done).not.toHaveTextContent("<agent-gateway>");
+		expect(done).not.toHaveTextContent("--gateway-advertise-address");
 	});
 
 	it("renders a refused mint's findings in the form", async () => {

@@ -59,6 +59,10 @@ export function StatusCard({
 						<span className="text-muted-foreground"> (not applied)</span>
 					) : null}
 				</dd>
+				<dt className="text-muted-foreground">last ack</dt>
+				<dd className="font-mono" data-testid="ack-instant">
+					<LastAck s={s} />
+				</dd>
 				{s.latest_rendered_at ? (
 					<>
 						<dt className="text-muted-foreground">rendered at</dt>
@@ -95,6 +99,32 @@ export function StatusCard({
 			) : null}
 			<Resend w={w} onReread={onReread} />
 		</div>
+	);
+}
+
+// LastAck is the agent's most recent answer to a version, as the design
+// words it: "4m ago · FAILED" when the last thing it reported was a
+// failed apply, "· applied" when it was an acknowledgement. The two
+// instants are kept separately; whichever is later is the last answer.
+function LastAck({ s }: { s: Workload["sync"] }) {
+	const acked = s.last_acked_at ? Date.parse(s.last_acked_at) : null;
+	const failed = s.last_apply_failed_at
+		? Date.parse(s.last_apply_failed_at)
+		: null;
+	if (acked === null && failed === null) {
+		return <span className="text-muted-foreground">none recorded</span>;
+	}
+	const lastFailed = failed !== null && (acked === null || failed > acked);
+	const at = (lastFailed ? s.last_apply_failed_at : s.last_acked_at) as string;
+	return (
+		<>
+			<time dateTime={at}>{ago(at)}</time>
+			{lastFailed ? (
+				<span className="text-status-degraded"> · FAILED</span>
+			) : (
+				<span className="text-muted-foreground"> · applied</span>
+			)}
+		</>
 	);
 }
 

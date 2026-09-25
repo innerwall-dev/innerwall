@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { Workload } from "@/api/schema";
-import { minutesAgo, workload } from "@/test/fixtures";
+import { hoursFromNow, minutesAgo, workload } from "@/test/fixtures";
 import {
 	mockSurface,
 	problem,
@@ -48,7 +48,15 @@ const checkout = workload({
 		latest_version: 42,
 		error: "apply refused: set element exceeds the table's size",
 	},
-	health: { last_seen_at: minutesAgo(0.34) },
+	// A 24-hour credential renewed 7h ago: renewal falls due at two thirds
+	// of its lifetime, 9h from now.
+	health: {
+		last_seen_at: minutesAgo(0.34),
+		credential: {
+			last_renewed_at: minutesAgo(7 * 60),
+			expires_at: hoursFromNow(17),
+		},
+	},
 });
 const auth = workload({
 	hostname: "auth-prod-11",
@@ -106,7 +114,7 @@ describe("fleet workloads", () => {
 		expect(c.getByText("Degraded")).toBeInTheDocument();
 		expect(c.getByText("v41 · v42 failed")).toBeInTheDocument();
 		expect(c.getByText("v41")).toBeInTheDocument();
-		expect(c.getByText("renews · expires 9h")).toBeInTheDocument();
+		expect(c.getByText("renews 9h")).toBeInTheDocument();
 		expect(c.getByText("20s")).toBeInTheDocument();
 
 		const a = within(rowOf("auth-prod-11"));

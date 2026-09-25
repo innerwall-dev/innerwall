@@ -40,6 +40,8 @@ const db = workload({
 		applied_version: 41,
 		latest_version: 42,
 		latest_rendered_at: minutesAgo(4),
+		last_acked_at: minutesAgo(90),
+		last_apply_failed_at: minutesAgo(4),
 		error:
 			"nft: Error: Could not process rule: set innerwall_peers_r7 exceeds element limit (4096)",
 		last_snapshot_sent_at: null,
@@ -267,6 +269,7 @@ describe("workload detail", () => {
 		expect(card).toHaveTextContent("Degraded — last apply failed");
 		expect(card).toHaveTextContent("appliedv41");
 		expect(card).toHaveTextContent("renderedv42 (not applied)");
+		expect(card).toHaveTextContent("last ack4m ago · FAILED");
 		expect(card).toHaveTextContent("rendered at4m ago");
 		expect(card).toHaveTextContent("last snapshotnone recorded");
 		expect(card).toHaveTextContent(

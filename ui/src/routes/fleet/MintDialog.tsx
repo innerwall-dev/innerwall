@@ -2,6 +2,7 @@ import { type KeyboardEvent, useEffect, useId, useState } from "react";
 import type { ProblemError } from "@/api/client";
 import { mintProvisioningToken } from "@/api/fleet";
 import type { MintedToken } from "@/api/schema";
+import { useMe } from "@/auth/SessionProvider";
 import { ChoiceChips, LabelChip } from "@/components/fleet/status";
 import { Button } from "@/components/ui/button";
 import {
@@ -274,6 +275,11 @@ function masked(secret: string): string {
 }
 
 function ShownOnce({ minted }: { minted: MintedToken }) {
+	// The gateway address is what the control plane was configured to
+	// advertise; unset, the command keeps a placeholder to fill in.
+	const advertised = useMe().gateway_address;
+	const configured = advertised !== null && advertised !== undefined;
+	const gateway = advertised ?? "<agent-gateway>";
 	const [copied, setCopied] = useState<"idle" | "copied" | "failed">("idle");
 	const lifetime = span(
 		Date.parse(minted.expires_at) - Date.parse(minted.created_at),
@@ -319,12 +325,14 @@ function ShownOnce({ minted }: { minted: MintedToken }) {
 						Enroll a host
 					</span>
 					<pre className="rounded border border-input-strong bg-background px-3 py-2.5 font-mono text-[11.5px] whitespace-pre-wrap text-foreground-secondary">
-						{`innerwall-agent enroll --server <agent-gateway> \\\n  --token ${masked(minted.token)} --bootstrap-ca ./innerwall-ca.crt`}
+						{`innerwall-agent enroll --server ${gateway} \\\n  --token ${masked(minted.token)} --bootstrap-ca ./innerwall-ca.crt`}
 					</pre>
 					<span className="text-[11px] text-muted-foreground">
 						Distribute the CA certificate alongside the token; the agent uses it
-						to verify the control plane on first contact. The agent gateway is
-						the control plane's agent listener, host:port.
+						to verify the control plane on first contact.
+						{configured
+							? null
+							: " The agent gateway is the control plane's agent listener, host:port; set --gateway-advertise-address on the control plane to fill it in."}
 					</span>
 				</div>
 			</DialogBody>
