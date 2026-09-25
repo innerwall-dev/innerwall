@@ -50,6 +50,22 @@ export function compact(n: number): string {
 	return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
 }
 
+// short is a volume on a chip or a matrix cell, in at most five
+// characters: 88, 1.2k, 18.2k, 413k, 1.9M.
+export function short(n: number): string {
+	if (n < 1000) return String(n);
+	if (n < 100_000) return `${(n / 1000).toFixed(1)}k`;
+	if (n < 1_000_000) return `${Math.round(n / 1000)}k`;
+	return `${(n / 1_000_000).toFixed(1)}M`;
+}
+
+// headline is a total in a toolbar: 782, 22.9k, 1.94M.
+export function headline(n: number): string {
+	if (n < 10_000) return count(n);
+	if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`;
+	return `${(n / 1_000_000).toFixed(2)}M`;
+}
+
 // labelPairs is a label map as its `key=value` pairs, in key order.
 export function labelPairs(labels: Record<string, string>): [string, string][] {
 	return Object.entries(labels).sort(([a], [b]) => a.localeCompare(b));

@@ -24,6 +24,8 @@ export type FlowsPage = Schemas["FlowsPage"];
 export type PeerRef = Schemas["PeerRef"];
 export type RuleRef = Schemas["RuleRef"];
 export type Rollup = Schemas["Rollup"];
+export type RollupGroup = Rollup["groups"][number];
+export type AddressGroup = Schemas["AddressGroup"];
 export type RollupGrouping = NonNullable<
 	operations["getFlowsRollup"]["parameters"]["query"]
 >["group_by"];

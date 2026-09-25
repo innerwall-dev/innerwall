@@ -1,5 +1,6 @@
 import { type Query, request, withQuery } from "./client";
 import type {
+	AddressGroup,
 	FlowsPage,
 	MintedToken,
 	MintTokenRequest,
@@ -30,8 +31,9 @@ export interface WorkloadFilter {
 export function listWorkloads(
 	filter: WorkloadFilter,
 	cursor?: string,
+	limit?: number,
 ): Promise<WorkloadsPage> {
-	return request("GET", withQuery("/workloads", { ...filter, cursor }));
+	return request("GET", withQuery("/workloads", { ...filter, cursor, limit }));
 }
 
 export function getWorkload(id: string): Promise<Workload> {
@@ -58,7 +60,11 @@ export function createModeChange(
 export interface FlowFilter {
 	workload: string;
 	from?: string;
+	to?: string;
 	verdict?: Verdict;
+	// peer is one stored peer key: a workload id, an address group id,
+	// or a bare address.
+	peer?: string;
 }
 
 export function listFlows(
@@ -72,6 +78,12 @@ export function getRollup(
 	query: Query & { group_by: RollupGrouping },
 ): Promise<Rollup> {
 	return request("GET", withQuery("/flows/rollup", query));
+}
+
+export function listAddressGroups(): Promise<{
+	address_groups: AddressGroup[];
+}> {
+	return request("GET", "/address-groups");
 }
 
 export function listProvisioningTokens(): Promise<{
