@@ -75,6 +75,8 @@ func workloadFromRow(row *db.Workload, labels []registry.Label, addrs []netip.Ad
 		CredentialRenewalError: row.CredentialRenewalError,
 		CredentialExpiresAt:    row.CredentialExpiresAt,
 		LastSnapshotSentAt:     row.LastSnapshotSentAt,
+		LastAckedAt:            row.LastAckedAt,
+		LastApplyFailedAt:      row.LastApplyFailedAt,
 	}
 	if labels == nil {
 		w.Labels = []registry.Label{}
@@ -315,6 +317,18 @@ func (s *Store) RecordApplied(ctx context.Context, id identity.WorkloadID, versi
 	n, err := s.q.RecordWorkloadApplied(ctx, db.RecordWorkloadAppliedParams{ID: id.UUID(), AppliedPolicyVersion: int64(version), SyncState: int32(state), LastSeenAt: &now}) //nolint:gosec // versions are small
 	if err != nil {
 		return fmt.Errorf("store: recording applied version: %w", err)
+	}
+	if n == 0 {
+		return registry.ErrWorkloadUnknown
+	}
+	return nil
+}
+
+// RecordApplyFailed implements registry.Store.
+func (s *Store) RecordApplyFailed(ctx context.Context, id identity.WorkloadID, detail string, now time.Time) error {
+	n, err := s.q.RecordWorkloadApplyFailed(ctx, db.RecordWorkloadApplyFailedParams{ID: id.UUID(), SyncState: int32(innerwallv1.SyncState_SYNC_STATE_DEGRADED), SyncError: detail, LastSeenAt: &now})
+	if err != nil {
+		return fmt.Errorf("store: recording failed apply: %w", err)
 	}
 	if n == 0 {
 		return registry.ErrWorkloadUnknown

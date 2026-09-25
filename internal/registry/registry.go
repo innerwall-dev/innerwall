@@ -61,6 +61,14 @@ type Workload struct {
 	// is a record of what the control plane did, written by the sync
 	// path alone.
 	LastSnapshotSentAt *time.Time
+	// LastAckedAt is when the agent last acknowledged an applied
+	// version; nil when none has been recorded. The version a Hello
+	// claims is not an acknowledgement.
+	LastAckedAt *time.Time
+	// LastApplyFailedAt is when the agent last reported a failed apply;
+	// nil when none has been recorded. A later successful apply leaves
+	// it: SyncState says whether the workload is still degraded.
+	LastApplyFailedAt *time.Time
 }
 
 // ErrLabelsChanged is returned by a conditional label write whose expected
@@ -133,11 +141,15 @@ type Store interface {
 	// RecordHeartbeat refreshes last-seen, the dropped-flow counter, and
 	// the renewal status the heartbeat carries.
 	RecordHeartbeat(ctx context.Context, id identity.WorkloadID, droppedFlowRecords uint64, renewalError string, now time.Time) error
-	// SetSyncState records the convergence state with an optional detail
-	// (the agent's error on a failed apply).
+	// SetSyncState records the convergence state with an optional detail.
 	SetSyncState(ctx context.Context, id identity.WorkloadID, state innerwallv1.SyncState, detail string, now time.Time) error
-	// RecordApplied stores an acknowledged version and the resulting state.
+	// RecordApplied stores an acknowledged version and the resulting
+	// state, and stamps now as the last acknowledgement.
 	RecordApplied(ctx context.Context, id identity.WorkloadID, version uint64, state innerwallv1.SyncState, now time.Time) error
+	// RecordApplyFailed stores a failed apply: the degraded state and the
+	// agent's detail, and stamps now as the last apply failure. The
+	// applied version is untouched.
+	RecordApplyFailed(ctx context.Context, id identity.WorkloadID, detail string, now time.Time) error
 	// RecordSnapshotSent stamps the instant the sync path sent the
 	// workload a snapshot. The sync path is its only caller.
 	RecordSnapshotSent(ctx context.Context, id identity.WorkloadID, at time.Time) error

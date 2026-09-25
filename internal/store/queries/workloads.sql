@@ -95,9 +95,18 @@ UPDATE workloads
 SET sync_state = $2, sync_error = $3, last_seen_at = $4
 WHERE id = $1;
 
+-- An APPLIED acknowledgement: the version, the resulting state, and the
+-- instant, which only this and the failure below write (migration 00007).
 -- name: RecordWorkloadApplied :execrows
 UPDATE workloads
-SET applied_policy_version = $2, sync_state = $3, sync_error = '', last_seen_at = $4
+SET applied_policy_version = $2, sync_state = $3, sync_error = '', last_seen_at = $4, last_acked_at = $4
+WHERE id = $1;
+
+-- A FAILED acknowledgement: the degraded state, the agent's detail, and the
+-- instant. The applied version is untouched; the agent is still on it.
+-- name: RecordWorkloadApplyFailed :execrows
+UPDATE workloads
+SET sync_state = $2, sync_error = $3, last_seen_at = $4, last_apply_failed_at = $4
 WHERE id = $1;
 
 -- name: RecordWorkloadHeartbeatSeen :execrows
@@ -127,7 +136,7 @@ SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at,
        w.credential_serial, w.credential_expires_at, w.last_renewed_at,
        w.mode, w.facts, w.agent_version, w.agent_capabilities, w.last_seen_at,
        w.sync_state, w.applied_policy_version, w.sync_error, w.dropped_flow_records,
-       w.credential_renewal_error, w.last_snapshot_sent_at,
+       w.credential_renewal_error, w.last_snapshot_sent_at, w.last_acked_at, w.last_apply_failed_at,
        w.sync_rank::integer AS sync_rank, w.seen_key::timestamptz AS seen_key,
        p.version AS latest_version, p.rendered_at AS latest_rendered_at
 FROM (

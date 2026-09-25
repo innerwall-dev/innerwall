@@ -61,6 +61,7 @@ func (s *Store) ListWorkloadPage(ctx context.Context, q readmodel.WorkloadPageQu
 			Mode: r.Mode, Facts: r.Facts, AgentVersion: r.AgentVersion, AgentCapabilities: r.AgentCapabilities, LastSeenAt: r.LastSeenAt,
 			SyncState: r.SyncState, AppliedPolicyVersion: r.AppliedPolicyVersion, SyncError: r.SyncError, DroppedFlowRecords: r.DroppedFlowRecords,
 			CredentialRenewalError: r.CredentialRenewalError, LastSnapshotSentAt: r.LastSnapshotSentAt,
+			LastAckedAt: r.LastAckedAt, LastApplyFailedAt: r.LastApplyFailedAt,
 		}
 		w, err := workloadFromRow(&base, children.labels[r.ID], children.addrs[r.ID])
 		if err != nil {

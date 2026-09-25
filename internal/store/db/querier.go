@@ -163,7 +163,12 @@ type Querier interface {
 	RecordOperatorTokenUse(ctx context.Context, arg RecordOperatorTokenUseParams) error
 	RecordProvisioningTokenUse(ctx context.Context, arg RecordProvisioningTokenUseParams) error
 	RecordWorkloadAgent(ctx context.Context, arg RecordWorkloadAgentParams) (int64, error)
+	// An APPLIED acknowledgement: the version, the resulting state, and the
+	// instant, which only this and the failure below write (migration 00007).
 	RecordWorkloadApplied(ctx context.Context, arg RecordWorkloadAppliedParams) (int64, error)
+	// A FAILED acknowledgement: the degraded state, the agent's detail, and the
+	// instant. The applied version is untouched; the agent is still on it.
+	RecordWorkloadApplyFailed(ctx context.Context, arg RecordWorkloadApplyFailedParams) (int64, error)
 	RecordWorkloadHeartbeat(ctx context.Context, arg RecordWorkloadHeartbeatParams) (int64, error)
 	RecordWorkloadHeartbeatSeen(ctx context.Context, arg RecordWorkloadHeartbeatSeenParams) (int64, error)
 	RecordWorkloadInventory(ctx context.Context, arg RecordWorkloadInventoryParams) (int64, error)

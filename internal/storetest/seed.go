@@ -198,7 +198,7 @@ func Seed(ctx context.Context, s *store.Store, now time.Time) (*Fleet, error) {
 	if err := s.RecordAgent(ctx, f.DB, registry.AgentInfo{Version: "0.3.0", Capabilities: []string{"nftables", "conntrack"}}, 0, f.Now.Add(-5*time.Minute)); err != nil {
 		return nil, err
 	}
-	if err := s.SetSyncState(ctx, f.DB, innerwallv1.SyncState_SYNC_STATE_DEGRADED, "apply refused: set element exceeds the table's size", f.Now.Add(-5*time.Minute)); err != nil {
+	if err := s.RecordApplyFailed(ctx, f.DB, "apply refused: set element exceeds the table's size", f.Now.Add(-5*time.Minute)); err != nil {
 		return nil, err
 	}
 	if err := s.RecordHeartbeat(ctx, f.DB, 42, "renewal refused: authority unreachable", f.Now.Add(-5*time.Minute)); err != nil {

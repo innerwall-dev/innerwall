@@ -131,7 +131,7 @@ func (q *Queries) DeleteWorkloadListeningServices(ctx context.Context, workloadI
 }
 
 const getWorkload = `-- name: GetWorkload :one
-SELECT id, region_id, provisioning_token_id, hostname, enrolled_at, credential_serial, credential_expires_at, last_renewed_at, mode, facts, agent_version, agent_capabilities, last_seen_at, sync_state, applied_policy_version, sync_error, dropped_flow_records, credential_renewal_error, last_snapshot_sent_at FROM workloads
+SELECT id, region_id, provisioning_token_id, hostname, enrolled_at, credential_serial, credential_expires_at, last_renewed_at, mode, facts, agent_version, agent_capabilities, last_seen_at, sync_state, applied_policy_version, sync_error, dropped_flow_records, credential_renewal_error, last_snapshot_sent_at, last_acked_at, last_apply_failed_at FROM workloads
 WHERE id = $1
 `
 
@@ -158,12 +158,14 @@ func (q *Queries) GetWorkload(ctx context.Context, id uuid.UUID) (Workload, erro
 		&i.DroppedFlowRecords,
 		&i.CredentialRenewalError,
 		&i.LastSnapshotSentAt,
+		&i.LastAckedAt,
+		&i.LastApplyFailedAt,
 	)
 	return i, err
 }
 
 const getWorkloadWithPolicy = `-- name: GetWorkloadWithPolicy :one
-SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at, w.credential_serial, w.credential_expires_at, w.last_renewed_at, w.mode, w.facts, w.agent_version, w.agent_capabilities, w.last_seen_at, w.sync_state, w.applied_policy_version, w.sync_error, w.dropped_flow_records, w.credential_renewal_error, w.last_snapshot_sent_at, p.version AS latest_version, p.rendered_at AS latest_rendered_at
+SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at, w.credential_serial, w.credential_expires_at, w.last_renewed_at, w.mode, w.facts, w.agent_version, w.agent_capabilities, w.last_seen_at, w.sync_state, w.applied_policy_version, w.sync_error, w.dropped_flow_records, w.credential_renewal_error, w.last_snapshot_sent_at, w.last_acked_at, w.last_apply_failed_at, p.version AS latest_version, p.rendered_at AS latest_rendered_at
 FROM workloads w
 LEFT JOIN workload_policies p ON p.workload_id = w.id
 WHERE w.id = $1
@@ -199,6 +201,8 @@ func (q *Queries) GetWorkloadWithPolicy(ctx context.Context, id uuid.UUID) (GetW
 		&i.Workload.DroppedFlowRecords,
 		&i.Workload.CredentialRenewalError,
 		&i.Workload.LastSnapshotSentAt,
+		&i.Workload.LastAckedAt,
+		&i.Workload.LastApplyFailedAt,
 		&i.LatestVersion,
 		&i.LatestRenderedAt,
 	)
@@ -430,11 +434,11 @@ SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at,
        w.credential_serial, w.credential_expires_at, w.last_renewed_at,
        w.mode, w.facts, w.agent_version, w.agent_capabilities, w.last_seen_at,
        w.sync_state, w.applied_policy_version, w.sync_error, w.dropped_flow_records,
-       w.credential_renewal_error, w.last_snapshot_sent_at,
+       w.credential_renewal_error, w.last_snapshot_sent_at, w.last_acked_at, w.last_apply_failed_at,
        w.sync_rank::integer AS sync_rank, w.seen_key::timestamptz AS seen_key,
        p.version AS latest_version, p.rendered_at AS latest_rendered_at
 FROM (
-    SELECT workloads.id, workloads.region_id, workloads.provisioning_token_id, workloads.hostname, workloads.enrolled_at, workloads.credential_serial, workloads.credential_expires_at, workloads.last_renewed_at, workloads.mode, workloads.facts, workloads.agent_version, workloads.agent_capabilities, workloads.last_seen_at, workloads.sync_state, workloads.applied_policy_version, workloads.sync_error, workloads.dropped_flow_records, workloads.credential_renewal_error, workloads.last_snapshot_sent_at,
+    SELECT workloads.id, workloads.region_id, workloads.provisioning_token_id, workloads.hostname, workloads.enrolled_at, workloads.credential_serial, workloads.credential_expires_at, workloads.last_renewed_at, workloads.mode, workloads.facts, workloads.agent_version, workloads.agent_capabilities, workloads.last_seen_at, workloads.sync_state, workloads.applied_policy_version, workloads.sync_error, workloads.dropped_flow_records, workloads.credential_renewal_error, workloads.last_snapshot_sent_at, workloads.last_acked_at, workloads.last_apply_failed_at,
            CASE workloads.sync_state WHEN 3 THEN 0 WHEN 4 THEN 1 WHEN 2 THEN 2 WHEN 1 THEN 3 ELSE 4 END AS sync_rank,
            coalesce(workloads.last_seen_at, '1970-01-01 00:00:00+00'::timestamptz) AS seen_key
     FROM workloads
@@ -481,6 +485,8 @@ type ListWorkloadPageRow struct {
 	DroppedFlowRecords     int64
 	CredentialRenewalError string
 	LastSnapshotSentAt     *time.Time
+	LastAckedAt            *time.Time
+	LastApplyFailedAt      *time.Time
 	SyncRank               int32
 	SeenKey                time.Time
 	LatestVersion          pgtype.Int8
@@ -533,6 +539,8 @@ func (q *Queries) ListWorkloadPage(ctx context.Context, arg ListWorkloadPagePara
 			&i.DroppedFlowRecords,
 			&i.CredentialRenewalError,
 			&i.LastSnapshotSentAt,
+			&i.LastAckedAt,
+			&i.LastApplyFailedAt,
 			&i.SyncRank,
 			&i.SeenKey,
 			&i.LatestVersion,
@@ -550,7 +558,7 @@ func (q *Queries) ListWorkloadPage(ctx context.Context, arg ListWorkloadPagePara
 
 const listWorkloads = `-- name: ListWorkloads :many
 
-SELECT id, region_id, provisioning_token_id, hostname, enrolled_at, credential_serial, credential_expires_at, last_renewed_at, mode, facts, agent_version, agent_capabilities, last_seen_at, sync_state, applied_policy_version, sync_error, dropped_flow_records, credential_renewal_error, last_snapshot_sent_at FROM workloads
+SELECT id, region_id, provisioning_token_id, hostname, enrolled_at, credential_serial, credential_expires_at, last_renewed_at, mode, facts, agent_version, agent_capabilities, last_seen_at, sync_state, applied_policy_version, sync_error, dropped_flow_records, credential_renewal_error, last_snapshot_sent_at, last_acked_at, last_apply_failed_at FROM workloads
 ORDER BY enrolled_at, id
 `
 
@@ -584,6 +592,8 @@ func (q *Queries) ListWorkloads(ctx context.Context) ([]Workload, error) {
 			&i.DroppedFlowRecords,
 			&i.CredentialRenewalError,
 			&i.LastSnapshotSentAt,
+			&i.LastAckedAt,
+			&i.LastApplyFailedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -625,7 +635,7 @@ func (q *Queries) RecordWorkloadAgent(ctx context.Context, arg RecordWorkloadAge
 
 const recordWorkloadApplied = `-- name: RecordWorkloadApplied :execrows
 UPDATE workloads
-SET applied_policy_version = $2, sync_state = $3, sync_error = '', last_seen_at = $4
+SET applied_policy_version = $2, sync_state = $3, sync_error = '', last_seen_at = $4, last_acked_at = $4
 WHERE id = $1
 `
 
@@ -636,11 +646,41 @@ type RecordWorkloadAppliedParams struct {
 	LastSeenAt           *time.Time
 }
 
+// An APPLIED acknowledgement: the version, the resulting state, and the
+// instant, which only this and the failure below write (migration 00007).
 func (q *Queries) RecordWorkloadApplied(ctx context.Context, arg RecordWorkloadAppliedParams) (int64, error) {
 	result, err := q.db.Exec(ctx, recordWorkloadApplied,
 		arg.ID,
 		arg.AppliedPolicyVersion,
 		arg.SyncState,
+		arg.LastSeenAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const recordWorkloadApplyFailed = `-- name: RecordWorkloadApplyFailed :execrows
+UPDATE workloads
+SET sync_state = $2, sync_error = $3, last_seen_at = $4, last_apply_failed_at = $4
+WHERE id = $1
+`
+
+type RecordWorkloadApplyFailedParams struct {
+	ID         uuid.UUID
+	SyncState  int32
+	SyncError  string
+	LastSeenAt *time.Time
+}
+
+// A FAILED acknowledgement: the degraded state, the agent's detail, and the
+// instant. The applied version is untouched; the agent is still on it.
+func (q *Queries) RecordWorkloadApplyFailed(ctx context.Context, arg RecordWorkloadApplyFailedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, recordWorkloadApplyFailed,
+		arg.ID,
+		arg.SyncState,
+		arg.SyncError,
 		arg.LastSeenAt,
 	)
 	if err != nil {

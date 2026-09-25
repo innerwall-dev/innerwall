@@ -311,9 +311,10 @@ func (s *Server) handleMessage(ctx context.Context, log *slog.Logger, sess *sess
 	}
 }
 
-// handleAck records an acknowledgement. APPLIED moves the workload to
-// SYNCED when it names the tip of what was sent and PENDING while more is
-// in flight. FAILED records DEGRADED with the agent's detail and answers
+// handleAck records an acknowledgement and its instant. APPLIED moves the
+// workload to SYNCED when it names the tip of what was sent and PENDING
+// while more is in flight. FAILED records DEGRADED with the agent's
+// detail and answers
 // with a fresh snapshot of the current version, never a retried delta
 // (ADR-0015).
 func (s *Server) handleAck(ctx context.Context, log *slog.Logger, sess *session, ack *innerwallv1.PolicyAck, now time.Time) error {
@@ -333,8 +334,8 @@ func (s *Server) handleAck(ctx context.Context, log *slog.Logger, sess *session,
 		return nil
 	case innerwallv1.AckStatus_ACK_STATUS_FAILED:
 		log.Error("policy apply failed on agent", "version", ack.GetVersion(), "detail", ack.GetErrorDetail())
-		if err := s.registry.SetSyncState(ctx, sess.id, innerwallv1.SyncState_SYNC_STATE_DEGRADED, ack.GetErrorDetail(), now); err != nil {
-			return status.Error(codes.Internal, "recording sync state")
+		if err := s.registry.RecordApplyFailed(ctx, sess.id, ack.GetErrorDetail(), now); err != nil {
+			return status.Error(codes.Internal, "recording failed apply")
 		}
 		sess.mu.Lock()
 		stale := ack.GetVersion() <= sess.recovery

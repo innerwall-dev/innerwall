@@ -129,6 +129,8 @@ func runWorkloadStatus(ctx context.Context, args []string) error {
 	fmt.Printf("latest version  %d\n", latest)
 	fmt.Printf("last seen       %s\n", ago(wl.LastSeenAt, now))
 	fmt.Printf("last snapshot   %s\n", ago(wl.LastSnapshotSentAt, now))
+	fmt.Printf("last ack        %s\n", ago(wl.LastAckedAt, now))
+	fmt.Printf("apply failed    %s\n", ago(wl.LastApplyFailedAt, now))
 	fmt.Printf("enrolled        %s\n", wl.EnrolledAt.UTC().Format(time.RFC3339))
 	fmt.Printf("credential      expires %s\n", wl.CredentialExpiresAt.UTC().Format(time.RFC3339))
 	fmt.Printf("agent           %s\n", wl.Agent.Version)

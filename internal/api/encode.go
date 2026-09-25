@@ -254,6 +254,10 @@ type syncJSON struct {
 	Error            string  `json:"error"`
 	// LastSnapshotSentAt is when the sync path last sent a snapshot.
 	LastSnapshotSentAt *string `json:"last_snapshot_sent_at"`
+	// LastAckedAt and LastApplyFailedAt are when the agent last
+	// acknowledged an applied version and last reported a failed apply.
+	LastAckedAt       *string `json:"last_acked_at"`
+	LastApplyFailedAt *string `json:"last_apply_failed_at"`
 }
 
 type credentialJSON struct {
@@ -298,7 +302,8 @@ func workloadJSON(w *readmodel.Workload) workloadResponse {
 		Agent:             agentJSON{Version: w.Agent.Version, Capabilities: w.Agent.Capabilities},
 		ListeningServices: make([]listeningServiceJSON, 0, len(w.ListeningServices)),
 		Sync: syncJSON{State: readmodel.SyncStateName(w.Sync.State), AppliedVersion: w.Sync.AppliedVersion, LatestVersion: w.Sync.LatestVersion,
-			LatestRenderedAt: optionalTimestamp(w.Sync.LatestRenderedAt), Error: w.Sync.Error, LastSnapshotSentAt: optionalTimestamp(w.Sync.LastSnapshotSentAt)},
+			LatestRenderedAt: optionalTimestamp(w.Sync.LatestRenderedAt), Error: w.Sync.Error, LastSnapshotSentAt: optionalTimestamp(w.Sync.LastSnapshotSentAt),
+			LastAckedAt: optionalTimestamp(w.Sync.LastAckedAt), LastApplyFailedAt: optionalTimestamp(w.Sync.LastApplyFailedAt)},
 		Health: healthJSON{
 			LastSeenAt: optionalTimestamp(w.Health.LastSeenAt),
 			Credential: credentialJSON{State: string(w.Health.Credential.State), ExpiresAt: timestamp(w.Health.Credential.ExpiresAt),
