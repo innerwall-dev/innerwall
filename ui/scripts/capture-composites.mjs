@@ -6,10 +6,11 @@
 //
 // It drives a running control plane through its own console, logged in
 // with the operator password, at 1440x900 and twice the pixel density.
-// Two control planes are expected: one serving the seeded fleet, one
-// serving an empty database for the fresh-install states. For example, with a Postgres at $DB:
+// Two control planes are expected: one serving the seeded fleet and the
+// review estate, one serving an empty database for the fresh-install
+// states. For example, with a Postgres at $DB:
 //
-//   innerwall dev seed --database-url $DB/seeded
+//   innerwall dev seed --database-url $DB/seeded --estate
 //   innerwall serve --database-url $DB/seeded --gateway-advertise-address localhost:8443 ...
 //   innerwall serve --database-url $DB/fresh --operator-listen :8090 --listen :8453 ...
 //   node ui/scripts/capture-composites.mjs --design <package>/project/shots
@@ -67,6 +68,45 @@ const themeKey = "innerwall.console.theme";
 // A scene is one screen state: where it is, how to reach it, and the
 // design shot it answers to (null when the design has none).
 const scenes = [
+	{
+		name: "07-flow-map-graph",
+		design: "07-flow-map-graph",
+		cp: "seeded",
+		path: "/map?label=env%3Dprod&sel=e%3Ag%3Ametrics-collector%3Eg%3Acheckout",
+		ready: '[data-testid="flow-graph"] .react-flow__edge',
+	},
+	{
+		name: "08-flow-map-matrix",
+		design: "08-flow-map-matrix",
+		cp: "seeded",
+		path: "/map?label=env%3Dprod&take=matrix&sel=e%3Ag%3Ametrics-collector%3Eg%3Acheckout",
+		ready: '[data-testid="flow-matrix"]',
+	},
+	{
+		name: "flow-map-node-selected",
+		design: null,
+		cp: "seeded",
+		path: "/map?label=env%3Dprod&sel=n%3Ag%3Acheckout",
+		ready: '[data-testid="flow-graph"] .react-flow__edge',
+	},
+	{
+		name: "flow-map-pair-flows",
+		design: null,
+		cp: "seeded",
+		path: "/map?label=env%3Dprod&take=matrix&sel=e%3Aunknown%3Eg%3Aauth",
+		ready: '[data-testid="flow-matrix"]',
+		act: async (page) => {
+			await page.locator('aside button[aria-expanded="false"]').first().click();
+			await page.waitForSelector('[data-testid="pair-flows"]');
+		},
+	},
+	{
+		name: "flow-map-no-flows-in-range",
+		design: null,
+		cp: "seeded",
+		path: "/map?label=app%3Dsearch&label=tier%3Dinfra&range=1h",
+		ready: "text=No flows in this range",
+	},
 	{
 		name: "09-workload-detail-degraded-flows",
 		design: "09-workload-detail-degraded-flows",
