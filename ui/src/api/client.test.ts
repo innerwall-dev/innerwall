@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { ProblemError, request } from "./client";
-import { ProblemType } from "./types";
+import { ProblemType } from "./schema";
 
 describe("request", () => {
 	it("throws the surface's problem document with its retry interval", async () => {

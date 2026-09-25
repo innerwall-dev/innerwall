@@ -8,8 +8,8 @@ import {
 	useState,
 } from "react";
 import { ProblemError } from "@/api/client";
+import type { Me } from "@/api/schema";
 import { createSession, deleteSession, getMe } from "@/api/session";
-import type { Me } from "@/api/types";
 
 // The console's view of the one operator principal (ADR-0021). It is
 // resolved once on load from the identity endpoint; a 401 anywhere means

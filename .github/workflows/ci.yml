@@ -143,6 +143,14 @@ jobs:
       - uses: sqlc-dev/setup-sqlc@v4
         with:
           sqlc-version: ${{ env.SQLC_VERSION }}
+      # The console's types are generated from api/openapi.yaml by the
+      # generator pinned in ui/package-lock.json.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm --prefix ui ci --no-audit --no-fund
       - run: scripts/check-drift.sh
 
   proto:

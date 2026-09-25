@@ -1,7 +1,7 @@
 import { type FormEvent, useEffect, useId, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router";
 import { ProblemError } from "@/api/client";
-import { ProblemType } from "@/api/types";
+import { ProblemType } from "@/api/schema";
 import { useSession } from "@/auth/SessionProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
