@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -43,6 +44,27 @@ func (r renderer) Render(ctx context.Context) error {
 	return err
 }
 
+// checkAdvertisedAddress accepts an empty address (none configured) or a
+// host:port with a non-empty host and a port in range, the form the
+// agent's --server takes. It is the operator's statement of where agents
+// reach the gateway; nothing here resolves or probes it.
+func checkAdvertisedAddress(addr string) error {
+	if addr == "" {
+		return nil
+	}
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("want host:port: %w", err)
+	}
+	if host == "" {
+		return errors.New("want host:port: the host is empty")
+	}
+	if n, err := strconv.ParseUint(port, 10, 16); err != nil || n == 0 {
+		return fmt.Errorf("want host:port: port %q is not in 1-65535", port)
+	}
+	return nil
+}
+
 // consoleServed reports whether the embedded tree holds a console entry
 // point, for the startup log.
 func consoleServed(tree fs.FS) bool {
@@ -60,6 +82,7 @@ func runServe(ctx context.Context, args []string) error {
 	operatorTLSCert := fs.String("operator-tls-cert", "", "operator listener certificate PEM (with --operator-tls-key; default: a self-signed certificate persisted in <ca-dir>)")
 	operatorTLSKey := fs.String("operator-tls-key", "", "operator listener key PEM (with --operator-tls-cert)")
 	site := fs.String("site", envOr(envSite, ""), "site label the console header shows (default $"+envSite+")")
+	gatewayAddr := fs.String("gateway-advertise-address", envOr(envGateway, ""), "host:port agents reach the agent gateway at, shown in the console's enroll command; unset leaves the console's placeholder (default $"+envGateway+")")
 	caDir := fs.String("ca-dir", envOr(envCADir, defaultCADir), "directory holding the signing authority (see `innerwall ca init`)")
 	tlsCert := fs.String("tls-cert", "", "server certificate PEM (default <ca-dir>/server.crt)")
 	tlsKey := fs.String("tls-key", "", "server key PEM (default <ca-dir>/server.key)")
@@ -72,6 +95,9 @@ func runServe(ctx context.Context, args []string) error {
 	flowRetentionInterval := fs.Duration("flow-retention-interval", flowstore.DefaultRetentionInterval, "period between flow retention runs")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if err := checkAdvertisedAddress(*gatewayAddr); err != nil {
+		return fmt.Errorf("--gateway-advertise-address: %w", err)
 	}
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
@@ -140,7 +166,7 @@ func runServe(ctx context.Context, args []string) error {
 	// line's authoring commands call (ADR-0007 as amended).
 	authoring := &policy.Authoring{Store: st, Renderer: renderer{engine}}
 	fleetSvc := &fleet.Service{Store: st, Engine: engine, Reads: reads, Directives: st}
-	apiSrv := api.New(api.Deps{Operators: operators, Reads: reads, Authoring: authoring, Fleet: fleetSvc, Enroll: svc, Site: *site, Console: console, Log: log.With("service", "api")})
+	apiSrv := api.New(api.Deps{Operators: operators, Reads: reads, Authoring: authoring, Fleet: fleetSvc, Enroll: svc, Site: *site, GatewayAddress: *gatewayAddr, Console: console, Log: log.With("service", "api")})
 	httpServer := api.NewHTTPServer(api.ServerTLSConfig(operatorCert), apiSrv.Handler())
 	srv := gateway.New(gateway.Deps{
 		Enroll:   svc,
@@ -175,7 +201,7 @@ func runServe(ctx context.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("listening on %s: %w", *operatorListen, err)
 	}
-	log.Info("control plane serving", "version", version, "listen", lis.Addr().String(), "operator_listen", operatorLis.Addr().String(), "site", *site, "leaf_ttl", leafTTL.String(), "flow_retention", flowRetention.String(), "console", consoleServed(console))
+	log.Info("control plane serving", "version", version, "listen", lis.Addr().String(), "operator_listen", operatorLis.Addr().String(), "site", *site, "gateway_advertise_address", *gatewayAddr, "leaf_ttl", leafTTL.String(), "flow_retention", flowRetention.String(), "console", consoleServed(console))
 
 	errc := make(chan error, 2)
 	go func() { errc <- grpcServer.Serve(lis) }()

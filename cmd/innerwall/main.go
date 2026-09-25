@@ -52,6 +52,7 @@ const (
 	envDatabaseURL = "INNERWALL_DATABASE_URL"
 	envCADir       = "INNERWALL_CA_DIR"
 	envSite        = "INNERWALL_SITE"
+	envGateway     = "INNERWALL_GATEWAY_ADVERTISE_ADDRESS"
 
 	defaultCADir          = "/var/lib/innerwall/ca"
 	defaultListen         = ":8443"

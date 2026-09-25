@@ -45,6 +45,11 @@ type Deps struct {
 	// Site is the label the console header shows; empty when none is
 	// configured.
 	Site string
+	// GatewayAddress is the host:port agents reach the agent gateway at,
+	// as the operator configured it for the console's enroll command;
+	// empty when none is configured. It is never derived from the bind
+	// address or the host's interfaces.
+	GatewayAddress string
 	// Console is the built console tree served at every path outside the
 	// API prefix; nil when this build carries none (ADR-0008).
 	Console fs.FS
@@ -68,6 +73,7 @@ type Server struct {
 	fleet     *fleet.Service
 	enroll    *enroll.Service
 	site      string
+	gateway   string
 	console   fs.FS
 	auth      *Authenticator
 	throttle  *Throttle
@@ -90,6 +96,7 @@ func New(d Deps) *Server {
 		fleet:     d.Fleet,
 		enroll:    d.Enroll,
 		site:      d.Site,
+		gateway:   d.GatewayAddress,
 		console:   d.Console,
 		auth:      &Authenticator{Operators: d.Operators, Log: d.Log},
 		throttle:  &Throttle{Limit: d.LoginAttempts, Window: d.LoginWindow, Now: d.Now},
@@ -290,15 +297,17 @@ func NewHTTPServer(tlsCfg *tls.Config, handler http.Handler) *http.Server {
 
 // Me is the operator as the console sees it: the display name set with
 // the password (null until one is set, and the console renders a generic
-// fallback) and the site label configured on the control plane (empty
-// when none is).
+// fallback), the site label configured on the control plane (empty when
+// none is), and the advertised agent gateway address (null when none is
+// configured, and the console keeps its placeholder).
 type Me struct {
-	DisplayName *string `json:"display_name"`
-	Site        string  `json:"site"`
+	DisplayName    *string `json:"display_name"`
+	Site           string  `json:"site"`
+	GatewayAddress *string `json:"gateway_address"`
 }
 
 func (s *Server) me(p *operator.Principal) Me {
-	me := Me{Site: s.site}
+	me := Me{Site: s.site, GatewayAddress: optionalString(s.gateway)}
 	if p != nil {
 		me.DisplayName = p.DisplayName
 	}
@@ -375,7 +384,8 @@ func (s *Server) deleteSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, struct{}{})
 }
 
-// getMe is GET /api/v1/me: the authenticated operator and the site label.
+// getMe is GET /api/v1/me: the authenticated operator, the site label,
+// and the advertised agent gateway address.
 func (s *Server) getMe(w http.ResponseWriter, r *http.Request) {
 	p, ok := PrincipalFromContext(r.Context())
 	if !ok {
