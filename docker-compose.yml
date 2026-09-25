@@ -10,7 +10,7 @@
 # innerwall-state volume; the certificate's fingerprint is logged), and
 # serves the agent gateway and the operator surface. Set the operator
 # password once with `docker compose exec innerwall /innerwall operator
-# set-password`. The console lands with a later milestone.
+# set-password`. The console is served on the operator surface.
 
 services:
   postgres:
@@ -39,6 +39,11 @@ services:
       # Postgres connection string for the control plane.
       INNERWALL_DATABASE_URL: postgres://innerwall:innerwall@postgres:5432/innerwall?sslmode=disable
       INNERWALL_CA_DIR: /var/lib/innerwall/ca
+      # The host:port agents reach the agent gateway at, as the console's
+      # enroll command prints it. The gateway is published on the host's
+      # port 8443 below, and the control plane's certificate names
+      # localhost, so an agent on the same host enrolls against this.
+      INNERWALL_GATEWAY_ADVERTISE_ADDRESS: localhost:8443
     volumes:
       - innerwall-state:/var/lib/innerwall
     ports:

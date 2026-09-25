@@ -163,7 +163,7 @@ function Rail({
 	onModeChanged: () => void;
 }) {
 	const [changing, setChanging] = useState(false);
-	const cred = credential(w);
+	const cred = credential(w, Date.now(), "rail");
 	const labels = labelPairs(w.labels);
 	const os = w.os;
 	return (

@@ -20,10 +20,12 @@ import (
 // enforcement suite.
 func runDev(ctx context.Context, args []string) error {
 	if len(args) == 0 || args[0] != "seed" {
-		return fmt.Errorf("usage: innerwall dev seed [--database-url URL]")
+		return fmt.Errorf("usage: innerwall dev seed [--database-url URL] [--estate] [--estate-extra N]")
 	}
 	fs := flag.NewFlagSet("innerwall dev seed", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
+	estate := fs.Bool("estate", false, "also load the review estate: the flow map's label groups, address groups, and traffic, a few hundred workloads")
+	extra := fs.Int("estate-extra", 0, "with --estate, this many more app groups of three workloads each, for reviewing the map at estate scale")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -46,6 +48,12 @@ func runDev(ctx context.Context, args []string) error {
 	f, err := storetest.Seed(ctx, st, now)
 	if err != nil {
 		return fmt.Errorf("seeding: %w", err)
+	}
+	if *estate {
+		if err := storetest.SeedEstate(ctx, st, f, *extra); err != nil {
+			return fmt.Errorf("seeding the estate: %w", err)
+		}
+		fmt.Printf("seeded the review estate (%d extra app groups)\n", *extra)
 	}
 	fmt.Printf("seeded fleet relative to %s: web-1 %s (enforced, synced), db-1 %s (simulation, degraded), cache-1 %s (visibility, offline); ruleset %q; address group %q\n",
 		now.Format(time.RFC3339), f.Web, f.DB, f.Cache, f.Ruleset.Name, f.Office.Name)

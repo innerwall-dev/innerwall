@@ -1,10 +1,11 @@
 import type { Workload } from "@/api/schema";
-import { ago, since } from "@/lib/format";
+import { ago, since, span } from "@/lib/format";
 
 // The fleet table's words for a workload's sync and credential, from the
 // workload object alone. Each note states only what a field holds: the
 // surface records when a version was rendered, not when it reached the
-// agent, and keeps an apply's error but not its instant.
+// agent, and when the agent last acknowledged an apply or reported a
+// failed one.
 
 // version prints a policy version; zero means none has been applied.
 export function version(v: number): string {
@@ -20,7 +21,9 @@ export function syncNote(w: Workload, now = Date.now()): string {
 					? `v${s.latest_version} failed`
 					: `v${s.applied_version} · v${s.latest_version} failed`;
 			}
-			return "apply failed";
+			return s.last_apply_failed_at
+				? `apply failed ${ago(s.last_apply_failed_at, now)}`
+				: "apply failed";
 		case "offline":
 			return w.health.last_seen_at
 				? `no stream for ${since(w.health.last_seen_at, now)}`
@@ -46,12 +49,27 @@ export const credentialTone: Record<CredentialTone, string> = {
 	bad: "text-cred-expired",
 };
 
+// renewsAt is when the agent is due to renew its credential, by the
+// renewal rule the agent follows (ADR-0016, decision 4): once less than a
+// third of the lifetime remains, so at the issue instant plus two thirds
+// of the lifetime. The credential was issued at its last renewal, or at
+// enrollment before any. The agent renews at a jittered point in that
+// last third; the jitter is not modelled, so this is when renewal becomes
+// due, not the instant it will happen.
+export function renewsAt(w: Workload): number {
+	const c = w.health.credential;
+	const issued = Date.parse(c.last_renewed_at ?? w.enrolled_at);
+	const expires = Date.parse(c.expires_at);
+	return issued + ((expires - issued) * 2) / 3;
+}
+
 // credential is the column's text and tone. A renewing credential shows
-// how long it has before expiry: the surface holds the expiry, not when
-// the agent will next renew.
+// how long until its renewal is due; the rail's longer form reads "renews
+// in 9h" where the table's reads "renews 9h".
 export function credential(
 	w: Workload,
 	now = Date.now(),
+	form: "table" | "rail" = "table",
 ): { text: string; tone: CredentialTone } {
 	const c = w.health.credential;
 	switch (c.state) {
@@ -59,11 +77,14 @@ export function credential(
 			return { text: `expired ${ago(c.expires_at, now)}`, tone: "bad" };
 		case "renewal-failed":
 			return { text: "renewal failed · retrying", tone: "warn" };
-		default:
+		default: {
+			const due = renewsAt(w) - now;
+			if (due <= 0) return { text: "renewal due", tone: "ok" };
 			return {
-				text: `renews · expires ${since(c.expires_at, now)}`,
+				text: `renews ${form === "rail" ? "in " : ""}${span(due)}`,
 				tone: "ok",
 			};
+		}
 	}
 }
 
