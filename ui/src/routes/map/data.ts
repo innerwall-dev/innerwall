@@ -1,24 +1,15 @@
 import { getRollup, listAddressGroups, listWorkloads } from "@/api/fleet";
 import type { AddressGroup, Verdict, Workload } from "@/api/schema";
+import { type RangeKey, ranges } from "@/components/RangeControl";
 import type { RollupByDecision } from "./model";
 import { precedence } from "./model";
 
-// The time ranges the map offers. Stored windows are what the rollup
-// counts, so a range covers the windows that lie inside it and its
-// honest extent is the rollup's effective bounds, not the range asked.
-export const ranges = {
-	"1h": 3_600_000,
-	"6h": 6 * 3_600_000,
-	"24h": 24 * 3_600_000,
-	"7d": 7 * 24 * 3_600_000,
-	"30d": 30 * 24 * 3_600_000,
-} as const;
-export type RangeKey = keyof typeof ranges;
-export const defaultRange: RangeKey = "24h";
-
-export function isRange(s: string | null): s is RangeKey {
-	return s !== null && Object.hasOwn(ranges, s);
-}
+export {
+	defaultRange,
+	isRange,
+	type RangeKey,
+	ranges,
+} from "@/components/RangeControl";
 
 // The most groups one rollup returns, and the page size of the walk of
 // the workloads in scope: each the surface's maximum.

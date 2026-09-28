@@ -2,6 +2,7 @@ import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { Centered, EmptyState } from "@/components/EmptyState";
 import { LoadingRow, ProblemNotice } from "@/components/Problem";
+import { RangeControl } from "@/components/RangeControl";
 import { Button } from "@/components/ui/button";
 import { count, headline } from "@/lib/format";
 import { useResource } from "@/lib/resource";
@@ -14,7 +15,6 @@ import {
 	loadMap,
 	type MapData,
 	type RangeKey,
-	ranges,
 	rollupLimit,
 } from "./map/data";
 import { Graph } from "./map/Graph";
@@ -129,9 +129,7 @@ function MapView({
 	);
 	const layout = useMemo(() => layoutModel(model), [model]);
 	const selection = resolveSelection(model, parseSelection(params.get("sel")));
-	const rangeControl = (
-		<RangeControl model={model} range={range} update={update} />
-	);
+	const rangeControl = <MapRange model={model} range={range} update={update} />;
 	const select = useCallback(
 		(s: Selection) =>
 			update((p) => {
@@ -344,38 +342,8 @@ function Toolbar({
 	);
 }
 
-const utc = new Intl.DateTimeFormat("en-GB", {
-	month: "2-digit",
-	day: "2-digit",
-	hour: "2-digit",
-	minute: "2-digit",
-	hourCycle: "h23",
-	timeZone: "UTC",
-});
-
-function parts(iso: string): Record<string, string> {
-	return Object.fromEntries(
-		utc.formatToParts(new Date(iso)).map((p) => [p.type, p.value]),
-	);
-}
-
-// extent is the span of windows a rollup counted, in UTC: "18:20 → 19:25
-// UTC" within one day, with the dates when it spans more than one.
-export function extent(from: string, to: string): string {
-	const a = parts(from);
-	const b = parts(to);
-	const sameDay = a.month === b.month && a.day === b.day;
-	const at = (p: Record<string, string>) =>
-		sameDay
-			? `${p.hour}:${p.minute}`
-			: `${p.month}-${p.day} ${p.hour}:${p.minute}`;
-	return `windows ${at(a)} → ${at(b)} UTC`;
-}
-
-// RangeControl picks the range and says what it covers. The rollup
-// counts whole stored windows inside the range, so the extent shown is
-// the first and last window actually counted, never the range asked.
-function RangeControl({
+// MapRange is the shared range control over the map's own extent.
+function MapRange({
 	model,
 	range,
 	update,
@@ -385,37 +353,19 @@ function RangeControl({
 	update: (change: (p: URLSearchParams) => void) => void;
 }) {
 	return (
-		<div className="flex items-center gap-2">
-			<label className={cn(chip, "flex items-center gap-1")}>
-				<span className="font-sans text-foreground-tertiary">last</span>
-				<select
-					aria-label="Time range"
-					value={range}
-					onChange={(ev) =>
-						update((p) => {
-							if (ev.target.value === defaultRange) p.delete("range");
-							else p.set("range", ev.target.value);
-						})
-					}
-					className="cursor-pointer appearance-none bg-transparent font-mono text-[12px] text-foreground-secondary focus:outline-none"
-				>
-					{Object.keys(ranges).map((r) => (
-						<option key={r} value={r}>
-							{r}
-						</option>
-					))}
-				</select>
-			</label>
-			<span
-				className="font-mono text-[11px] text-muted-foreground"
-				data-testid="map-extent"
-				title="Flows are stored in reporting windows; the map counts the windows that lie wholly inside the range."
-			>
-				{model.effectiveFrom && model.effectiveTo
-					? extent(model.effectiveFrom, model.effectiveTo)
-					: "no windows in range"}
-			</span>
-		</div>
+		<RangeControl
+			range={range}
+			effectiveFrom={model.effectiveFrom}
+			effectiveTo={model.effectiveTo}
+			testId="map-extent"
+			what="the map's counts"
+			onChange={(r) =>
+				update((p) => {
+					if (r === defaultRange) p.delete("range");
+					else p.set("range", r);
+				})
+			}
+		/>
 	);
 }
 
