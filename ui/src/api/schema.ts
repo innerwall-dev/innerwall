@@ -29,6 +29,18 @@ export type AddressGroup = Schemas["AddressGroup"];
 export type RollupGrouping = NonNullable<
 	operations["getFlowsRollup"]["parameters"]["query"]
 >["group_by"];
+export type Selector = Schemas["Selector"];
+export type Rule = Schemas["Rule"];
+// A persisted ruleset's rules are persisted rules; the generated type
+// intersects the authored and persisted arrays, and TypeScript reads an
+// element of that intersection as the authored form alone.
+export type Ruleset = Omit<Schemas["Ruleset"], "rules"> & { rules: Rule[] };
+export type RuleInput = Schemas["RuleInput"];
+export type Peer = Schemas["Peer"];
+export type Entry = Schemas["Entry"];
+export type Service = Schemas["Service"];
+export type SelectorPreview =
+	operations["previewSelector"]["responses"][200]["content"]["application/json"];
 export type ModeChangeRequest = Schemas["ModeChangeRequest"];
 export type ModeChangeAck = Schemas["ModeChangeAck"];
 export type ResendSnapshotAck = Schemas["ResendSnapshotAck"];
@@ -56,6 +68,7 @@ export const ProblemType = {
 	invalidRequest: "urn:innerwall:problem:invalid-request",
 	invalidParameter: "urn:innerwall:problem:invalid-parameter",
 	matchCountMismatch: "urn:innerwall:problem:match-count-mismatch",
+	preconditionFailed: "urn:innerwall:problem:precondition-failed",
 	alreadyRevoked: "urn:innerwall:problem:already-revoked",
 	agentOffline: "urn:innerwall:problem:agent-offline",
 	validation: "urn:innerwall:problem:validation",
