@@ -447,6 +447,120 @@ func (q *Queries) RollupFlowsByDstService(ctx context.Context, arg RollupFlowsBy
 	return items, nil
 }
 
+const rollupFlowsByPeerService = `-- name: RollupFlowsByPeerService :many
+SELECT peer_kind, peer_key,
+       CAST((array_agg(peer_labels ORDER BY last_seen DESC))[1] AS jsonb) AS peer_labels,
+       dst_port, protocol,
+       count(DISTINCT workload_id)::bigint         AS workload_count,
+       count(*)::bigint                            AS flow_count,
+       sum(connection_count)::bigint               AS connection_count,
+       sum(byte_count)::bigint                     AS byte_count,
+       min(first_seen)::timestamptz                AS first_seen,
+       max(last_seen)::timestamptz                 AS last_seen,
+       CAST(min(min(window_start)) OVER () AS timestamptz) AS effective_from,
+       CAST(max(max(window_end)) OVER () AS timestamptz)   AS effective_to,
+       CAST(count(*) OVER () AS bigint)                     AS group_count,
+       CAST(sum(count(*)) OVER () AS bigint)                AS total_flow_count,
+       CAST(sum(sum(connection_count)) OVER () AS bigint)   AS total_connection_count,
+       CAST(sum(sum(byte_count)) OVER () AS bigint)         AS total_byte_count
+FROM flow_windows
+WHERE (cardinality($1::uuid[]) = 0 OR workload_id = ANY($1::uuid[]))
+  AND window_start >= $2
+  AND window_start < $3
+  AND ($4::integer = 0 OR decision = $4::integer)
+  AND ($5::integer = 0 OR direction = $5::integer)
+  AND ($6::integer = 0 OR (protocol = $6::integer AND dst_port = $7::integer))
+GROUP BY peer_kind, peer_key, dst_port, protocol
+ORDER BY CASE WHEN $8::text = 'recent' THEN max(last_seen) END DESC NULLS LAST,
+         sum(connection_count) DESC, peer_kind, peer_key, dst_port, protocol
+LIMIT $9
+`
+
+type RollupFlowsByPeerServiceParams struct {
+	WorkloadIds []uuid.UUID
+	Since       time.Time
+	Until       time.Time
+	Decision    int32
+	Direction   int32
+	Protocol    int32
+	DstPort     int32
+	OrderBy     string
+	GroupLimit  int32
+}
+
+type RollupFlowsByPeerServiceRow struct {
+	PeerKind             int32
+	PeerKey              string
+	PeerLabels           []byte
+	DstPort              int32
+	Protocol             int32
+	WorkloadCount        int64
+	FlowCount            int64
+	ConnectionCount      int64
+	ByteCount            int64
+	FirstSeen            time.Time
+	LastSeen             time.Time
+	EffectiveFrom        time.Time
+	EffectiveTo          time.Time
+	GroupCount           int64
+	TotalFlowCount       int64
+	TotalConnectionCount int64
+	TotalByteCount       int64
+}
+
+// Grouped by the resolved peer and the service it reached, across every
+// workload in scope, with the number of distinct workloads that saw it:
+// the rows of a simulation review (ADR-0019 decision 4(b)). The label
+// snapshot of a peer is the one stored with its most recently seen
+// record.
+func (q *Queries) RollupFlowsByPeerService(ctx context.Context, arg RollupFlowsByPeerServiceParams) ([]RollupFlowsByPeerServiceRow, error) {
+	rows, err := q.db.Query(ctx, rollupFlowsByPeerService,
+		arg.WorkloadIds,
+		arg.Since,
+		arg.Until,
+		arg.Decision,
+		arg.Direction,
+		arg.Protocol,
+		arg.DstPort,
+		arg.OrderBy,
+		arg.GroupLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RollupFlowsByPeerServiceRow{}
+	for rows.Next() {
+		var i RollupFlowsByPeerServiceRow
+		if err := rows.Scan(
+			&i.PeerKind,
+			&i.PeerKey,
+			&i.PeerLabels,
+			&i.DstPort,
+			&i.Protocol,
+			&i.WorkloadCount,
+			&i.FlowCount,
+			&i.ConnectionCount,
+			&i.ByteCount,
+			&i.FirstSeen,
+			&i.LastSeen,
+			&i.EffectiveFrom,
+			&i.EffectiveTo,
+			&i.GroupCount,
+			&i.TotalFlowCount,
+			&i.TotalConnectionCount,
+			&i.TotalByteCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const rollupFlowsByRule = `-- name: RollupFlowsByRule :many
 
 SELECT matched_rule_id,
@@ -514,7 +628,7 @@ type RollupFlowsByRuleRow struct {
 // comes first. The window bounds actually covered, the number of groups,
 // and the totals across every group ride on each row as window aggregates,
 // so a truncated result still says how it relates to the whole. The
-// decision-and-time and workload-and-time indexes serve all four.
+// decision-and-time and workload-and-time indexes serve all five.
 // Grouped by the resolved rule that admitted the traffic; records with no
 // matched rule form the group with the empty rule id.
 func (q *Queries) RollupFlowsByRule(ctx context.Context, arg RollupFlowsByRuleParams) ([]RollupFlowsByRuleRow, error) {

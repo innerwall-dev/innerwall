@@ -187,6 +187,12 @@ type Querier interface {
 	// Grouped by the reporting workload and the service reached on it: the
 	// cells of the matrix.
 	RollupFlowsByDstService(ctx context.Context, arg RollupFlowsByDstServiceParams) ([]RollupFlowsByDstServiceRow, error)
+	// Grouped by the resolved peer and the service it reached, across every
+	// workload in scope, with the number of distinct workloads that saw it:
+	// the rows of a simulation review (ADR-0019 decision 4(b)). The label
+	// snapshot of a peer is the one stored with its most recently seen
+	// record.
+	RollupFlowsByPeerService(ctx context.Context, arg RollupFlowsByPeerServiceParams) ([]RollupFlowsByPeerServiceRow, error)
 	// --- operator read model -----------------------------------------------------
 	//
 	// The rollups the operator surface and the command line issue (ADR-0007 as
@@ -200,7 +206,7 @@ type Querier interface {
 	// comes first. The window bounds actually covered, the number of groups,
 	// and the totals across every group ride on each row as window aggregates,
 	// so a truncated result still says how it relates to the whole. The
-	// decision-and-time and workload-and-time indexes serve all four.
+	// decision-and-time and workload-and-time indexes serve all five.
 	// Grouped by the resolved rule that admitted the traffic; records with no
 	// matched rule form the group with the empty rule id.
 	RollupFlowsByRule(ctx context.Context, arg RollupFlowsByRuleParams) ([]RollupFlowsByRuleRow, error)

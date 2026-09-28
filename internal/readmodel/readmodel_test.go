@@ -120,6 +120,32 @@ func TestRollupScopeAndKeys(t *testing.T) {
 		t.Fatalf("filters not passed through: %+v", q)
 	}
 
+	// Only peer,service carries a workload count; the other groupings
+	// name at most one workload in their keys and leave it nil.
+	if g.WorkloadCount != nil {
+		t.Fatalf("rule,peer group carries a workload count: %d", *g.WorkloadCount)
+	}
+	f.flows.Result = &flowstore.GroupResult{
+		Groups: []flowstore.Group{
+			{Peer: flowstore.Peer{Kind: flowstore.PeerAddressGroup, Key: f.group.ID.String()}, DstPort: 5432, Protocol: innerwallv1.Protocol_PROTOCOL_TCP, WorkloadCount: 2, FlowCount: 4, ConnectionCount: 9, FirstSeen: now.Add(-2 * time.Hour), LastSeen: now.Add(-time.Hour)},
+		},
+		EffectiveFrom: now.Add(-2 * time.Hour), EffectiveTo: now.Add(-55 * time.Minute), GroupCount: 1, FlowCount: 4, ConnectionCount: 9,
+	}
+	res, err = f.reader.Rollup(ctx, readmodel.RollupRequest{GroupBy: flowstore.GroupByPeerService, Verdict: innerwallv1.PolicyDecision_POLICY_DECISION_WOULD_BLOCK})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if q := f.flows.LastGroup; q.GroupBy != flowstore.GroupByPeerService {
+		t.Fatalf("store query = %+v", q)
+	}
+	ps := res.Groups[0]
+	if ps.Keys.Peer == nil || ps.Keys.Peer.Name != "office" || ps.Keys.Service == nil || *ps.Keys.Service != svc || ps.Keys.Rule != nil || ps.Keys.Src != nil || ps.Keys.Dst != nil {
+		t.Fatalf("peer,service keys = %+v", ps.Keys)
+	}
+	if ps.WorkloadCount == nil || *ps.WorkloadCount != 2 || ps.ConnectionCount != 9 {
+		t.Fatalf("peer,service group = %+v", ps)
+	}
+
 	// Refusals.
 	unknown := identity.FromUUID(uuid.New())
 	if _, err := f.reader.Rollup(ctx, readmodel.RollupRequest{GroupBy: flowstore.GroupByRule, Workload: &unknown}); !readmodel.IsUnknown(err) {

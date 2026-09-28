@@ -62,8 +62,8 @@ func newReadFixture(now time.Time) *readFixture {
 		Result: &flowstore.GroupResult{
 			Groups: []flowstore.Group{
 				{RuleID: ruleID, Peer: flowstore.Peer{Kind: flowstore.PeerWorkload, Key: web.String(), Labels: map[string]string{"role": "web", "env": "prod"}}, WorkloadID: db, FlowCount: 2, ConnectionCount: 240, ByteCount: 960_000, FirstSeen: now.Add(-2 * time.Hour), LastSeen: now.Add(-time.Hour)},
-				{Peer: flowstore.Peer{Kind: flowstore.PeerAddressGroup, Key: group.ID.String()}, WorkloadID: db, DstPort: 5432, Protocol: innerwallv1.Protocol_PROTOCOL_TCP, FlowCount: 2, ConnectionCount: 6, FirstSeen: now.Add(-2 * time.Hour), LastSeen: now.Add(-time.Hour)},
-				{Peer: flowstore.Peer{Kind: flowstore.PeerUnknown, Key: "198.51.100.7"}, WorkloadID: db, DstPort: 22, Protocol: innerwallv1.Protocol_PROTOCOL_TCP, FlowCount: 2, ConnectionCount: 18, FirstSeen: now.Add(-2 * time.Hour), LastSeen: now.Add(-time.Hour)},
+				{Peer: flowstore.Peer{Kind: flowstore.PeerAddressGroup, Key: group.ID.String()}, WorkloadID: db, DstPort: 5432, Protocol: innerwallv1.Protocol_PROTOCOL_TCP, WorkloadCount: 2, FlowCount: 2, ConnectionCount: 6, FirstSeen: now.Add(-2 * time.Hour), LastSeen: now.Add(-time.Hour)},
+				{Peer: flowstore.Peer{Kind: flowstore.PeerUnknown, Key: "198.51.100.7"}, WorkloadID: db, DstPort: 22, Protocol: innerwallv1.Protocol_PROTOCOL_TCP, WorkloadCount: 1, FlowCount: 2, ConnectionCount: 18, FirstSeen: now.Add(-2 * time.Hour), LastSeen: now.Add(-time.Hour)},
 			},
 			EffectiveFrom: now.Add(-2 * time.Hour), EffectiveTo: now.Add(-55 * time.Minute), GroupCount: 3, FlowCount: 6, ConnectionCount: 264, ByteCount: 963_600,
 		},
@@ -241,6 +241,22 @@ func TestRollupEndpoint(t *testing.T) {
 	resp, body = s.get(t, "/api/v1/flows/rollup?group_by=dst,service")
 	if resp.status != http.StatusOK || field(body, "groups.2.keys.service.protocol") != "tcp" || field(body, "groups.2.keys.service.port") != float64(22) || field(body, "groups.2.keys.dst.id") != s.fx.db.String() {
 		t.Fatalf("dst,service keys = %v", field(body, "groups.2.keys"))
+	}
+	if _, present := field(body, "groups.2").(map[string]any)["workload_count"]; present {
+		t.Fatalf("dst,service group carries workload_count: %v", field(body, "groups.2"))
+	}
+	resp, body = s.get(t, "/api/v1/flows/rollup?group_by=peer,service&verdict=would_block&label=role=db")
+	if got := field(body, "group_by"); resp.status != http.StatusOK || len(got.([]any)) != 2 || got.([]any)[0] != "peer" || got.([]any)[1] != "service" {
+		t.Fatalf("peer,service: %d group_by %v", resp.status, field(body, "group_by"))
+	}
+	if field(body, "groups.1.keys.peer.name") != "office" || field(body, "groups.1.keys.service.port") != float64(5432) || field(body, "groups.1.workload_count") != float64(2) || field(body, "groups.2.workload_count") != float64(1) {
+		t.Fatalf("peer,service groups = %v", field(body, "groups"))
+	}
+	if keys := field(body, "groups.1.keys").(map[string]any); len(keys) != 2 {
+		t.Fatalf("peer,service keys = %v", keys)
+	}
+	if sq := s.fx.flows.LastGroup; sq.GroupBy != flowstore.GroupByPeerService || len(sq.WorkloadIDs) != 1 || sq.WorkloadIDs[0] != s.fx.db {
+		t.Fatalf("store query = %+v", sq)
 	}
 	// A scope matching nothing is an empty rollup with null bounds.
 	resp, body = s.get(t, "/api/v1/flows/rollup?group_by=rule&label=role=cache")

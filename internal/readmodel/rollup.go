@@ -40,8 +40,9 @@ type Counters struct {
 
 // GroupKeys are the dimensions of one group. Which are set follows the
 // grouping: Rule for rule and rule,peer (nil for the group of records no
-// rule admitted); Peer for rule,peer; Src for src,dst; Dst for src,dst
-// and dst,service; Service for dst,service.
+// rule admitted); Peer for rule,peer and peer,service; Src for src,dst;
+// Dst for src,dst and dst,service; Service for dst,service and
+// peer,service.
 type GroupKeys struct {
 	Rule    *RuleRef
 	Peer    *PeerRef
@@ -51,12 +52,15 @@ type GroupKeys struct {
 }
 
 // RollupGroup is one group with its counters and the span it was seen
-// over.
+// over. WorkloadCount is the number of distinct workloads that saw the
+// group; it is set only by peer,service, the one grouping whose keys do
+// not already name the workload, and nil otherwise.
 type RollupGroup struct {
 	Keys GroupKeys
 	Counters
-	FirstSeen time.Time
-	LastSeen  time.Time
+	WorkloadCount *int64
+	FirstSeen     time.Time
+	LastSeen      time.Time
 }
 
 // Rollup is a grouped rollup. Range is what was asked; EffectiveFrom and
@@ -135,6 +139,10 @@ func (s *Reader) Rollup(ctx context.Context, req RollupRequest) (*Rollup, error)
 		case flowstore.GroupByDstService:
 			dst := names.workload(g.WorkloadID)
 			group.Keys.Dst, group.Keys.Service = &dst, &Service{Protocol: g.Protocol, Port: g.DstPort}
+		case flowstore.GroupByPeerService:
+			peer, workloads := names.peer(g.Peer), g.WorkloadCount
+			group.Keys.Peer, group.Keys.Service = &peer, &Service{Protocol: g.Protocol, Port: g.DstPort}
+			group.WorkloadCount = &workloads
 		}
 		out.Groups = append(out.Groups, group)
 	}
