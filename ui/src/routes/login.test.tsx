@@ -1,7 +1,13 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { mockSurface, operator, problem, renderApp } from "@/test/harness";
+import {
+	freshInstall,
+	mockSurface,
+	operator,
+	problem,
+	renderApp,
+} from "@/test/harness";
 
 const anonymous = {
 	method: "GET",
@@ -126,13 +132,8 @@ describe("login", () => {
 	});
 
 	it("does not show the login screen to an authenticated session", async () => {
-		mockSurface([
-			{
-				method: "GET",
-				path: "/api/v1/me",
-				reply: { status: 200, json: operator },
-			},
-		]);
+		// The landing screen, the review, reads the fresh control plane.
+		mockSurface(freshInstall);
 		renderApp("/login");
 		expect(
 			await screen.findByRole("heading", { name: "Nothing to review yet" }),

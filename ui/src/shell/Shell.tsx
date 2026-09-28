@@ -39,8 +39,13 @@ function crumbsFor(
 	search: string,
 	open: OpenWorkload | null,
 ): Crumb[] {
-	if (pathname.startsWith("/simulation"))
-		return [{ label: "Simulation review" }];
+	if (pathname.startsWith("/simulation")) {
+		// The ruleset under review, which the review names in the address.
+		const ruleset = new URLSearchParams(search).get("ruleset");
+		return ruleset
+			? [{ label: "Simulation review" }, { label: ruleset }]
+			: [{ label: "Simulation review" }];
+	}
 	if (pathname.startsWith("/map")) {
 		// The map's scope, when it has one, names what the map shows.
 		const scope = new URLSearchParams(search).getAll("label");
