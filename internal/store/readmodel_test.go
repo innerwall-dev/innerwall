@@ -191,10 +191,10 @@ func TestSeedEstate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Three seed workloads, 182 in nine app groups, 30 unlabeled, and two
+	// Three seed workloads, 190 in ten app groups, 30 unlabeled, and two
 	// extra groups of three.
-	if len(workloads) != 3+182+30+6 {
-		t.Fatalf("workloads = %d, want %d", len(workloads), 3+182+30+6)
+	if len(workloads) != 3+190+30+6 {
+		t.Fatalf("workloads = %d, want %d", len(workloads), 3+190+30+6)
 	}
 	if err := storetest.SeedEstate(ctx, s, f, 701); err == nil {
 		t.Fatal("701 extra groups accepted")

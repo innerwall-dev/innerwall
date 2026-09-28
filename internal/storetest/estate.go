@@ -54,7 +54,17 @@ var estateApps = []estateApp{
 	{"billing", "api", 16, visibility},
 	{"auth", "api", 61, enforced},
 	{"metrics-collector", "infra", 4, visibility},
+	{"ledger", "api", 8, simulation},
 }
+
+// The simulation review's states on the checkout scope: two of its
+// workloads were never moved out of visibility, and one refused its
+// latest apply and still enforces the version before it. Hosts are named
+// by their number within the app.
+var (
+	estateVisibilityHosts = map[string]bool{"checkout-prod-41": true, "checkout-prod-42": true}
+	estateDegradedHost    = "checkout-prod-07"
+)
 
 // The unlabeled workloads, enrolled with no labels at all.
 const estateUnlabeled = 30
@@ -85,6 +95,8 @@ var estateEdges = []estateTraffic{
 	{"metrics-collector", "search", 9100, 3_000},
 	{"unknown", "checkout", 22, 1},
 	{"unknown", "auth", 22, 4},
+	{"billing", "ledger", 8443, 12_400},
+	{"bastion", "ledger", 22, 36},
 }
 
 // estateAdmits is what the review estate's rulesets admit: which source
@@ -92,11 +104,14 @@ var estateEdges = []estateTraffic{
 var estateAdmits = map[string][]string{
 	"checkout": {"storefront-api", "bastion", "corp-vpn"},
 	"auth":     {"storefront-api", "checkout", "bastion", "metrics-collector", "corp-vpn"},
+	// Everything that reaches the ledger is admitted, its workloads all
+	// simulate and sync: the scope a review finds safe to enforce.
+	"ledger": {"billing", "bastion"},
 }
 
 // SeedEstate adds a review estate to a fleet Seed has loaded: the label
 // groups, address groups, modes, and traffic of the flow map's design
-// (a few hundred workloads under nine app labels plus thirty unlabeled
+// (a few hundred workloads under ten app labels plus thirty unlabeled
 // ones, two address groups, and unknown sources), so the map and the
 // fleet can be reviewed at the shape they were designed for. extra adds
 // that many more app groups of three workloads each, every one reached
@@ -117,6 +132,8 @@ func SeedEstate(ctx context.Context, s *store.Store, f *Fleet, extra int) error 
 
 	members := map[string][]identity.WorkloadID{}
 	addrs := map[identity.WorkloadID]netip.Addr{}
+	modeOf := map[identity.WorkloadID]innerwallv1.EnforcementMode{}
+	var degraded identity.WorkloadID
 	enrolled := f.Now.Add(-20 * 24 * time.Hour)
 	enrollOne := func(hostname string, labels []enroll.Label, addr netip.Addr) (identity.WorkloadID, error) {
 		id, err := identity.NewWorkloadID()
@@ -145,13 +162,22 @@ func SeedEstate(ctx context.Context, s *store.Store, f *Fleet, extra int) error 
 			// 10.64.0.0/10 holds the estate: one /16-ish block per app.
 			addr := netip.AddrFrom4([4]byte{10, byte(64 + ai/4), byte(ai%4*64 + i/250), byte(i % 250)})
 			labels := []enroll.Label{{Key: "app", Value: a.app}, {Key: "env", Value: "prod"}, {Key: "tier", Value: a.tier}}
-			id, err := enrollOne(fmt.Sprintf("%s-prod-%02d", a.app, i), labels, addr)
+			hostname := fmt.Sprintf("%s-prod-%02d", a.app, i)
+			id, err := enrollOne(hostname, labels, addr)
 			if err != nil {
 				return err
 			}
-			if err := s.SetWorkloadMode(ctx, id, a.mode); err != nil {
+			m := a.mode
+			if estateVisibilityHosts[hostname] {
+				m = visibility
+			}
+			if err := s.SetWorkloadMode(ctx, id, m); err != nil {
 				return err
 			}
+			if hostname == estateDegradedHost {
+				degraded = id
+			}
+			modeOf[id] = m
 			members[a.app] = append(members[a.app], id)
 		}
 	}
@@ -160,10 +186,17 @@ func SeedEstate(ctx context.Context, s *store.Store, f *Fleet, extra int) error 
 		if err != nil {
 			return err
 		}
+		modeOf[id] = visibility
 		members["unlabeled"] = append(members["unlabeled"], id)
 	}
 
+	// A first render before any estate ruleset exists, so the workloads
+	// the rulesets scope advance to a later version when they land and a
+	// workload that refused the later one can still hold the first.
 	engine := &compiler.Engine{Store: s}
+	if _, err := engine.Render(ctx); err != nil {
+		return err
+	}
 	authoring := &policy.Authoring{Store: s, Renderer: renderer{engine}, Now: func() time.Time { return f.Now.Add(-6 * time.Hour) }}
 	corpVPN := policy.AddressGroup{Name: "corp-vpn", CIDRs: []string{"10.40.0.0/16"}}
 	if err := authoring.CreateAddressGroup(ctx, &corpVPN); err != nil {
@@ -178,7 +211,7 @@ func SeedEstate(ctx context.Context, s *store.Store, f *Fleet, extra int) error 
 		return policy.Peer{Kind: policy.PeerWorkloads, Workloads: policy.Selector{"app": {src}}}
 	}
 	ruleFor := map[[2]string]string{}
-	for _, dst := range []string{"checkout", "auth"} {
+	for _, dst := range []string{"checkout", "auth", "ledger"} {
 		rs := policy.Ruleset{Name: dst + "-inbound", Description: "what reaches " + dst, Enabled: true, Scope: policy.Selector{"app": {dst}}}
 		for _, src := range estateAdmits[dst] {
 			port := uint16(8443)
@@ -194,6 +227,15 @@ func SeedEstate(ctx context.Context, s *store.Store, f *Fleet, extra int) error 
 				Entries: []policy.ServiceEntry{{Protocol: innerwallv1.Protocol_PROTOCOL_TCP, Ports: []policy.PortRange{{Start: uint32(port), End: uint32(port)}}}},
 			})
 		}
+		if dst == "checkout" {
+			// Collectors scrape the checkout workloads' exporters, and the
+			// rule that would admit them was authored but left disabled.
+			rs.Rules = append(rs.Rules, policy.Rule{
+				Direction: innerwallv1.Direction_DIRECTION_INBOUND, Enabled: false, Description: "metrics-scrape",
+				Peers:   []policy.Peer{peerFor("metrics-collector")},
+				Entries: []policy.ServiceEntry{{Protocol: innerwallv1.Protocol_PROTOCOL_TCP, Ports: []policy.PortRange{{Start: 9100, End: 9100}}}},
+			})
+		}
 		if err := authoring.CreateRuleset(ctx, &rs); err != nil {
 			return err
 		}
@@ -206,8 +248,9 @@ func SeedEstate(ctx context.Context, s *store.Store, f *Fleet, extra int) error 
 	}
 
 	// Every estate agent is connected and synced, except a few that
-	// dropped flow records, so the map warns that it may be incomplete.
-	droppers := map[identity.WorkloadID]bool{members["checkout"][30]: true, members["auth"][7]: true, members["billing"][2]: true}
+	// dropped flow records, so the map warns that it may be incomplete,
+	// and the one checkout workload that refused its latest version.
+	droppers := map[identity.WorkloadID]bool{members["checkout"][30]: true, members["auth"][7]: true, members["billing"][2]: true, members["ledger"][2]: true}
 	for _, ids := range members {
 		for _, id := range ids {
 			p, err := s.GetWorkloadPolicy(ctx, id)
@@ -219,7 +262,14 @@ func SeedEstate(ctx context.Context, s *store.Store, f *Fleet, extra int) error 
 			if err := s.RecordAgent(ctx, id, registry.AgentInfo{Version: "0.3.0", Capabilities: []string{"nftables", "conntrack"}}, v, seen); err != nil {
 				return err
 			}
-			if err := s.RecordApplied(ctx, id, v, innerwallv1.SyncState_SYNC_STATE_SYNCED, seen); err != nil {
+			if id == degraded && v > 1 {
+				if err := s.RecordApplied(ctx, id, v-1, innerwallv1.SyncState_SYNC_STATE_SYNCED, seen.Add(-4*time.Minute)); err != nil {
+					return err
+				}
+				if err := s.RecordApplyFailed(ctx, id, "apply refused: set element exceeds the table's size", seen); err != nil {
+					return err
+				}
+			} else if err := s.RecordApplied(ctx, id, v, innerwallv1.SyncState_SYNC_STATE_SYNCED, seen); err != nil {
 				return err
 			}
 			var dropped uint64
@@ -241,10 +291,6 @@ func SeedEstate(ctx context.Context, s *store.Store, f *Fleet, extra int) error 
 		return err
 	}
 	index := ingest.BuildIndex(workloads, groups)
-	mode := map[string]innerwallv1.EnforcementMode{"unlabeled": visibility}
-	for _, a := range apps {
-		mode[a.app] = a.mode
-	}
 	// Sources that are not workloads: addresses inside the address
 	// groups, and addresses no group holds.
 	unmanaged := map[string][]netip.Addr{
@@ -252,9 +298,11 @@ func SeedEstate(ctx context.Context, s *store.Store, f *Fleet, extra int) error 
 		"corp-vpn": {netip.MustParseAddr("10.40.3.7"), netip.MustParseAddr("10.40.9.12"), netip.MustParseAddr("10.40.12.4")},
 		"unknown":  {netip.MustParseAddr("198.51.100.19"), netip.MustParseAddr("198.51.100.44"), netip.MustParseAddr("203.0.113.61")},
 	}
-	decision := func(src, dst string) (innerwallv1.PolicyDecision, string) {
+	// The decision follows from the destination workload's own mode, so a
+	// workload left in visibility inside a simulating scope observes.
+	decision := func(src, dst string, to identity.WorkloadID) (innerwallv1.PolicyDecision, string) {
 		rule, admitted := ruleFor[[2]string{src, dst}]
-		switch mode[dst] {
+		switch modeOf[to] {
 		case innerwallv1.EnforcementMode_ENFORCEMENT_MODE_UNSPECIFIED, visibility:
 			return innerwallv1.PolicyDecision_POLICY_DECISION_OBSERVED, ""
 		case simulation:
@@ -274,7 +322,6 @@ func SeedEstate(ctx context.Context, s *store.Store, f *Fleet, extra int) error 
 	for _, start := range []time.Time{f.Window1, f.Window2} {
 		byDst := map[identity.WorkloadID][]flowstore.Record{}
 		for _, e := range edges {
-			d, rule := decision(e.src, e.dst)
 			dsts := members[e.dst]
 			// Each edge reaches a handful of the destination's workloads
 			// from a handful of its sources, spread by the edge's index.
@@ -289,6 +336,7 @@ func SeedEstate(ctx context.Context, s *store.Store, f *Fleet, extra int) error 
 			for i := 0; i < min(4, len(dsts)); i++ {
 				dst := dsts[(i*7)%len(dsts)]
 				src := srcs[i%len(srcs)]
+				d, rule := decision(e.src, e.dst, dst)
 				conns := max(1, e.conns/uint64(min(4, len(dsts)))) //nolint:gosec // at most 4
 				byDst[dst] = append(byDst[dst], flowstore.Record{
 					Peer: index.Resolve(src), SrcAddress: src, DstAddress: addrs[dst], DstPort: e.port,
