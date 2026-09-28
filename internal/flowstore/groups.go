@@ -34,10 +34,15 @@ const (
 	// GroupByDstService groups by reporting workload and the service
 	// (destination port and protocol) reached on it: the matrix cells.
 	GroupByDstService GroupBy = "dst,service"
+	// GroupByPeerService groups by resolved peer and the service it
+	// reached across every workload in scope, counting the distinct
+	// workloads that saw it: the rows of a simulation review (ADR-0019
+	// decision 4(b)).
+	GroupByPeerService GroupBy = "peer,service"
 )
 
 // GroupBys lists every grouping, in the order a document names them.
-var GroupBys = []GroupBy{GroupByRule, GroupByRulePeer, GroupBySrcDst, GroupByDstService}
+var GroupBys = []GroupBy{GroupByRule, GroupByRulePeer, GroupBySrcDst, GroupByDstService, GroupByPeerService}
 
 // ErrUnknownGroupBy is returned for a grouping outside GroupBys.
 var ErrUnknownGroupBy = errors.New("flowstore: unknown grouping")
@@ -114,9 +119,10 @@ type GroupQuery struct {
 
 // Group is one group of a grouped rollup. Which key fields are set
 // depends on the grouping: RuleID for rule and rule,peer; Peer for
-// rule,peer and src,dst; WorkloadID for src,dst and dst,service; DstPort
-// and Protocol for dst,service. The peer's labels are the snapshot stored
-// with its most recently seen record in the group (ADR-0019).
+// rule,peer, src,dst, and peer,service; WorkloadID for src,dst and
+// dst,service; DstPort and Protocol for dst,service and peer,service.
+// The peer's labels are the snapshot stored with its most recently seen
+// record in the group (ADR-0019).
 type Group struct {
 	RuleID     string
 	Peer       Peer
@@ -124,6 +130,10 @@ type Group struct {
 	DstPort    uint16
 	Protocol   innerwallv1.Protocol
 
+	// WorkloadCount is the number of distinct workloads that saw the
+	// group. Only peer,service counts it; it is zero for every other
+	// grouping, whose keys already name at most one workload or none.
+	WorkloadCount int64
 	// FlowCount is the number of stored records in the group.
 	FlowCount       int64
 	ConnectionCount uint64

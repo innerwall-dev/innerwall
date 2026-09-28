@@ -3,6 +3,7 @@ package flowstore_test
 import (
 	"context"
 	"errors"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -226,6 +227,108 @@ func TestRollupGroups(t *testing.T) {
 
 	if _, err := flows.RollupGroups(ctx, flowstore.GroupQuery{GroupBy: "peer,rule", Since: day.Since, Until: day.Until}); !errors.Is(err, flowstore.ErrUnknownGroupBy) {
 		t.Fatalf("free-form grouping err = %v", err)
+	}
+}
+
+// TestRollupGroupsPeerService checks the peer,service grouping: one group
+// per resolved peer and service across every workload in scope, with the
+// distinct workloads that saw it counted in the store, and the shared
+// filters, bounds, and totals.
+func TestRollupGroupsPeerService(t *testing.T) {
+	ctx := context.Background()
+	s := storetest.Open(t)
+	f := storetest.SeedFleet(t, s)
+	flows := s.Flows()
+	// The office group also reaches cache-1 on tcp/5432, so its
+	// would-block traffic on that service spans two workloads.
+	office := flowstore.Peer{Kind: flowstore.PeerAddressGroup, Key: f.Office.ID.String()}
+	extra := flowstore.Window{WorkloadID: f.Cache, Start: f.Window2, End: f.Window2.Add(f.WindowLength), Records: []flowstore.Record{{
+		Peer: office, SrcAddress: netip.MustParseAddr("192.0.2.7"), DstAddress: f.CacheAddr, DstPort: 5432,
+		Protocol: tcp, Direction: innerwallv1.Direction_DIRECTION_INBOUND, Decision: wouldBlock,
+		ConnectionCount: 4, ByteCount: 1_200, FirstSeen: f.Window2.Add(10 * time.Second), LastSeen: f.Window2.Add(f.WindowLength - 10*time.Second),
+	}}}
+	if _, err := flows.WriteWindow(ctx, extra); err != nil {
+		t.Fatal(err)
+	}
+	q := flowstore.GroupQuery{GroupBy: flowstore.GroupByPeerService, Since: f.Now.Add(-24 * time.Hour), Until: f.Now}
+
+	// Every decision: seven peer and service pairs, busiest first
+	// (web-1 on tcp/6379 at 400 connections).
+	res, err := flows.RollupGroups(ctx, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Groups) != 7 || res.GroupCount != 7 || res.Truncated() {
+		t.Fatalf("groups = %+v", res.Groups)
+	}
+	if g := res.Groups[0]; g.Peer.Key != f.Web.String() || g.DstPort != 6379 || g.Protocol != tcp || g.ConnectionCount != 400 || g.WorkloadCount != 1 {
+		t.Fatalf("group 0 = %+v", g)
+	}
+	if g := res.Groups[0]; g.Peer.Labels["role"] != "web" || g.RuleID != "" || g.WorkloadID != (identity.WorkloadID{}) {
+		t.Fatalf("group 0 carries keys outside the grouping or loses the stored snapshot: %+v", g)
+	}
+
+	// Would-block only: the unknown address on tcp/22, the office group
+	// on tcp/5432 across db-1 and cache-1, and web-1 on tcp/22.
+	q.Decision = wouldBlock
+	res, err = flows.RollupGroups(ctx, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []struct {
+		kind             flowstore.PeerKind
+		key              string
+		port             uint16
+		workloads, flows int64
+		conns            uint64
+	}{
+		{flowstore.PeerUnknown, "198.51.100.7", 22, 1, 2, 18},
+		{flowstore.PeerAddressGroup, f.Office.ID.String(), 5432, 2, 3, 10},
+		{flowstore.PeerWorkload, f.Web.String(), 22, 1, 2, 2},
+	}
+	if len(res.Groups) != len(want) {
+		t.Fatalf("would-block groups = %+v", res.Groups)
+	}
+	for i, w := range want {
+		g := res.Groups[i]
+		if g.Peer.Kind != w.kind || g.Peer.Key != w.key || g.DstPort != w.port || g.WorkloadCount != w.workloads || g.FlowCount != w.flows || g.ConnectionCount != w.conns {
+			t.Fatalf("group %d = %+v, want %+v", i, g, w)
+		}
+	}
+	if res.ConnectionCount != 30 || res.FlowCount != 7 || !res.EffectiveFrom.Equal(f.Window1) || !res.EffectiveTo.Equal(f.Window2.Add(f.WindowLength)) {
+		t.Fatalf("totals = %+v", res)
+	}
+
+	// The count is of workloads in scope: scoped to cache-1, the office
+	// group's pair was seen by one.
+	scoped := q
+	scoped.WorkloadIDs = []identity.WorkloadID{f.Cache}
+	res, err = flows.RollupGroups(ctx, scoped)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Groups) != 1 || res.Groups[0].Peer.Key != f.Office.ID.String() || res.Groups[0].WorkloadCount != 1 || res.Groups[0].ConnectionCount != 4 {
+		t.Fatalf("scoped groups = %+v", res.Groups)
+	}
+
+	// One service, and a bound that truncates while the totals stay the
+	// whole's.
+	one := q
+	one.Protocol, one.DstPort = tcp, 22
+	res, err = flows.RollupGroups(ctx, one)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Groups) != 2 || res.GroupCount != 2 || res.Groups[0].DstPort != 22 || res.Groups[1].DstPort != 22 {
+		t.Fatalf("service-filtered groups = %+v", res.Groups)
+	}
+	q.Limit = 1
+	res, err = flows.RollupGroups(ctx, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Groups) != 1 || !res.Truncated() || res.GroupCount != 3 || res.ConnectionCount != 30 {
+		t.Fatalf("truncated = %d of %d, %d connections", len(res.Groups), res.GroupCount, res.ConnectionCount)
 	}
 }
 

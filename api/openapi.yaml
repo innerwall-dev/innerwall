@@ -222,7 +222,7 @@ paths:
           description: The grouping. The set is closed; nothing else is accepted.
           schema:
             type: string
-            enum: ["rule", "rule,peer", "src,dst", "dst,service"]
+            enum: ["rule", "rule,peer", "src,dst", "dst,service", "peer,service"]
         - $ref: "#/components/parameters/from"
         - $ref: "#/components/parameters/to"
         - $ref: "#/components/parameters/verdict"
@@ -1981,6 +1981,9 @@ components:
               - type: object
                 required: [keys, first_seen, last_seen]
                 properties:
+                  workload_count:
+                    type: integer
+                    description: On a `peer,service` group only, the number of distinct workloads in scope that saw it; absent from every other grouping, whose keys already name at most one workload.
                   keys:
                     type: object
                     description: One property per dimension of the grouping.

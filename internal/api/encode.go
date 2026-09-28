@@ -125,8 +125,9 @@ func workloadRef(w *readmodel.WorkloadRef) *workloadRefJSON {
 type rollupGroupJSON struct {
 	Keys map[string]any `json:"keys"`
 	countersJSON
-	FirstSeen string `json:"first_seen"`
-	LastSeen  string `json:"last_seen"`
+	WorkloadCount *int64 `json:"workload_count,omitempty"`
+	FirstSeen     string `json:"first_seen"`
+	LastSeen      string `json:"last_seen"`
 }
 
 type rollupResponse struct {
@@ -169,7 +170,7 @@ func rollupJSON(r *readmodel.Rollup) rollupResponse {
 				}
 			}
 		}
-		out.Groups = append(out.Groups, rollupGroupJSON{Keys: keys, countersJSON: counters(g.Counters), FirstSeen: timestamp(g.FirstSeen), LastSeen: timestamp(g.LastSeen)})
+		out.Groups = append(out.Groups, rollupGroupJSON{Keys: keys, countersJSON: counters(g.Counters), WorkloadCount: g.WorkloadCount, FirstSeen: timestamp(g.FirstSeen), LastSeen: timestamp(g.LastSeen)})
 	}
 	return out
 }

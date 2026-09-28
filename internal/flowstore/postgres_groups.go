@@ -81,6 +81,18 @@ func (p *Postgres) RollupGroups(ctx context.Context, q GroupQuery) (*GroupResult
 				out.EffectiveFrom, out.EffectiveTo, out.GroupCount, out.FlowCount, out.ConnectionCount, out.ByteCount = r.EffectiveFrom, r.EffectiveTo, r.GroupCount, r.TotalFlowCount, unsigned(r.TotalConnectionCount), unsigned(r.TotalByteCount)
 			}
 		}
+	case GroupByPeerService:
+		rows, err := p.q.RollupFlowsByPeerService(ctx, db.RollupFlowsByPeerServiceParams{WorkloadIds: ids, Since: f.since, Until: f.until, Decision: f.decision, Direction: f.direction, Protocol: f.protocol, DstPort: f.port, OrderBy: order, GroupLimit: limit})
+		if err != nil {
+			return nil, fmt.Errorf("flowstore: rolling up by peer and service: %w", err)
+		}
+		for i := range rows {
+			r := &rows[i]
+			out.Groups = append(out.Groups, Group{Peer: Peer{Kind: PeerKind(r.PeerKind), Key: r.PeerKey, Labels: decodeLabels(r.PeerLabels)}, DstPort: uint16(r.DstPort), Protocol: innerwallv1.Protocol(r.Protocol), WorkloadCount: r.WorkloadCount, FlowCount: r.FlowCount, ConnectionCount: unsigned(r.ConnectionCount), ByteCount: unsigned(r.ByteCount), FirstSeen: r.FirstSeen, LastSeen: r.LastSeen}) //nolint:gosec // checked by the schema
+			if i == 0 {
+				out.EffectiveFrom, out.EffectiveTo, out.GroupCount, out.FlowCount, out.ConnectionCount, out.ByteCount = r.EffectiveFrom, r.EffectiveTo, r.GroupCount, r.TotalFlowCount, unsigned(r.TotalConnectionCount), unsigned(r.TotalByteCount)
+			}
+		}
 	default:
 		return nil, fmt.Errorf("%w %q", ErrUnknownGroupBy, q.GroupBy)
 	}

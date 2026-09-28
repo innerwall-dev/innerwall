@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -230,7 +231,7 @@ func runFlowsRollup(ctx context.Context, args []string) error {
 		return err
 	}
 	if fs.NArg() != 0 {
-		return usageError("usage: innerwall flows rollup [--label key=value ...] [--decision would_block] [--since 24h] [--group-by rule|rule,peer|src,dst|dst,service]")
+		return usageError("usage: innerwall flows rollup [--label key=value ...] [--decision would_block] [--since 24h] [--group-by rule|rule,peer|src,dst|dst,service|peer,service]")
 	}
 	dec, err := parseDecision(*decision)
 	if err != nil {
@@ -375,11 +376,18 @@ func runFlowsGroupedRollup(ctx context.Context, st *store.Store, a groupedRollup
 		fmt.Fprintf(os.Stderr, "; showing the top %d", len(res.Groups))
 	}
 	fmt.Fprintln(os.Stderr)
+	// Only peer,service counts the distinct workloads behind a group; the
+	// other groupings name at most one workload in their keys.
+	counted := req.GroupBy == flowstore.GroupByPeerService
+	header := strings.ToUpper(strings.ReplaceAll(string(req.GroupBy), ",", "\t"))
+	if counted {
+		header += "\tWORKLOADS"
+	}
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintln(w, strings.ToUpper(strings.ReplaceAll(a.groupBy, ",", "\t"))+"\tRECORDS\tCONNS\tBYTES\tFIRST SEEN\tLAST SEEN")
+	_, _ = fmt.Fprintln(w, header+"\tRECORDS\tCONNS\tBYTES\tFIRST SEEN\tLAST SEEN")
 	for i := range res.Groups {
 		g := &res.Groups[i]
-		keys := make([]string, 0, 2)
+		keys := make([]string, 0, 3)
 		for _, k := range req.GroupBy.Keys() {
 			switch k {
 			case "rule":
@@ -393,6 +401,9 @@ func runFlowsGroupedRollup(ctx context.Context, st *store.Store, a groupedRollup
 			case "service":
 				keys = append(keys, g.Keys.Service.String())
 			}
+		}
+		if counted && g.WorkloadCount != nil {
+			keys = append(keys, strconv.FormatInt(*g.WorkloadCount, 10))
 		}
 		_, _ = fmt.Fprintf(w, "%s\t%d\t%d\t%d\t%s\t%s\n", strings.Join(keys, "\t"), g.FlowCount, g.ConnectionCount, g.ByteCount, g.FirstSeen.UTC().Format(time.RFC3339), g.LastSeen.UTC().Format(time.RFC3339))
 	}

@@ -849,6 +849,8 @@ export interface components {
                     src?: components["schemas"]["PeerRef"];
                 };
                 last_seen: components["schemas"]["Timestamp"];
+                /** @description On a `peer,service` group only, the number of distinct workloads in scope that saw it; absent from every other grouping, whose keys already name at most one workload. */
+                workload_count?: number;
             })[];
             to: components["schemas"]["Timestamp"];
             totals: components["schemas"]["Counters"];
@@ -1390,7 +1392,7 @@ export interface operations {
                 /** @description Start of the range (RFC 3339). Defaults to a day before `to`. */
                 from?: components["parameters"]["from"];
                 /** @description The grouping. The set is closed; nothing else is accepted. */
-                group_by: "rule" | "rule,peer" | "src,dst" | "dst,service";
+                group_by: "rule" | "rule,peer" | "src,dst" | "dst,service" | "peer,service";
                 /** @description A `key=value` requirement; repeat to AND keys, repeat a key to OR its values. Restricts to the workloads the selector currently matches. */
                 label?: components["parameters"]["label"];
                 /** @description Maximum groups returned; the store's default and maximum apply. */
