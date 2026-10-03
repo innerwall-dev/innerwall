@@ -67,7 +67,69 @@ const themeKey = "innerwall.console.theme";
 
 // A scene is one screen state: where it is, how to reach it, and the
 // design shot it answers to (null when the design has none).
+const metricsScrape = encodeURIComponent(
+	"would_block|w:app=metrics-collector env=prod tier=infra|tcp/9100",
+);
+const billingToLedger = encodeURIComponent(
+	"allowed|w:app=billing env=prod tier=api|tcp/8443",
+);
+const openPromote = async (page) => {
+	await page.getByRole("button", { name: "Promote to enforced…" }).click();
+	await page.waitForSelector('[data-testid="partition"]');
+};
+
 const scenes = [
+	{
+		name: "01-simulation-review-grouped",
+		design: "01-simulation-review-grouped",
+		cp: "seeded",
+		path: `/simulation?ruleset=checkout-inbound&sel=${metricsScrape}`,
+		ready: 'aside[aria-label="Pair detail"] table',
+	},
+	{
+		name: "02-simulation-review-matrix",
+		design: "02-simulation-review-matrix",
+		cp: "seeded",
+		path: `/simulation?ruleset=checkout-inbound&take=matrix&sel=${metricsScrape}`,
+		ready: 'aside[aria-label="Pair detail"] table',
+	},
+	{
+		name: "03-simulation-review-by-recency",
+		design: "03-simulation-review-by-recency",
+		cp: "seeded",
+		path: `/simulation?ruleset=checkout-inbound&take=recency&sel=${metricsScrape}`,
+		ready: 'aside[aria-label="Pair detail"] table',
+	},
+	{
+		name: "04-simulation-review-promote-dialog",
+		design: "04-simulation-review-promote-dialog",
+		cp: "seeded",
+		path: `/simulation?ruleset=checkout-inbound&sel=${metricsScrape}`,
+		ready: 'aside[aria-label="Pair detail"] table',
+		act: openPromote,
+	},
+	{
+		name: "05-simulation-review-safe-to-enforce",
+		design: "05-simulation-review-safe-to-enforce",
+		cp: "seeded",
+		path: `/simulation?ruleset=ledger-inbound&sel=${billingToLedger}`,
+		ready: 'aside[aria-label="Pair detail"] table',
+	},
+	{
+		name: "06-simulation-review-safe-promote-dialog",
+		design: "06-simulation-review-safe-promote-dialog",
+		cp: "seeded",
+		path: `/simulation?ruleset=ledger-inbound&sel=${billingToLedger}`,
+		ready: 'aside[aria-label="Pair detail"] table',
+		act: openPromote,
+	},
+	{
+		name: "17-fresh-install-simulation-review",
+		design: "17-fresh-install-simulation-review",
+		cp: "fresh",
+		path: "/simulation",
+		ready: "text=Nothing to review yet",
+	},
 	{
 		name: "07-flow-map-graph",
 		design: "07-flow-map-graph",

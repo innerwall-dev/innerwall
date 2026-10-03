@@ -65,6 +65,8 @@ export interface FlowFilter {
 	// peer is one stored peer key: a workload id, an address group id,
 	// or a bare address.
 	peer?: string;
+	// service is `<protocol>/<port>`, or `icmp`.
+	service?: string;
 }
 
 export function listFlows(

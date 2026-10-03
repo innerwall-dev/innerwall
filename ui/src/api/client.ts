@@ -80,13 +80,18 @@ export function withQuery(path: string, query?: Query): string {
 }
 
 // request performs one call against the surface and returns its JSON
-// body (nothing for a 204), or throws a ProblemError.
+// body (nothing for a 204), or throws a ProblemError. extra carries the
+// headers a conditional write needs (If-Match).
 export async function request<T>(
 	method: string,
 	path: string,
 	body?: unknown,
+	extra?: Record<string, string>,
 ): Promise<T> {
-	const headers: Record<string, string> = { Accept: "application/json" };
+	const headers: Record<string, string> = {
+		Accept: "application/json",
+		...extra,
+	};
 	if (body !== undefined) {
 		headers["Content-Type"] = "application/json";
 	}

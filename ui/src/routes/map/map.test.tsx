@@ -300,8 +300,11 @@ describe("flow map", () => {
 		expect(flows[0].get("verdict")).toBe("would_block");
 		expect(flows[0].get("from")).not.toBeNull();
 		expect(flows[0].get("to")).not.toBeNull();
-		expect(within(drawer).getByTestId("rule-services")).toHaveTextContent(
-			"tcp/9100",
+		// The pair's services reach the rule a render after its windows do.
+		await waitFor(() =>
+			expect(within(drawer).getByTestId("rule-services")).toHaveTextContent(
+				"tcp/9100",
+			),
 		);
 		expect(
 			within(drawer).getByRole("link", { name: "Open checkout-prod-01" }),
