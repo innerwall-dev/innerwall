@@ -20,6 +20,9 @@ type Source struct {
 	Log            *slog.Logger
 	Classify       func(mark uint32) (innerwallv1.PolicyDecision, string)
 	LocalAddresses func() []netip.Addr
+	Gaps           *collect.Gaps
+	ReadBuffer     int
+	DumpMax        int
 }
 
 var _ collect.Source = (*Source)(nil)

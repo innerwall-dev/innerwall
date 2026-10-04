@@ -12,6 +12,12 @@ import (
 // (ADR-0011).
 const DefaultBufferRecords = 50_000
 
+// DefaultNetlinkBuffer is the receive buffer a flow source asks for on its
+// netlink socket unless configured otherwise: enough for a burst of tens
+// of thousands of events while the source is busy, at a few megabytes of
+// kernel memory per socket (ADR-0011).
+const DefaultNetlinkBuffer = 4 << 20
+
 // Buffer holds closed windows between the collector and the reporter. It
 // is bounded in records; when a window does not fit, the oldest windows
 // are dropped until it does and every dropped record is counted, so the
