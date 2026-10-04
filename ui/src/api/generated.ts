@@ -271,7 +271,9 @@ export interface paths {
          * Every ruleset, and the version of the state a policy editor authors against.
          * @description `state_version` is a digest of everything a render reads: each
          *     workload's labels, addresses, and mode, and each authored object's
-         *     last write. A dry run reports the version it computed against, so an
+         *     last write. The rulesets and `state_version` are read from one
+         *     consistent snapshot, so the version describes exactly the rulesets
+         *     returned. A dry run reports the version it computed against, so an
          *     editor that started from this value can tell when the state moved.
          */
         get: operations["listRulesets"];

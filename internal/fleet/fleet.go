@@ -445,3 +445,16 @@ func (s *Service) StateVersion(ctx context.Context) (string, error) {
 	}
 	return compiler.StateVersion(in), nil
 }
+
+// AuthoringState is every ruleset and the version of the state they were
+// read in, from one consistent snapshot: the pair an editor authors
+// against. Read separately, a write landing between the two would pair
+// rulesets from before it with a version from after, and a dry run of
+// what the editor read would not be reported stale.
+func (s *Service) AuthoringState(ctx context.Context) ([]policy.Ruleset, string, error) {
+	in, _, err := s.Store.LoadRenderState(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	return in.Rulesets, compiler.StateVersion(in), nil
+}
