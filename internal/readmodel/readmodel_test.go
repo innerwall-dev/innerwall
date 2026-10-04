@@ -120,8 +120,8 @@ func TestRollupScopeAndKeys(t *testing.T) {
 		t.Fatalf("filters not passed through: %+v", q)
 	}
 
-	// Only rule and peer,service carry a workload count; the other
-	// groupings name one workload in their keys and leave it nil.
+	// Only rule and peer,service carry a workload count; rule,peer
+	// leaves it nil.
 	if g.WorkloadCount != nil {
 		t.Fatalf("rule,peer group carries a workload count: %d", *g.WorkloadCount)
 	}

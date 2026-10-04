@@ -131,9 +131,9 @@ type Group struct {
 	Protocol   innerwallv1.Protocol
 
 	// WorkloadCount is the number of distinct workloads that saw the
-	// group. Only rule and peer,service count it, the groupings whose
-	// keys name no workload; it is zero for the others, whose keys name
-	// exactly one.
+	// group. Only rule and peer,service count it; it is zero for the
+	// others: src,dst and dst,service name their one workload in their
+	// keys, and rule,peer, whose key names none, is not counted.
 	WorkloadCount int64
 	// FlowCount is the number of stored records in the group.
 	FlowCount       int64

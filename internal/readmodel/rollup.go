@@ -53,8 +53,9 @@ type GroupKeys struct {
 
 // RollupGroup is one group with its counters and the span it was seen
 // over. WorkloadCount is the number of distinct workloads that saw the
-// group; it is set by rule and peer,service, the groupings whose keys do
-// not already name the workload, and nil otherwise.
+// group; it is set by rule and peer,service and nil otherwise: src,dst
+// and dst,service name their one workload in their keys, and rule,peer,
+// whose key names none, is not counted.
 type RollupGroup struct {
 	Keys GroupKeys
 	Counters
