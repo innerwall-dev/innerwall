@@ -75,6 +75,120 @@ func (AckStatus) EnumDescriptor() ([]byte, []int) {
 	return file_innerwall_v1_agent_proto_rawDescGZIP(), []int{0}
 }
 
+type EvidenceGapKind int32
+
+const (
+	EvidenceGapKind_EVIDENCE_GAP_KIND_UNSPECIFIED EvidenceGapKind = 0
+	// The kernel dropped events because the source's socket buffer was full.
+	EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_OVERRUN EvidenceGapKind = 1
+	// The source was down between a failure and its next subscribe.
+	EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_RESTART EvidenceGapKind = 2
+	// Closed windows were dropped because the agent's buffer was full while
+	// the control plane was unreachable.
+	EvidenceGapKind_EVIDENCE_GAP_KIND_BUFFER_OVERFLOW EvidenceGapKind = 3
+	// The connection table held more entries at subscribe than the source
+	// processes; the interval runs from the subscribe to the last skipped
+	// connection seen closing.
+	EvidenceGapKind_EVIDENCE_GAP_KIND_DUMP_TRUNCATED EvidenceGapKind = 4
+)
+
+// Enum value maps for EvidenceGapKind.
+var (
+	EvidenceGapKind_name = map[int32]string{
+		0: "EVIDENCE_GAP_KIND_UNSPECIFIED",
+		1: "EVIDENCE_GAP_KIND_SOURCE_OVERRUN",
+		2: "EVIDENCE_GAP_KIND_SOURCE_RESTART",
+		3: "EVIDENCE_GAP_KIND_BUFFER_OVERFLOW",
+		4: "EVIDENCE_GAP_KIND_DUMP_TRUNCATED",
+	}
+	EvidenceGapKind_value = map[string]int32{
+		"EVIDENCE_GAP_KIND_UNSPECIFIED":     0,
+		"EVIDENCE_GAP_KIND_SOURCE_OVERRUN":  1,
+		"EVIDENCE_GAP_KIND_SOURCE_RESTART":  2,
+		"EVIDENCE_GAP_KIND_BUFFER_OVERFLOW": 3,
+		"EVIDENCE_GAP_KIND_DUMP_TRUNCATED":  4,
+	}
+)
+
+func (x EvidenceGapKind) Enum() *EvidenceGapKind {
+	p := new(EvidenceGapKind)
+	*p = x
+	return p
+}
+
+func (x EvidenceGapKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (EvidenceGapKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_innerwall_v1_agent_proto_enumTypes[1].Descriptor()
+}
+
+func (EvidenceGapKind) Type() protoreflect.EnumType {
+	return &file_innerwall_v1_agent_proto_enumTypes[1]
+}
+
+func (x EvidenceGapKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use EvidenceGapKind.Descriptor instead.
+func (EvidenceGapKind) EnumDescriptor() ([]byte, []int) {
+	return file_innerwall_v1_agent_proto_rawDescGZIP(), []int{1}
+}
+
+// The agent's flow sources.
+type EvidenceSource int32
+
+const (
+	EvidenceSource_EVIDENCE_SOURCE_UNSPECIFIED EvidenceSource = 0
+	// Connection tracking: connections and their bytes.
+	EvidenceSource_EVIDENCE_SOURCE_CONNTRACK EvidenceSource = 1
+	// The terminal rule's packet log: blocked and would-block attempts.
+	EvidenceSource_EVIDENCE_SOURCE_NFLOG EvidenceSource = 2
+)
+
+// Enum value maps for EvidenceSource.
+var (
+	EvidenceSource_name = map[int32]string{
+		0: "EVIDENCE_SOURCE_UNSPECIFIED",
+		1: "EVIDENCE_SOURCE_CONNTRACK",
+		2: "EVIDENCE_SOURCE_NFLOG",
+	}
+	EvidenceSource_value = map[string]int32{
+		"EVIDENCE_SOURCE_UNSPECIFIED": 0,
+		"EVIDENCE_SOURCE_CONNTRACK":   1,
+		"EVIDENCE_SOURCE_NFLOG":       2,
+	}
+)
+
+func (x EvidenceSource) Enum() *EvidenceSource {
+	p := new(EvidenceSource)
+	*p = x
+	return p
+}
+
+func (x EvidenceSource) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (EvidenceSource) Descriptor() protoreflect.EnumDescriptor {
+	return file_innerwall_v1_agent_proto_enumTypes[2].Descriptor()
+}
+
+func (EvidenceSource) Type() protoreflect.EnumType {
+	return &file_innerwall_v1_agent_proto_enumTypes[2]
+}
+
+func (x EvidenceSource) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use EvidenceSource.Descriptor instead.
+func (EvidenceSource) EnumDescriptor() ([]byte, []int) {
+	return file_innerwall_v1_agent_proto_rawDescGZIP(), []int{2}
+}
+
 // The outcome the policy engine reached (or would have reached) for a flow.
 // WOULD_BLOCK is the load-bearing value for the simulation phase: it is the
 // evidence that a policy is safe (or not) to enforce.
@@ -121,11 +235,11 @@ func (x PolicyDecision) String() string {
 }
 
 func (PolicyDecision) Descriptor() protoreflect.EnumDescriptor {
-	return file_innerwall_v1_agent_proto_enumTypes[1].Descriptor()
+	return file_innerwall_v1_agent_proto_enumTypes[3].Descriptor()
 }
 
 func (PolicyDecision) Type() protoreflect.EnumType {
-	return &file_innerwall_v1_agent_proto_enumTypes[1]
+	return &file_innerwall_v1_agent_proto_enumTypes[3]
 }
 
 func (x PolicyDecision) Number() protoreflect.EnumNumber {
@@ -134,7 +248,7 @@ func (x PolicyDecision) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PolicyDecision.Descriptor instead.
 func (PolicyDecision) EnumDescriptor() ([]byte, []int) {
-	return file_innerwall_v1_agent_proto_rawDescGZIP(), []int{1}
+	return file_innerwall_v1_agent_proto_rawDescGZIP(), []int{3}
 }
 
 type EnrollRequest struct {
@@ -979,8 +1093,13 @@ type Heartbeat struct {
 	// re-enrollment; surfacing it here lets the operator act before the
 	// credential lapses (ADR-0016).
 	CredentialRenewalError string `protobuf:"bytes,3,opt,name=credential_renewal_error,json=credentialRenewalError,proto3" json:"credential_renewal_error,omitempty"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	// Kernel-side overruns of the agent's flow sources since the agent
+	// started: each is a moment the kernel dropped events because a source
+	// fell behind. Each is also reported as an EvidenceGap with its interval;
+	// this is the live counter beside dropped_flow_records.
+	SourceOverruns uint64 `protobuf:"varint,4,opt,name=source_overruns,json=sourceOverruns,proto3" json:"source_overruns,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Heartbeat) Reset() {
@@ -1032,6 +1151,13 @@ func (x *Heartbeat) GetCredentialRenewalError() string {
 		return x.CredentialRenewalError
 	}
 	return ""
+}
+
+func (x *Heartbeat) GetSourceOverruns() uint64 {
+	if x != nil {
+		return x.SourceOverruns
+	}
+	return 0
 }
 
 // Server-initiated commands. Modeled as a oneof of messages rather than an
@@ -1196,10 +1322,16 @@ func (*Reenroll) Descriptor() ([]byte, []int) {
 
 // One aggregation window of flow records from one agent.
 type ReportFlowsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	WindowStart   *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=window_start,json=windowStart,proto3" json:"window_start,omitempty"`
-	WindowEnd     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=window_end,json=windowEnd,proto3" json:"window_end,omitempty"`
-	Records       []*FlowRecord          `protobuf:"bytes,3,rep,name=records,proto3" json:"records,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	WindowStart *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=window_start,json=windowStart,proto3" json:"window_start,omitempty"`
+	WindowEnd   *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=window_end,json=windowEnd,proto3" json:"window_end,omitempty"`
+	Records     []*FlowRecord          `protobuf:"bytes,3,rep,name=records,proto3" json:"records,omitempty"`
+	// Intervals in which the agent knows its evidence is incomplete, shipped
+	// with the next window rather than on a schedule of their own. They are
+	// not bounded by the window: a gap is wherever the loss happened. A
+	// window may carry gaps and no records. The reporting workload is the
+	// connection credential's, as for the records.
+	Gaps          []*EvidenceGap `protobuf:"bytes,4,rep,name=gaps,proto3" json:"gaps,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1255,6 +1387,98 @@ func (x *ReportFlowsRequest) GetRecords() []*FlowRecord {
 	return nil
 }
 
+func (x *ReportFlowsRequest) GetGaps() []*EvidenceGap {
+	if x != nil {
+		return x.Gaps
+	}
+	return nil
+}
+
+// An interval [from, to) in which a workload's flow evidence is known to be
+// incomplete: something was lost there that cannot be recovered, only
+// bounded in time. Every kind of loss the agent can detect is expressed
+// this way, so a reader asks one question of a time range: is the evidence
+// in it whole?
+type EvidenceGap struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Kind  EvidenceGapKind        `protobuf:"varint,1,opt,name=kind,proto3,enum=innerwall.v1.EvidenceGapKind" json:"kind,omitempty"`
+	// The source that lost the evidence; unspecified for a loss that is not
+	// one source's (a buffer overflow drops records of every source).
+	Source EvidenceSource         `protobuf:"varint,2,opt,name=source,proto3,enum=innerwall.v1.EvidenceSource" json:"source,omitempty"`
+	From   *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=from,proto3" json:"from,omitempty"`
+	To     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=to,proto3" json:"to,omitempty"`
+	// How many records or table entries were lost, when that is known: for a
+	// buffer overflow and a truncated dump. A kernel-side loss has no count.
+	Count         *uint64 `protobuf:"varint,5,opt,name=count,proto3,oneof" json:"count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EvidenceGap) Reset() {
+	*x = EvidenceGap{}
+	mi := &file_innerwall_v1_agent_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EvidenceGap) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EvidenceGap) ProtoMessage() {}
+
+func (x *EvidenceGap) ProtoReflect() protoreflect.Message {
+	mi := &file_innerwall_v1_agent_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EvidenceGap.ProtoReflect.Descriptor instead.
+func (*EvidenceGap) Descriptor() ([]byte, []int) {
+	return file_innerwall_v1_agent_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *EvidenceGap) GetKind() EvidenceGapKind {
+	if x != nil {
+		return x.Kind
+	}
+	return EvidenceGapKind_EVIDENCE_GAP_KIND_UNSPECIFIED
+}
+
+func (x *EvidenceGap) GetSource() EvidenceSource {
+	if x != nil {
+		return x.Source
+	}
+	return EvidenceSource_EVIDENCE_SOURCE_UNSPECIFIED
+}
+
+func (x *EvidenceGap) GetFrom() *timestamppb.Timestamp {
+	if x != nil {
+		return x.From
+	}
+	return nil
+}
+
+func (x *EvidenceGap) GetTo() *timestamppb.Timestamp {
+	if x != nil {
+		return x.To
+	}
+	return nil
+}
+
+func (x *EvidenceGap) GetCount() uint64 {
+	if x != nil && x.Count != nil {
+		return *x.Count
+	}
+	return 0
+}
+
 type ReportFlowsResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Total records accepted across the stream.
@@ -1265,7 +1489,7 @@ type ReportFlowsResponse struct {
 
 func (x *ReportFlowsResponse) Reset() {
 	*x = ReportFlowsResponse{}
-	mi := &file_innerwall_v1_agent_proto_msgTypes[17]
+	mi := &file_innerwall_v1_agent_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1277,7 +1501,7 @@ func (x *ReportFlowsResponse) String() string {
 func (*ReportFlowsResponse) ProtoMessage() {}
 
 func (x *ReportFlowsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_innerwall_v1_agent_proto_msgTypes[17]
+	mi := &file_innerwall_v1_agent_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1290,7 +1514,7 @@ func (x *ReportFlowsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportFlowsResponse.ProtoReflect.Descriptor instead.
 func (*ReportFlowsResponse) Descriptor() ([]byte, []int) {
-	return file_innerwall_v1_agent_proto_rawDescGZIP(), []int{17}
+	return file_innerwall_v1_agent_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ReportFlowsResponse) GetAcceptedRecords() uint64 {
@@ -1317,7 +1541,12 @@ type FlowRecord struct {
 	Decision  PolicyDecision `protobuf:"varint,6,opt,name=decision,proto3,enum=innerwall.v1.PolicyDecision" json:"decision,omitempty"`
 	// The rendered rule that matched, when a policy evaluation occurred.
 	// Empty for OBSERVED records and for flows no rule matched.
-	MatchedRuleId   string                 `protobuf:"bytes,7,opt,name=matched_rule_id,json=matchedRuleId,proto3" json:"matched_rule_id,omitempty"`
+	MatchedRuleId string `protobuf:"bytes,7,opt,name=matched_rule_id,json=matchedRuleId,proto3" json:"matched_rule_id,omitempty"`
+	// Connections opened, or found live when the source subscribed, in the
+	// window. A connection that predates the source's subscription (at agent
+	// start, or after the source restarted) is counted once, first seen at
+	// the subscription; one whose close is the first the source saw of it is
+	// counted at its close.
 	ConnectionCount uint64                 `protobuf:"varint,8,opt,name=connection_count,json=connectionCount,proto3" json:"connection_count,omitempty"`
 	ByteCount       uint64                 `protobuf:"varint,9,opt,name=byte_count,json=byteCount,proto3" json:"byte_count,omitempty"`
 	FirstSeen       *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=first_seen,json=firstSeen,proto3" json:"first_seen,omitempty"`
@@ -1330,7 +1559,7 @@ type FlowRecord struct {
 
 func (x *FlowRecord) Reset() {
 	*x = FlowRecord{}
-	mi := &file_innerwall_v1_agent_proto_msgTypes[18]
+	mi := &file_innerwall_v1_agent_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1342,7 +1571,7 @@ func (x *FlowRecord) String() string {
 func (*FlowRecord) ProtoMessage() {}
 
 func (x *FlowRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_innerwall_v1_agent_proto_msgTypes[18]
+	mi := &file_innerwall_v1_agent_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1355,7 +1584,7 @@ func (x *FlowRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FlowRecord.ProtoReflect.Descriptor instead.
 func (*FlowRecord) Descriptor() ([]byte, []int) {
-	return file_innerwall_v1_agent_proto_rawDescGZIP(), []int{18}
+	return file_innerwall_v1_agent_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *FlowRecord) GetSrcAddress() string {
@@ -1496,23 +1725,32 @@ const file_innerwall_v1_agent_proto_rawDesc = "" +
 	"\ferror_detail\x18\x03 \x01(\tR\verrorDetail\"\x8f\x01\n" +
 	"\x0fInventoryReport\x12-\n" +
 	"\x05facts\x18\x01 \x01(\v2\x17.innerwall.v1.HostFactsR\x05facts\x12M\n" +
-	"\x12listening_services\x18\x02 \x03(\v2\x1e.innerwall.v1.ListeningServiceR\x11listeningServices\"\x9e\x01\n" +
+	"\x12listening_services\x18\x02 \x03(\v2\x1e.innerwall.v1.ListeningServiceR\x11listeningServices\"\xc7\x01\n" +
 	"\tHeartbeat\x12%\n" +
 	"\x0euptime_seconds\x18\x01 \x01(\x04R\ruptimeSeconds\x120\n" +
 	"\x14dropped_flow_records\x18\x02 \x01(\x04R\x12droppedFlowRecords\x128\n" +
-	"\x18credential_renewal_error\x18\x03 \x01(\tR\x16credentialRenewalError\"\x87\x01\n" +
+	"\x18credential_renewal_error\x18\x03 \x01(\tR\x16credentialRenewalError\x12'\n" +
+	"\x0fsource_overruns\x18\x04 \x01(\x04R\x0esourceOverruns\"\x87\x01\n" +
 	"\tDirective\x127\n" +
 	"\treconnect\x18\x01 \x01(\v2\x17.innerwall.v1.ReconnectH\x00R\treconnect\x124\n" +
 	"\breenroll\x18\x02 \x01(\v2\x16.innerwall.v1.ReenrollH\x00R\breenrollB\v\n" +
 	"\tdirective\"\v\n" +
 	"\tReconnect\"\n" +
 	"\n" +
-	"\bReenroll\"\xc2\x01\n" +
+	"\bReenroll\"\xf1\x01\n" +
 	"\x12ReportFlowsRequest\x12=\n" +
 	"\fwindow_start\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\vwindowStart\x129\n" +
 	"\n" +
 	"window_end\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\twindowEnd\x122\n" +
-	"\arecords\x18\x03 \x03(\v2\x18.innerwall.v1.FlowRecordR\arecords\"@\n" +
+	"\arecords\x18\x03 \x03(\v2\x18.innerwall.v1.FlowRecordR\arecords\x12-\n" +
+	"\x04gaps\x18\x04 \x03(\v2\x19.innerwall.v1.EvidenceGapR\x04gaps\"\xf7\x01\n" +
+	"\vEvidenceGap\x121\n" +
+	"\x04kind\x18\x01 \x01(\x0e2\x1d.innerwall.v1.EvidenceGapKindR\x04kind\x124\n" +
+	"\x06source\x18\x02 \x01(\x0e2\x1c.innerwall.v1.EvidenceSourceR\x06source\x12.\n" +
+	"\x04from\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\x04from\x12*\n" +
+	"\x02to\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x02to\x12\x19\n" +
+	"\x05count\x18\x05 \x01(\x04H\x00R\x05count\x88\x01\x01B\b\n" +
+	"\x06_count\"@\n" +
 	"\x13ReportFlowsResponse\x12)\n" +
 	"\x10accepted_records\x18\x01 \x01(\x04R\x0facceptedRecords\"\x97\x04\n" +
 	"\n" +
@@ -1537,7 +1775,17 @@ const file_innerwall_v1_agent_proto_rawDesc = "" +
 	"\tAckStatus\x12\x1a\n" +
 	"\x16ACK_STATUS_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12ACK_STATUS_APPLIED\x10\x01\x12\x15\n" +
-	"\x11ACK_STATUS_FAILED\x10\x02*\xaa\x01\n" +
+	"\x11ACK_STATUS_FAILED\x10\x02*\xcd\x01\n" +
+	"\x0fEvidenceGapKind\x12!\n" +
+	"\x1dEVIDENCE_GAP_KIND_UNSPECIFIED\x10\x00\x12$\n" +
+	" EVIDENCE_GAP_KIND_SOURCE_OVERRUN\x10\x01\x12$\n" +
+	" EVIDENCE_GAP_KIND_SOURCE_RESTART\x10\x02\x12%\n" +
+	"!EVIDENCE_GAP_KIND_BUFFER_OVERFLOW\x10\x03\x12$\n" +
+	" EVIDENCE_GAP_KIND_DUMP_TRUNCATED\x10\x04*k\n" +
+	"\x0eEvidenceSource\x12\x1f\n" +
+	"\x1bEVIDENCE_SOURCE_UNSPECIFIED\x10\x00\x12\x1d\n" +
+	"\x19EVIDENCE_SOURCE_CONNTRACK\x10\x01\x12\x19\n" +
+	"\x15EVIDENCE_SOURCE_NFLOG\x10\x02*\xaa\x01\n" +
 	"\x0ePolicyDecision\x12\x1f\n" +
 	"\x1bPOLICY_DECISION_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18POLICY_DECISION_OBSERVED\x10\x01\x12\x1b\n" +
@@ -1563,81 +1811,89 @@ func file_innerwall_v1_agent_proto_rawDescGZIP() []byte {
 	return file_innerwall_v1_agent_proto_rawDescData
 }
 
-var file_innerwall_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_innerwall_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_innerwall_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_innerwall_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_innerwall_v1_agent_proto_goTypes = []any{
 	(AckStatus)(0),                  // 0: innerwall.v1.AckStatus
-	(PolicyDecision)(0),             // 1: innerwall.v1.PolicyDecision
-	(*EnrollRequest)(nil),           // 2: innerwall.v1.EnrollRequest
-	(*EnrollResponse)(nil),          // 3: innerwall.v1.EnrollResponse
-	(*RenewCredentialRequest)(nil),  // 4: innerwall.v1.RenewCredentialRequest
-	(*RenewCredentialResponse)(nil), // 5: innerwall.v1.RenewCredentialResponse
-	(*SyncRequest)(nil),             // 6: innerwall.v1.SyncRequest
-	(*SyncResponse)(nil),            // 7: innerwall.v1.SyncResponse
-	(*Hello)(nil),                   // 8: innerwall.v1.Hello
-	(*HelloAck)(nil),                // 9: innerwall.v1.HelloAck
-	(*SyncConfig)(nil),              // 10: innerwall.v1.SyncConfig
-	(*PolicyUpdate)(nil),            // 11: innerwall.v1.PolicyUpdate
-	(*PolicyAck)(nil),               // 12: innerwall.v1.PolicyAck
-	(*InventoryReport)(nil),         // 13: innerwall.v1.InventoryReport
-	(*Heartbeat)(nil),               // 14: innerwall.v1.Heartbeat
-	(*Directive)(nil),               // 15: innerwall.v1.Directive
-	(*Reconnect)(nil),               // 16: innerwall.v1.Reconnect
-	(*Reenroll)(nil),                // 17: innerwall.v1.Reenroll
-	(*ReportFlowsRequest)(nil),      // 18: innerwall.v1.ReportFlowsRequest
-	(*ReportFlowsResponse)(nil),     // 19: innerwall.v1.ReportFlowsResponse
-	(*FlowRecord)(nil),              // 20: innerwall.v1.FlowRecord
-	(*HostFacts)(nil),               // 21: innerwall.v1.HostFacts
-	(*Label)(nil),                   // 22: innerwall.v1.Label
-	(*AgentInfo)(nil),               // 23: innerwall.v1.AgentInfo
-	(*PolicySnapshot)(nil),          // 24: innerwall.v1.PolicySnapshot
-	(*PolicyDelta)(nil),             // 25: innerwall.v1.PolicyDelta
-	(*ListeningService)(nil),        // 26: innerwall.v1.ListeningService
-	(*timestamppb.Timestamp)(nil),   // 27: google.protobuf.Timestamp
-	(Protocol)(0),                   // 28: innerwall.v1.Protocol
-	(Direction)(0),                  // 29: innerwall.v1.Direction
+	(EvidenceGapKind)(0),            // 1: innerwall.v1.EvidenceGapKind
+	(EvidenceSource)(0),             // 2: innerwall.v1.EvidenceSource
+	(PolicyDecision)(0),             // 3: innerwall.v1.PolicyDecision
+	(*EnrollRequest)(nil),           // 4: innerwall.v1.EnrollRequest
+	(*EnrollResponse)(nil),          // 5: innerwall.v1.EnrollResponse
+	(*RenewCredentialRequest)(nil),  // 6: innerwall.v1.RenewCredentialRequest
+	(*RenewCredentialResponse)(nil), // 7: innerwall.v1.RenewCredentialResponse
+	(*SyncRequest)(nil),             // 8: innerwall.v1.SyncRequest
+	(*SyncResponse)(nil),            // 9: innerwall.v1.SyncResponse
+	(*Hello)(nil),                   // 10: innerwall.v1.Hello
+	(*HelloAck)(nil),                // 11: innerwall.v1.HelloAck
+	(*SyncConfig)(nil),              // 12: innerwall.v1.SyncConfig
+	(*PolicyUpdate)(nil),            // 13: innerwall.v1.PolicyUpdate
+	(*PolicyAck)(nil),               // 14: innerwall.v1.PolicyAck
+	(*InventoryReport)(nil),         // 15: innerwall.v1.InventoryReport
+	(*Heartbeat)(nil),               // 16: innerwall.v1.Heartbeat
+	(*Directive)(nil),               // 17: innerwall.v1.Directive
+	(*Reconnect)(nil),               // 18: innerwall.v1.Reconnect
+	(*Reenroll)(nil),                // 19: innerwall.v1.Reenroll
+	(*ReportFlowsRequest)(nil),      // 20: innerwall.v1.ReportFlowsRequest
+	(*EvidenceGap)(nil),             // 21: innerwall.v1.EvidenceGap
+	(*ReportFlowsResponse)(nil),     // 22: innerwall.v1.ReportFlowsResponse
+	(*FlowRecord)(nil),              // 23: innerwall.v1.FlowRecord
+	(*HostFacts)(nil),               // 24: innerwall.v1.HostFacts
+	(*Label)(nil),                   // 25: innerwall.v1.Label
+	(*AgentInfo)(nil),               // 26: innerwall.v1.AgentInfo
+	(*PolicySnapshot)(nil),          // 27: innerwall.v1.PolicySnapshot
+	(*PolicyDelta)(nil),             // 28: innerwall.v1.PolicyDelta
+	(*ListeningService)(nil),        // 29: innerwall.v1.ListeningService
+	(*timestamppb.Timestamp)(nil),   // 30: google.protobuf.Timestamp
+	(Protocol)(0),                   // 31: innerwall.v1.Protocol
+	(Direction)(0),                  // 32: innerwall.v1.Direction
 }
 var file_innerwall_v1_agent_proto_depIdxs = []int32{
-	21, // 0: innerwall.v1.EnrollRequest.facts:type_name -> innerwall.v1.HostFacts
-	22, // 1: innerwall.v1.EnrollResponse.assigned_labels:type_name -> innerwall.v1.Label
-	8,  // 2: innerwall.v1.SyncRequest.hello:type_name -> innerwall.v1.Hello
-	12, // 3: innerwall.v1.SyncRequest.policy_ack:type_name -> innerwall.v1.PolicyAck
-	13, // 4: innerwall.v1.SyncRequest.inventory:type_name -> innerwall.v1.InventoryReport
-	14, // 5: innerwall.v1.SyncRequest.heartbeat:type_name -> innerwall.v1.Heartbeat
-	9,  // 6: innerwall.v1.SyncResponse.hello_ack:type_name -> innerwall.v1.HelloAck
-	11, // 7: innerwall.v1.SyncResponse.policy_update:type_name -> innerwall.v1.PolicyUpdate
-	15, // 8: innerwall.v1.SyncResponse.directive:type_name -> innerwall.v1.Directive
-	23, // 9: innerwall.v1.Hello.agent:type_name -> innerwall.v1.AgentInfo
-	21, // 10: innerwall.v1.Hello.facts:type_name -> innerwall.v1.HostFacts
-	10, // 11: innerwall.v1.HelloAck.config:type_name -> innerwall.v1.SyncConfig
-	24, // 12: innerwall.v1.PolicyUpdate.snapshot:type_name -> innerwall.v1.PolicySnapshot
-	25, // 13: innerwall.v1.PolicyUpdate.delta:type_name -> innerwall.v1.PolicyDelta
+	24, // 0: innerwall.v1.EnrollRequest.facts:type_name -> innerwall.v1.HostFacts
+	25, // 1: innerwall.v1.EnrollResponse.assigned_labels:type_name -> innerwall.v1.Label
+	10, // 2: innerwall.v1.SyncRequest.hello:type_name -> innerwall.v1.Hello
+	14, // 3: innerwall.v1.SyncRequest.policy_ack:type_name -> innerwall.v1.PolicyAck
+	15, // 4: innerwall.v1.SyncRequest.inventory:type_name -> innerwall.v1.InventoryReport
+	16, // 5: innerwall.v1.SyncRequest.heartbeat:type_name -> innerwall.v1.Heartbeat
+	11, // 6: innerwall.v1.SyncResponse.hello_ack:type_name -> innerwall.v1.HelloAck
+	13, // 7: innerwall.v1.SyncResponse.policy_update:type_name -> innerwall.v1.PolicyUpdate
+	17, // 8: innerwall.v1.SyncResponse.directive:type_name -> innerwall.v1.Directive
+	26, // 9: innerwall.v1.Hello.agent:type_name -> innerwall.v1.AgentInfo
+	24, // 10: innerwall.v1.Hello.facts:type_name -> innerwall.v1.HostFacts
+	12, // 11: innerwall.v1.HelloAck.config:type_name -> innerwall.v1.SyncConfig
+	27, // 12: innerwall.v1.PolicyUpdate.snapshot:type_name -> innerwall.v1.PolicySnapshot
+	28, // 13: innerwall.v1.PolicyUpdate.delta:type_name -> innerwall.v1.PolicyDelta
 	0,  // 14: innerwall.v1.PolicyAck.status:type_name -> innerwall.v1.AckStatus
-	21, // 15: innerwall.v1.InventoryReport.facts:type_name -> innerwall.v1.HostFacts
-	26, // 16: innerwall.v1.InventoryReport.listening_services:type_name -> innerwall.v1.ListeningService
-	16, // 17: innerwall.v1.Directive.reconnect:type_name -> innerwall.v1.Reconnect
-	17, // 18: innerwall.v1.Directive.reenroll:type_name -> innerwall.v1.Reenroll
-	27, // 19: innerwall.v1.ReportFlowsRequest.window_start:type_name -> google.protobuf.Timestamp
-	27, // 20: innerwall.v1.ReportFlowsRequest.window_end:type_name -> google.protobuf.Timestamp
-	20, // 21: innerwall.v1.ReportFlowsRequest.records:type_name -> innerwall.v1.FlowRecord
-	28, // 22: innerwall.v1.FlowRecord.protocol:type_name -> innerwall.v1.Protocol
-	29, // 23: innerwall.v1.FlowRecord.direction:type_name -> innerwall.v1.Direction
-	1,  // 24: innerwall.v1.FlowRecord.decision:type_name -> innerwall.v1.PolicyDecision
-	27, // 25: innerwall.v1.FlowRecord.first_seen:type_name -> google.protobuf.Timestamp
-	27, // 26: innerwall.v1.FlowRecord.last_seen:type_name -> google.protobuf.Timestamp
-	2,  // 27: innerwall.v1.EnrollmentService.Enroll:input_type -> innerwall.v1.EnrollRequest
-	6,  // 28: innerwall.v1.AgentService.Sync:input_type -> innerwall.v1.SyncRequest
-	18, // 29: innerwall.v1.AgentService.ReportFlows:input_type -> innerwall.v1.ReportFlowsRequest
-	4,  // 30: innerwall.v1.AgentService.RenewCredential:input_type -> innerwall.v1.RenewCredentialRequest
-	3,  // 31: innerwall.v1.EnrollmentService.Enroll:output_type -> innerwall.v1.EnrollResponse
-	7,  // 32: innerwall.v1.AgentService.Sync:output_type -> innerwall.v1.SyncResponse
-	19, // 33: innerwall.v1.AgentService.ReportFlows:output_type -> innerwall.v1.ReportFlowsResponse
-	5,  // 34: innerwall.v1.AgentService.RenewCredential:output_type -> innerwall.v1.RenewCredentialResponse
-	31, // [31:35] is the sub-list for method output_type
-	27, // [27:31] is the sub-list for method input_type
-	27, // [27:27] is the sub-list for extension type_name
-	27, // [27:27] is the sub-list for extension extendee
-	0,  // [0:27] is the sub-list for field type_name
+	24, // 15: innerwall.v1.InventoryReport.facts:type_name -> innerwall.v1.HostFacts
+	29, // 16: innerwall.v1.InventoryReport.listening_services:type_name -> innerwall.v1.ListeningService
+	18, // 17: innerwall.v1.Directive.reconnect:type_name -> innerwall.v1.Reconnect
+	19, // 18: innerwall.v1.Directive.reenroll:type_name -> innerwall.v1.Reenroll
+	30, // 19: innerwall.v1.ReportFlowsRequest.window_start:type_name -> google.protobuf.Timestamp
+	30, // 20: innerwall.v1.ReportFlowsRequest.window_end:type_name -> google.protobuf.Timestamp
+	23, // 21: innerwall.v1.ReportFlowsRequest.records:type_name -> innerwall.v1.FlowRecord
+	21, // 22: innerwall.v1.ReportFlowsRequest.gaps:type_name -> innerwall.v1.EvidenceGap
+	1,  // 23: innerwall.v1.EvidenceGap.kind:type_name -> innerwall.v1.EvidenceGapKind
+	2,  // 24: innerwall.v1.EvidenceGap.source:type_name -> innerwall.v1.EvidenceSource
+	30, // 25: innerwall.v1.EvidenceGap.from:type_name -> google.protobuf.Timestamp
+	30, // 26: innerwall.v1.EvidenceGap.to:type_name -> google.protobuf.Timestamp
+	31, // 27: innerwall.v1.FlowRecord.protocol:type_name -> innerwall.v1.Protocol
+	32, // 28: innerwall.v1.FlowRecord.direction:type_name -> innerwall.v1.Direction
+	3,  // 29: innerwall.v1.FlowRecord.decision:type_name -> innerwall.v1.PolicyDecision
+	30, // 30: innerwall.v1.FlowRecord.first_seen:type_name -> google.protobuf.Timestamp
+	30, // 31: innerwall.v1.FlowRecord.last_seen:type_name -> google.protobuf.Timestamp
+	4,  // 32: innerwall.v1.EnrollmentService.Enroll:input_type -> innerwall.v1.EnrollRequest
+	8,  // 33: innerwall.v1.AgentService.Sync:input_type -> innerwall.v1.SyncRequest
+	20, // 34: innerwall.v1.AgentService.ReportFlows:input_type -> innerwall.v1.ReportFlowsRequest
+	6,  // 35: innerwall.v1.AgentService.RenewCredential:input_type -> innerwall.v1.RenewCredentialRequest
+	5,  // 36: innerwall.v1.EnrollmentService.Enroll:output_type -> innerwall.v1.EnrollResponse
+	9,  // 37: innerwall.v1.AgentService.Sync:output_type -> innerwall.v1.SyncResponse
+	22, // 38: innerwall.v1.AgentService.ReportFlows:output_type -> innerwall.v1.ReportFlowsResponse
+	7,  // 39: innerwall.v1.AgentService.RenewCredential:output_type -> innerwall.v1.RenewCredentialResponse
+	36, // [36:40] is the sub-list for method output_type
+	32, // [32:36] is the sub-list for method input_type
+	32, // [32:32] is the sub-list for extension type_name
+	32, // [32:32] is the sub-list for extension extendee
+	0,  // [0:32] is the sub-list for field type_name
 }
 
 func init() { file_innerwall_v1_agent_proto_init() }
@@ -1666,13 +1922,14 @@ func file_innerwall_v1_agent_proto_init() {
 		(*Directive_Reconnect)(nil),
 		(*Directive_Reenroll)(nil),
 	}
+	file_innerwall_v1_agent_proto_msgTypes[17].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_innerwall_v1_agent_proto_rawDesc), len(file_innerwall_v1_agent_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   19,
+			NumEnums:      4,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   2,
 		},
