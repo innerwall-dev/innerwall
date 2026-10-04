@@ -104,9 +104,11 @@ SELECT count(*) FROM flow_windows;
 -- decision-and-time and workload-and-time indexes serve all five.
 
 -- Grouped by the resolved rule that admitted the traffic; records with no
--- matched rule form the group with the empty rule id.
+-- matched rule form the group with the empty rule id. Each group counts
+-- the distinct workloads that reported it, since a rule's key names none.
 -- name: RollupFlowsByRule :many
 SELECT matched_rule_id,
+       count(DISTINCT workload_id)::bigint         AS workload_count,
        count(*)::bigint                            AS flow_count,
        sum(connection_count)::bigint               AS connection_count,
        sum(byte_count)::bigint                     AS byte_count,

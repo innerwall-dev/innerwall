@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -415,8 +416,22 @@ func (s *Service) DryRun(ctx context.Context, req DryRunRequest) (*DryRunResult,
 	}
 	res := &DryRunResult{StateVersion: compiler.StateVersion(in)}
 	res.Stale = req.StateVersion != "" && req.StateVersion != res.StateVersion
+	// A ruleset or rule without an id is one a save would create, with
+	// a fresh id. It gets one here the same way (with its addresses in
+	// canonical form, as a save writes them), on a copy so the caller's
+	// set is untouched; without it every such rule would
+	// render under the one empty id, and each would replace the last.
 	hypothetical := *in
-	hypothetical.Rulesets = req.Rulesets
+	hypothetical.Rulesets = make([]policy.Ruleset, len(req.Rulesets))
+	for i := range req.Rulesets {
+		rs := req.Rulesets[i]
+		rs.Rules = slices.Clone(rs.Rules)
+		for j := range rs.Rules {
+			rs.Rules[j].Peers = slices.Clone(rs.Rules[j].Peers)
+		}
+		policy.AssignIDs(&rs)
+		hypothetical.Rulesets[i] = rs
+	}
 	res.Workloads = compiler.DryRun(previous, compiler.Render(&hypothetical))
 	return res, nil
 }
@@ -429,4 +444,17 @@ func (s *Service) StateVersion(ctx context.Context) (string, error) {
 		return "", err
 	}
 	return compiler.StateVersion(in), nil
+}
+
+// AuthoringState is every ruleset and the version of the state they were
+// read in, from one consistent snapshot: the pair an editor authors
+// against. Read separately, a write landing between the two would pair
+// rulesets from before it with a version from after, and a dry run of
+// what the editor read would not be reported stale.
+func (s *Service) AuthoringState(ctx context.Context) ([]policy.Ruleset, string, error) {
+	in, _, err := s.Store.LoadRenderState(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	return in.Rulesets, compiler.StateVersion(in), nil
 }

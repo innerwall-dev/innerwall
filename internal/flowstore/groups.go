@@ -24,7 +24,7 @@ type GroupBy string
 const (
 	// GroupByRule groups by the resolved rule that admitted the traffic;
 	// records with no matched rule form one group with the empty rule id.
-	// Rule hit counters.
+	// Rule hit counters, with the distinct workloads that reported each.
 	GroupByRule GroupBy = "rule"
 	// GroupByRulePeer groups by rule and the resolved peer that hit it.
 	GroupByRulePeer GroupBy = "rule,peer"
@@ -131,8 +131,9 @@ type Group struct {
 	Protocol   innerwallv1.Protocol
 
 	// WorkloadCount is the number of distinct workloads that saw the
-	// group. Only peer,service counts it; it is zero for every other
-	// grouping, whose keys already name at most one workload or none.
+	// group. Only rule and peer,service count it; it is zero for the
+	// others: src,dst and dst,service name their one workload in their
+	// keys, and rule,peer, whose key names none, is not counted.
 	WorkloadCount int64
 	// FlowCount is the number of stored records in the group.
 	FlowCount       int64

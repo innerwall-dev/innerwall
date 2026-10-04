@@ -34,6 +34,7 @@ import (
 type writeSurface struct {
 	*surface
 	mem            *fleettest.MemStore
+	authoring      *policy.Authoring
 	directives     *fleettest.Directives
 	enrollStore    *enrolltest.MemStore
 	web, db, cache identity.WorkloadID
@@ -83,6 +84,7 @@ func newWriteSurface(t *testing.T) *writeSurface {
 	ws.directives = &fleettest.Directives{}
 	fleetSvc := &fleet.Service{Store: mem, Engine: engine, Reads: reads, Directives: ws.directives, Now: tick}
 	enrollSvc := &enroll.Service{Store: ws.enrollStore, Now: func() time.Time { return now }}
+	ws.authoring = authoring
 	ws.surface = newSurface(t, api.Deps{Reads: reads, Authoring: authoring, Fleet: fleetSvc, Enroll: enrollSvc})
 	ws.setPassword(t, "Ada")
 	token, _, err := ws.operators.MintToken(context.Background(), "writes", 0)
@@ -502,6 +504,39 @@ func TestPreviewAndDryRunEndpoints(t *testing.T) {
 	broken[1].(map[string]any)["rules"].([]map[string]any)[0]["services"] = []string{"postgres"}
 	resp, body = s.call(t, http.MethodPost, "/api/v1/policies/render-dryrun", jsonBody(map[string]any{"rulesets": broken}), nil)
 	expectFindings(t, resp, body, "rulesets[1].rules[0].peers[0].cidr")
+}
+
+// TestRulesetListingIsOneSnapshot lands a write right after the listing
+// first reads the rulesets. The rulesets and the state version must still
+// describe one state, so an editor that dry-runs what it read, naming
+// the state version it read with it, is told the state moved.
+func TestRulesetListingIsOneSnapshot(t *testing.T) {
+	s := newWriteSurface(t)
+	ctx := context.Background()
+	s.mem.AfterRulesetsRead = func() {
+		rs, err := s.mem.GetRuleset(ctx, s.ruleset.ID)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		rule := rs.Rules[0]
+		rule.Description = "changed under the listing"
+		if err := s.authoring.UpdateRule(ctx, rs.ID, &rule, policy.FormatVersion(rule.Version)); err != nil {
+			t.Error(err)
+		}
+	}
+	resp, body := s.call(t, http.MethodGet, "/api/v1/rulesets", "", nil)
+	if resp.status != http.StatusOK || s.mem.AfterRulesetsRead != nil {
+		t.Fatalf("listing: %d %v (the write did not land)", resp.status, body)
+	}
+	listed := field(body, "rulesets.0").(map[string]any)
+	if field(listed, "rules.0.description") != "postgres from web" {
+		t.Fatalf("the listing read after the write: %v", listed)
+	}
+	resp, body = s.call(t, http.MethodPost, "/api/v1/policies/render-dryrun", jsonBody(map[string]any{"state_version": body["state_version"], "rulesets": []any{listed}}), nil)
+	if resp.status != http.StatusOK || body["stale"] != true {
+		t.Fatalf("a dry run of the listed set at the listed state version: %d %v, want stale", resp.status, body)
+	}
 }
 
 func TestTokenEndpoints(t *testing.T) {

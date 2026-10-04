@@ -564,6 +564,7 @@ func (q *Queries) RollupFlowsByPeerService(ctx context.Context, arg RollupFlowsB
 const rollupFlowsByRule = `-- name: RollupFlowsByRule :many
 
 SELECT matched_rule_id,
+       count(DISTINCT workload_id)::bigint         AS workload_count,
        count(*)::bigint                            AS flow_count,
        sum(connection_count)::bigint               AS connection_count,
        sum(byte_count)::bigint                     AS byte_count,
@@ -602,6 +603,7 @@ type RollupFlowsByRuleParams struct {
 
 type RollupFlowsByRuleRow struct {
 	MatchedRuleID        string
+	WorkloadCount        int64
 	FlowCount            int64
 	ConnectionCount      int64
 	ByteCount            int64
@@ -630,7 +632,8 @@ type RollupFlowsByRuleRow struct {
 // so a truncated result still says how it relates to the whole. The
 // decision-and-time and workload-and-time indexes serve all five.
 // Grouped by the resolved rule that admitted the traffic; records with no
-// matched rule form the group with the empty rule id.
+// matched rule form the group with the empty rule id. Each group counts
+// the distinct workloads that reported it, since a rule's key names none.
 func (q *Queries) RollupFlowsByRule(ctx context.Context, arg RollupFlowsByRuleParams) ([]RollupFlowsByRuleRow, error) {
 	rows, err := q.db.Query(ctx, rollupFlowsByRule,
 		arg.WorkloadIds,
@@ -652,6 +655,7 @@ func (q *Queries) RollupFlowsByRule(ctx context.Context, arg RollupFlowsByRulePa
 		var i RollupFlowsByRuleRow
 		if err := rows.Scan(
 			&i.MatchedRuleID,
+			&i.WorkloadCount,
 			&i.FlowCount,
 			&i.ConnectionCount,
 			&i.ByteCount,

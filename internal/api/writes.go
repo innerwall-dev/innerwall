@@ -126,14 +126,9 @@ func (s *Server) names(r *http.Request) (policy.Names, error) {
 // --- rulesets ----------------------------------------------------------------
 
 // listRulesets is GET /api/v1/rulesets: every ruleset, and the version
-// of the state a policy editor authors against.
+// of the state a policy editor authors against, read together.
 func (s *Server) listRulesets(w http.ResponseWriter, r *http.Request) {
-	rulesets, err := s.authoring.Store.ListRulesets(r.Context())
-	if err != nil {
-		s.writeProblemFor(w, err)
-		return
-	}
-	stateVersion, err := s.fleet.StateVersion(r.Context())
+	rulesets, stateVersion, err := s.fleet.AuthoringState(r.Context())
 	if err != nil {
 		s.writeProblemFor(w, err)
 		return

@@ -245,6 +245,15 @@ func TestRollupEndpoint(t *testing.T) {
 	if _, present := field(body, "groups.2").(map[string]any)["workload_count"]; present {
 		t.Fatalf("dst,service group carries workload_count: %v", field(body, "groups.2"))
 	}
+	// A rule group carries the workloads that reported it, as hit
+	// counters with "matched on N workloads".
+	resp, body = s.get(t, "/api/v1/flows/rollup?group_by=rule&verdict=would_block&label=role=db")
+	if resp.status != http.StatusOK || field(body, "groups.1.workload_count") != float64(2) || field(body, "groups.2.workload_count") != float64(1) {
+		t.Fatalf("rule groups = %v", field(body, "groups"))
+	}
+	if keys := field(body, "groups.1.keys").(map[string]any); len(keys) != 1 {
+		t.Fatalf("rule keys = %v", keys)
+	}
 	resp, body = s.get(t, "/api/v1/flows/rollup?group_by=peer,service&verdict=would_block&label=role=db")
 	if got := field(body, "group_by"); resp.status != http.StatusOK || len(got.([]any)) != 2 || got.([]any)[0] != "peer" || got.([]any)[1] != "service" {
 		t.Fatalf("peer,service: %d group_by %v", resp.status, field(body, "group_by"))

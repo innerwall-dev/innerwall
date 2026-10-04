@@ -42,6 +42,11 @@ type MemStore struct {
 	// were loaded and before the modes are flipped, with the store lock
 	// released, so a test can move labels underneath the change.
 	AfterResolve func()
+	// AfterRulesetsRead, when set, runs once, the next time the rulesets
+	// are read (alone or as part of the render state), with the store
+	// lock released, so a test can land a write between that read and
+	// anything the caller reads after it.
+	AfterRulesetsRead func()
 }
 
 var (
@@ -449,8 +454,21 @@ func (m *MemStore) GetRuleset(_ context.Context, id uuid.UUID) (*policy.Ruleset,
 // ListRulesets implements policy.Store.
 func (m *MemStore) ListRulesets(context.Context) ([]policy.Ruleset, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.listRulesets(), nil
+	out := m.listRulesets()
+	hook := m.takeAfterRulesetsRead()
+	m.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
+	return out, nil
+}
+
+// takeAfterRulesetsRead disarms the one-shot hook and returns it; the
+// caller holds the lock.
+func (m *MemStore) takeAfterRulesetsRead() func() {
+	hook := m.AfterRulesetsRead
+	m.AfterRulesetsRead = nil
+	return hook
 }
 
 func (m *MemStore) listRulesets() []policy.Ruleset {
@@ -504,8 +522,13 @@ func (m *MemStore) ReplaceWorkloadLabels(_ context.Context, id identity.Workload
 // LoadRenderState implements fleet.Store.
 func (m *MemStore) LoadRenderState(context.Context) (*compiler.Inputs, map[identity.WorkloadID]*innerwallv1.WorkloadPolicy, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.inputs(), m.policies(), nil
+	in, policies := m.inputs(), m.policies()
+	hook := m.takeAfterRulesetsRead()
+	m.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
+	return in, policies, nil
 }
 
 func (m *MemStore) inputs() *compiler.Inputs {

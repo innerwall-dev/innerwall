@@ -230,6 +230,52 @@ func TestRollupGroups(t *testing.T) {
 	}
 }
 
+// TestRollupGroupsRuleWorkloadCount checks that the rule grouping counts
+// the distinct workloads that reported each rule, across windows and
+// within the scope asked for: the "matched on N workloads" of a rule's
+// hit counters.
+func TestRollupGroupsRuleWorkloadCount(t *testing.T) {
+	ctx := context.Background()
+	s := storetest.Open(t)
+	f := storetest.SeedFleet(t, s)
+	flows := s.Flows()
+	// The database rule also admits web-1 to cache-1, so its allowed
+	// traffic spans two workloads, each reporting it in both windows.
+	for _, start := range []time.Time{f.Window1, f.Window2} {
+		extra := flowstore.Window{WorkloadID: f.Cache, Start: start, End: start.Add(f.WindowLength), Records: []flowstore.Record{{
+			Peer: flowstore.Peer{Kind: flowstore.PeerWorkload, Key: f.Web.String()}, SrcAddress: f.WebAddr, DstAddress: f.CacheAddr, DstPort: 5432,
+			Protocol: tcp, Direction: innerwallv1.Direction_DIRECTION_INBOUND, Decision: allowed, MatchedRuleID: f.DBRuleID,
+			ConnectionCount: 5, ByteCount: 500, FirstSeen: start.Add(10 * time.Second), LastSeen: start.Add(f.WindowLength - 10*time.Second),
+		}}}
+		if _, err := flows.WriteWindow(ctx, extra); err != nil {
+			t.Fatal(err)
+		}
+	}
+	q := flowstore.GroupQuery{GroupBy: flowstore.GroupByRule, Since: f.Now.Add(-24 * time.Hour), Until: f.Now}
+	res, err := flows.RollupGroups(ctx, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	counts := map[string]int64{}
+	for _, g := range res.Groups {
+		counts[g.RuleID] = g.WorkloadCount
+	}
+	// The rule on db-1 and cache-1, four records; the unmatched group on
+	// all three workloads.
+	if len(res.Groups) != 2 || counts[f.DBRuleID] != 2 || counts[""] != 3 {
+		t.Fatalf("workload counts = %v (groups %+v)", counts, res.Groups)
+	}
+	// Scoped to one workload, the rule was seen by one.
+	q.WorkloadIDs, q.Decision = []identity.WorkloadID{f.Cache}, allowed
+	res, err = flows.RollupGroups(ctx, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Groups) != 1 || res.Groups[0].RuleID != f.DBRuleID || res.Groups[0].WorkloadCount != 1 || res.Groups[0].FlowCount != 2 {
+		t.Fatalf("scoped rule groups = %+v", res.Groups)
+	}
+}
+
 // TestRollupGroupsPeerService checks the peer,service grouping: one group
 // per resolved peer and service across every workload in scope, with the
 // distinct workloads that saw it counted in the store, and the shared

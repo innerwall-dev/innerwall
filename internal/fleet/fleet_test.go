@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/netip"
 	"reflect"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -274,9 +277,11 @@ func TestDryRunIsPure(t *testing.T) {
 	}
 
 	// The hypothetical set: the existing ruleset widened to cache, and a
-	// new ruleset on web.
+	// new ruleset on web. Its rule carries an id so repeated runs can be
+	// compared byte for byte; one without is given a fresh id on every
+	// run, as a create would (TestDryRunAssignsIDsAsCreateWould).
 	hypothetical := []policy.Ruleset{f.ruleset, {Name: "office-to-web", Enabled: true, Scope: policy.Selector{"role": {"web"}}, Rules: []policy.Rule{{
-		Direction: innerwallv1.Direction_DIRECTION_INBOUND, Enabled: true,
+		ID: uuid.New(), Direction: innerwallv1.Direction_DIRECTION_INBOUND, Enabled: true,
 		Peers:   []policy.Peer{{Kind: policy.PeerCIDR, CIDR: "192.0.2.0/24"}},
 		Entries: []policy.ServiceEntry{{Protocol: innerwallv1.Protocol_PROTOCOL_TCP, Ports: []policy.PortRange{{Start: 443, End: 443}}}},
 	}}}}
@@ -348,6 +353,69 @@ func TestDryRunIsPure(t *testing.T) {
 	if fs := policy.AsFindings(err); fs == nil || fs.Errors[0].Path != "rulesets[1].name" {
 		t.Fatalf("duplicate name findings = %v", err)
 	}
+}
+
+// TestDryRunAssignsIDsAsCreateWould covers rules authored without an id
+// (unsaved, new): the dry run gives each a fresh id exactly as a create
+// would, so two of them on one workload render as two rules rather than
+// one replacing the other, and what the dry run reports is what saving
+// the same set renders.
+func TestDryRunAssignsIDsAsCreateWould(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	tcp := func(port uint32) []policy.ServiceEntry {
+		return []policy.ServiceEntry{{Protocol: innerwallv1.Protocol_PROTOCOL_TCP, Ports: []policy.PortRange{{Start: port, End: port}}}}
+	}
+	fresh := policy.Ruleset{Name: "office-to-web", Enabled: true, Scope: policy.Selector{"role": {"web"}}, Rules: []policy.Rule{
+		{Direction: innerwallv1.Direction_DIRECTION_INBOUND, Enabled: true, Peers: []policy.Peer{{Kind: policy.PeerCIDR, CIDR: "192.0.2.0/24"}}, Entries: tcp(443)},
+		{Direction: innerwallv1.Direction_DIRECTION_INBOUND, Enabled: true, Peers: []policy.Peer{{Kind: policy.PeerCIDR, CIDR: "198.51.100.7/24"}}, Entries: tcp(8443)},
+	}}
+	hypothetical := []policy.Ruleset{f.ruleset, fresh}
+	res, err := f.svc.DryRun(ctx, fleet.DryRunRequest{Rulesets: hypothetical})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var web *compiler.WorkloadDiff
+	for i := range res.Workloads {
+		if res.Workloads[i].ID == f.web {
+			web = &res.Workloads[i]
+		}
+	}
+	if web == nil || len(web.Added) != 2 {
+		t.Fatalf("web diff = %+v, want both new rules added", web)
+	}
+	if a, b := web.Added[0].GetRuleId(), web.Added[1].GetRuleId(); a == b || strings.HasPrefix(a, uuid.Nil.String()) || strings.HasPrefix(b, uuid.Nil.String()) {
+		t.Fatalf("new rules rendered as %q and %q, want two fresh ids", a, b)
+	}
+	// The caller's set is left as it was given.
+	if hypothetical[1].ID != uuid.Nil || hypothetical[1].Rules[0].ID != uuid.Nil || hypothetical[1].Rules[1].ID != uuid.Nil || hypothetical[1].Rules[1].Peers[0].CIDR != "198.51.100.7/24" {
+		t.Fatalf("the dry run wrote ids into the request: %+v", hypothetical[1])
+	}
+
+	// Saving the same ruleset renders the same rules, ids aside.
+	now := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
+	authoring := &policy.Authoring{Store: f.store, Renderer: fleettest.Renderer{Engine: f.engine}, Now: func() time.Time { return now }}
+	if err := authoring.CreateRuleset(ctx, &fresh); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := f.store.GetWorkloadPolicy(ctx, f.web)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := withoutIDs(saved.GetInboundRules()), withoutIDs(web.Added); !reflect.DeepEqual(got, want) {
+		t.Fatalf("saved rules %v, dry run reported %v", got, want)
+	}
+}
+
+// withoutIDs is the resolved rules' content, keyed by what they admit
+// rather than the ids they were given.
+func withoutIDs(rules []*innerwallv1.ResolvedRule) []string {
+	out := make([]string, 0, len(rules))
+	for _, r := range rules {
+		out = append(out, fmt.Sprintf("%v %v %v", r.GetProtocol(), r.GetPorts(), r.GetPeerCidrs()))
+	}
+	slices.Sort(out)
+	return out
 }
 
 func TestSetLabels(t *testing.T) {

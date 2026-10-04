@@ -40,7 +40,7 @@ func (p *Postgres) RollupGroups(ctx context.Context, q GroupQuery) (*GroupResult
 		}
 		for i := range rows {
 			r := &rows[i]
-			out.Groups = append(out.Groups, Group{RuleID: r.MatchedRuleID, FlowCount: r.FlowCount, ConnectionCount: unsigned(r.ConnectionCount), ByteCount: unsigned(r.ByteCount), FirstSeen: r.FirstSeen, LastSeen: r.LastSeen})
+			out.Groups = append(out.Groups, Group{RuleID: r.MatchedRuleID, WorkloadCount: r.WorkloadCount, FlowCount: r.FlowCount, ConnectionCount: unsigned(r.ConnectionCount), ByteCount: unsigned(r.ByteCount), FirstSeen: r.FirstSeen, LastSeen: r.LastSeen})
 			if i == 0 {
 				out.EffectiveFrom, out.EffectiveTo, out.GroupCount, out.FlowCount, out.ConnectionCount, out.ByteCount = r.EffectiveFrom, r.EffectiveTo, r.GroupCount, r.TotalFlowCount, unsigned(r.TotalConnectionCount), unsigned(r.TotalByteCount)
 			}

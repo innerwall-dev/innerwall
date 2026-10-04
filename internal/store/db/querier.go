@@ -208,7 +208,8 @@ type Querier interface {
 	// so a truncated result still says how it relates to the whole. The
 	// decision-and-time and workload-and-time indexes serve all five.
 	// Grouped by the resolved rule that admitted the traffic; records with no
-	// matched rule form the group with the empty rule id.
+	// matched rule form the group with the empty rule id. Each group counts
+	// the distinct workloads that reported it, since a rule's key names none.
 	RollupFlowsByRule(ctx context.Context, arg RollupFlowsByRuleParams) ([]RollupFlowsByRuleRow, error)
 	// Grouped by rule and the resolved peer that hit it. The label snapshot
 	// of a peer is the one stored with its most recently seen record.

@@ -53,8 +53,9 @@ type GroupKeys struct {
 
 // RollupGroup is one group with its counters and the span it was seen
 // over. WorkloadCount is the number of distinct workloads that saw the
-// group; it is set only by peer,service, the one grouping whose keys do
-// not already name the workload, and nil otherwise.
+// group; it is set by rule and peer,service and nil otherwise: src,dst
+// and dst,service name their one workload in their keys, and rule,peer,
+// whose key names none, is not counted.
 type RollupGroup struct {
 	Keys GroupKeys
 	Counters
@@ -129,7 +130,8 @@ func (s *Reader) Rollup(ctx context.Context, req RollupRequest) (*Rollup, error)
 		}
 		switch req.GroupBy {
 		case flowstore.GroupByRule:
-			group.Keys.Rule = ruleRef(g.RuleID)
+			workloads := g.WorkloadCount
+			group.Keys.Rule, group.WorkloadCount = ruleRef(g.RuleID), &workloads
 		case flowstore.GroupByRulePeer:
 			peer := names.peer(g.Peer)
 			group.Keys.Rule, group.Keys.Peer = ruleRef(g.RuleID), &peer

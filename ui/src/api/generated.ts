@@ -200,8 +200,11 @@ export interface paths {
          *     consistent snapshot, diffs every workload's result against its
          *     persisted rendered policy through the same delta implementation the
          *     sync stream uses, and discards everything. No lock is held and no
-         *     version moves. `stale` is set when the request named a state version
-         *     other than the one computed against.
+         *     version moves. A ruleset or rule without an id is given a fresh one,
+         *     as a create would, so the result is what saving the set would render;
+         *     such ids are new on every call and name nothing persisted. `stale` is
+         *     set when the request named a state version other than the one
+         *     computed against.
          */
         post: operations["renderDryRun"];
         delete?: never;
@@ -268,7 +271,9 @@ export interface paths {
          * Every ruleset, and the version of the state a policy editor authors against.
          * @description `state_version` is a digest of everything a render reads: each
          *     workload's labels, addresses, and mode, and each authored object's
-         *     last write. A dry run reports the version it computed against, so an
+         *     last write. The rulesets and `state_version` are read from one
+         *     consistent snapshot, so the version describes exactly the rulesets
+         *     returned. A dry run reports the version it computed against, so an
          *     editor that started from this value can tell when the state moved.
          */
         get: operations["listRulesets"];
@@ -849,7 +854,7 @@ export interface components {
                     src?: components["schemas"]["PeerRef"];
                 };
                 last_seen: components["schemas"]["Timestamp"];
-                /** @description On a `peer,service` group only, the number of distinct workloads in scope that saw it; absent from every other grouping, whose keys already name at most one workload. */
+                /** @description On a `rule` or `peer,service` group only, the number of distinct workloads in scope that saw it; absent from every other grouping (`src,dst` and `dst,service` name their one workload in their keys; `rule,peer` is not counted). */
                 workload_count?: number;
             })[];
             to: components["schemas"]["Timestamp"];
