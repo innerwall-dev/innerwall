@@ -1988,7 +1988,7 @@ components:
                 properties:
                   workload_count:
                     type: integer
-                    description: On a `peer,service` group only, the number of distinct workloads in scope that saw it; absent from every other grouping, whose keys already name at most one workload.
+                    description: On a `rule` or `peer,service` group only, the number of distinct workloads in scope that saw it; absent from every other grouping, whose keys already name one workload.
                   keys:
                     type: object
                     description: One property per dimension of the grouping.

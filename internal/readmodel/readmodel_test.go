@@ -120,8 +120,8 @@ func TestRollupScopeAndKeys(t *testing.T) {
 		t.Fatalf("filters not passed through: %+v", q)
 	}
 
-	// Only peer,service carries a workload count; the other groupings
-	// name at most one workload in their keys and leave it nil.
+	// Only rule and peer,service carry a workload count; the other
+	// groupings name one workload in their keys and leave it nil.
 	if g.WorkloadCount != nil {
 		t.Fatalf("rule,peer group carries a workload count: %d", *g.WorkloadCount)
 	}
@@ -144,6 +144,18 @@ func TestRollupScopeAndKeys(t *testing.T) {
 	}
 	if ps.WorkloadCount == nil || *ps.WorkloadCount != 2 || ps.ConnectionCount != 9 {
 		t.Fatalf("peer,service group = %+v", ps)
+	}
+	// A rule's hit counter carries the workloads that reported it.
+	f.flows.Result = &flowstore.GroupResult{
+		Groups:        []flowstore.Group{{RuleID: f.ruleID, WorkloadCount: 3, FlowCount: 6, ConnectionCount: 360, FirstSeen: now.Add(-2 * time.Hour), LastSeen: now.Add(-time.Hour)}},
+		EffectiveFrom: now.Add(-2 * time.Hour), EffectiveTo: now.Add(-55 * time.Minute), GroupCount: 1, FlowCount: 6, ConnectionCount: 360,
+	}
+	res, err = f.reader.Rollup(ctx, readmodel.RollupRequest{GroupBy: flowstore.GroupByRule, Verdict: innerwallv1.PolicyDecision_POLICY_DECISION_ALLOWED})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rg := res.Groups[0]; rg.Keys.Rule == nil || rg.Keys.Rule.ID != f.ruleID || rg.Keys.Peer != nil || rg.WorkloadCount == nil || *rg.WorkloadCount != 3 {
+		t.Fatalf("rule group = %+v", rg)
 	}
 
 	// Refusals.

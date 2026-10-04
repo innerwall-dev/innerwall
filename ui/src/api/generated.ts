@@ -854,7 +854,7 @@ export interface components {
                     src?: components["schemas"]["PeerRef"];
                 };
                 last_seen: components["schemas"]["Timestamp"];
-                /** @description On a `peer,service` group only, the number of distinct workloads in scope that saw it; absent from every other grouping, whose keys already name at most one workload. */
+                /** @description On a `rule` or `peer,service` group only, the number of distinct workloads in scope that saw it; absent from every other grouping, whose keys already name one workload. */
                 workload_count?: number;
             })[];
             to: components["schemas"]["Timestamp"];

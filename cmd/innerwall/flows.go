@@ -376,9 +376,9 @@ func runFlowsGroupedRollup(ctx context.Context, st *store.Store, a groupedRollup
 		fmt.Fprintf(os.Stderr, "; showing the top %d", len(res.Groups))
 	}
 	fmt.Fprintln(os.Stderr)
-	// Only peer,service counts the distinct workloads behind a group; the
-	// other groupings name at most one workload in their keys.
-	counted := req.GroupBy == flowstore.GroupByPeerService
+	// Only rule and peer,service count the distinct workloads behind a
+	// group; the other groupings name one workload in their keys.
+	counted := req.GroupBy == flowstore.GroupByRule || req.GroupBy == flowstore.GroupByPeerService
 	header := strings.ToUpper(strings.ReplaceAll(string(req.GroupBy), ",", "\t"))
 	if counted {
 		header += "\tWORKLOADS"
