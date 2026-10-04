@@ -288,7 +288,7 @@ func SeedEstate(ctx context.Context, s *store.Store, f *Fleet, extra int) error 
 			if droppers[id] {
 				dropped = 212
 			}
-			if err := s.RecordHeartbeat(ctx, id, dropped, "", seen); err != nil {
+			if err := s.RecordHeartbeat(ctx, id, dropped, 0, "", seen); err != nil {
 				return err
 			}
 		}

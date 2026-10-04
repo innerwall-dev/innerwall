@@ -73,12 +73,42 @@ type Record struct {
 }
 
 // Window is one reporting window from one workload, resolved and ready to
-// store.
+// store, with the evidence gaps that rode it.
 type Window struct {
 	WorkloadID identity.WorkloadID
 	Start      time.Time
 	End        time.Time
 	Records    []Record
+	Gaps       []Gap
+}
+
+// Gap is one interval [From, To) in which a workload's flow evidence is
+// known to be incomplete, as its agent reported it. Count is the records
+// or table entries lost, nil when unknown (ADR-0019 as amended).
+type Gap struct {
+	Kind   innerwallv1.EvidenceGapKind
+	Source innerwallv1.EvidenceSource
+	From   time.Time
+	To     time.Time
+	Count  *uint64
+}
+
+// GapRow is one stored flow_gaps row.
+type GapRow struct {
+	ID         int64
+	WorkloadID identity.WorkloadID
+	ReceivedAt time.Time
+	Gap
+}
+
+// GapQuery selects the gaps of a set of workloads that intersect
+// [Since, Until), newest first, at most Limit of them. An empty set means
+// every workload.
+type GapQuery struct {
+	WorkloadIDs []identity.WorkloadID
+	Since       time.Time
+	Until       time.Time
+	Limit       int
 }
 
 // WindowRow is one stored flow_windows row.
@@ -147,9 +177,12 @@ type Total struct {
 // FlowStore is the only path to flow data (ADR-0009). Every method is
 // implemented with hand-written SQL in internal/store/queries (ADR-0006).
 type FlowStore interface {
-	// WriteWindow stores every record of w and folds each into the totals,
-	// atomically. It returns the number of records stored.
+	// WriteWindow stores every record of w, folds each into the totals,
+	// and stores its gaps, atomically; a gap already stored is not stored
+	// again. It returns the number of records stored.
 	WriteWindow(ctx context.Context, w Window) (int, error)
+	// ListGaps returns the gaps of a workload set intersecting a range.
+	ListGaps(ctx context.Context, q GapQuery) ([]GapRow, error)
 	// ListWindows returns a workload's stored windows, newest first.
 	ListWindows(ctx context.Context, q WindowQuery) ([]WindowRow, error)
 	// Rollup groups the windows of a workload set by peer and service.
@@ -164,10 +197,11 @@ type FlowStore interface {
 	// ListTotals returns a workload's cumulative flow keys, most recently
 	// seen first. A zero decision means every decision.
 	ListTotals(ctx context.Context, id identity.WorkloadID, decision innerwallv1.PolicyDecision) ([]Total, error)
-	// PruneWindows deletes windows that started before horizon, in bounded
-	// batches. It reports how many rows it deleted and whether it ran at
-	// all: only one replica prunes at a time, and a replica that finds the
-	// retention lock held by another returns ran == false and deleted == 0.
+	// PruneWindows deletes windows that started before horizon, and gaps
+	// that ended before it, in bounded batches. It reports how many window
+	// rows it deleted and whether it ran at all: only one replica prunes at
+	// a time, and a replica that finds the retention lock held by another
+	// returns ran == false and deleted == 0.
 	PruneWindows(ctx context.Context, horizon time.Time) (deleted int64, ran bool, err error)
 }
 

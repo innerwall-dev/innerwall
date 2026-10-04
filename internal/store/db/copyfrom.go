@@ -55,8 +55,8 @@ func (r iteratorForInsertFlowWindows) Err() error {
 }
 
 // Flow storage (ADR-0009, ADR-0019). These are the only statements that
-// touch flow_windows and flow_totals; every caller goes through the
-// FlowStore interface in internal/flowstore.
+// touch flow_windows, flow_totals, and flow_gaps; every caller goes through
+// the FlowStore interface in internal/flowstore.
 func (q *Queries) InsertFlowWindows(ctx context.Context, arg []InsertFlowWindowsParams) (int64, error) {
 	return q.db.CopyFrom(ctx, []string{"flow_windows"}, []string{"workload_id", "window_start", "window_end", "peer_kind", "peer_key", "peer_labels", "src_address", "dst_address", "dst_port", "protocol", "direction", "decision", "matched_rule_id", "connection_count", "byte_count", "first_seen", "last_seen", "process_name"}, &iteratorForInsertFlowWindows{rows: arg})
 }

@@ -105,9 +105,11 @@ func TestFlowPipelineEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := &chanSource{ch: make(chan collect.Observation, 64)}
+	gaps := &collect.Gaps{}
 	buffer := collect.NewBuffer(0)
-	collector := &collect.Collector{Source: source, Buffer: buffer}
-	reporter := &collect.Reporter{Buffer: buffer, BackoffBase: 50 * time.Millisecond, BackoffCap: time.Second, Dial: func(ctx context.Context) (innerwallv1.AgentServiceClient, io.Closer, error) {
+	buffer.Gaps = gaps
+	collector := &collect.Collector{Source: source, Buffer: buffer, Gaps: gaps}
+	reporter := &collect.Reporter{Buffer: buffer, Gaps: gaps, BackoffBase: 50 * time.Millisecond, BackoffCap: time.Second, Dial: func(ctx context.Context) (innerwallv1.AgentServiceClient, io.Closer, error) {
 		return agentsync.DialGRPC(ctx, h.addr, holder)
 	}}
 	cfg := &innerwallv1.SyncConfig{FlowAggregationWindowSeconds: 1, FlowBatchMaxRecords: 2}
@@ -154,6 +156,32 @@ func TestFlowPipelineEndToEnd(t *testing.T) {
 	}
 	if buffer.Dropped() != 0 {
 		t.Fatalf("dropped = %d", buffer.Dropped())
+	}
+
+	// An evidence gap the agent recorded rides the next window, even one
+	// with no records, and lands under the credential's workload.
+	gapFrom := time.Now().Add(-time.Minute).Truncate(time.Microsecond)
+	gaps.Record(collect.Gap{Kind: collect.GapSourceOverrun, Source: collect.GapNflog, From: gapFrom, To: gapFrom.Add(2 * time.Second)})
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		stored, err := flows.ListGaps(ctx, flowstore.GapQuery{WorkloadIDs: []identity.WorkloadID{db.id}, Since: gapFrom.Add(-time.Hour), Until: time.Now()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(stored) == 1 {
+			g := stored[0]
+			if g.Kind != innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_OVERRUN || g.Source != innerwallv1.EvidenceSource_EVIDENCE_SOURCE_NFLOG || !g.From.Equal(gapFrom) || !g.To.Equal(gapFrom.Add(2*time.Second)) || g.Count != nil {
+				t.Fatalf("stored gap = %+v", g)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("gap not stored: %+v", stored)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if gaps.Held() != 0 {
+		t.Fatalf("%d gaps still held after delivery", gaps.Held())
 	}
 
 	// A label change on the peer: the next window carries the new
@@ -249,9 +277,9 @@ func TestFlowPipelineEndToEnd(t *testing.T) {
 	db.connect(0, facts("db-1", "10.0.0.10/24"))
 	db.expectHelloAck()
 	db.expectSnapshot()
-	db.send(&innerwallv1.SyncRequest{Msg: &innerwallv1.SyncRequest_Heartbeat{Heartbeat: &innerwallv1.Heartbeat{UptimeSeconds: 1, DroppedFlowRecords: 9, CredentialRenewalError: "renewal refused: boom"}}})
+	db.send(&innerwallv1.SyncRequest{Msg: &innerwallv1.SyncRequest_Heartbeat{Heartbeat: &innerwallv1.Heartbeat{UptimeSeconds: 1, DroppedFlowRecords: 9, SourceOverruns: 4, CredentialRenewalError: "renewal refused: boom"}}})
 	waitFor(t, st, db.id, "renewal error recorded", func(w *registry.Workload) bool {
-		return w.CredentialRenewalError == "renewal refused: boom" && w.DroppedFlowRecords == 9
+		return w.CredentialRenewalError == "renewal refused: boom" && w.DroppedFlowRecords == 9 && w.SourceOverruns == 4
 	})
 	db.send(&innerwallv1.SyncRequest{Msg: &innerwallv1.SyncRequest_Heartbeat{Heartbeat: &innerwallv1.Heartbeat{UptimeSeconds: 2}}})
 	waitFor(t, st, db.id, "renewal error cleared", func(w *registry.Workload) bool {

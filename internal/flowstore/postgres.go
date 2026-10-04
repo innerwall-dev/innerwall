@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
@@ -37,7 +38,7 @@ func NewPostgres(pool *pgxpool.Pool) *Postgres {
 // WriteWindow implements FlowStore. The rows are copied in one statement
 // and the totals are upserted in one batch, all in one transaction.
 func (p *Postgres) WriteWindow(ctx context.Context, w Window) (int, error) {
-	if len(w.Records) == 0 {
+	if len(w.Records) == 0 && len(w.Gaps) == 0 {
 		return 0, nil
 	}
 	tx, err := p.pool.Begin(ctx)
@@ -46,6 +47,15 @@ func (p *Postgres) WriteWindow(ctx context.Context, w Window) (int, error) {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := p.q.WithTx(tx)
+	if err := writeGaps(ctx, q, w); err != nil {
+		return 0, err
+	}
+	if len(w.Records) == 0 {
+		if err := tx.Commit(ctx); err != nil {
+			return 0, fmt.Errorf("flowstore: committing gaps: %w", err)
+		}
+		return 0, nil
+	}
 
 	rows := make([]db.InsertFlowWindowsParams, 0, len(w.Records))
 	for i := range w.Records {
@@ -113,6 +123,83 @@ func (p *Postgres) WriteWindow(ctx context.Context, w Window) (int, error) {
 		return 0, fmt.Errorf("flowstore: committing window: %w", err)
 	}
 	return int(n), nil
+}
+
+// writeGaps stores w's gaps in one batch; one already stored is skipped.
+func writeGaps(ctx context.Context, q *db.Queries, w Window) error {
+	if len(w.Gaps) == 0 {
+		return nil
+	}
+	params := make([]db.InsertFlowGapParams, 0, len(w.Gaps))
+	for i := range w.Gaps {
+		g := &w.Gaps[i]
+		var lost pgtype.Int8
+		if g.Count != nil {
+			lost = pgtype.Int8{Int64: int64(*g.Count), Valid: true} //nolint:gosec // counts are far below the signed range
+		}
+		params = append(params, db.InsertFlowGapParams{
+			WorkloadID: w.WorkloadID.UUID(),
+			Kind:       int32(g.Kind),
+			Source:     int32(g.Source),
+			GapFrom:    g.From,
+			GapTo:      g.To,
+			LostCount:  lost,
+		})
+	}
+	var batchErr error
+	results := q.InsertFlowGap(ctx, params)
+	results.Exec(func(_ int, err error) {
+		if err != nil && batchErr == nil {
+			batchErr = err
+		}
+	})
+	if err := results.Close(); err != nil && batchErr == nil {
+		batchErr = err
+	}
+	if batchErr != nil {
+		return fmt.Errorf("flowstore: inserting gaps: %w", batchErr)
+	}
+	return nil
+}
+
+// ListGaps implements FlowStore.
+func (p *Postgres) ListGaps(ctx context.Context, q GapQuery) ([]GapRow, error) {
+	limit := q.Limit
+	if limit <= 0 {
+		limit = 200
+	}
+	ids := make([]uuid.UUID, 0, len(q.WorkloadIDs))
+	for _, id := range q.WorkloadIDs {
+		ids = append(ids, id.UUID())
+	}
+	rows, err := p.q.ListFlowGaps(ctx, db.ListFlowGapsParams{
+		WorkloadIds: ids, Since: q.Since, Until: q.Until,
+		RowLimit: int32(limit), //nolint:gosec // bounded by the caller
+	})
+	if err != nil {
+		return nil, fmt.Errorf("flowstore: listing gaps: %w", err)
+	}
+	out := make([]GapRow, 0, len(rows))
+	for i := range rows {
+		r := &rows[i]
+		row := GapRow{
+			ID:         r.ID,
+			WorkloadID: identity.FromUUID(r.WorkloadID),
+			ReceivedAt: r.ReceivedAt,
+			Gap: Gap{
+				Kind:   innerwallv1.EvidenceGapKind(r.Kind),
+				Source: innerwallv1.EvidenceSource(r.Source),
+				From:   r.GapFrom,
+				To:     r.GapTo,
+			},
+		}
+		if r.LostCount.Valid {
+			n := uint64(r.LostCount.Int64) //nolint:gosec // non-negative by the schema
+			row.Count = &n
+		}
+		out = append(out, row)
+	}
+	return out, nil
 }
 
 // ListWindows implements FlowStore.
@@ -221,46 +308,51 @@ func (p *Postgres) ListTotals(ctx context.Context, id identity.WorkloadID, decis
 
 // PruneWindows implements FlowStore. Each batch is its own transaction
 // holding the retention lock, so a run never holds row locks for the whole
-// backlog and another replica can take over between batches.
+// backlog and another replica can take over between batches. Gaps ride the
+// same batches, and a run continues while either table fills its batch.
 func (p *Postgres) PruneWindows(ctx context.Context, horizon time.Time) (int64, bool, error) {
 	var total int64
 	for {
-		n, held, err := p.pruneBatch(ctx, horizon)
+		windows, gaps, held, err := p.pruneBatch(ctx, horizon)
 		if err != nil {
 			return total, true, err
 		}
 		if !held {
 			return total, total > 0, nil
 		}
-		total += n
-		if n < pruneBatch {
+		total += windows
+		if windows < pruneBatch && gaps < pruneBatch {
 			return total, true, nil
 		}
 	}
 }
 
-func (p *Postgres) pruneBatch(ctx context.Context, horizon time.Time) (int64, bool, error) {
+func (p *Postgres) pruneBatch(ctx context.Context, horizon time.Time) (windows, gaps int64, held bool, err error) {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
-		return 0, false, fmt.Errorf("flowstore: beginning prune: %w", err)
+		return 0, 0, false, fmt.Errorf("flowstore: beginning prune: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := p.q.WithTx(tx)
-	held, err := q.TryAcquireRetentionLock(ctx, retentionLockKey)
+	held, err = q.TryAcquireRetentionLock(ctx, retentionLockKey)
 	if err != nil {
-		return 0, false, fmt.Errorf("flowstore: acquiring retention lock: %w", err)
+		return 0, 0, false, fmt.Errorf("flowstore: acquiring retention lock: %w", err)
 	}
 	if !held {
-		return 0, false, nil
+		return 0, 0, false, nil
 	}
-	n, err := q.DeleteFlowWindowsBefore(ctx, db.DeleteFlowWindowsBeforeParams{Horizon: horizon, BatchSize: pruneBatch})
+	windows, err = q.DeleteFlowWindowsBefore(ctx, db.DeleteFlowWindowsBeforeParams{Horizon: horizon, BatchSize: pruneBatch})
 	if err != nil {
-		return 0, true, fmt.Errorf("flowstore: pruning windows: %w", err)
+		return 0, 0, true, fmt.Errorf("flowstore: pruning windows: %w", err)
+	}
+	gaps, err = q.DeleteFlowGapsBefore(ctx, db.DeleteFlowGapsBeforeParams{Horizon: horizon, BatchSize: pruneBatch})
+	if err != nil {
+		return 0, 0, true, fmt.Errorf("flowstore: pruning gaps: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return 0, true, fmt.Errorf("flowstore: committing prune: %w", err)
+		return 0, 0, true, fmt.Errorf("flowstore: committing prune: %w", err)
 	}
-	return n, true, nil
+	return windows, gaps, true, nil
 }
 
 // CountWindows returns the number of stored windows. Exposed for tests and

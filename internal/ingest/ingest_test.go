@@ -138,3 +138,45 @@ func TestIngestValidatesAndResolves(t *testing.T) {
 		t.Fatalf("unknown reporter err = %v", err)
 	}
 }
+
+// TestIngestGaps checks evidence gaps on a report: valid gaps are stored
+// with the window under the credential's workload, whatever their bounds
+// relative to the window, with a count only where one was sent; malformed
+// ones are skipped and counted; and a report carrying gaps and no records
+// still lands its gaps.
+func TestIngestGaps(t *testing.T) {
+	db := registry.Workload{ID: mustID(t), Addresses: []netip.Addr{netip.MustParseAddr("10.0.0.10")}}
+	flows := &fakeFlows{}
+	svc := &Service{Directory: &fakeDirectory{workloads: []registry.Workload{db}}, Flows: flows}
+	start := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
+	end := start.Add(time.Minute)
+	ts := func(d time.Duration) *timestamppb.Timestamp { return timestamppb.New(start.Add(d)) }
+	five := uint64(5)
+	req := &innerwallv1.ReportFlowsRequest{WindowStart: timestamppb.New(start), WindowEnd: timestamppb.New(end), Gaps: []*innerwallv1.EvidenceGap{
+		{Kind: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_OVERRUN, Source: innerwallv1.EvidenceSource_EVIDENCE_SOURCE_NFLOG, From: ts(-time.Hour), To: ts(-59 * time.Minute)},
+		{Kind: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_BUFFER_OVERFLOW, From: ts(-2 * time.Hour), To: ts(-time.Hour), Count: &five},
+		{Source: innerwallv1.EvidenceSource_EVIDENCE_SOURCE_NFLOG, From: ts(0), To: ts(time.Second)}, // no kind
+		{Kind: 9, From: ts(0), To: ts(time.Second)}, // unknown kind
+		{Kind: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_RESTART, Source: 7, From: ts(0), To: ts(time.Second)},                                                    // unknown source
+		{Kind: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_RESTART, From: ts(0)},                                                                                    // no end
+		{Kind: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_RESTART, Source: innerwallv1.EvidenceSource_EVIDENCE_SOURCE_CONNTRACK, From: ts(time.Second), To: ts(0)}, // inverted
+	}}
+	res, err := svc.Ingest(context.Background(), db.ID, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Accepted != 0 || res.Gaps != 2 || res.GapsRejected != 5 {
+		t.Fatalf("result = %+v, want 2 gaps accepted and 5 rejected", res)
+	}
+	w := flows.windows[0]
+	if w.WorkloadID != db.ID || len(w.Records) != 0 || len(w.Gaps) != 2 {
+		t.Fatalf("window = %+v", w)
+	}
+	overrun, overflow := w.Gaps[0], w.Gaps[1]
+	if overrun.Kind != innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_OVERRUN || overrun.Source != innerwallv1.EvidenceSource_EVIDENCE_SOURCE_NFLOG || overrun.Count != nil || !overrun.From.Equal(start.Add(-time.Hour)) {
+		t.Fatalf("overrun = %+v", overrun)
+	}
+	if overflow.Count == nil || *overflow.Count != 5 || overflow.Source != innerwallv1.EvidenceSource_EVIDENCE_SOURCE_UNSPECIFIED {
+		t.Fatalf("overflow = %+v", overflow)
+	}
+}
