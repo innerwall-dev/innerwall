@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { count, short } from "@/lib/format";
 import { useResource } from "@/lib/resource";
 import { cn } from "@/lib/utils";
+import { editorPath } from "./policy/link";
 import { ReviewDrawer } from "./review/Drawer";
 import { loadReview, type ReviewData, rowLimit } from "./review/data";
 import {
@@ -203,13 +204,8 @@ function Review({
 						<ScopeLine ruleset={ruleset} workloads={data.workloads} />
 					</div>
 					<div className="ml-auto flex shrink-0 items-center gap-2">
-						<Button
-							variant="secondary"
-							aria-disabled="true"
-							title="The policy editor arrives with the write screens"
-							onClick={(ev) => ev.preventDefault()}
-						>
-							Edit ruleset
+						<Button variant="secondary" asChild>
+							<Link to={editorPath(ruleset.name)}>Edit ruleset</Link>
 						</Button>
 						<Button
 							variant={verdict.safe ? "primary" : "secondary"}

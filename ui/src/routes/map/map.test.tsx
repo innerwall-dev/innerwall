@@ -20,6 +20,7 @@ import {
 	row,
 	wref,
 } from "@/test/map";
+import { ruleset } from "@/test/review";
 
 // The graph library sizes its canvas from the layout box, which the test
 // DOM does not compute; give every element the canvas's size so the map
@@ -229,8 +230,37 @@ describe("flow map", () => {
 
 	it("opens an edge's decisions and pairs, and a pair's windows from GET /flows", async () => {
 		const flows: URLSearchParams[] = [];
+		const previewed: unknown[] = [];
 		surface({
 			extra: [
+				{
+					method: "GET",
+					path: "/api/v1/rulesets",
+					reply: {
+						status: 200,
+						json: {
+							rulesets: [
+								ruleset("auth-inbound", { app: ["auth"] }),
+								ruleset("checkout-inbound", { app: ["checkout"] }),
+							],
+							state_version: "s1",
+						},
+					},
+				},
+				{
+					method: "POST",
+					path: "/api/v1/selectors/preview",
+					reply: (body) => {
+						previewed.push(body);
+						const app = (body as { selector: { app: string[] } }).selector
+							.app[0];
+						const matched = app === "checkout" ? [checkout1] : [auth1];
+						return {
+							status: 200,
+							json: { matched, count: app === "checkout" ? 42 : 61 },
+						};
+					},
+				},
 				{
 					method: "GET",
 					path: "/api/v1/flows",
@@ -286,9 +316,24 @@ describe("flow map", () => {
 		expect(within(drawer).getByTestId("rule-peers")).toHaveTextContent(
 			"app=metrics-collector AND env=prod",
 		);
+		// The rule belongs in the ruleset whose scope selects the edge's
+		// destination, which the control plane resolves from each scope.
 		expect(
-			within(drawer).getByRole("button", { name: "Open in policy editor" }),
-		).toHaveAttribute("aria-disabled", "true");
+			await within(drawer).findByText("checkout-inbound"),
+		).toBeInTheDocument();
+		expect(within(drawer).getByTestId("rule-ruleset")).toHaveTextContent(
+			/^checkout-inbound$/,
+		);
+		expect(previewed).toEqual([
+			{ selector: { app: ["auth"] } },
+			{ selector: { app: ["checkout"] } },
+		]);
+		expect(
+			within(drawer).getByRole("link", { name: "Open in policy editor" }),
+		).toHaveAttribute("href", "/policy?ruleset=checkout-inbound");
+		expect(within(drawer).getByTestId("editor-effect")).toHaveTextContent(
+			"Saving takes effect immediately for 42 workloads.",
+		);
 		// One pair: its windows open at once, by workload, peer, and decision
 		// over the map's own range.
 		expect(await within(drawer).findByTestId("pair-flows")).toHaveTextContent(

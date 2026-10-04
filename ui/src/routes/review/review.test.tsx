@@ -316,6 +316,11 @@ describe("simulation review", () => {
 		expect(screen.getByTestId("scope-line")).toHaveTextContent(
 			"app=checkout AND env=prod·5 workloads in scope·4 simulation · 1 visibility · 1 degraded",
 		);
+		// Editing the ruleset under review opens the editor at it.
+		expect(screen.getByRole("link", { name: "Edit ruleset" })).toHaveAttribute(
+			"href",
+			"/policy?ruleset=checkout-inbound",
+		);
 	});
 
 	it("names what it shows when the address names no enabled ruleset", async () => {
@@ -490,8 +495,8 @@ describe("simulation review", () => {
 			"No enabled rule matched",
 		);
 		expect(
-			within(drawer).getByRole("button", { name: "Open in policy editor" }),
-		).toHaveAttribute("aria-disabled", "true");
+			within(drawer).getByRole("link", { name: "Open in policy editor" }),
+		).toHaveAttribute("href", "/policy?ruleset=checkout-inbound");
 
 		await userEvent.click(
 			within(drawer).getAllByRole("button", { expanded: false })[0],
