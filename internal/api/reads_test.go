@@ -149,6 +149,7 @@ func TestReadEndpointsRequireCredential(t *testing.T) {
 	paths := []string{
 		"/api/v1/flows/rollup?group_by=rule",
 		"/api/v1/flows?workload=" + s.fx.db.String(),
+		"/api/v1/flows/gaps",
 		"/api/v1/workloads",
 		"/api/v1/workloads/" + s.fx.db.String(),
 		"/api/v1/workloads/" + s.fx.db.String() + "/rendered-policy",
@@ -165,7 +166,7 @@ func TestReadEndpointsRequireCredential(t *testing.T) {
 		resp, body = s.do(t, c, request{method: http.MethodGet, path: p, headers: map[string]string{"Cookie": api.SessionCookie + "=" + strings.Repeat("A", 43)}})
 		expectProblem(t, resp, body, http.StatusUnauthorized, api.ProblemUnauthenticated)
 	}
-	for _, p := range paths[:5] {
+	for _, p := range paths[:6] {
 		resp, body := s.get(t, p)
 		if resp.status != http.StatusOK {
 			t.Fatalf("GET %s with a credential: %d %v", p, resp.status, body)
@@ -413,4 +414,51 @@ func TestWorkloadEndpoints(t *testing.T) {
 	}
 	resp, body = s.get(t, "/api/v1/workloads/"+uuid.NewString()+"/rendered-policy")
 	expectProblem(t, resp, body, http.StatusNotFound, api.ProblemNotFound)
+}
+
+// TestFlowGapsEndpoint checks GET /flows/gaps: its parameters, the label
+// scope and workload reaching the store as ids, and each gap encoded with
+// its workload, kind, source (null for a buffer overflow), bounds, and
+// count (null when unknown).
+func TestFlowGapsEndpoint(t *testing.T) {
+	s := newReadSurface(t)
+	now := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
+	five := uint64(5)
+	s.fx.flows.Gaps = []flowstore.GapRow{
+		{ID: 1, WorkloadID: s.fx.db, Gap: flowstore.Gap{Kind: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_OVERRUN, Source: innerwallv1.EvidenceSource_EVIDENCE_SOURCE_NFLOG, From: now.Add(-2 * time.Hour), To: now.Add(-2*time.Hour + 3*time.Second)}},
+		{ID: 2, WorkloadID: s.fx.db, Gap: flowstore.Gap{Kind: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_BUFFER_OVERFLOW, From: now.Add(-time.Hour), To: now.Add(-55 * time.Minute), Count: &five}},
+	}
+	bad := []struct{ query, param string }{
+		{"from=yesterday", "from"},
+		{"workload=not-an-id", "workload"},
+		{"label=novalue", "label"},
+		{"limit=0", "limit"},
+		{"from=2026-09-13T12:00:00Z&to=2026-09-13T11:00:00Z", "to"},
+	}
+	for _, tc := range bad {
+		resp, body := s.get(t, "/api/v1/flows/gaps?"+tc.query)
+		expectInvalidParameter(t, resp, body, tc.param)
+	}
+	resp, body := s.get(t, "/api/v1/flows/gaps?workload="+uuid.NewString())
+	expectProblem(t, resp, body, http.StatusNotFound, api.ProblemNotFound)
+
+	resp, body = s.get(t, "/api/v1/flows/gaps?label=role%3Ddb&from=2026-09-13T00:00:00Z&to=2026-09-13T12:00:00Z&limit=10")
+	if resp.status != http.StatusOK {
+		t.Fatalf("gaps: %d %v", resp.status, body)
+	}
+	q := s.fx.flows.LastGaps
+	if q == nil || len(q.WorkloadIDs) != 1 || q.WorkloadIDs[0] != s.fx.db || q.Limit != 11 {
+		t.Fatalf("store query = %+v", q)
+	}
+	if body["from"] != "2026-09-13T00:00:00Z" || body["truncated"] != false || len(field(body, "gaps").([]any)) != 2 {
+		t.Fatalf("gaps = %v", body)
+	}
+	g0 := field(body, "gaps.0").(map[string]any)
+	if field(g0, "workload.hostname") != "db-1" || g0["kind"] != "buffer_overflow" || g0["source"] != nil || g0["count"] != float64(5) || g0["from"] != "2026-09-13T11:00:00Z" || g0["to"] != "2026-09-13T11:05:00Z" {
+		t.Fatalf("gap 0 = %v", g0)
+	}
+	g1 := field(body, "gaps.1").(map[string]any)
+	if g1["kind"] != "source_overrun" || g1["source"] != "nflog" || g1["count"] != nil {
+		t.Fatalf("gap 1 = %v", g1)
+	}
 }

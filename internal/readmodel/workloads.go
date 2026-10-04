@@ -108,6 +108,10 @@ type Health struct {
 	LastSeenAt         *time.Time
 	Credential         CredentialStatus
 	DroppedFlowRecords uint64
+	// SourceOverruns counts the moments the kernel dropped events because
+	// one of the agent's flow sources fell behind, since the agent
+	// started; each is also an evidence gap with its interval.
+	SourceOverruns uint64
 }
 
 // Workload is the one object shape the fleet list and the workload detail
@@ -233,6 +237,7 @@ func (s *Reader) workload(rec *WorkloadRecord, now time.Time) Workload {
 			LastSeenAt:         rec.LastSeenAt,
 			Credential:         credentialStatus(rec, now),
 			DroppedFlowRecords: rec.DroppedFlowRecords,
+			SourceOverruns:     rec.SourceOverruns,
 		},
 	}
 	if w.Labels == nil {
