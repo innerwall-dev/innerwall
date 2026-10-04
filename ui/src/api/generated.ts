@@ -200,8 +200,11 @@ export interface paths {
          *     consistent snapshot, diffs every workload's result against its
          *     persisted rendered policy through the same delta implementation the
          *     sync stream uses, and discards everything. No lock is held and no
-         *     version moves. `stale` is set when the request named a state version
-         *     other than the one computed against.
+         *     version moves. A ruleset or rule without an id is given a fresh one,
+         *     as a create would, so the result is what saving the set would render;
+         *     such ids are new on every call and name nothing persisted. `stale` is
+         *     set when the request named a state version other than the one
+         *     computed against.
          */
         post: operations["renderDryRun"];
         delete?: never;

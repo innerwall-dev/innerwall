@@ -154,10 +154,7 @@ func (a *Authoring) CreateRuleset(ctx context.Context, rs *Ruleset) error {
 	if err := ValidateRuleset(rs, refs); err != nil {
 		return err
 	}
-	if rs.ID == uuid.Nil {
-		rs.ID = uuid.New()
-	}
-	assignRuleIDs(rs)
+	AssignIDs(rs)
 	now := a.now()
 	rs.CreatedAt, rs.UpdatedAt, rs.Version = now, now, 1
 	for i := range rs.Rules {
@@ -345,6 +342,16 @@ func peerEqual(a, b Peer) bool {
 
 func entryEqual(a, b ServiceEntry) bool {
 	return a.Protocol == b.Protocol && slices.Equal(a.Ports, b.Ports)
+}
+
+// AssignIDs gives a ruleset that has no id a fresh one, and does the same
+// for each of its rules, as a create does. A dry run calls it too, so a
+// rule authored without an id renders as the rule saving it would create.
+func AssignIDs(rs *Ruleset) {
+	if rs.ID == uuid.Nil {
+		rs.ID = uuid.New()
+	}
+	assignRuleIDs(rs)
 }
 
 func assignRuleIDs(rs *Ruleset) {
