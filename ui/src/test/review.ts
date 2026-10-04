@@ -1,4 +1,5 @@
 import type {
+	EvidenceGap,
 	PeerRef,
 	Rollup,
 	RollupGroup,
@@ -35,6 +36,25 @@ export function ps(
 		byte_count: connections * 100,
 		first_seen: minutesAgo(120),
 		last_seen: minutesAgo(lastSeenMinutesAgo),
+	};
+}
+
+// gap is an evidence gap on a workload, minutes before now; a source
+// overrun on the packet log unless told otherwise.
+export function gap(
+	w: { id: string; hostname: string; labels?: Record<string, string> },
+	fromMinutesAgo: number,
+	toMinutesAgo: number,
+	overrides: Partial<Omit<EvidenceGap, "workload">> = {},
+): EvidenceGap {
+	return {
+		workload: { id: w.id, hostname: w.hostname, labels: w.labels ?? {} },
+		kind: "source_overrun",
+		source: "nflog",
+		from: minutesAgo(fromMinutesAgo),
+		to: minutesAgo(toMinutesAgo),
+		count: null,
+		...overrides,
 	};
 }
 

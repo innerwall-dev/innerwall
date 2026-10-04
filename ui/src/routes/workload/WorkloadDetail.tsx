@@ -1,12 +1,18 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useParams } from "react-router";
-import { getRenderedPolicy, getRollup, getWorkload } from "@/api/fleet";
-import { ProblemType, type Workload } from "@/api/schema";
+import {
+	getGaps,
+	getRenderedPolicy,
+	getRollup,
+	getWorkload,
+} from "@/api/fleet";
+import { type EvidenceGaps, ProblemType, type Workload } from "@/api/schema";
 import { Eyebrow, LabelChip, ModePill } from "@/components/fleet/status";
 import { LoadingRow, ProblemNotice } from "@/components/Problem";
 import { TabList, UnderlineTab } from "@/components/Tabs";
 import { ago, count, labelPairs } from "@/lib/format";
-import { useResource } from "@/lib/resource";
+import { between, kindText } from "@/lib/gaps";
+import { type Resource, useResource } from "@/lib/resource";
 import { cn } from "@/lib/utils";
 import { useShell } from "@/shell/Shell";
 import { credential, credentialTone, lastSeen } from "../fleet/describe";
@@ -48,6 +54,10 @@ export function WorkloadDetail() {
 	const { resource: policy } = useResource(() => getRenderedPolicy(id), [id]);
 	const { resource: flowTotals } = useResource(
 		() => getRollup({ group_by: "rule", workload: id, from, limit: 1 }),
+		[id, from],
+	);
+	const { resource: gaps } = useResource(
+		() => getGaps({ workload: id, from, limit: gapsShown + 1 }),
 		[id, from],
 	);
 
@@ -94,6 +104,7 @@ export function WorkloadDetail() {
 		<section className="flex min-h-0 flex-1 overflow-hidden">
 			<Rail
 				w={w}
+				gaps={gaps}
 				onReread={() => {
 					reload();
 				}}
@@ -153,12 +164,18 @@ export function WorkloadDetail() {
 	);
 }
 
+// The most evidence gaps the rail lists; past it the rail says there are
+// more.
+const gapsShown = 3;
+
 function Rail({
 	w,
+	gaps,
 	onReread,
 	onModeChanged,
 }: {
 	w: Workload;
+	gaps: Resource<EvidenceGaps>;
 	onReread: () => void;
 	onModeChanged: () => void;
 }) {
@@ -222,6 +239,25 @@ function Rail({
 								incomplete.
 							</div>
 						) : null}
+					</dd>
+					<dt className="text-muted-foreground">overruns</dt>
+					<dd
+						className={cn(
+							"font-mono",
+							w.health.source_overruns > 0 && "text-status-degraded",
+						)}
+					>
+						{count(w.health.source_overruns)}
+						{w.health.source_overruns > 0 ? (
+							<div className="font-sans text-[11px] text-muted-foreground">
+								Times the kernel dropped events because a flow source fell
+								behind, since the agent started.
+							</div>
+						) : null}
+					</dd>
+					<dt className="self-start text-muted-foreground">evidence gaps</dt>
+					<dd>
+						<EvidenceGapsCell gaps={gaps} />
 					</dd>
 				</dl>
 			</div>
@@ -295,5 +331,55 @@ function Rail({
 				}}
 			/>
 		</aside>
+	);
+}
+
+// EvidenceGapsCell lists the newest intervals over the screen's range in
+// which the agent knows it lost evidence: flows in them are incomplete.
+function EvidenceGapsCell({ gaps }: { gaps: Resource<EvidenceGaps> }) {
+	if (gaps.status === "loading") {
+		return <span className="font-mono text-muted-foreground">…</span>;
+	}
+	if (gaps.status === "error") {
+		return (
+			<span className="text-[11px] text-muted-foreground">
+				could not be read
+			</span>
+		);
+	}
+	const shown = gaps.data.gaps.slice(0, gapsShown);
+	const more = gaps.data.gaps.length > gapsShown || gaps.data.truncated;
+	if (shown.length === 0) {
+		return (
+			<span className="font-mono">
+				none{" "}
+				<span className="font-sans text-[11px] text-muted-foreground">
+					in {rangeDays} days
+				</span>
+			</span>
+		);
+	}
+	return (
+		<div className="flex flex-col gap-1" data-testid="evidence-gaps">
+			<span className="font-mono text-status-degraded">
+				{count(gaps.data.gaps.length)}
+				{more ? "+" : ""}{" "}
+				<span className="font-sans text-[11px] text-muted-foreground">
+					in {rangeDays} days
+				</span>
+			</span>
+			<ul className="flex flex-col gap-0.5 text-[11px] text-foreground-tertiary">
+				{shown.map((g) => (
+					<li key={`${g.kind}|${g.source}|${g.from}|${g.to}`}>
+						▲ {kindText(g.kind)} between {between(g.from, g.to)}
+						{g.count !== null ? ` · ${count(g.count)} lost` : ""}
+					</li>
+				))}
+			</ul>
+			<div className="text-[11px] text-muted-foreground">
+				Intervals the agent knows it lost evidence in; the flows shown in them
+				are incomplete.
+			</div>
+		</div>
 	);
 }

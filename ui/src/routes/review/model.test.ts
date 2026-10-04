@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { Workload } from "@/api/schema";
+import type { EvidenceGap, Workload } from "@/api/schema";
 import { minutesAgo, workload } from "@/test/fixtures";
 import { addressGroup, peer, row as srcDst, wref } from "@/test/map";
-import { ps, rollups } from "@/test/review";
+import { gap, ps, rollups } from "@/test/review";
 import {
 	barWidth,
 	bucketOf,
@@ -263,11 +263,19 @@ const allowedOnly = rollups(
 	},
 );
 
-function verdictOf(workloads: Workload[], r = allowedOnly) {
+function verdictOf(
+	workloads: Workload[],
+	r = allowedOnly,
+	gaps: EvidenceGap[] = [],
+	gapsTruncated = false,
+) {
 	return composeVerdict({
 		rows: buildRows(r, [], workloads.length),
 		workloads,
 		rollups: r,
+		gaps,
+		gapsTruncated,
+		range: { from: minutesAgo(24 * 60), to: minutesAgo(0) },
 		now: Date.now(),
 		rowLimit: 1000,
 	});
@@ -431,6 +439,123 @@ describe("the verdict", () => {
 			"checkout-prod-31 dropped 212 flow records — its verdict may be incomplete",
 			"Only the busiest 1,000 peer/service pairs per decision are listed; the totals count every pair",
 		]);
+	});
+
+	describe("evidence gaps", () => {
+		// The allowed-only rollups covered windows from 125 to 55 minutes
+		// ago; that is the range the evidence is judged over.
+		const hhmm = /\d\d:\d\d and \d\d:\d\d UTC/;
+
+		it("fails on their own when evidence is missing from the covered range", () => {
+			const w = ready();
+			const v = verdictOf(w, allowedOnly, [gap(w[0], 90, 88)]);
+			expect(v.safe).toBe(false);
+			expect(v.failing.map((c) => c.id)).toEqual(["evidence-gaps"]);
+			expect(v.caveats[0]).toMatch(
+				/^Evidence incomplete for checkout-01 between \d\d:\d\d and \d\d:\d\d UTC — the kernel dropped events$/,
+			);
+			expect(v.headline).toBe("Not safe to enforce yet");
+			expect(v.sub).toBe(
+				"No observed traffic would be dropped, but evidence is missing from part of this range: traffic in it may have gone unseen.",
+			);
+			// Nothing else changes: the counts are the rollups' own.
+			expect(v.kpis).toMatchObject({
+				pairs: 0,
+				allowedPairs: 1,
+				simulating: 3,
+			});
+		});
+
+		it("clamps the interval it names to the covered range", () => {
+			const w = ready();
+			const v = verdictOf(w, allowedOnly, [gap(w[0], 200, 100)]);
+			const covered = allowedOnly.peerService.allowed.effective_from as string;
+			const at = new Date(covered).toISOString().slice(11, 16);
+			expect(v.caveats[0]).toContain(`between ${at} and`);
+		});
+
+		it("ignores gaps outside the covered range and of workloads out of scope", () => {
+			const w = ready();
+			const elsewhere = { id: "w-elsewhere", hostname: "batch-01" };
+			const v = verdictOf(w, allowedOnly, [
+				gap(w[0], 300, 290),
+				gap(w[1], 30, 20),
+				gap(elsewhere, 90, 80),
+			]);
+			expect(v.safe).toBe(true);
+			expect(v.failing).toEqual([]);
+		});
+
+		it("judge the requested range when no windows were stored at all", () => {
+			const w = ready();
+			const v = verdictOf(w, rollups({}), [
+				gap(w[1], 600, 500, {
+					kind: "buffer_overflow",
+					source: null,
+					count: 412,
+				}),
+			]);
+			expect(v.safe).toBe(false);
+			expect(v.failing.map((c) => c.id)).toEqual(["evidence-gaps"]);
+			expect(v.caveats[0]).toMatch(
+				/^Evidence incomplete for checkout-02 between .* — the agent dropped buffered windows$/,
+			);
+		});
+
+		it("name the count of workloads, and no single reason, when several are missing evidence", () => {
+			const w = ready();
+			const v = verdictOf(w, allowedOnly, [
+				gap(w[0], 100, 99),
+				gap(w[2], 70, 60, { kind: "source_restart", source: "conntrack" }),
+			]);
+			expect(v.caveats[0]).toMatch(
+				/^Evidence incomplete for 2 workloads in scope between \d\d:\d\d and \d\d:\d\d UTC$/,
+			);
+			expect(v.caveats[0]).toMatch(hhmm);
+		});
+
+		it("fail beside would-block traffic and beside a sync condition, each stated", () => {
+			const w = ready();
+			const r = rollups(
+				{ would_block: [ps(peer.workload(m1), "tcp/9100", 18_204, 3, 2)] },
+				{ would_block: [srcDst(peer.workload(m1), c1, 18_204)] },
+			);
+			const both = verdictOf(w, r, [gap(w[0], 90, 88)]);
+			expect(both.failing.map((c) => c.id)).toEqual([
+				"would-block",
+				"evidence-gaps",
+			]);
+			expect(both.sub).toMatch(/^1 peer\/service pair carrying/);
+			expect(both.caveats).toHaveLength(1);
+
+			w[1].sync = { ...w[1].sync, state: "offline" };
+			const v = verdictOf(w, allowedOnly, [gap(w[0], 90, 88)]);
+			expect(v.failing.map((c) => c.id)).toEqual(["evidence-gaps", "offline"]);
+			expect(v.sub).toBe(
+				"No observed traffic would be dropped, but evidence is missing from part of this range and not every workload in scope is simulating on its latest policy.",
+			);
+		});
+
+		it("fail when the read was truncated, even with nothing returned in range", () => {
+			const v = verdictOf(ready(), allowedOnly, [], true);
+			expect(v.failing.map((c) => c.id)).toEqual(["evidence-gaps"]);
+		});
+
+		it("take over from the dropped-records note for the workloads they place in range", () => {
+			const w = ready();
+			w[0].health = { ...w[0].health, dropped_flow_records: 50 };
+			w[2].hostname = "checkout-prod-31";
+			w[2].health = { ...w[2].health, dropped_flow_records: 212 };
+			const v = verdictOf(w, allowedOnly, [
+				gap(w[0], 90, 88, { kind: "buffer_overflow", source: null, count: 50 }),
+			]);
+			expect(v.caveats).toContain(
+				"checkout-prod-31 dropped 212 flow records — its verdict may be incomplete",
+			);
+			expect(v.caveats.some((c) => c.startsWith("checkout-01 dropped"))).toBe(
+				false,
+			);
+		});
 	});
 
 	it("prints spans in their two largest units", () => {

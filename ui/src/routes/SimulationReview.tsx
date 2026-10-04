@@ -171,10 +171,13 @@ function Review({
 				rows,
 				workloads: data.workloads,
 				rollups,
+				gaps: data.gaps?.gaps ?? [],
+				gapsTruncated: data.gaps?.truncated ?? false,
+				range: { from: data.from, to: data.to },
 				now: Date.now(),
 				rowLimit,
 			}),
-		[rows, data.workloads, rollups],
+		[rows, data.workloads, rollups, data.gaps, data.from, data.to],
 	);
 	const shown = filterRows(rows, filter);
 	const counts = chipCounts(rows);

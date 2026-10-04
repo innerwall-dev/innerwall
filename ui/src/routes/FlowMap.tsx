@@ -5,6 +5,7 @@ import { LoadingRow, ProblemNotice } from "@/components/Problem";
 import { RangeControl } from "@/components/RangeControl";
 import { Button } from "@/components/ui/button";
 import { count, headline } from "@/lib/format";
+import { between, kindText } from "@/lib/gaps";
 import { useResource } from "@/lib/resource";
 import { cn } from "@/lib/utils";
 import { parseRequirement } from "./fleet/WorkloadList";
@@ -124,7 +125,13 @@ function MapView({
 	const groupKey = params.get("group_by") || defaultKey(data.workloads, keys);
 	const model = useMemo(
 		() =>
-			buildModel(data.rollups, data.workloads, data.addressGroups, groupKey),
+			buildModel(
+				data.rollups,
+				data.workloads,
+				data.addressGroups,
+				groupKey,
+				data.gaps.gaps,
+			),
 		[data, groupKey],
 	);
 	const layout = useMemo(() => layoutModel(model), [model]);
@@ -371,6 +378,7 @@ function MapRange({
 
 function Totals({ model }: { model: MapModel }) {
 	const dropped = model.dropped.length;
+	const gapped = model.gapped.length;
 	return (
 		<div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-foreground-tertiary">
 			<span>
@@ -386,6 +394,21 @@ function Totals({ model }: { model: MapModel }) {
 				</span>{" "}
 				{model.reporting === 1 ? "workload" : "workloads"} reporting
 			</span>
+			{gapped > 0 ? (
+				<span
+					role="status"
+					className="text-status-degraded"
+					title={model.gaps
+						.map(
+							(g) =>
+								`${g.workload.hostname}: ${kindText(g.kind)} between ${between(g.from, g.to)}`,
+						)
+						.join("\n")}
+				>
+					▲ {count(gapped)} {gapped === 1 ? "workload" : "workloads"} lost
+					evidence in this range — map is incomplete
+				</span>
+			) : null}
 			{dropped > 0 ? (
 				<span
 					role="status"

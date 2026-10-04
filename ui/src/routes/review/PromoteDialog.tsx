@@ -99,6 +99,10 @@ export function PromoteDialog({
 	const ready = resource.status === "ready" ? resource.data : null;
 	const ids = ready ? promotionIds(ready.parts, optedIn) : [];
 	const k = verdict.kpis;
+	// Known evidence loss is overridden by the same acknowledgment; when
+	// dropped pairs lead it, the line names the loss too, since the
+	// banner above shows the pairs alone.
+	const incomplete = verdict.failing.some((c) => c.id === "evidence-gaps");
 
 	async function submit() {
 		setSubmitting(true);
@@ -226,7 +230,7 @@ export function PromoteDialog({
 							/>
 							<span>
 								{k.pairs > 0
-									? `I understand ${count(k.pairs)} peer/service ${k.pairs === 1 ? "pair" : "pairs"} (${count(k.connections)} connections) will be dropped`
+									? `I understand ${count(k.pairs)} peer/service ${k.pairs === 1 ? "pair" : "pairs"} (${count(k.connections)} connections) will be dropped${incomplete ? ", and that the evidence for this range is incomplete" : ""}`
 									: "I understand this scope is not safe to enforce yet"}
 							</span>
 						</label>

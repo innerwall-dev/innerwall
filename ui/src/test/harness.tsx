@@ -3,7 +3,7 @@ import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router";
 import { vi } from "vitest";
 import { App } from "@/App";
-import type { Me, Problem, ProblemTypeURN } from "@/api/schema";
+import type { EvidenceGap, Me, Problem, ProblemTypeURN } from "@/api/schema";
 
 // A scripted operator surface: each entry answers one request by method
 // and path, in order of registration, so a test states exactly what the
@@ -124,7 +124,23 @@ export const freshInstall: Route[] = [
 		path: "/api/v1/flows/rollup",
 		reply: (_body, query) => ({ status: 200, json: emptyRollup(query) }),
 	},
+	{
+		method: "GET",
+		path: "/api/v1/flows/gaps",
+		reply: (_body, query) => ({ status: 200, json: gapsOf([], query) }),
+	},
 ];
+
+// gapsOf is a gaps read over the query's range returning gaps, the
+// whole of what intersects it.
+export function gapsOf(gaps: EvidenceGap[], query: URLSearchParams) {
+	return {
+		from: query.get("from") ?? new Date(0).toISOString(),
+		to: query.get("to") ?? new Date().toISOString(),
+		gaps,
+		truncated: false,
+	};
+}
 
 // emptyRollup is a rollup over a range with nothing stored in it, in the
 // grouping the query asked for.

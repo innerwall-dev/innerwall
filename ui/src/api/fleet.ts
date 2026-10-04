@@ -1,6 +1,7 @@
 import { type Query, request, withQuery } from "./client";
 import type {
 	AddressGroup,
+	EvidenceGaps,
 	FlowsPage,
 	MintedToken,
 	MintTokenRequest,
@@ -80,6 +81,20 @@ export function getRollup(
 	query: Query & { group_by: RollupGrouping },
 ): Promise<Rollup> {
 	return request("GET", withQuery("/flows/rollup", query));
+}
+
+// GapFilter scopes the evidence gaps read: a range, and one workload or
+// label requirements (or neither, every workload).
+export interface GapFilter {
+	from?: string;
+	to?: string;
+	workload?: string;
+	label?: readonly string[];
+	limit?: number;
+}
+
+export function getGaps(filter: GapFilter): Promise<EvidenceGaps> {
+	return request("GET", withQuery("/flows/gaps", { ...filter }));
 }
 
 export function listAddressGroups(): Promise<{
