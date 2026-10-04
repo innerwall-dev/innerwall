@@ -11,6 +11,7 @@ import (
 	"github.com/innerwall-dev/innerwall/internal/enroll"
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 	"github.com/innerwall-dev/innerwall/internal/identity"
+	"github.com/innerwall-dev/innerwall/internal/policy"
 	"github.com/innerwall-dev/innerwall/internal/readmodel"
 	"github.com/innerwall-dev/innerwall/internal/registry"
 	"github.com/innerwall-dev/innerwall/internal/storetest"
@@ -195,6 +196,36 @@ func TestSeedEstate(t *testing.T) {
 	// extra groups of three.
 	if len(workloads) != 3+190+30+6 {
 		t.Fatalf("workloads = %d, want %d", len(workloads), 3+190+30+6)
+	}
+	// The bastion reaches checkout through the ssh definition, which
+	// the rule references rather than stating inline.
+	services, err := s.ListServices(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ssh *policy.Service
+	for i := range services {
+		if services[i].Name == "ssh" {
+			ssh = &services[i]
+		}
+	}
+	if ssh == nil {
+		t.Fatalf("services = %+v, want ssh", services)
+	}
+	rulesets, err := s.ListRulesets(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var bastion *policy.Rule
+	for i := range rulesets {
+		for j := range rulesets[i].Rules {
+			if rulesets[i].Name == "checkout-inbound" && rulesets[i].Rules[j].Description == "bastion to checkout" {
+				bastion = &rulesets[i].Rules[j]
+			}
+		}
+	}
+	if bastion == nil || len(bastion.ServiceIDs) != 1 || bastion.ServiceIDs[0] != ssh.ID || len(bastion.Entries) != 0 {
+		t.Fatalf("bastion rule = %+v", bastion)
 	}
 	if err := storetest.SeedEstate(ctx, s, f, 701); err == nil {
 		t.Fatal("701 extra groups accepted")
