@@ -155,8 +155,10 @@ func TestBatchesCapRecords(t *testing.T) {
 			t.Fatalf("batch bounds = %v..%v", r.GetWindowStart().AsTime(), r.GetWindowEnd().AsTime())
 		}
 	}
-	if len(Batches(window(t0, 0), 3)) != 0 {
-		t.Fatal("empty window produced a request")
+	// An empty window, queued to carry gaps, is one request with its
+	// bounds and no records.
+	if reqs := Batches(window(t0, 0), 3); len(reqs) != 1 || len(reqs[0].GetRecords()) != 0 || !reqs[0].GetWindowStart().AsTime().Equal(t0) {
+		t.Fatalf("empty window batches = %v", reqs)
 	}
 }
 

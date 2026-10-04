@@ -26,13 +26,18 @@ type Dialer func(ctx context.Context) (innerwallv1.AgentServiceClient, io.Closer
 
 // Reporter ships closed windows over ReportFlows: one stream per window,
 // one request per batch of at most the configured records, closed for the
-// accepted count. A window whose stream fails is requeued and retried
-// after a jittered backoff; the buffer's bound decides what is dropped if
-// the control plane stays away.
+// accepted count, with the evidence gaps recorded since the last delivery
+// on the first request. A window whose stream fails is requeued, its gaps
+// put back, and both retried after a jittered backoff; the buffer's bound
+// decides what is dropped if the control plane stays away, and what it
+// drops becomes a gap of its own.
 type Reporter struct {
 	Buffer *Buffer
-	Dial   Dialer
-	Log    *slog.Logger
+	// Gaps are taken and shipped with each window, and put back when its
+	// stream fails; nil ships none.
+	Gaps *Gaps
+	Dial Dialer
+	Log  *slog.Logger
 	// BackoffBase and BackoffCap bound the wait after a failed report:
 	// one second and five minutes when zero.
 	BackoffBase time.Duration
@@ -90,12 +95,14 @@ func (r *Reporter) Run(ctx context.Context) error {
 		if !ok {
 			return nil
 		}
-		accepted, err := r.report(ctx, w)
+		gaps := r.Gaps.Take()
+		accepted, err := r.report(ctx, w, gaps)
 		if err == nil {
 			attempt = 0
-			r.log().Info("flow window reported", "start", w.Start, "end", w.End, "records", w.Len(), "accepted", accepted)
+			r.log().Info("flow window reported", "start", w.Start, "end", w.End, "records", w.Len(), "accepted", accepted, "gaps", len(gaps))
 			continue
 		}
+		r.Gaps.Restore(gaps)
 		if ctx.Err() != nil {
 			r.Buffer.Requeue(w)
 			return nil
@@ -112,8 +119,9 @@ func (r *Reporter) Run(ctx context.Context) error {
 	}
 }
 
-// report ships one window and returns the control plane's accepted count.
-func (r *Reporter) report(ctx context.Context, w *Window) (uint64, error) {
+// report ships one window and gaps, and returns the control plane's
+// accepted count.
+func (r *Reporter) report(ctx context.Context, w *Window, gaps []Gap) (uint64, error) {
 	timeout := r.SendTimeout
 	if timeout <= 0 {
 		timeout = 30 * time.Second
@@ -129,7 +137,11 @@ func (r *Reporter) report(ctx context.Context, w *Window) (uint64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("collect: opening report stream: %w", err)
 	}
-	for _, req := range Batches(w, r.BatchMax()) {
+	reqs := Batches(w, r.BatchMax())
+	for _, g := range gaps {
+		reqs[0].Gaps = append(reqs[0].Gaps, g.Wire())
+	}
+	for _, req := range reqs {
 		if err := stream.Send(req); err != nil {
 			return 0, fmt.Errorf("collect: sending window: %w", err)
 		}
@@ -142,10 +154,13 @@ func (r *Reporter) report(ctx context.Context, w *Window) (uint64, error) {
 }
 
 // Batches splits a window into requests of at most batchMax records, each
-// carrying the window's bounds.
+// carrying the window's bounds; an empty window is one request with none.
 func Batches(w *Window, batchMax int) []*innerwallv1.ReportFlowsRequest {
 	if batchMax <= 0 {
 		batchMax = DefaultBatchMax
+	}
+	if len(w.Records) == 0 {
+		return []*innerwallv1.ReportFlowsRequest{{WindowStart: timestamppb.New(w.Start), WindowEnd: timestamppb.New(w.End)}}
 	}
 	var out []*innerwallv1.ReportFlowsRequest
 	for i := 0; i < len(w.Records); i += batchMax {

@@ -43,7 +43,10 @@ const DefaultWindow = 60 * time.Second
 type Collector struct {
 	Source Source
 	Buffer *Buffer
-	Log    *slog.Logger
+	// Gaps holds the evidence gaps waiting to be shipped: a window that
+	// closes empty is still queued while any are, so they ride it.
+	Gaps *Gaps
+	Log  *slog.Logger
 	// Now is the clock; time.Now if nil.
 	Now func() time.Time
 	// BackoffBase and BackoffCap bound the wait before a failed source is
@@ -113,7 +116,11 @@ func (c *Collector) Run(ctx context.Context) error {
 			if w.Len() > 0 {
 				c.log().Debug("flow window closed", "start", w.Start, "end", w.End, "records", w.Len())
 			}
-			c.Buffer.Push(w)
+			if w.Len() == 0 && c.Gaps.Held() > 0 {
+				c.Buffer.Carry(w)
+			} else {
+				c.Buffer.Push(w)
+			}
 			timer.Reset(c.Window())
 		}
 	}

@@ -3,11 +3,16 @@ package collect
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"math/rand/v2"
 	"sync"
 	"testing"
 	"time"
+
+	"google.golang.org/grpc"
+
+	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 )
 
 // TestGapsOpenCloseAndMerge checks the recorder: an interval opened at a
@@ -67,8 +72,8 @@ func TestGapsOpenCloseAndMerge(t *testing.T) {
 
 // TestGapsStayBoundedByMerging checks that the recorder never holds more
 // than its capacity and never forgets that a loss happened: past the
-// bound, a gap joins the newest of its kind and source, widening it, or
-// two older gaps of one kind and source are merged to make room.
+// bound, the two oldest gaps sharing a kind and source become one wider
+// gap, so precision goes first where the evidence is oldest.
 func TestGapsStayBoundedByMerging(t *testing.T) {
 	g := &Gaps{Capacity: 3}
 	at := func(s int) time.Time { return t0.Add(time.Duration(s) * time.Second) }
@@ -79,16 +84,45 @@ func TestGapsStayBoundedByMerging(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("held %d gaps, want 3: %+v", len(got), got)
 	}
-	if !got[2].From.Equal(at(20)) || !got[2].To.Equal(at(41)) {
-		t.Fatalf("newest gap = %+v, want it widened to cover the overflow", got[2])
+	if !got[0].From.Equal(at(0)) || !got[0].To.Equal(at(21)) || !got[1].From.Equal(at(30)) || !got[2].From.Equal(at(40)) {
+		t.Fatalf("gaps = %+v, want the oldest three merged and the newest two kept", got)
 	}
 
-	// A kind the recorder holds none of makes room by merging two of
-	// another kind.
+	// A gap of another kind makes room the same way.
 	g.Record(Gap{Kind: GapDumpTruncated, Source: GapConntrack, From: at(50), To: at(51), Count: 2, HasCount: true})
 	got = g.Pending()
-	if len(got) != 3 || got[2].Kind != GapDumpTruncated || got[0].Kind != GapSourceOverrun || !got[0].From.Equal(at(0)) || !got[0].To.Equal(at(11)) {
+	if len(got) != 3 || got[2].Kind != GapDumpTruncated || !got[0].To.Equal(at(31)) || !got[1].From.Equal(at(40)) {
 		t.Fatalf("after a new kind = %+v", got)
+	}
+}
+
+// TestGapsTakeAndRestore checks shipping: Take empties the recorder;
+// Restore puts undelivered gaps back ahead of newer ones, unmerged even
+// where they touch, so a repeated delivery repeats them exactly; and the
+// wire form carries a count only when one is known.
+func TestGapsTakeAndRestore(t *testing.T) {
+	g := &Gaps{}
+	at := func(s int) time.Time { return t0.Add(time.Duration(s) * time.Second) }
+	first := Gap{Kind: GapSourceOverrun, Source: GapConntrack, From: at(0), To: at(1)}
+	g.Record(first)
+	taken := g.Take()
+	if len(taken) != 1 || g.Held() != 0 {
+		t.Fatalf("take = %+v, held after = %d", taken, g.Held())
+	}
+	g.Record(Gap{Kind: GapSourceOverrun, Source: GapConntrack, From: at(1), To: at(2)})
+	g.Restore(taken)
+	got := g.Pending()
+	if len(got) != 2 || got[0] != first || !got[1].From.Equal(at(1)) {
+		t.Fatalf("after restore = %+v", got)
+	}
+
+	w := first.Wire()
+	if w.GetKind() != innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_OVERRUN || w.GetSource() != innerwallv1.EvidenceSource_EVIDENCE_SOURCE_CONNTRACK || w.Count != nil || !w.GetFrom().AsTime().Equal(at(0)) || !w.GetTo().AsTime().Equal(at(1)) {
+		t.Fatalf("wire = %v", w)
+	}
+	w = Gap{Kind: GapBufferOverflow, Source: GapNoSource, From: at(0), To: at(60), Count: 0, HasCount: true}.Wire()
+	if w.GetKind() != innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_BUFFER_OVERFLOW || w.GetSource() != innerwallv1.EvidenceSource_EVIDENCE_SOURCE_UNSPECIFIED || w.Count == nil || w.GetCount() != 0 {
+		t.Fatalf("wire with a known zero count = %v", w)
 	}
 }
 
@@ -218,4 +252,142 @@ func TestRestarterBacksOffResetsAndOpensGaps(t *testing.T) {
 	if len(got) != 1 || got[0].Kind != GapSourceRestart || !got[0].From.Equal(t0.Add(time.Second)) || !got[0].To.Equal(clock.Now()) {
 		t.Fatalf("gaps = %+v", got)
 	}
+}
+
+// TestBufferOverflowIsAGap checks the one loss model: every record the
+// buffer drops is also a buffer_overflow gap over the dropped window's
+// bounds, with the count dropped, whether a whole window was evicted or
+// an oversized one was cut. Carry queues an empty window only when
+// nothing is queued, so gaps always have a window to ride.
+func TestBufferOverflowIsAGap(t *testing.T) {
+	gaps := &Gaps{}
+	b := NewBuffer(10)
+	b.Gaps = gaps
+	b.Push(window(t0, 6))
+	b.Push(window(t0.Add(time.Minute), 6))
+	got := gaps.Pending()
+	if len(got) != 1 || got[0].Kind != GapBufferOverflow || got[0].Source != GapNoSource || !got[0].HasCount || got[0].Count != 6 || !got[0].From.Equal(t0) || !got[0].To.Equal(t0.Add(time.Minute)) {
+		t.Fatalf("eviction gap = %+v", got)
+	}
+	b.Pop(context.Background())
+	b.Push(window(t0.Add(2*time.Minute), 13))
+	got = gaps.Pending()
+	if len(got) != 2 || got[1].Count != 3 || !got[1].From.Equal(t0.Add(2*time.Minute)) {
+		t.Fatalf("cut gap = %+v", got)
+	}
+	if b.Dropped() != 9 {
+		t.Fatalf("dropped = %d, want 9: the heartbeat counter stays", b.Dropped())
+	}
+
+	b.Carry(window(t0, 0))
+	if b.Len() != 1 {
+		t.Fatalf("carry beside a queued window: len = %d, want 1", b.Len())
+	}
+	b.Pop(context.Background())
+	b.Carry(window(t0, 0))
+	if w, ok := b.Pop(context.Background()); !ok || w.Len() != 0 {
+		t.Fatal("carry into an empty buffer queued nothing")
+	}
+}
+
+// fakeFlows is an AgentServiceClient whose ReportFlows records what is
+// sent and fails the stream when told to.
+type fakeFlows struct {
+	innerwallv1.AgentServiceClient
+	mu   sync.Mutex
+	sent []*innerwallv1.ReportFlowsRequest
+	fail bool
+}
+
+type fakeFlowStream struct {
+	grpc.ClientStream
+	f *fakeFlows
+}
+
+func (f *fakeFlows) ReportFlows(context.Context, ...grpc.CallOption) (innerwallv1.AgentService_ReportFlowsClient, error) {
+	return &fakeFlowStream{f: f}, nil
+}
+
+func (s *fakeFlowStream) Send(req *innerwallv1.ReportFlowsRequest) error {
+	s.f.mu.Lock()
+	defer s.f.mu.Unlock()
+	s.f.sent = append(s.f.sent, req)
+	return nil
+}
+
+func (s *fakeFlowStream) CloseAndRecv() (*innerwallv1.ReportFlowsResponse, error) {
+	s.f.mu.Lock()
+	defer s.f.mu.Unlock()
+	if s.f.fail {
+		return nil, errors.New("stream failed")
+	}
+	return &innerwallv1.ReportFlowsResponse{}, nil
+}
+
+// TestReporterShipsGapsWithTheWindow checks the reporter: the gaps held
+// when a window is sent ride its first request, a failed stream puts them
+// back to go again with the retry, and a delivered window leaves none
+// held.
+func TestReporterShipsGapsWithTheWindow(t *testing.T) {
+	gaps := &Gaps{}
+	at := func(s int) time.Time { return t0.Add(time.Duration(s) * time.Second) }
+	gaps.Record(Gap{Kind: GapSourceRestart, Source: GapNflog, From: at(0), To: at(5)})
+	buf := NewBuffer(0)
+	buf.Push(window(t0, 5))
+	flows := &fakeFlows{fail: true}
+	r := &Reporter{
+		Buffer: buf, Gaps: gaps, BackoffBase: time.Millisecond, BackoffCap: time.Millisecond,
+		Dial: func(context.Context) (innerwallv1.AgentServiceClient, io.Closer, error) {
+			return flows, io.NopCloser(nil), nil
+		},
+		Log: slog.New(slog.DiscardHandler),
+	}
+	r.SetConfig(&innerwallv1.SyncConfig{FlowBatchMaxRecords: 2})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() { _ = r.Run(ctx); close(done) }()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		flows.mu.Lock()
+		n := len(flows.sent)
+		flows.mu.Unlock()
+		if n >= 3 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the first attempt was not sent")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	flows.mu.Lock()
+	first := flows.sent[:3]
+	flows.fail = false
+	flows.mu.Unlock()
+	if len(first[0].GetGaps()) != 1 || len(first[1].GetGaps()) != 0 || first[0].GetGaps()[0].GetKind() != innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_RESTART {
+		t.Fatalf("gaps on the first attempt = %v / %v", first[0].GetGaps(), first[1].GetGaps())
+	}
+
+	deadline = time.Now().Add(5 * time.Second)
+	for {
+		flows.mu.Lock()
+		n := len(flows.sent)
+		flows.mu.Unlock()
+		if n >= 6 && gaps.Held() == 0 && buf.Len() == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("not delivered: %d requests sent, %d gaps held, %d windows queued", n, gaps.Held(), buf.Len())
+		}
+		time.Sleep(time.Millisecond)
+	}
+	flows.mu.Lock()
+	retry := flows.sent[3]
+	flows.mu.Unlock()
+	if len(retry.GetGaps()) != 1 || !retry.GetGaps()[0].GetTo().AsTime().Equal(at(5)) {
+		t.Fatalf("gaps on the retry = %v", retry.GetGaps())
+	}
+	cancel()
+	<-done
 }

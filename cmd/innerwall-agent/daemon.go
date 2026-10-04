@@ -87,20 +87,24 @@ func runDaemon(ctx context.Context, args []string) error {
 	// Collection: conntrack events classified by connection mark, log
 	// events from the terminal rule, aggregated per window, buffered,
 	// reported on a connection of their own so telemetry never shares the
-	// sync stream's fate (ADR-0015). What the sources know they lost is
-	// recorded as evidence gaps.
-	buffer := collect.NewBuffer(*bufferRecords)
+	// sync stream's fate (ADR-0015). What the sources and the buffer
+	// know they lost is recorded as evidence gaps and shipped with the
+	// windows.
 	gaps := &collect.Gaps{Log: log.With("loop", "collect")}
+	buffer := collect.NewBuffer(*bufferRecords)
+	buffer.Gaps = gaps
 	collector := &collect.Collector{
 		Source: collect.Sources{
 			&conntrack.Source{Log: log.With("loop", "collect"), Classify: store.Classify, Gaps: gaps, ReadBuffer: *netlinkBuffer, DumpMax: *dumpMax},
 			&nflog.Source{Group: uint16(*nflogGroup), Decide: store.TerminalDecision, Log: log.With("loop", "collect"), Gaps: gaps, ReadBuffer: *netlinkBuffer},
 		},
 		Buffer: buffer,
+		Gaps:   gaps,
 		Log:    log.With("loop", "collect"),
 	}
 	reporter := &collect.Reporter{
 		Buffer: buffer,
+		Gaps:   gaps,
 		Dial: func(ctx context.Context) (innerwallv1.AgentServiceClient, io.Closer, error) {
 			return agentsync.DialGRPC(ctx, *server, holder)
 		},
@@ -115,6 +119,7 @@ func runDaemon(ctx context.Context, args []string) error {
 		Facts:              inventory.Facts,
 		ListeningServices:  inventory.ListeningServices,
 		DroppedFlowRecords: buffer.Dropped,
+		SourceOverruns:     gaps.Overruns,
 		RenewalError:       renewer.LastError,
 		OnSyncConfig: func(cfg *innerwallv1.SyncConfig) {
 			collector.SetConfig(cfg)
