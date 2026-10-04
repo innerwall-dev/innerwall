@@ -25,7 +25,7 @@ func (ss Sources) Run(ctx context.Context, emit func(Observation)) error {
 		go func(i int, s Source) {
 			defer wg.Done()
 			rng := rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), uint64(i))) //nolint:gosec // jitter, not secrecy
-			runWithRestart(ctx, s, slog.Default(), time.Second, time.Minute, rng, emit)
+			restarter{log: slog.Default(), base: time.Second, limit: time.Minute, rng: rng}.run(ctx, s, emit)
 		}(i, s)
 	}
 	wg.Wait()
@@ -99,7 +99,7 @@ func (c *Collector) Run(ctx context.Context) error {
 	rng := rand.New(rand.NewPCG(uint64(c.now().UnixNano()), 2)) //nolint:gosec // jitter, not secrecy
 
 	agg := NewAggregator(c.now())
-	go runWithRestart(ctx, c.Source, c.log(), base, limit, rng, agg.Add)
+	go restarter{log: c.log(), base: base, limit: limit, rng: rng, now: c.Now}.run(ctx, c.Source, agg.Add)
 
 	timer := time.NewTimer(c.Window())
 	defer timer.Stop()
@@ -119,24 +119,70 @@ func (c *Collector) Run(ctx context.Context) error {
 	}
 }
 
-// runWithRestart runs src until ctx ends, restarting it after every
+// Gapped is a source that records the evidence it loses. When such a
+// source fails, the restart loop opens a restart gap for it at the
+// failure; the source closes it when it next subscribes, so the gap spans
+// exactly the time nothing was observed.
+type Gapped interface {
+	EvidenceGaps() (*Gaps, GapSource)
+}
+
+// restarter runs a source until ctx ends, restarting it after every
 // failure with jittered backoff.
-func runWithRestart(ctx context.Context, src Source, log *slog.Logger, base, limit time.Duration, rng *rand.Rand, emit func(Observation)) {
+type restarter struct {
+	log         *slog.Logger
+	base, limit time.Duration
+	rng         *rand.Rand
+	// now is the clock and after the wait; time.Now and time.After when
+	// nil.
+	now   func() time.Time
+	after func(time.Duration) <-chan time.Time
+}
+
+func (r restarter) clock() time.Time {
+	if r.now != nil {
+		return r.now()
+	}
+	return time.Now()
+}
+
+func (r restarter) run(ctx context.Context, src Source, emit func(Observation)) {
+	after := r.after
+	if after == nil {
+		after = time.After
+	}
 	attempt := 0
 	for {
+		started := r.clock()
 		err := src.Run(ctx, emit)
 		if ctx.Err() != nil {
 			return
 		}
-		attempt++
-		wait := backoff(attempt, base, limit, rng)
-		log.Error("flow source stopped; restarting", "error", err, "attempt", attempt, "wait", wait)
+		failed := r.clock()
+		attempt = nextAttempt(attempt, failed.Sub(started), r.limit)
+		if g, ok := src.(Gapped); ok {
+			gaps, name := g.EvidenceGaps()
+			gaps.Open(name, GapSourceRestart, failed)
+		}
+		wait := backoff(attempt, r.base, r.limit, r.rng)
+		r.log.Error("flow source stopped; restarting", "error", err, "attempt", attempt, "wait", wait)
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(wait):
+		case <-after(wait):
 		}
 	}
+}
+
+// nextAttempt is the attempt number after a run that lasted ran. A run
+// that stayed up longer than the backoff cap was healthy, so the failure
+// that ended it starts the sequence again rather than continuing one that
+// recovered long ago.
+func nextAttempt(attempt int, ran, limit time.Duration) int {
+	if ran > limit {
+		attempt = 0
+	}
+	return attempt + 1
 }
 
 // backoff is exponential with full jitter (ADR-0002).
