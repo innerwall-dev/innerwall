@@ -20,10 +20,11 @@ import { asProblem, useResource, useWrite } from "@/lib/resource";
 import { cn } from "@/lib/utils";
 import { peerName } from "../map/Drawer";
 import { peerKey } from "../map/model";
+import { editorPath } from "../policy/link";
 import { rowLimit } from "./data";
 import { type ReviewRow, scopeRequirements, scopeText } from "./model";
 
-const inert = "The policy editor arrives with the write screens";
+const inert = "Address groups have no screen in this version";
 
 // ReviewDrawer is one row expanded: what it is, the rule that admitted
 // it or the fact that none did, the disabled rules of the ruleset an
@@ -110,7 +111,14 @@ export function ReviewDrawer({
 					{row.peer.kind === "address" ? (
 						<InertAction label="Add to an address group" />
 					) : null}
-					<InertAction label="Open in policy editor" />
+					<Button
+						variant="secondary"
+						size="sm"
+						className="rounded-chip"
+						asChild
+					>
+						<Link to={editorPath(ruleset.name)}>Open in policy editor</Link>
+					</Button>
 				</div>
 			</div>
 			<div className="min-h-0 flex-1 overflow-auto">

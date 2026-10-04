@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Captures the console's review composites: each screen beside its design
 // shot, or, for a state the design has no shot of, the dark theme beside
-// the light. Output is docs/img/console/<name>.jpg, 1960x700, the same
-// frame for every composite so they compare at a glance.
+// the light. Output is docs/img/console/<name>.jpg, 1960 wide and as tall
+// as the screen's frame needs (700 for the 1440x900 screens), so they
+// compare at a glance.
 //
 // It drives a running control plane through its own console, logged in
 // with the operator password, at 1440x900 and twice the pixel density.
@@ -66,13 +67,32 @@ function loadPlaywright() {
 const themeKey = "innerwall.console.theme";
 
 // A scene is one screen state: where it is, how to reach it, and the
-// design shot it answers to (null when the design has none).
+// design shot it answers to (null when the design has none). height is
+// the viewport's, when the design's frame is taller than 900.
 const metricsScrape = encodeURIComponent(
 	"would_block|w:app=metrics-collector env=prod tier=infra|tcp/9100",
 );
 const billingToLedger = encodeURIComponent(
 	"allowed|w:app=billing env=prod tier=api|tcp/8443",
 );
+// The policy editor's designed refusal: a new row with a prefix that is
+// not one and a key without values, saved, so the control plane's
+// findings land on the elements they name.
+const refusedRow = async (page) => {
+	await page.getByRole("button", { name: "+ Add rule" }).click();
+	const peer = page.getByRole("textbox", { name: "Add a peer" });
+	for (const t of ["10.40.0.0/33", "tier="]) {
+		await peer.fill(t);
+		await peer.press("Enter");
+	}
+	const svc = page.getByRole("textbox", { name: "Add a service" });
+	for (const t of ["ssh", "tcp/389"]) {
+		await svc.fill(t);
+		await svc.press("Enter");
+	}
+	await page.getByRole("button", { name: /^Save — applies/ }).click();
+	await page.getByText(/errors? blocks? saving/).waitFor();
+};
 const openPromote = async (page) => {
 	await page.getByRole("button", { name: "Promote to enforced…" }).click();
 	await page.waitForSelector('[data-testid="partition"]');
@@ -203,6 +223,56 @@ const scenes = [
 		},
 	},
 	{
+		name: "12-policy-editor-validation",
+		design: "12-policy-editor-validation",
+		cp: "seeded",
+		path: "/policy?ruleset=checkout-inbound",
+		height: 1060,
+		ready: "text=matched on",
+		act: refusedRow,
+	},
+	{
+		name: "policy-editor-dry-run",
+		design: null,
+		cp: "seeded",
+		path: "/policy?ruleset=checkout-inbound",
+		height: 1060,
+		ready: "text=matched on",
+		act: async (page) => {
+			await page.getByRole("button", { name: "Edit metrics-scrape" }).click();
+			await page.getByRole("switch", { name: "This rule enabled" }).click();
+			await page.getByRole("button", { name: "Dry run" }).click();
+			await page.getByTestId("dryrun-summary").waitFor();
+			await page
+				.getByRole("region", { name: "Dry run" })
+				.scrollIntoViewIfNeeded();
+		},
+	},
+	{
+		name: "19-fresh-install-policy",
+		design: "19-fresh-install-policy",
+		cp: "fresh",
+		path: "/policy",
+		ready: "text=Create your first ruleset",
+	},
+	{
+		name: "fresh-install-policy-new-ruleset",
+		design: null,
+		cp: "fresh",
+		path: "/policy",
+		ready: "text=Create your first ruleset",
+		act: async (page) => {
+			await page
+				.getByRole("link", { name: "New ruleset", exact: true })
+				.click();
+			await page.getByLabel("Ruleset name").fill("checkout-inbound");
+			const scope = page.getByLabel("Add a scope requirement");
+			await scope.fill("app = checkout");
+			await scope.press("Enter");
+			await page.getByTestId("match-count").waitFor();
+		},
+	},
+	{
 		name: "18-fresh-install-flow-map",
 		design: "18-fresh-install-flow-map",
 		cp: "fresh",
@@ -243,7 +313,7 @@ async function shoot(browser, scene, theme) {
 	const base = scene.cp === "fresh" ? opt.fresh : opt.seeded;
 	const ctx = await browser.newContext({
 		baseURL: base,
-		viewport: { width: 1440, height: 900 },
+		viewport: { width: 1440, height: scene.height ?? 900 },
 		deviceScaleFactor: 2,
 		ignoreHTTPSErrors: true,
 		colorScheme: theme,
@@ -272,9 +342,12 @@ function dataUrl(buf) {
 	return `data:image/png;base64,${buf.toString("base64")}`;
 }
 
-async function composite(browser, left, right, file) {
+// composite puts two 1440-wide screens side by side at 960 wide, each
+// as tall as its frame (600 for 900).
+async function composite(browser, left, right, file, height = 900) {
+	const img = Math.round((960 * height) / 1440);
 	const ctx = await browser.newContext({
-		viewport: { width: 1960, height: 700 },
+		viewport: { width: 1960, height: img + 100 },
 	});
 	const page = await ctx.newPage();
 	const pane = (img, caption) => `
@@ -283,7 +356,7 @@ async function composite(browser, left, right, file) {
 		body{margin:0;background:#28282c;display:flex;gap:18px;padding:12px;
 			font:13px system-ui,sans-serif;color:#d4d4da}
 		figure{margin:0;display:flex;flex-direction:column;gap:8px}
-		img{width:960px;height:600px;border:1px solid #3c3c42;display:block}
+		img{width:960px;height:${img}px;border:1px solid #3c3c42;display:block}
 	</style>${pane(left, left.caption)}${pane(right, right.caption)}`);
 	await page.evaluate(() =>
 		Promise.all([...document.images].map((i) => i.decode())),
@@ -319,6 +392,7 @@ async function main() {
 						{ src: dataUrl(shot), caption: `console (${theme})` },
 						{ src: dataUrl(design), caption: `design shot ${n} (${theme})` },
 						file,
+						scene.height,
 					);
 					console.log(file);
 				}
@@ -331,6 +405,7 @@ async function main() {
 					{ src: dataUrl(dark), caption: "console (dark)" },
 					{ src: dataUrl(light), caption: "console (light)" },
 					file,
+					scene.height,
 				);
 				console.log(file);
 			}

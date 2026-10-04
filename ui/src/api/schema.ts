@@ -36,6 +36,13 @@ export type Rule = Schemas["Rule"];
 // element of that intersection as the authored form alone.
 export type Ruleset = Omit<Schemas["Ruleset"], "rules"> & { rules: Rule[] };
 export type RuleInput = Schemas["RuleInput"];
+export type RulesetInput = Schemas["RulesetInput"];
+export type Finding = Schemas["Finding"];
+export type DryRunRequest =
+	operations["renderDryRun"]["requestBody"]["content"]["application/json"];
+export type DryRunResult = Schemas["DryRunResult"];
+export type WorkloadDiff = DryRunResult["workloads"][number];
+export type RenderedRuleDelta = Schemas["RenderedRuleDelta"];
 export type Peer = Schemas["Peer"];
 export type Entry = Schemas["Entry"];
 export type Service = Schemas["Service"];

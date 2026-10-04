@@ -6,6 +6,8 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/innerwall-dev/innerwall/internal/compiler"
 	"github.com/innerwall-dev/innerwall/internal/enroll"
 	"github.com/innerwall-dev/innerwall/internal/flowstore"
@@ -202,6 +204,14 @@ func SeedEstate(ctx context.Context, s *store.Store, f *Fleet, extra int) error 
 	if err := authoring.CreateAddressGroup(ctx, &corpVPN); err != nil {
 		return err
 	}
+	// SSH is a named service definition, so the bastion's rules reference
+	// it rather than stating tcp/22 inline: the policy editor draws a
+	// reference apart from an inline entry. The rendered rules are the
+	// same either way.
+	ssh := policy.Service{Name: "ssh", Entries: []policy.ServiceEntry{{Protocol: innerwallv1.Protocol_PROTOCOL_TCP, Ports: []policy.PortRange{{Start: 22, End: 22}}}}}
+	if err := authoring.CreateService(ctx, &ssh); err != nil {
+		return err
+	}
 	// The seed's office group is 192.0.2.0/24; the estate's office traffic
 	// comes from inside it.
 	peerFor := func(src string) policy.Peer {
@@ -214,18 +224,20 @@ func SeedEstate(ctx context.Context, s *store.Store, f *Fleet, extra int) error 
 	for _, dst := range []string{"checkout", "auth", "ledger"} {
 		rs := policy.Ruleset{Name: dst + "-inbound", Description: "what reaches " + dst, Enabled: true, Scope: policy.Selector{"app": {dst}}}
 		for _, src := range estateAdmits[dst] {
-			port := uint16(8443)
-			if src == "bastion" {
-				port = 22
+			r := policy.Rule{
+				Direction: innerwallv1.Direction_DIRECTION_INBOUND, Enabled: true, Description: src + " to " + dst,
+				Peers: []policy.Peer{peerFor(src)},
 			}
+			port := uint32(8443)
 			if src == "metrics-collector" {
 				port = 9100
 			}
-			rs.Rules = append(rs.Rules, policy.Rule{
-				Direction: innerwallv1.Direction_DIRECTION_INBOUND, Enabled: true, Description: src + " to " + dst,
-				Peers:   []policy.Peer{peerFor(src)},
-				Entries: []policy.ServiceEntry{{Protocol: innerwallv1.Protocol_PROTOCOL_TCP, Ports: []policy.PortRange{{Start: uint32(port), End: uint32(port)}}}},
-			})
+			if src == "bastion" {
+				r.ServiceIDs = []uuid.UUID{ssh.ID}
+			} else {
+				r.Entries = []policy.ServiceEntry{{Protocol: innerwallv1.Protocol_PROTOCOL_TCP, Ports: []policy.PortRange{{Start: port, End: port}}}}
+			}
+			rs.Rules = append(rs.Rules, r)
 		}
 		if dst == "checkout" {
 			// Collectors scrape the checkout workloads' exporters, and the

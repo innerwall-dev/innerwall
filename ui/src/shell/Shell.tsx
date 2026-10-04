@@ -6,8 +6,8 @@ import {
 	useLocation,
 	useOutletContext,
 } from "react-router";
-import { request } from "@/api/client";
 import { listWorkloads } from "@/api/fleet";
+import { listRulesets } from "@/api/policy";
 import type { SyncState } from "@/api/schema";
 import { useSession } from "@/auth/SessionProvider";
 import { useResource } from "@/lib/resource";
@@ -23,10 +23,12 @@ export interface OpenWorkload {
 }
 
 // ShellContext is what the screens tell the frame: the workload they
-// show, and that the fleet changed so the frame's own reads refresh.
+// show, and that the fleet or the policy changed so the frame's own
+// reads refresh.
 export interface ShellContext {
 	openWorkload: (w: OpenWorkload) => void;
 	fleetChanged: () => void;
+	policyChanged: () => void;
 }
 
 export function useShell(): ShellContext {
@@ -63,7 +65,15 @@ function crumbsFor(
 	}
 	if (pathname.startsWith("/workloads"))
 		return [{ label: "Workloads" }, { label: "Fleet" }];
-	if (pathname.startsWith("/policy")) return [{ label: "Policy" }];
+	if (pathname.startsWith("/policy")) {
+		// The ruleset the editor shows, which it names in the address.
+		const q = new URLSearchParams(search);
+		const ruleset = q.get("ruleset");
+		if (q.has("new")) return [{ label: "Policy" }, { label: "New ruleset" }];
+		return ruleset
+			? [{ label: "Policy" }, { label: ruleset }]
+			: [{ label: "Policy" }];
+	}
 	return [{ label: "Innerwall" }];
 }
 
@@ -86,6 +96,7 @@ function Frame() {
 	const location = useLocation();
 	const [open, setOpen] = useState<OpenWorkload | null>(null);
 	const [generation, setGeneration] = useState(0);
+	const [policyGeneration, setPolicyGeneration] = useState(0);
 
 	// The frame reports only what it can state exactly. Whether the fleet
 	// is empty takes one row; the fleet's per-state totals have no read,
@@ -96,11 +107,8 @@ function Frame() {
 		[generation],
 	);
 	const { resource: rulesets } = useResource(
-		() =>
-			request<{ rulesets: unknown[] }>("GET", "/rulesets").then(
-				(r) => r.rulesets.length,
-			),
-		[],
+		() => listRulesets().then((r) => r.rulesets.length),
+		[policyGeneration],
 	);
 	const fleetEmpty = fleet.status === "ready" ? fleet.data : null;
 
@@ -115,9 +123,13 @@ function Frame() {
 		);
 	}, []);
 	const fleetChanged = useCallback(() => setGeneration((g) => g + 1), []);
+	const policyChanged = useCallback(
+		() => setPolicyGeneration((g) => g + 1),
+		[],
+	);
 	const context = useMemo<ShellContext>(
-		() => ({ openWorkload, fleetChanged }),
-		[openWorkload, fleetChanged],
+		() => ({ openWorkload, fleetChanged, policyChanged }),
+		[openWorkload, fleetChanged, policyChanged],
 	);
 
 	const counts: Partial<Record<string, number>> = {};

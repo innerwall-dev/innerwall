@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { count, since } from "@/lib/format";
 import { asProblem, useResource } from "@/lib/resource";
 import { cn } from "@/lib/utils";
+import { editorPath } from "../policy/link";
+import { rulesetsSelecting } from "../policy/target";
 import { ModeLine, subtitle } from "./Graph";
 import {
 	keylessId,
@@ -246,6 +248,15 @@ function EdgeDrawer({
 	);
 	const [services, setServices] = useState<string[] | null>(null);
 	const opened = e.pairs.find((p) => pairKey(p) === open) ?? null;
+	// The ruleset a rule drawn from this edge belongs in: one whose scope
+	// selects the edge's destination workloads, resolved by the control
+	// plane.
+	const dstIds = useMemo(() => [...new Set(e.pairs.map((p) => p.dst.id))], [e]);
+	const { resource: target } = useResource(
+		() => rulesetsSelecting(dstIds),
+		[dstIds],
+	);
+	const chosen = target.status === "ready" ? (target.data[0] ?? null) : null;
 
 	return (
 		<>
@@ -275,6 +286,39 @@ function EdgeDrawer({
 				<Eyebrow>Draw a rule from this</Eyebrow>
 				<dl className="flex flex-col gap-1.5 rounded border border-input bg-background px-3 py-2.5 text-[12px]">
 					<div className="flex gap-2">
+						<dt className="w-[60px] shrink-0 text-muted-foreground">ruleset</dt>
+						<dd className="font-mono break-words" data-testid="rule-ruleset">
+							{target.status === "loading" ? (
+								<span className="text-muted-foreground">…</span>
+							) : target.status === "error" ? (
+								<span className="font-sans text-muted-foreground">
+									could not be resolved:{" "}
+									{target.error.problem.detail ?? target.error.problem.title}
+								</span>
+							) : chosen ? (
+								<>
+									{chosen.ruleset.name}
+									{chosen.ruleset.enabled === false ? (
+										<span className="font-sans text-muted-foreground">
+											{" "}
+											(disabled)
+										</span>
+									) : null}
+									{target.data.length > 1 ? (
+										<span className="font-sans text-muted-foreground">
+											{" "}
+											and {target.data.length - 1} more
+										</span>
+									) : null}
+								</>
+							) : (
+								<span className="font-sans text-muted-foreground">
+									no ruleset's scope selects {dst.title} yet
+								</span>
+							)}
+						</dd>
+					</div>
+					<div className="flex gap-2">
 						<dt className="w-[60px] shrink-0 text-muted-foreground">peers</dt>
 						<dd className="font-mono break-words" data-testid="rule-peers">
 							{peerSelector(e, src, groupKey, scope)}
@@ -296,17 +340,22 @@ function EdgeDrawer({
 					</div>
 				</dl>
 				<div className="flex items-center gap-1.5">
-					<Button
-						size="sm"
-						aria-disabled="true"
-						title="The policy editor arrives with the write screens"
-						className="cursor-default rounded-chip"
-						onClick={(ev) => ev.preventDefault()}
-					>
-						Open in policy editor
+					<Button size="sm" className="rounded-chip" asChild>
+						<Link to={editorPath(chosen?.ruleset.name)}>
+							Open in policy editor
+						</Link>
 					</Button>
-					<span className="text-[11px] text-muted-foreground">
-						The policy editor arrives with the write screens.
+					<span
+						className="text-[11px] text-muted-foreground"
+						data-testid="editor-effect"
+					>
+						{chosen
+							? chosen.ruleset.enabled === false
+								? "This ruleset is disabled: saving changes nothing until it is enabled."
+								: `Saving takes effect immediately for ${count(chosen.inScope)} ${chosen.inScope === 1 ? "workload" : "workloads"}.`
+							: target.status === "ready"
+								? "Start a ruleset whose scope selects these workloads."
+								: null}
 					</span>
 				</div>
 			</div>
