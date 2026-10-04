@@ -6,8 +6,8 @@ import {
 	useLocation,
 	useOutletContext,
 } from "react-router";
-import { request } from "@/api/client";
 import { listWorkloads } from "@/api/fleet";
+import { listRulesets } from "@/api/policy";
 import type { SyncState } from "@/api/schema";
 import { useSession } from "@/auth/SessionProvider";
 import { useResource } from "@/lib/resource";
@@ -96,10 +96,7 @@ function Frame() {
 		[generation],
 	);
 	const { resource: rulesets } = useResource(
-		() =>
-			request<{ rulesets: unknown[] }>("GET", "/rulesets").then(
-				(r) => r.rulesets.length,
-			),
+		() => listRulesets().then((r) => r.rulesets.length),
 		[],
 	);
 	const fleetEmpty = fleet.status === "ready" ? fleet.data : null;
