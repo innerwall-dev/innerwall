@@ -3,7 +3,7 @@ import { Navigate, Route, Routes } from "react-router";
 import { SessionProvider } from "@/auth/SessionProvider";
 import { Fleet } from "@/routes/fleet/Fleet";
 import { Login } from "@/routes/Login";
-import { Policy } from "@/routes/Policy";
+import { Policy } from "@/routes/policy/Policy";
 import { SimulationReview } from "@/routes/SimulationReview";
 import { WorkloadRoute } from "@/routes/workload/WorkloadDetail";
 import { Shell } from "@/shell/Shell";

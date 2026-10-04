@@ -99,21 +99,14 @@ describe("cells", () => {
 	});
 
 	it("cues a rule created or changed in the last day, from its instants", () => {
-		const now = Date.now();
-		expect(recency(rule({ created_at: minutesAgo(180) }), now)).toBe(
-			"added 3h ago",
-		);
+		const now = Date.parse("2026-10-04T12:00:00Z");
+		const ago = (m: number) => new Date(now - m * 60_000).toISOString();
+		expect(recency(rule({ created_at: ago(180) }), now)).toBe("added 3h ago");
 		expect(
-			recency(
-				rule({ created_at: minutesAgo(4000), updated_at: minutesAgo(30) }),
-				now,
-			),
+			recency(rule({ created_at: ago(4000), updated_at: ago(30) }), now),
 		).toBe("changed 30m ago");
 		expect(
-			recency(
-				rule({ created_at: minutesAgo(4000), updated_at: minutesAgo(3000) }),
-				now,
-			),
+			recency(rule({ created_at: ago(4000), updated_at: ago(3000) }), now),
 		).toBeNull();
 	});
 });

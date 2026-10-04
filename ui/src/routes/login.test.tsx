@@ -30,6 +30,8 @@ describe("login", () => {
 				path: "/api/v1/session",
 				reply: { status: 200, json: operator },
 			},
+			// The editor reads once the session exists.
+			...freshInstall,
 		]);
 		renderApp("/policy");
 		await typeAndSubmit("correct horse");

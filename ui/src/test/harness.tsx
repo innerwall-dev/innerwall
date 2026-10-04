@@ -91,7 +91,7 @@ export const signedIn: Route = {
 };
 
 // freshInstall is a control plane with nothing in it yet: an empty
-// fleet, no tokens, no rulesets.
+// fleet, no tokens, no rulesets, no definitions.
 export const freshInstall: Route[] = [
 	signedIn,
 	{
@@ -113,6 +113,11 @@ export const freshInstall: Route[] = [
 		method: "GET",
 		path: "/api/v1/address-groups",
 		reply: { status: 200, json: { address_groups: [] } },
+	},
+	{
+		method: "GET",
+		path: "/api/v1/services",
+		reply: { status: 200, json: { services: [] } },
 	},
 	{
 		method: "GET",
