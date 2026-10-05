@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EvidenceGap, Workload } from "@/api/schema";
+import { between } from "@/lib/gaps";
 import { minutesAgo, workload } from "@/test/fixtures";
 import { addressGroup, peer, row as srcDst, wref } from "@/test/map";
 import { gap, ps, rollups } from "@/test/review";
@@ -444,7 +445,7 @@ describe("the verdict", () => {
 	describe("evidence gaps", () => {
 		// The allowed-only rollups covered windows from 125 to 55 minutes
 		// ago; that is the range the evidence is judged over.
-		const hhmm = /\d\d:\d\d and \d\d:\d\d UTC/;
+		const hhmm = /(?:\d\d-\d\d )?\d\d:\d\d and (?:\d\d-\d\d )?\d\d:\d\d UTC/;
 
 		it("fails on their own when evidence is missing from the covered range", () => {
 			const w = ready();
@@ -452,7 +453,7 @@ describe("the verdict", () => {
 			expect(v.safe).toBe(false);
 			expect(v.failing.map((c) => c.id)).toEqual(["evidence-gaps"]);
 			expect(v.caveats[0]).toMatch(
-				/^Evidence incomplete for checkout-01 between \d\d:\d\d and \d\d:\d\d UTC — the kernel dropped events$/,
+				/^Evidence incomplete for checkout-01 between (?:\d\d-\d\d )?\d\d:\d\d and (?:\d\d-\d\d )?\d\d:\d\d UTC — the kernel dropped events$/,
 			);
 			expect(v.headline).toBe("Not safe to enforce yet");
 			expect(v.sub).toBe(
@@ -466,12 +467,27 @@ describe("the verdict", () => {
 			});
 		});
 
+		it("names an interval to the minute, with dates when it crosses a day", () => {
+			expect(between("2026-10-04T13:02:10Z", "2026-10-04T13:04:50Z")).toBe(
+				"13:02 and 13:04 UTC",
+			);
+			expect(between("2026-10-04T23:29:00Z", "2026-10-05T00:09:00Z")).toBe(
+				"10-04 23:29 and 10-05 00:09 UTC",
+			);
+			expect(between("2026-10-04T13:02:10Z", "2026-10-04T13:02:17Z")).toBe(
+				"13:02:10 and 13:02:17 UTC",
+			);
+		});
+
 		it("clamps the interval it names to the covered range", () => {
 			const w = ready();
 			const v = verdictOf(w, allowedOnly, [gap(w[0], 200, 100)]);
 			const covered = allowedOnly.peerService.allowed.effective_from as string;
 			const at = new Date(covered).toISOString().slice(11, 16);
-			expect(v.caveats[0]).toContain(`between ${at} and`);
+			// The date leads the time when the interval crosses midnight.
+			expect(v.caveats[0]).toMatch(
+				new RegExp(`between (\\d\\d-\\d\\d )?${at} and`),
+			);
 		});
 
 		it("ignores gaps outside the covered range and of workloads out of scope", () => {
@@ -509,7 +525,7 @@ describe("the verdict", () => {
 				gap(w[2], 70, 60, { kind: "source_restart", source: "conntrack" }),
 			]);
 			expect(v.caveats[0]).toMatch(
-				/^Evidence incomplete for 2 workloads in scope between \d\d:\d\d and \d\d:\d\d UTC$/,
+				/^Evidence incomplete for 2 workloads in scope between (?:\d\d-\d\d )?\d\d:\d\d and (?:\d\d-\d\d )?\d\d:\d\d UTC$/,
 			);
 			expect(v.caveats[0]).toMatch(hhmm);
 		});

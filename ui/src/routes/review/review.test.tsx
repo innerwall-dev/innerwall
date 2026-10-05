@@ -413,7 +413,7 @@ describe("simulation review", () => {
 			"No observed traffic would be dropped, but evidence is missing from part of this range: traffic in it may have gone unseen.",
 		);
 		expect(within(b).getByRole("list", { name: "Caveats" })).toHaveTextContent(
-			/Evidence incomplete for ledger-prod-01 between \d\d:\d\d and \d\d:\d\d UTC — the kernel dropped events/,
+			/Evidence incomplete for ledger-prod-01 between (?:\d\d-\d\d )?\d\d:\d\d and (?:\d\d-\d\d )?\d\d:\d\d UTC — the kernel dropped events/,
 		);
 		// The gaps are read for the scope, over the rollups' one range.
 		const read = calls

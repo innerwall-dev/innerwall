@@ -293,7 +293,7 @@ describe("workload detail", () => {
 		const items = within(cell).getAllByRole("listitem");
 		expect(items).toHaveLength(3);
 		expect(items[0]).toHaveTextContent(
-			/▲ the kernel dropped events between \d\d:\d\d and \d\d:\d\d UTC$/,
+			/▲ the kernel dropped events between (?:\d\d-\d\d )?\d\d:\d\d and (?:\d\d-\d\d )?\d\d:\d\d UTC$/,
 		);
 		expect(items[1]).toHaveTextContent(
 			/the agent dropped buffered windows between .* UTC · 1,200 lost$/,
