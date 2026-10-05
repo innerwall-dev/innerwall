@@ -5,6 +5,11 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 )
 
 // GapKind says how evidence was lost.
@@ -31,8 +36,10 @@ const (
 // GapSource names the source that lost the evidence.
 type GapSource string
 
-// The flow sources that record gaps.
+// The flow sources that record gaps. A loss that is not one source's (a
+// buffer overflow drops records of every source) names none.
 const (
+	GapNoSource  GapSource = ""
 	GapConntrack GapSource = "conntrack"
 	GapNflog     GapSource = "nflog"
 )
@@ -48,9 +55,9 @@ type Gap struct {
 	HasCount bool
 }
 
-// DefaultGapCapacity bounds the gaps held before they are shipped. Past
-// it, gaps of the same kind and source are merged into wider intervals,
-// so the bound costs precision, never the fact of a loss (ADR-0011).
+// DefaultGapCapacity bounds the gaps held until they are shipped. Past it,
+// gaps of the same kind and source are merged into wider intervals, so the
+// bound costs precision, never the fact of a loss (ADR-0011).
 const DefaultGapCapacity = 1024
 
 // Gaps records evidence gaps for the agent: closed intervals, and at most
@@ -150,8 +157,7 @@ func (g *Gaps) Record(gap Gap) {
 }
 
 // add records gap, merging it into the newest held gap of the same kind
-// and source when the intervals touch, and merging older gaps when the
-// capacity is reached. The caller holds the lock.
+// and source when the intervals touch. The caller holds the lock.
 func (g *Gaps) add(gap Gap) {
 	if gap.To.Before(gap.From) {
 		gap.To = gap.From
@@ -173,39 +179,35 @@ func (g *Gaps) add(gap Gap) {
 		attrs = append(attrs, "count", gap.Count)
 	}
 	g.log().Warn("flow evidence gap: the flow map is incomplete in this interval", attrs...)
-	if len(g.pending) >= g.capacity() {
-		g.compact(gap)
-		return
-	}
 	g.pending = append(g.pending, gap)
+	g.shrink()
 }
 
-// compact makes room by merging rather than dropping: the incoming gap
-// joins the newest held gap of its kind and source, widening it; failing
-// that, the two oldest gaps sharing a kind and source are merged, which
-// always exist once the capacity exceeds the number of kinds and sources.
-func (g *Gaps) compact(gap Gap) {
-	for i := len(g.pending) - 1; i >= 0; i-- {
-		if g.pending[i].Kind == gap.Kind && g.pending[i].Source == gap.Source {
-			merge(&g.pending[i], gap)
-			return
+// shrink makes the held gaps fit the capacity by merging rather than
+// dropping: the two oldest gaps sharing a kind and source become one
+// wider gap, so precision is lost on the oldest evidence first and the
+// fact of a loss never. With a capacity below the number of kinds and
+// sources, the oldest gap is dropped. The caller holds the lock.
+func (g *Gaps) shrink() {
+	for len(g.pending) > g.capacity() {
+		first := map[[2]string]int{}
+		merged := false
+		for i, p := range g.pending {
+			k := [2]string{string(p.Kind), string(p.Source)}
+			j, ok := first[k]
+			if !ok {
+				first[k] = i
+				continue
+			}
+			merge(&g.pending[j], p)
+			g.pending = append(g.pending[:i], g.pending[i+1:]...)
+			merged = true
+			break
+		}
+		if !merged {
+			g.pending = g.pending[1:]
 		}
 	}
-	first := map[[2]string]int{}
-	for i, p := range g.pending {
-		k := [2]string{string(p.Kind), string(p.Source)}
-		j, ok := first[k]
-		if !ok {
-			first[k] = i
-			continue
-		}
-		merge(&g.pending[j], p)
-		g.pending = append(g.pending[:i], g.pending[i+1:]...)
-		g.pending = append(g.pending, gap)
-		return
-	}
-	// Capacity below the number of kinds and sources: keep the newest.
-	g.pending = append(g.pending[1:], gap)
 }
 
 // merge widens p to cover gap and sums the counts; the sum is known only
@@ -225,6 +227,41 @@ func merge(p *Gap, gap Gap) {
 	}
 }
 
+// Take removes and returns the held gaps, oldest first, for shipping.
+func (g *Gaps) Take() []Gap {
+	if g == nil {
+		return nil
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	out := g.pending
+	g.pending = nil
+	return out
+}
+
+// Restore puts back gaps that were taken but not delivered, ahead of any
+// recorded since and unmerged, so a delivery that partly landed repeats
+// them exactly and the receiver can recognize the repeat.
+func (g *Gaps) Restore(gaps []Gap) {
+	if g == nil || len(gaps) == 0 {
+		return
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.pending = append(append([]Gap(nil), gaps...), g.pending...)
+	g.shrink()
+}
+
+// Held returns the number of gaps waiting to be shipped.
+func (g *Gaps) Held() int {
+	if g == nil {
+		return 0
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return len(g.pending)
+}
+
 // Pending returns the held gaps, oldest first, without taking them.
 func (g *Gaps) Pending() []Gap {
 	if g == nil {
@@ -233,4 +270,31 @@ func (g *Gaps) Pending() []Gap {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return append([]Gap(nil), g.pending...)
+}
+
+var wireKinds = map[GapKind]innerwallv1.EvidenceGapKind{
+	GapSourceOverrun:  innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_OVERRUN,
+	GapSourceRestart:  innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_RESTART,
+	GapBufferOverflow: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_BUFFER_OVERFLOW,
+	GapDumpTruncated:  innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_DUMP_TRUNCATED,
+}
+
+var wireSources = map[GapSource]innerwallv1.EvidenceSource{
+	GapNoSource:  innerwallv1.EvidenceSource_EVIDENCE_SOURCE_UNSPECIFIED,
+	GapConntrack: innerwallv1.EvidenceSource_EVIDENCE_SOURCE_CONNTRACK,
+	GapNflog:     innerwallv1.EvidenceSource_EVIDENCE_SOURCE_NFLOG,
+}
+
+// Wire returns the gap as ReportFlows carries it.
+func (gap Gap) Wire() *innerwallv1.EvidenceGap {
+	out := &innerwallv1.EvidenceGap{
+		Kind:   wireKinds[gap.Kind],
+		Source: wireSources[gap.Source],
+		From:   timestamppb.New(gap.From),
+		To:     timestamppb.New(gap.To),
+	}
+	if gap.HasCount {
+		out.Count = proto.Uint64(gap.Count)
+	}
+	return out
 }

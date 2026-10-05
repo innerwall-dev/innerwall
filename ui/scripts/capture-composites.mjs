@@ -143,6 +143,24 @@ const scenes = [
 		ready: 'aside[aria-label="Pair detail"] table',
 		act: openPromote,
 	},
+	// The fleet's db-1 lost evidence inside the windows its scope is
+	// judged over, so the review of that scope fails on it alone; the
+	// design has no shot of either state.
+	{
+		name: "simulation-review-evidence-gaps",
+		design: null,
+		cp: "seeded",
+		path: "/simulation?ruleset=web-to-db",
+		ready: 'section[aria-label="Verdict"] li',
+	},
+	{
+		name: "simulation-review-evidence-gaps-promote-dialog",
+		design: null,
+		cp: "seeded",
+		path: "/simulation?ruleset=web-to-db",
+		ready: 'section[aria-label="Verdict"] li',
+		act: openPromote,
+	},
 	{
 		name: "17-fresh-install-simulation-review",
 		design: "17-fresh-install-simulation-review",
@@ -195,6 +213,43 @@ const scenes = [
 		cp: "seeded",
 		path: async (api) => `/workloads/${await workloadId(api, "db-1")}`,
 		ready: '[data-testid="status-card"]',
+	},
+	{
+		name: "10-workload-detail-listening-services",
+		design: "10-workload-detail-listening-services",
+		cp: "seeded",
+		path: async (api) => `/workloads/${await workloadId(api, "db-1")}/services`,
+		ready: "text=What is listening on this host",
+	},
+	{
+		name: "11-workload-detail-applied-policy",
+		design: "11-workload-detail-applied-policy",
+		cp: "seeded",
+		path: async (api) => `/workloads/${await workloadId(api, "db-1")}/policy`,
+		ready: "text=Rendered policy",
+	},
+	// The fleet's cache-1 is offline: a directed resend is refused with
+	// when its agent was last heard from, and nothing is sent. The design
+	// has no shot of the refusal.
+	{
+		name: "workload-detail-offline-resend-refused",
+		design: null,
+		cp: "seeded",
+		path: async (api) => `/workloads/${await workloadId(api, "cache-1")}`,
+		ready: '[data-testid="status-card"]',
+		act: async (page) => {
+			await page.getByRole("button", { name: "Resend snapshot" }).click();
+			await page
+				.getByText(/The agent is offline, so nothing was sent/)
+				.waitFor();
+		},
+	},
+	{
+		name: "workload-detail-evidence-gaps",
+		design: null,
+		cp: "seeded",
+		path: async (api) => `/workloads/${await workloadId(api, "db-1")}`,
+		ready: '[data-testid="evidence-gaps"]',
 	},
 	{
 		name: "13-fleet-workloads",

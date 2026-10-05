@@ -71,6 +71,42 @@ func (s *Server) getFlowsRollup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, rollupJSON(res))
 }
 
+// getFlowGaps is GET /api/v1/flows/gaps: the evidence gaps of a workload
+// set that intersect a range, newest first. from and to default to the
+// last day; workload and label (repeatable) scope it as for the rollup;
+// limit bounds it.
+func (s *Server) getFlowGaps(w http.ResponseWriter, r *http.Request) {
+	q := queryOf(r)
+	var req readmodel.GapsRequest
+	var err error
+	if req.From, err = q.timestamp("from"); err != nil {
+		s.readProblem(w, err)
+		return
+	}
+	if req.To, err = q.timestamp("to"); err != nil {
+		s.readProblem(w, err)
+		return
+	}
+	if req.Workload, err = q.workloadID("workload"); err != nil {
+		s.readProblem(w, err)
+		return
+	}
+	if req.Selector, err = q.selector("label"); err != nil {
+		s.readProblem(w, err)
+		return
+	}
+	if req.Limit, err = q.limit("limit"); err != nil {
+		s.readProblem(w, err)
+		return
+	}
+	res, err := s.reads.Gaps(r.Context(), req)
+	if err != nil {
+		s.readProblem(w, err)
+		return
+	}
+	writeJSON(w, gapsJSON(res))
+}
+
 // getFlows is GET /api/v1/flows: one page of a workload's stored windows.
 // workload is required; from and to default to the last day; verdict,
 // direction, peer, and service filter; cursor and limit page.

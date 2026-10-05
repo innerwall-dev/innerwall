@@ -63,6 +63,9 @@ type Querier interface {
 	// Retention: expired sessions are removed on the same schedule as aged
 	// flow windows (ADR-0019, ADR-0021).
 	DeleteExpiredOperatorSessions(ctx context.Context, now time.Time) (int64, error)
+	// Retention: one bounded batch of the gaps that ended before the horizon,
+	// so a gap outlives every window it could describe.
+	DeleteFlowGapsBefore(ctx context.Context, arg DeleteFlowGapsBeforeParams) (int64, error)
 	// Retention: one bounded batch of the oldest windows before the horizon.
 	// The caller loops until a batch deletes nothing, so no single statement
 	// holds locks for the whole backlog (ADR-0019).
@@ -97,9 +100,15 @@ type Querier interface {
 	GetWorkloadPolicy(ctx context.Context, workloadID uuid.UUID) (WorkloadPolicy, error)
 	// One workload with its latest rendered version, for the detail read.
 	GetWorkloadWithPolicy(ctx context.Context, id uuid.UUID) (GetWorkloadWithPolicyRow, error)
+	// --- evidence gaps -------------------------------------------------------------
+	//
+	// Intervals in which a workload's evidence is known to be incomplete
+	// (ADR-0019 as amended). Delivery is at least once: an interval repeated
+	// exactly is stored once.
+	InsertFlowGap(ctx context.Context, arg []InsertFlowGapParams) *InsertFlowGapBatchResults
 	// Flow storage (ADR-0009, ADR-0019). These are the only statements that
-	// touch flow_windows and flow_totals; every caller goes through the
-	// FlowStore interface in internal/flowstore.
+	// touch flow_windows, flow_totals, and flow_gaps; every caller goes through
+	// the FlowStore interface in internal/flowstore.
 	InsertFlowWindows(ctx context.Context, arg []InsertFlowWindowsParams) (int64, error)
 	ListAddressGroupCIDRs(ctx context.Context, addressGroupID uuid.UUID) ([]AddressGroupCidr, error)
 	ListAddressGroups(ctx context.Context) ([]AddressGroup, error)
@@ -114,6 +123,12 @@ type Querier interface {
 	ListAllServiceEntries(ctx context.Context) ([]ServiceEntry, error)
 	ListAllWorkloadAddresses(ctx context.Context) ([]WorkloadAddress, error)
 	ListAllWorkloadLabels(ctx context.Context) ([]WorkloadLabel, error)
+	// The gaps of a workload set that intersect [since, until): a gap
+	// [gap_from, gap_to) intersects it when it starts before the range ends
+	// and ends after the range starts; an instantaneous gap intersects when
+	// its instant lies in the range. Newest first, bounded; an empty workload
+	// id array means every workload.
+	ListFlowGaps(ctx context.Context, arg ListFlowGapsParams) ([]FlowGap, error)
 	ListFlowTotals(ctx context.Context, arg ListFlowTotalsParams) ([]FlowTotal, error)
 	// One page of a workload's windows, newest first, keyed by
 	// (window_start, id) so a page never shifts when new windows land. The

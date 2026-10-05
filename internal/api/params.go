@@ -146,7 +146,7 @@ func (q query) selector(name string) (policy.Selector, error) {
 }
 
 // limit reads a positive page size; the domain caps it.
-func (q query) limit(name string) (int, error) {
+func (q query) limit(name string) (int, error) { //nolint:unparam // the name is the parameter a problem names, like every reader here
 	s := q.text(name)
 	if s == "" {
 		return 0, nil

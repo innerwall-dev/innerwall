@@ -172,6 +172,8 @@ type MemFlows struct {
 	Err       error
 	LastGroup *flowstore.GroupQuery
 	LastPage  *flowstore.WindowPageQuery
+	Gaps      []flowstore.GapRow
+	LastGaps  *flowstore.GapQuery
 }
 
 var _ flowstore.FlowStore = (*MemFlows)(nil)
@@ -184,6 +186,45 @@ func (f *MemFlows) WriteWindow(context.Context, flowstore.Window) (int, error) {
 // ListWindows implements flowstore.FlowStore.
 func (f *MemFlows) ListWindows(context.Context, flowstore.WindowQuery) ([]flowstore.WindowRow, error) {
 	return nil, ErrUnsupported
+}
+
+// ListGaps implements flowstore.FlowStore: the held gaps of the queried
+// workloads intersecting the range, as the statement selects them, newest
+// first, at most the limit.
+func (f *MemFlows) ListGaps(_ context.Context, q flowstore.GapQuery) ([]flowstore.GapRow, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	qq := q
+	f.LastGaps = &qq
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	in := map[identity.WorkloadID]bool{}
+	for _, id := range q.WorkloadIDs {
+		in[id] = true
+	}
+	rows := append([]flowstore.GapRow{}, f.Gaps...)
+	sort.SliceStable(rows, func(i, j int) bool {
+		if !rows[i].From.Equal(rows[j].From) {
+			return rows[i].From.After(rows[j].From)
+		}
+		return rows[i].ID > rows[j].ID
+	})
+	out := []flowstore.GapRow{}
+	for _, r := range rows {
+		if len(in) > 0 && !in[r.WorkloadID] {
+			continue
+		}
+		intersects := r.From.Before(q.Until) && (r.To.After(q.Since) || (r.From.Equal(r.To) && !r.From.Before(q.Since)))
+		if !intersects {
+			continue
+		}
+		out = append(out, r)
+		if q.Limit > 0 && len(out) == q.Limit {
+			break
+		}
+	}
+	return out, nil
 }
 
 // Rollup implements flowstore.FlowStore.

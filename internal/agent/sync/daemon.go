@@ -58,6 +58,9 @@ type Config struct {
 	// DroppedFlowRecords reports the flow records the collection loop has
 	// dropped to buffer pressure, carried on every heartbeat. Zero when nil.
 	DroppedFlowRecords func() uint64
+	// SourceOverruns reports the kernel-side overruns of the flow sources
+	// since the agent started, carried on every heartbeat. Zero when nil.
+	SourceOverruns func() uint64
 	// RenewalError reports the reason the last automatic credential
 	// renewal failed, or empty, carried on every heartbeat. Empty when nil.
 	RenewalError func() string
@@ -260,6 +263,7 @@ func (d *Daemon) runSession(ctx context.Context) error {
 				UptimeSeconds:          uint64(d.uptime().Seconds()),
 				DroppedFlowRecords:     d.dropped(),
 				CredentialRenewalError: d.renewalError(),
+				SourceOverruns:         d.overruns(),
 			}}}); err != nil {
 				return fmt.Errorf("sync: sending heartbeat: %w", err)
 			}
@@ -281,6 +285,13 @@ func (d *Daemon) runSession(ctx context.Context) error {
 func (d *Daemon) dropped() uint64 {
 	if d.cfg.DroppedFlowRecords != nil {
 		return d.cfg.DroppedFlowRecords()
+	}
+	return 0
+}
+
+func (d *Daemon) overruns() uint64 {
+	if d.cfg.SourceOverruns != nil {
+		return d.cfg.SourceOverruns()
 	}
 	return 0
 }

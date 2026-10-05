@@ -288,3 +288,53 @@ func TestWorkloadsAndPolicy(t *testing.T) {
 		t.Fatalf("unknown err = %v", err)
 	}
 }
+
+// TestGapsScopeAndBound checks the gaps read: the default range, a label
+// scope resolved to the workloads it matches now (a scope matching none
+// reads nothing, never everything), the workload named on each gap, the
+// count only where one is known, and the bound with its truncation flag.
+func TestGapsScopeAndBound(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture()
+	five := uint64(5)
+	f.flows.Gaps = []flowstore.GapRow{
+		{ID: 1, WorkloadID: f.db, Gap: flowstore.Gap{Kind: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_OVERRUN, Source: innerwallv1.EvidenceSource_EVIDENCE_SOURCE_NFLOG, From: now.Add(-3 * time.Hour), To: now.Add(-3*time.Hour + time.Second)}},
+		{ID: 2, WorkloadID: f.db, Gap: flowstore.Gap{Kind: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_BUFFER_OVERFLOW, From: now.Add(-2 * time.Hour), To: now.Add(-time.Hour), Count: &five}},
+		{ID: 3, WorkloadID: f.web, Gap: flowstore.Gap{Kind: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_RESTART, Source: innerwallv1.EvidenceSource_EVIDENCE_SOURCE_CONNTRACK, From: now.Add(-10 * time.Minute), To: now.Add(-9 * time.Minute)}},
+		{ID: 4, WorkloadID: f.db, Gap: flowstore.Gap{Kind: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_RESTART, From: now.Add(-48 * time.Hour), To: now.Add(-47 * time.Hour)}},
+	}
+
+	res, err := f.reader.Gaps(ctx, readmodel.GapsRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := f.flows.LastGaps
+	if !q.Until.Equal(now) || !q.Since.Equal(now.Add(-readmodel.DefaultRange)) || len(q.WorkloadIDs) != 0 || q.Limit != readmodel.DefaultGapLimit+1 {
+		t.Fatalf("default query = %+v", q)
+	}
+	if len(res.Gaps) != 3 || res.Truncated || res.Gaps[0].Workload.Hostname != "web-1" || res.Gaps[2].Count != nil || res.Gaps[1].Count == nil || *res.Gaps[1].Count != 5 {
+		t.Fatalf("every workload, last day = %+v", res)
+	}
+
+	res, err = f.reader.Gaps(ctx, readmodel.GapsRequest{Selector: policy.Selector{"role": {"db"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Gaps) != 2 || res.Gaps[0].Workload.ID != f.db || len(f.flows.LastGaps.WorkloadIDs) != 1 {
+		t.Fatalf("role=db = %+v", res)
+	}
+
+	f.flows.LastGaps = nil
+	res, err = f.reader.Gaps(ctx, readmodel.GapsRequest{Selector: policy.Selector{"role": {"nothing"}}})
+	if err != nil || len(res.Gaps) != 0 || f.flows.LastGaps != nil {
+		t.Fatalf("a scope matching nothing = %+v, %v; store asked %v", res, err, f.flows.LastGaps)
+	}
+
+	res, err = f.reader.Gaps(ctx, readmodel.GapsRequest{Limit: 2})
+	if err != nil || len(res.Gaps) != 2 || !res.Truncated {
+		t.Fatalf("bounded = %+v, %v", res, err)
+	}
+	if _, err := f.reader.Gaps(ctx, readmodel.GapsRequest{From: now, To: now.Add(-time.Hour)}); !errors.Is(err, readmodel.ErrInvalidRange) {
+		t.Fatalf("inverted range err = %v", err)
+	}
+}

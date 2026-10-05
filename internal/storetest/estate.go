@@ -288,7 +288,7 @@ func SeedEstate(ctx context.Context, s *store.Store, f *Fleet, extra int) error 
 			if droppers[id] {
 				dropped = 212
 			}
-			if err := s.RecordHeartbeat(ctx, id, dropped, "", seen); err != nil {
+			if err := s.RecordHeartbeat(ctx, id, dropped, 0, "", seen); err != nil {
 				return err
 			}
 		}
@@ -365,5 +365,23 @@ func SeedEstate(ctx context.Context, s *store.Store, f *Fleet, extra int) error 
 			}
 		}
 	}
-	return nil
+	return seedEvidenceGaps(ctx, s, f)
+}
+
+// seedEvidenceGaps gives the fleet's db-1 a lost-evidence state: its log
+// source overran for seven seconds inside the second window, which fails
+// the review of its scope on missing evidence, and its buffer dropped the
+// 42 records its heartbeat counts half an hour before the first window,
+// which the map and its detail show over the day. The heartbeat counts
+// three overruns.
+func seedEvidenceGaps(ctx context.Context, s *store.Store, f *Fleet) error {
+	lost := uint64(42)
+	w := flowstore.Window{WorkloadID: f.DB, Start: f.Window2, End: f.Window2.Add(f.WindowLength), Gaps: []flowstore.Gap{
+		{Kind: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_OVERRUN, Source: innerwallv1.EvidenceSource_EVIDENCE_SOURCE_NFLOG, From: f.Window2.Add(90 * time.Second), To: f.Window2.Add(97 * time.Second)},
+		{Kind: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_BUFFER_OVERFLOW, From: f.Window1.Add(-30 * time.Minute), To: f.Window1.Add(-25 * time.Minute), Count: &lost},
+	}}
+	if _, err := s.Flows().WriteWindow(ctx, w); err != nil {
+		return err
+	}
+	return s.RecordHeartbeat(ctx, f.DB, 42, 3, "renewal refused: authority unreachable", f.Now.Add(-5*time.Minute))
 }

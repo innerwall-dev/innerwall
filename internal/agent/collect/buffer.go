@@ -23,6 +23,11 @@ const DefaultNetlinkBuffer = 4 << 20
 // are dropped until it does and every dropped record is counted, so the
 // heartbeat can tell the operator the flow map is incomplete.
 type Buffer struct {
+	// Gaps records every overflow as a buffer_overflow gap over the
+	// dropped window's bounds, with the records dropped; nil records
+	// nothing.
+	Gaps *Gaps
+
 	mu       sync.Mutex
 	windows  []*Window
 	records  int
@@ -40,7 +45,8 @@ func NewBuffer(capacity int) *Buffer {
 	return &Buffer{capacity: capacity, ready: make(chan struct{}, 1)}
 }
 
-// Push appends w as the newest window. An empty window is not queued.
+// Push appends w as the newest window. An empty window is not queued;
+// Carry queues one when gaps need it.
 func (b *Buffer) Push(w *Window) {
 	if w == nil || w.Len() == 0 {
 		return
@@ -74,15 +80,41 @@ func (b *Buffer) trim() {
 		oldest := b.windows[0]
 		b.windows = b.windows[1:]
 		b.records -= oldest.Len()
-		b.dropped.Add(uint64(oldest.Len())) //nolint:gosec // non-negative
+		b.overflow(oldest, oldest.Len())
 	}
 	if b.records > b.capacity && len(b.windows) == 1 {
 		w := b.windows[0]
 		excess := b.records - b.capacity
 		w.Records = w.Records[excess:]
 		b.records -= excess
-		b.dropped.Add(uint64(excess)) //nolint:gosec // non-negative
+		b.overflow(w, excess)
 	}
+}
+
+// overflow counts n records dropped from w and records the loss over w's
+// bounds; the caller holds the lock.
+func (b *Buffer) overflow(w *Window, n int) {
+	if n <= 0 {
+		return
+	}
+	b.dropped.Add(uint64(n))
+	b.Gaps.Record(Gap{Kind: GapBufferOverflow, Source: GapNoSource, From: w.Start, To: w.End, Count: uint64(n), HasCount: true})
+}
+
+// Carry queues an empty window, unless a window is already queued, so
+// that gaps waiting to be shipped ride it when no records are.
+func (b *Buffer) Carry(w *Window) {
+	if w == nil {
+		return
+	}
+	b.mu.Lock()
+	if len(b.windows) > 0 {
+		b.mu.Unlock()
+		return
+	}
+	b.windows = append(b.windows, w)
+	b.mu.Unlock()
+	b.signal()
 }
 
 func (b *Buffer) signal() {

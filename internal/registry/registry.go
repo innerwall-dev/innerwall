@@ -52,6 +52,9 @@ type Workload struct {
 	AppliedVersion     uint64
 	SyncError          string
 	DroppedFlowRecords uint64
+	// SourceOverruns is the kernel-side overruns of the agent's flow
+	// sources since it started, as its heartbeat reported them.
+	SourceOverruns uint64
 	// CredentialRenewalError is the reason the agent's last automatic
 	// renewal failed, as its heartbeat reported it; empty when healthy.
 	CredentialRenewalError string
@@ -140,7 +143,7 @@ type Store interface {
 	RecordAgent(ctx context.Context, id identity.WorkloadID, agent AgentInfo, appliedVersion uint64, now time.Time) error
 	// RecordHeartbeat refreshes last-seen, the dropped-flow counter, and
 	// the renewal status the heartbeat carries.
-	RecordHeartbeat(ctx context.Context, id identity.WorkloadID, droppedFlowRecords uint64, renewalError string, now time.Time) error
+	RecordHeartbeat(ctx context.Context, id identity.WorkloadID, droppedFlowRecords, sourceOverruns uint64, renewalError string, now time.Time) error
 	// SetSyncState records the convergence state with an optional detail.
 	SetSyncState(ctx context.Context, id identity.WorkloadID, state innerwallv1.SyncState, detail string, now time.Time) error
 	// RecordApplied stores an acknowledged version and the resulting

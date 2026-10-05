@@ -1,11 +1,12 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeAll, describe, expect, it } from "vitest";
-import type { Rollup, Verdict, Workload } from "@/api/schema";
+import type { EvidenceGap, Rollup, Verdict, Workload } from "@/api/schema";
 import { minutesAgo, workload } from "@/test/fixtures";
 import {
 	emptyRollup,
 	freshInstall,
+	gapsOf,
 	mockSurface,
 	problem,
 	type Route,
@@ -20,7 +21,7 @@ import {
 	row,
 	wref,
 } from "@/test/map";
-import { ruleset } from "@/test/review";
+import { gap, ruleset } from "@/test/review";
 
 // The graph library sizes its canvas from the layout box, which the test
 // DOM does not compute; give every element the canvas's size so the map
@@ -99,6 +100,7 @@ function surface(
 		truncated?: boolean;
 		extra?: Route[];
 		rollupReply?: Route["reply"];
+		gaps?: EvidenceGap[];
 	} = {},
 ) {
 	const byVerdict = opts.byVerdict ?? estate;
@@ -140,6 +142,11 @@ function surface(
 			method: "GET",
 			path: "/api/v1/address-groups",
 			reply: { status: 200, json: { address_groups: [office] } },
+		},
+		{
+			method: "GET",
+			path: "/api/v1/flows/gaps",
+			reply: (_b, q) => ({ status: 200, json: gapsOf(opts.gaps ?? [], q) }),
 		},
 		{
 			method: "GET",
@@ -460,6 +467,51 @@ describe("flow map", () => {
 				/1 workload dropped flow records — map may be incomplete/,
 			),
 		).toBeInTheDocument();
+	});
+
+	it("says the map is incomplete where agents lost evidence in the range, and reads the gaps over its range and scope", async () => {
+		const { calls } = surface({
+			workloads: [
+				...fleet.slice(0, 3),
+				workload({
+					id: metrics1.id,
+					hostname: metrics1.hostname,
+					labels: metrics1.labels,
+					health: { dropped_flow_records: 212 },
+				}),
+			],
+			gaps: [
+				gap(metrics1, 40, 38, {
+					kind: "buffer_overflow",
+					source: null,
+					count: 212,
+				}),
+				gap(metrics1, 20, 19),
+			],
+		});
+		await openMap("/map?label=env%3Dprod");
+		const warning = await screen.findByText(
+			/1 workload lost evidence in this range — map is incomplete/,
+		);
+		expect(warning).toHaveAttribute(
+			"title",
+			expect.stringMatching(
+				/^metrics-01: the agent dropped buffered windows between .* UTC\nmetrics-01: the kernel dropped events between .* UTC$/,
+			),
+		);
+		// The gaps place the dropped records; the live counter's hedge
+		// is not repeated for them.
+		expect(screen.queryByText(/dropped flow records/)).not.toBeInTheDocument();
+		const read = calls
+			.filter((x) => x.path.startsWith("/api/v1/flows/gaps"))
+			.map((x) => new URL(x.path, "http://console.test").searchParams);
+		const rollup = calls
+			.filter((x) => x.path.startsWith("/api/v1/flows/rollup"))
+			.map((x) => new URL(x.path, "http://console.test").searchParams)[0];
+		expect(read).toHaveLength(1);
+		expect(read[0].getAll("label")).toEqual(["env=prod"]);
+		expect(read[0].get("from")).toBe(rollup.get("from"));
+		expect(read[0].get("to")).toBe(rollup.get("to"));
 	});
 
 	it("does not warn when no agent dropped records and nothing was cut", async () => {

@@ -192,7 +192,7 @@ func Seed(ctx context.Context, s *store.Store, now time.Time) (*Fleet, error) {
 	if err := s.RecordApplied(ctx, f.Web, webPolicy.GetVersion(), innerwallv1.SyncState_SYNC_STATE_SYNCED, f.Now.Add(-time.Minute)); err != nil {
 		return nil, err
 	}
-	if err := s.RecordHeartbeat(ctx, f.Web, 0, "", f.Now.Add(-time.Minute)); err != nil {
+	if err := s.RecordHeartbeat(ctx, f.Web, 0, 0, "", f.Now.Add(-time.Minute)); err != nil {
 		return nil, err
 	}
 	if err := s.RecordAgent(ctx, f.DB, registry.AgentInfo{Version: "0.3.0", Capabilities: []string{"nftables", "conntrack"}}, 0, f.Now.Add(-5*time.Minute)); err != nil {
@@ -201,7 +201,7 @@ func Seed(ctx context.Context, s *store.Store, now time.Time) (*Fleet, error) {
 	if err := s.RecordApplyFailed(ctx, f.DB, "apply refused: set element exceeds the table's size", f.Now.Add(-5*time.Minute)); err != nil {
 		return nil, err
 	}
-	if err := s.RecordHeartbeat(ctx, f.DB, 42, "renewal refused: authority unreachable", f.Now.Add(-5*time.Minute)); err != nil {
+	if err := s.RecordHeartbeat(ctx, f.DB, 42, 0, "renewal refused: authority unreachable", f.Now.Add(-5*time.Minute)); err != nil {
 		return nil, err
 	}
 	if err := s.RecordAgent(ctx, f.Cache, registry.AgentInfo{Version: "0.2.0"}, 0, f.Now.Add(-3*time.Hour)); err != nil {

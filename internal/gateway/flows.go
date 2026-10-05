@@ -50,6 +50,6 @@ func (s *Server) ReportFlows(stream innerwallv1.AgentService_ReportFlowsServer) 
 			return status.Error(codes.Internal, "ingesting flow window")
 		}
 		accepted += uint64(res.Accepted) //nolint:gosec // non-negative
-		log.Debug("flow window ingested", "window_start", req.GetWindowStart().AsTime(), "records", res.Accepted, "rejected", res.Rejected)
+		log.Debug("flow window ingested", "window_start", req.GetWindowStart().AsTime(), "records", res.Accepted, "rejected", res.Rejected, "gaps", res.Gaps, "gaps_rejected", res.GapsRejected)
 	}
 }

@@ -124,6 +124,7 @@ func (s *Server) mount(routes *router) {
 	routes.handle(http.MethodDelete, APIPrefix+"/session", s.deleteSession)
 	routes.handle(http.MethodGet, APIPrefix+"/me", s.getMe)
 	routes.handle(http.MethodGet, APIPrefix+"/flows/rollup", s.getFlowsRollup)
+	routes.handle(http.MethodGet, APIPrefix+"/flows/gaps", s.getFlowGaps)
 	routes.handle(http.MethodGet, APIPrefix+"/flows", s.getFlows)
 	routes.handle(http.MethodGet, APIPrefix+"/workloads", s.getWorkloads)
 	routes.handle(http.MethodGet, APIPrefix+"/workloads/{id}", s.getWorkload)

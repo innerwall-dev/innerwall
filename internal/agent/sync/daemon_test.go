@@ -294,7 +294,8 @@ func TestHeartbeatAndInventoryFollowConfig(t *testing.T) {
 		ListeningServices: func() []*innerwallv1.ListeningService {
 			return []*innerwallv1.ListeningService{{Protocol: innerwallv1.Protocol_PROTOCOL_TCP, Port: 22}}
 		},
-		Uptime: func() time.Duration { return 42 * time.Second },
+		Uptime:         func() time.Duration { return 42 * time.Second },
+		SourceOverruns: func() uint64 { return 3 },
 	})
 	c := <-srv.conns
 	c.expect(t)
@@ -307,7 +308,7 @@ func TestHeartbeatAndInventoryFollowConfig(t *testing.T) {
 		select {
 		case m := <-c.in:
 			if hb := m.GetHeartbeat(); hb != nil {
-				if hb.GetUptimeSeconds() != 42 || hb.GetDroppedFlowRecords() != 0 {
+				if hb.GetUptimeSeconds() != 42 || hb.GetDroppedFlowRecords() != 0 || hb.GetSourceOverruns() != 3 {
 					t.Fatalf("heartbeat = %v", hb)
 				}
 				sawHeartbeat = true

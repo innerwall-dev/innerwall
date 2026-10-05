@@ -1,5 +1,6 @@
 import type {
 	AddressGroup,
+	EvidenceGap,
 	LabelMap,
 	Mode,
 	PeerRef,
@@ -9,6 +10,7 @@ import type {
 	Workload,
 	WorkloadRef,
 } from "@/api/schema";
+import { workloadsWith } from "@/lib/gaps";
 
 // The flow map's model: the rollup of stored windows grouped by source
 // peer and destination workload, folded into label groups. A workload
@@ -109,8 +111,13 @@ export interface MapModel {
 	// rollup was truncated.
 	reporting: number;
 	truncated: boolean;
-	// Listed workloads whose agents have dropped flow records: the map
-	// cannot show what was never reported.
+	// Workloads whose agents reported evidence gaps in the range, with
+	// the gaps: the map cannot show what was lost there.
+	gapped: EvidenceGap["workload"][];
+	gaps: EvidenceGap[];
+	// Listed workloads whose agents have dropped flow records and whose
+	// loss no gap in the range already places: the counter is live, not
+	// scoped to the range, so these may be incomplete.
 	dropped: Workload[];
 	effectiveFrom: string | null;
 	effectiveTo: string | null;
@@ -165,6 +172,7 @@ export function buildModel(
 	workloads: Workload[],
 	addressGroups: AddressGroup[],
 	key: string,
+	gaps: EvidenceGap[] = [],
 ): MapModel {
 	const nodes = new Map<string, MapNode>();
 	const members = new Map<string, Set<string>>();
@@ -331,7 +339,13 @@ export function buildModel(
 		connections,
 		reporting: dsts.size,
 		truncated,
-		dropped: workloads.filter((w) => w.health.dropped_flow_records > 0),
+		gapped: workloadsWith(gaps),
+		gaps,
+		dropped: workloads.filter(
+			(w) =>
+				w.health.dropped_flow_records > 0 &&
+				!gaps.some((g) => g.workload.id === w.id),
+		),
 		effectiveFrom,
 		effectiveTo,
 	};

@@ -1,15 +1,17 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import type { Flow, RenderedPolicy, Workload } from "@/api/schema";
+import type { EvidenceGap, Flow, RenderedPolicy, Workload } from "@/api/schema";
 import { minutesAgo, workload } from "@/test/fixtures";
 import {
+	gapsOf,
 	mockSurface,
 	problem,
 	type Route,
 	renderApp,
 	signedIn,
 } from "@/test/harness";
+import { gap } from "@/test/review";
 
 const db = workload({
 	hostname: "db-1",
@@ -179,9 +181,15 @@ function surface(
 			next_cursor: string | null;
 		};
 		extra?: Route[];
+		gaps?: EvidenceGap[];
 	} = {},
 ) {
 	return mockSurface([
+		{
+			method: "GET",
+			path: "/api/v1/flows/gaps",
+			reply: (_b, q) => ({ status: 200, json: gapsOf(opts.gaps ?? [], q) }),
+		},
 		signedIn,
 		{
 			method: "GET",
@@ -262,6 +270,53 @@ function surface(
 }
 
 describe("workload detail", () => {
+	it("lists the evidence gaps of its range and counts the overruns", async () => {
+		const { calls } = surface({
+			workload: () => ({
+				...db,
+				health: { ...db.health, source_overruns: 3 },
+			}),
+			gaps: [
+				gap(db, 30, 29),
+				gap(db, 300, 240, {
+					kind: "buffer_overflow",
+					source: null,
+					count: 1200,
+				}),
+				gap(db, 2000, 1999, { kind: "source_restart", source: "conntrack" }),
+				gap(db, 3000, 2999),
+			],
+		});
+		renderApp(`/workloads/${db.id}`);
+		const cell = await screen.findByTestId("evidence-gaps");
+		expect(cell).toHaveTextContent("4+ in 14 days");
+		const items = within(cell).getAllByRole("listitem");
+		expect(items).toHaveLength(3);
+		expect(items[0]).toHaveTextContent(
+			/▲ the kernel dropped events between (?:\d\d-\d\d )?\d\d:\d\d and (?:\d\d-\d\d )?\d\d:\d\d UTC$/,
+		);
+		expect(items[1]).toHaveTextContent(
+			/the agent dropped buffered windows between .* UTC · 1,200 lost$/,
+		);
+		expect(screen.getByText("overruns").nextElementSibling).toHaveTextContent(
+			/^3Times the kernel dropped events because a flow source fell behind/,
+		);
+		// The gaps are read for this workload over the screen's range.
+		const read = calls
+			.filter((x) => x.path.startsWith("/api/v1/flows/gaps"))
+			.map((x) => new URL(x.path, "http://console.test").searchParams);
+		expect(read[0].get("workload")).toBe(db.id);
+		expect(read[0].get("limit")).toBe("4");
+	});
+
+	it("says when the range has no evidence gaps", async () => {
+		surface();
+		renderApp(`/workloads/${db.id}`);
+		await screen.findByTestId("status-card");
+		expect(await screen.findByText("in 14 days")).toBeInTheDocument();
+		expect(screen.queryByTestId("evidence-gaps")).not.toBeInTheDocument();
+	});
+
 	it("leads with the degraded state: versions, the apply error, and the health it carries", async () => {
 		surface();
 		renderApp(`/workloads/${db.id}`);

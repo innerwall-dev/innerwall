@@ -72,6 +72,7 @@ func workloadFromRow(row *db.Workload, labels []registry.Label, addrs []netip.Ad
 		AppliedVersion:         uint64(row.AppliedPolicyVersion), //nolint:gosec // non-negative by construction
 		SyncError:              row.SyncError,
 		DroppedFlowRecords:     uint64(row.DroppedFlowRecords), //nolint:gosec // non-negative by construction
+		SourceOverruns:         uint64(row.SourceOverruns),     //nolint:gosec // non-negative by construction
 		CredentialRenewalError: row.CredentialRenewalError,
 		CredentialExpiresAt:    row.CredentialExpiresAt,
 		LastSnapshotSentAt:     row.LastSnapshotSentAt,
@@ -289,8 +290,8 @@ func (s *Store) RecordAgent(ctx context.Context, id identity.WorkloadID, agent r
 }
 
 // RecordHeartbeat implements registry.Store.
-func (s *Store) RecordHeartbeat(ctx context.Context, id identity.WorkloadID, dropped uint64, renewalError string, now time.Time) error {
-	n, err := s.q.RecordWorkloadHeartbeat(ctx, db.RecordWorkloadHeartbeatParams{ID: id.UUID(), LastSeenAt: &now, DroppedFlowRecords: int64(dropped), CredentialRenewalError: renewalError}) //nolint:gosec // counter
+func (s *Store) RecordHeartbeat(ctx context.Context, id identity.WorkloadID, dropped, overruns uint64, renewalError string, now time.Time) error {
+	n, err := s.q.RecordWorkloadHeartbeat(ctx, db.RecordWorkloadHeartbeatParams{ID: id.UUID(), LastSeenAt: &now, DroppedFlowRecords: int64(dropped), CredentialRenewalError: renewalError, SourceOverruns: int64(overruns)}) //nolint:gosec // counters
 	if err != nil {
 		return fmt.Errorf("store: recording heartbeat: %w", err)
 	}

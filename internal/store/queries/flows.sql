@@ -1,6 +1,6 @@
 -- Flow storage (ADR-0009, ADR-0019). These are the only statements that
--- touch flow_windows and flow_totals; every caller goes through the
--- FlowStore interface in internal/flowstore.
+-- touch flow_windows, flow_totals, and flow_gaps; every caller goes through
+-- the FlowStore interface in internal/flowstore.
 
 -- name: InsertFlowWindows :copyfrom
 INSERT INTO flow_windows (
@@ -77,6 +77,17 @@ WHERE id IN (
     SELECT oldest.id FROM flow_windows AS oldest
     WHERE oldest.window_start < sqlc.arg(horizon)
     ORDER BY oldest.window_start
+    LIMIT sqlc.arg(batch_size)
+);
+
+-- Retention: one bounded batch of the gaps that ended before the horizon,
+-- so a gap outlives every window it could describe.
+-- name: DeleteFlowGapsBefore :execrows
+DELETE FROM flow_gaps
+WHERE id IN (
+    SELECT oldest.id FROM flow_gaps AS oldest
+    WHERE oldest.gap_to < sqlc.arg(horizon)
+    ORDER BY oldest.gap_to
     LIMIT sqlc.arg(batch_size)
 );
 
@@ -266,4 +277,28 @@ WHERE workload_id = sqlc.arg(workload_id)
   AND (window_start < sqlc.arg(cursor_start)::timestamptz
        OR (window_start = sqlc.arg(cursor_start)::timestamptz AND id < sqlc.arg(cursor_id)::bigint))
 ORDER BY window_start DESC, id DESC
+LIMIT sqlc.arg(row_limit);
+
+-- --- evidence gaps -------------------------------------------------------------
+--
+-- Intervals in which a workload's evidence is known to be incomplete
+-- (ADR-0019 as amended). Delivery is at least once: an interval repeated
+-- exactly is stored once.
+
+-- name: InsertFlowGap :batchexec
+INSERT INTO flow_gaps (workload_id, kind, source, gap_from, gap_to, lost_count)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (workload_id, kind, source, gap_from, gap_to) DO NOTHING;
+
+-- The gaps of a workload set that intersect [since, until): a gap
+-- [gap_from, gap_to) intersects it when it starts before the range ends
+-- and ends after the range starts; an instantaneous gap intersects when
+-- its instant lies in the range. Newest first, bounded; an empty workload
+-- id array means every workload.
+-- name: ListFlowGaps :many
+SELECT * FROM flow_gaps
+WHERE (cardinality(sqlc.arg(workload_ids)::uuid[]) = 0 OR workload_id = ANY(sqlc.arg(workload_ids)::uuid[]))
+  AND gap_from < sqlc.arg(until)
+  AND (gap_to > sqlc.arg(since) OR (gap_from = gap_to AND gap_from >= sqlc.arg(since)))
+ORDER BY gap_from DESC, id DESC
 LIMIT sqlc.arg(row_limit);

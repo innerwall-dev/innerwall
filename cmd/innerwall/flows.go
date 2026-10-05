@@ -21,13 +21,13 @@ import (
 
 // The flows commands are the read shapes the operator console will issue
 // (ADR-0019): a workload's windows over a time range, a decision-filtered
-// rollup by peer and service over a label scope, and a workload's
-// cumulative totals since first seen. They read through the FlowStore and
-// nothing else (ADR-0009).
+// rollup by peer and service over a label scope, a workload's cumulative
+// totals since first seen, and the evidence gaps of a workload set over a
+// range. They read through the FlowStore and nothing else (ADR-0009).
 
 func runFlows(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return usageError("usage: innerwall flows list|rollup|totals [flags]")
+		return usageError("usage: innerwall flows list|rollup|totals|gaps [flags]")
 	}
 	switch args[0] {
 	case "list":
@@ -36,8 +36,10 @@ func runFlows(ctx context.Context, args []string) error {
 		return runFlowsRollup(ctx, args[1:])
 	case "totals":
 		return runFlowsTotals(ctx, args[1:])
+	case "gaps":
+		return runFlowsGaps(ctx, args[1:])
 	default:
-		return usageError("unknown flows command %q (list|rollup|totals)", args[0])
+		return usageError("unknown flows command %q (list|rollup|totals|gaps)", args[0])
 	}
 }
 
@@ -449,4 +451,70 @@ func workloadRefString(w *readmodel.WorkloadRef) string {
 		return w.Hostname
 	}
 	return w.ID.String()
+}
+
+// runFlowsGaps lists the evidence gaps of a workload set intersecting a
+// range, through the read model function GET /flows/gaps calls.
+func runFlowsGaps(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("innerwall flows gaps", flag.ContinueOnError)
+	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
+	since := fs.String("since", "24h", "start of the range: a duration before now or an RFC 3339 time")
+	until := fs.String("until", "", "end of the range: a duration before now or an RFC 3339 time (default now)")
+	var labels labelFlags
+	fs.Var(&labels, "label", "label key=value selecting the workloads in scope (repeatable, ANDed; none selects every workload)")
+	workload := fs.String("workload", "", "only this workload's gaps")
+	limit := fs.Int("limit", readmodel.DefaultGapLimit, "the most gaps shown, newest first")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return usageError("usage: innerwall flows gaps [--label key=value ...] [--workload id] [--since 24h] [--until t]")
+	}
+	from, to, err := timeRange(*since, *until, time.Now())
+	if err != nil {
+		return err
+	}
+	req := readmodel.GapsRequest{From: from, To: to, Selector: policy.Selector{}, Limit: *limit}
+	for _, l := range labels {
+		req.Selector[l.Key] = append(req.Selector[l.Key], l.Value)
+	}
+	if *workload != "" {
+		id, err := identity.ParseWorkloadID(*workload)
+		if err != nil {
+			return err
+		}
+		req.Workload = &id
+	}
+	st, err := openStore(ctx, *dbURL)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	reader := &readmodel.Reader{Store: st, Flows: st.Flows()}
+	res, err := reader.Gaps(ctx, req)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "%d evidence gaps, %s to %s\n", len(res.Gaps), res.Range.From.Format(time.RFC3339), res.Range.To.Format(time.RFC3339))
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintln(w, "WORKLOAD\tKIND\tSOURCE\tFROM\tTO\tLOST")
+	for i := range res.Gaps {
+		g := &res.Gaps[i]
+		source, lost := readmodel.GapSourceName(g.Source), "unknown"
+		if source == "" {
+			source = "-"
+		}
+		if g.Count != nil {
+			lost = strconv.FormatUint(*g.Count, 10)
+		}
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", workloadRefString(&g.Workload), readmodel.GapKindName(g.Kind), source,
+			g.From.Format(time.RFC3339), g.To.Format(time.RFC3339), lost)
+	}
+	if err := w.Flush(); err != nil {
+		return err
+	}
+	if res.Truncated {
+		fmt.Fprintf(os.Stderr, "more gaps intersect the range than the %d shown\n", *limit)
+	}
+	return nil
 }

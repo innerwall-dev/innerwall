@@ -1,11 +1,12 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import type { RollupGroup, Ruleset, Workload } from "@/api/schema";
+import type { EvidenceGap, RollupGroup, Ruleset, Workload } from "@/api/schema";
 import { minutesAgo, workload } from "@/test/fixtures";
 import {
 	emptyRollup,
 	freshInstall,
+	gapsOf,
 	mockSurface,
 	problem,
 	type Reply,
@@ -14,7 +15,7 @@ import {
 	signedIn,
 } from "@/test/harness";
 import { addressGroup, peer, rollupOf, row as srcDst, wref } from "@/test/map";
-import { peerService, ps, rule, ruleset } from "@/test/review";
+import { gap, peerService, ps, rule, ruleset } from "@/test/review";
 
 // The checkout scope: three workloads simulating on their latest policy,
 // one never moved out of visibility, and one that refused its latest
@@ -140,6 +141,9 @@ function surface(
 		modeChange?: Reply | ((body: unknown) => Reply);
 		putRule?: Reply;
 		rollup?: Route["reply"];
+		// gaps are the evidence gaps each scope's read returns, keyed as
+		// byScope is; none unless given.
+		gaps?: Record<string, EvidenceGap[]>;
 	} = {},
 ) {
 	const rulesets = opts.rulesets ?? [checkout, ledgerRs, retired];
@@ -191,6 +195,14 @@ function surface(
 						json: groups.length > 0 ? r : emptyRollup(q),
 					};
 				}),
+		},
+		{
+			method: "GET",
+			path: "/api/v1/flows/gaps",
+			reply: (_b, q) => ({
+				status: 200,
+				json: gapsOf(opts.gaps?.[q.getAll("label").join("&")] ?? [], q),
+			}),
 		},
 		{
 			method: "GET",
@@ -384,6 +396,34 @@ describe("simulation review", () => {
 		expect(
 			screen.getByRole("navigation", { name: "Breadcrumb" }),
 		).toHaveTextContent("ledger-inbound");
+	});
+
+	it("fails a scope whose evidence has a gap in the range, and says whose and when", async () => {
+		const { calls } = surface({
+			gaps: { "app=ledger": [gap(ledger[0], 90, 88)] },
+		});
+		renderApp("/simulation?ruleset=ledger-inbound");
+		const b = await banner();
+		expect(
+			await within(b).findByRole("heading", {
+				name: "Not safe to enforce yet",
+			}),
+		).toBeInTheDocument();
+		expect(b).toHaveTextContent(
+			"No observed traffic would be dropped, but evidence is missing from part of this range: traffic in it may have gone unseen.",
+		);
+		expect(within(b).getByRole("list", { name: "Caveats" })).toHaveTextContent(
+			/Evidence incomplete for ledger-prod-01 between (?:\d\d-\d\d )?\d\d:\d\d and (?:\d\d-\d\d )?\d\d:\d\d UTC — the kernel dropped events/,
+		);
+		// The gaps are read for the scope, over the rollups' one range.
+		const read = calls
+			.filter((x) => x.path.startsWith("/api/v1/flows/gaps"))
+			.map((x) => new URL(x.path, "http://console.test").searchParams);
+		expect(read).toHaveLength(1);
+		expect(read[0].getAll("label")).toEqual(["app=ledger"]);
+		const rollup = rollupCalls(calls, "peer,service", "allowed")[0];
+		expect(read[0].get("from")).toBe(rollup.get("from"));
+		expect(read[0].get("to")).toBe(rollup.get("to"));
 	});
 
 	it("filters rows by the verdict chips", async () => {
@@ -666,6 +706,34 @@ describe("promotion", () => {
 		await waitFor(() =>
 			expect(rollupCalls(calls, "peer,service").length).toBeGreaterThan(before),
 		);
+	});
+
+	it("overrides missing evidence with the generic acknowledgment", async () => {
+		surface({ gaps: { "app=ledger": [gap(ledger[1], 80, 79)] } });
+		const dialog = await openDialog("/simulation?ruleset=ledger-inbound");
+		expect(dialog).toHaveTextContent(
+			/Evidence incomplete for ledger-prod-02 between .* UTC/,
+		);
+		const submit = within(dialog).getByRole("button", {
+			name: "Enforce anyway on 2 workloads",
+		});
+		expect(submit).toBeDisabled();
+		await userEvent.click(
+			within(dialog).getByRole("checkbox", {
+				name: "I understand this scope is not safe to enforce yet",
+			}),
+		);
+		expect(submit).toBeEnabled();
+	});
+
+	it("names missing evidence in the acknowledgment beside the pairs it would drop", async () => {
+		surface({ gaps: { "app=checkout&env=prod": [gap(c[0], 90, 88)] } });
+		const dialog = await openDialog();
+		expect(
+			within(dialog).getByRole("checkbox", {
+				name: "I understand 2 peer/service pairs (18,245 connections) will be dropped, and that the evidence for this range is incomplete",
+			}),
+		).toBeInTheDocument();
 	});
 
 	it("renders a set that no longer resolves as previewed, and previews again", async () => {

@@ -175,6 +175,40 @@ func rollupJSON(r *readmodel.Rollup) rollupResponse {
 	return out
 }
 
+// --- evidence gaps -------------------------------------------------------------
+
+type gapJSON struct {
+	Workload *workloadRefJSON `json:"workload"`
+	Kind     string           `json:"kind"`
+	Source   *string          `json:"source"`
+	From     string           `json:"from"`
+	To       string           `json:"to"`
+	Count    *uint64          `json:"count"`
+}
+
+type gapsResponse struct {
+	From      string    `json:"from"`
+	To        string    `json:"to"`
+	Gaps      []gapJSON `json:"gaps"`
+	Truncated bool      `json:"truncated"`
+}
+
+func gapsJSON(r *readmodel.Gaps) gapsResponse {
+	out := gapsResponse{From: timestamp(r.Range.From), To: timestamp(r.Range.To), Gaps: make([]gapJSON, 0, len(r.Gaps)), Truncated: r.Truncated}
+	for i := range r.Gaps {
+		g := &r.Gaps[i]
+		var source *string
+		if name := readmodel.GapSourceName(g.Source); name != "" {
+			source = &name
+		}
+		out.Gaps = append(out.Gaps, gapJSON{
+			Workload: workloadRef(&g.Workload), Kind: readmodel.GapKindName(g.Kind), Source: source,
+			From: timestamp(g.From), To: timestamp(g.To), Count: g.Count,
+		})
+	}
+	return out
+}
+
 // --- flows -------------------------------------------------------------------
 
 type flowJSON struct {
@@ -272,6 +306,7 @@ type healthJSON struct {
 	LastSeenAt         *string        `json:"last_seen_at"`
 	Credential         credentialJSON `json:"credential"`
 	DroppedFlowRecords uint64         `json:"dropped_flow_records"`
+	SourceOverruns     uint64         `json:"source_overruns"`
 }
 
 type workloadResponse struct {
@@ -310,6 +345,7 @@ func workloadJSON(w *readmodel.Workload) workloadResponse {
 			Credential: credentialJSON{State: string(w.Health.Credential.State), ExpiresAt: timestamp(w.Health.Credential.ExpiresAt),
 				LastRenewedAt: optionalTimestamp(w.Health.Credential.LastRenewedAt), LastError: w.Health.Credential.LastError},
 			DroppedFlowRecords: w.Health.DroppedFlowRecords,
+			SourceOverruns:     w.Health.SourceOverruns,
 		},
 	}
 	if out.Agent.Capabilities == nil {

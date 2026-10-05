@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type AddressGroup struct {
@@ -22,6 +23,18 @@ type AddressGroup struct {
 type AddressGroupCidr struct {
 	AddressGroupID uuid.UUID
 	Cidr           string
+}
+
+type FlowGap struct {
+	ID         int64
+	RegionID   string
+	WorkloadID uuid.UUID
+	Kind       int32
+	Source     int32
+	GapFrom    time.Time
+	GapTo      time.Time
+	LostCount  pgtype.Int8
+	ReceivedAt time.Time
 }
 
 type FlowTotal struct {
@@ -225,6 +238,7 @@ type Workload struct {
 	LastSnapshotSentAt     *time.Time
 	LastAckedAt            *time.Time
 	LastApplyFailedAt      *time.Time
+	SourceOverruns         int64
 }
 
 type WorkloadAddress struct {

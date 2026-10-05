@@ -1,7 +1,13 @@
-import { getRollup, listAddressGroups, listWorkloads } from "@/api/fleet";
+import {
+	getGaps,
+	getRollup,
+	listAddressGroups,
+	listWorkloads,
+} from "@/api/fleet";
 import { listRulesets } from "@/api/policy";
 import type {
 	AddressGroup,
+	EvidenceGaps,
 	Rollup,
 	RollupGrouping,
 	Ruleset,
@@ -22,6 +28,8 @@ import {
 // the workloads in scope: each the surface's maximum.
 export const rowLimit = 1000;
 const workloadPage = 500;
+// The most evidence gaps one read returns: the surface's maximum.
+export const gapLimit = 5000;
 
 // TabCount is a ruleset's would-block peer/service pairs over the range,
 // "+" when its rollup was truncated.
@@ -46,6 +54,8 @@ export interface ReviewData {
 	ruleset: Ruleset | null;
 	rollups: ReviewRollups | null;
 	workloads: Workload[];
+	// The evidence gaps of the scope's workloads over the range.
+	gaps: EvidenceGaps | null;
 	addressGroups: AddressGroup[];
 }
 
@@ -85,7 +95,8 @@ function pairCount(r: Rollup, groups: ReadonlyMap<string, AddressGroup>) {
 // which the tabs count and which picks the ruleset to open when none is
 // named (the one with the most); then, for that ruleset's scope, the
 // peer-and-service and source-by-destination rollups under each
-// decision and every workload the scope selects.
+// decision, every workload the scope selects, and the evidence gaps
+// they reported in the range.
 export async function loadReview(
 	name: string | null,
 	range: RangeKey,
@@ -110,6 +121,7 @@ export async function loadReview(
 		ruleset: null,
 		rollups: null,
 		workloads: [],
+		gaps: null,
 		addressGroups,
 	};
 	if (rulesets.length === 0) return empty;
@@ -141,7 +153,7 @@ export async function loadReview(
 	const ruleset = rulesets[index];
 	const scope = scopeRequirements(ruleset.scope);
 
-	const [allowed, srcDst, workloads] = await Promise.all([
+	const [allowed, srcDst, workloads, gaps] = await Promise.all([
 		rollup("peer,service", "allowed", scope, from, to),
 		Promise.all(
 			reviewVerdicts.map((v) => rollup("src,dst", v, scope, from, to)),
@@ -152,6 +164,12 @@ export async function loadReview(
 				) as ByVerdict<Rollup>,
 		),
 		walkWorkloads(scope),
+		getGaps({
+			label: scope.length > 0 ? scope : undefined,
+			from,
+			to,
+			limit: gapLimit,
+		}),
 	]);
 	return {
 		...empty,
@@ -162,6 +180,7 @@ export async function loadReview(
 			srcDst,
 		},
 		workloads,
+		gaps,
 	};
 }
 

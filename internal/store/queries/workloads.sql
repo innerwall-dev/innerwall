@@ -87,7 +87,7 @@ ORDER BY protocol, port;
 
 -- name: RecordWorkloadHeartbeat :execrows
 UPDATE workloads
-SET last_seen_at = $2, dropped_flow_records = $3, credential_renewal_error = $4
+SET last_seen_at = $2, dropped_flow_records = $3, credential_renewal_error = $4, source_overruns = $5
 WHERE id = $1;
 
 -- name: SetWorkloadSyncState :execrows
@@ -138,6 +138,7 @@ SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at,
        w.mode, w.facts, w.agent_version, w.agent_capabilities, w.last_seen_at,
        w.sync_state, w.applied_policy_version, w.sync_error, w.dropped_flow_records,
        w.credential_renewal_error, w.last_snapshot_sent_at, w.last_acked_at, w.last_apply_failed_at,
+       w.source_overruns,
        w.sync_rank::integer AS sync_rank, w.seen_key::timestamptz AS seen_key,
        p.version AS latest_version, p.rendered_at AS latest_rendered_at
 FROM (

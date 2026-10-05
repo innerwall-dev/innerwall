@@ -1,5 +1,6 @@
 import type {
 	AddressGroup,
+	EvidenceGap,
 	LabelMap,
 	PeerRef,
 	Rollup,
@@ -9,6 +10,7 @@ import type {
 } from "@/api/schema";
 import { extent } from "@/components/RangeControl";
 import { since } from "@/lib/format";
+import { between, gapsIn, kindText, span, workloadsWith } from "@/lib/gaps";
 import { peerKey } from "../map/model";
 
 // The simulation review's model: a ruleset's scope, the peer-and-service
@@ -432,6 +434,7 @@ export function resolveSelection(
 // states.
 export type ConditionId =
 	| "would-block"
+	| "evidence-gaps"
 	| "no-workloads"
 	| "degraded"
 	| "offline"
@@ -473,6 +476,14 @@ export interface VerdictInput {
 	rows: ReviewRow[];
 	workloads: Workload[];
 	rollups: ReviewRollups;
+	// The evidence gaps read for the scope over the requested range, and
+	// whether more exist than the read returned.
+	gaps: EvidenceGap[];
+	gapsTruncated: boolean;
+	// The range the review was asked for: the gaps are judged against
+	// the windows the rollups actually covered, or this when they covered
+	// none.
+	range: { from: string; to: string };
 	now: number;
 	rowLimit: number;
 }
@@ -509,9 +520,12 @@ export function syncIssue(w: Workload): SyncIssue | null {
 
 // composeVerdict decides whether the scope is safe to enforce. It is
 // composed, never fetched: safe means no traffic in the range would be
-// dropped, and every workload in scope simulates on the policy it was
-// last rendered, so the verdict speaks for all of them. Each condition
-// the scope fails is stated on its own.
+// dropped, every workload in scope simulates on the policy it was last
+// rendered, so the verdict speaks for all of them, and the evidence it
+// rests on is whole: a workload whose agent lost evidence in the range
+// may have seen traffic the review cannot show, so known loss fails the
+// verdict on its own (ADR-0001). Each condition the scope fails is
+// stated on its own.
 export function composeVerdict(input: VerdictInput): ReviewVerdictResult {
 	const { rows, workloads, rollups, now } = input;
 	const wb = rows.filter((r) => r.verdict === "would_block");
@@ -541,6 +555,35 @@ export function composeVerdict(input: VerdictInput): ReviewVerdictResult {
 		failing.push({
 			id: "would-block",
 			text: `${wb.length} peer/service ${plural(wb.length, "pair", "pairs")} would be dropped`,
+		});
+	}
+	const effFrom = earliestEffective(rollups);
+	const effTo = latestEffective(rollups);
+	const judged = effFrom && effTo ? { from: effFrom, to: effTo } : input.range;
+	const inScope = new Set(workloads.map((w) => w.id));
+	const gapped = gapsIn(input.gaps, judged.from, judged.to).filter((g) =>
+		inScope.has(g.workload.id),
+	);
+	const gappedIds = new Set(gapped.map((g) => g.workload.id));
+	if (gapped.length > 0) {
+		const ws = workloadsWith(gapped);
+		const s = span(gapped, judged.from, judged.to) as {
+			from: string;
+			to: string;
+		};
+		const kinds = new Set(gapped.map((g) => g.kind));
+		const why = kinds.size === 1 ? ` — ${kindText(gapped[0].kind)}` : "";
+		failing.push({
+			id: "evidence-gaps",
+			text:
+				ws.length === 1
+					? `Evidence incomplete for ${ws[0].hostname} between ${between(s.from, s.to)}${why}`
+					: `Evidence incomplete for ${ws.length} workloads in scope between ${between(s.from, s.to)}${why}`,
+		});
+	} else if (input.gapsTruncated) {
+		failing.push({
+			id: "evidence-gaps",
+			text: "Evidence incomplete in this range: more evidence gaps were reported than one read returns",
 		});
 	}
 	if (workloads.length === 0) {
@@ -597,7 +640,11 @@ export function composeVerdict(input: VerdictInput): ReviewVerdictResult {
 	const safe = failing.length === 0;
 
 	const notes: string[] = [];
-	const droppers = workloads.filter((w) => w.health.dropped_flow_records > 0);
+	// The live counter is not scoped to the range; a workload whose loss
+	// the gaps already place in it is stated there, not again here.
+	const droppers = workloads.filter(
+		(w) => w.health.dropped_flow_records > 0 && !gappedIds.has(w.id),
+	);
 	if (droppers.length === 1) {
 		notes.push(
 			`${droppers[0].hostname} dropped ${droppers[0].health.dropped_flow_records.toLocaleString("en-US")} flow records — its verdict may be incomplete`,
@@ -648,8 +695,16 @@ export function composeVerdict(input: VerdictInput): ReviewVerdictResult {
 		sub = `${wb.length} peer/service ${plural(wb.length, "pair", "pairs")} carrying ${kpis.connections.toLocaleString("en-US")} connections would be dropped. ${kpis.recent} of them ${plural(kpis.recent, "was", "were")} seen in the last hour.`;
 	} else {
 		headline = "Not safe to enforce yet";
+		const incomplete = failing.some((c) => c.id === "evidence-gaps");
+		const unsynced = failing.some(
+			(c) => c.id !== "evidence-gaps" && c.id !== "would-block",
+		);
 		sub =
-			"No observed traffic would be dropped, but not every workload in scope is simulating on its latest policy.";
+			incomplete && unsynced
+				? "No observed traffic would be dropped, but evidence is missing from part of this range and not every workload in scope is simulating on its latest policy."
+				: incomplete
+					? "No observed traffic would be dropped, but evidence is missing from part of this range: traffic in it may have gone unseen."
+					: "No observed traffic would be dropped, but not every workload in scope is simulating on its latest policy.";
 	}
 	return { safe, headline, sub, failing, caveats, kpis };
 }

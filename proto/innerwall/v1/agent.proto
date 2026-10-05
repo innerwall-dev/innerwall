@@ -186,6 +186,11 @@ message Heartbeat {
   // re-enrollment; surfacing it here lets the operator act before the
   // credential lapses (ADR-0016).
   string credential_renewal_error = 3;
+  // Kernel-side overruns of the agent's flow sources since the agent
+  // started: each is a moment the kernel dropped events because a source
+  // fell behind. Each is also reported as an EvidenceGap with its interval;
+  // this is the live counter beside dropped_flow_records.
+  uint64 source_overruns = 4;
 }
 
 // Server-initiated commands. Modeled as a oneof of messages rather than an
@@ -214,6 +219,53 @@ message ReportFlowsRequest {
   google.protobuf.Timestamp window_start = 1;
   google.protobuf.Timestamp window_end = 2;
   repeated FlowRecord records = 3;
+  // Intervals in which the agent knows its evidence is incomplete, shipped
+  // with the next window rather than on a schedule of their own. They are
+  // not bounded by the window: a gap is wherever the loss happened. A
+  // window may carry gaps and no records. The reporting workload is the
+  // connection credential's, as for the records.
+  repeated EvidenceGap gaps = 4;
+}
+
+// An interval [from, to) in which a workload's flow evidence is known to be
+// incomplete: something was lost there that cannot be recovered, only
+// bounded in time. Every kind of loss the agent can detect is expressed
+// this way, so a reader asks one question of a time range: is the evidence
+// in it whole?
+message EvidenceGap {
+  EvidenceGapKind kind = 1;
+  // The source that lost the evidence; unspecified for a loss that is not
+  // one source's (a buffer overflow drops records of every source).
+  EvidenceSource source = 2;
+  google.protobuf.Timestamp from = 3;
+  google.protobuf.Timestamp to = 4;
+  // How many records or table entries were lost, when that is known: for a
+  // buffer overflow and a truncated dump. A kernel-side loss has no count.
+  optional uint64 count = 5;
+}
+
+enum EvidenceGapKind {
+  EVIDENCE_GAP_KIND_UNSPECIFIED = 0;
+  // The kernel dropped events because the source's socket buffer was full.
+  EVIDENCE_GAP_KIND_SOURCE_OVERRUN = 1;
+  // The source was down between a failure and its next subscribe.
+  EVIDENCE_GAP_KIND_SOURCE_RESTART = 2;
+  // Closed windows were dropped because the agent's buffer was full while
+  // the control plane was unreachable.
+  EVIDENCE_GAP_KIND_BUFFER_OVERFLOW = 3;
+  // The connection table held more entries at subscribe than the source
+  // processes; the interval runs from the subscribe to the last skipped
+  // connection seen closing.
+  EVIDENCE_GAP_KIND_DUMP_TRUNCATED = 4;
+}
+
+// The agent's flow sources.
+enum EvidenceSource {
+  EVIDENCE_SOURCE_UNSPECIFIED = 0;
+  // Connection tracking: connections and their bytes.
+  EVIDENCE_SOURCE_CONNTRACK = 1;
+  // The terminal rule's packet log: blocked and would-block attempts.
+  EVIDENCE_SOURCE_NFLOG = 2;
 }
 
 message ReportFlowsResponse {
@@ -253,6 +305,11 @@ message FlowRecord {
   // The rendered rule that matched, when a policy evaluation occurred.
   // Empty for OBSERVED records and for flows no rule matched.
   string matched_rule_id = 7;
+  // Connections opened, or found live when the source subscribed, in the
+  // window. A connection that predates the source's subscription (at agent
+  // start, or after the source restarted) is counted once, first seen at
+  // the subscription; one whose close is the first the source saw of it is
+  // counted at its close.
   uint64 connection_count = 8;
   uint64 byte_count = 9;
   google.protobuf.Timestamp first_seen = 10;

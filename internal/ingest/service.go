@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/netip"
 	"time"
 
@@ -27,6 +28,11 @@ var ErrInvalidWindow = errors.New("ingest: window bounds are missing or inverted
 
 // maxFieldLength bounds the free-text fields an agent may send.
 const maxFieldLength = 256
+
+// MaxGapsPerRequest bounds the evidence gaps one request may carry; past
+// it the rest are rejected and counted. An agent holds at most a thousand
+// or so and ships them in one request.
+const MaxGapsPerRequest = 4096
 
 // Directory is the registry view resolution needs: every workload with
 // its current addresses and labels, and every address group. The store
@@ -56,6 +62,11 @@ type Result struct {
 	Accepted int
 	// Rejected is how many records failed validation and were skipped.
 	Rejected int
+	// Gaps is how many evidence gaps were accepted for storage (a gap
+	// already stored is accepted and stored once), and GapsRejected how
+	// many failed validation and were skipped.
+	Gaps         int
+	GapsRejected int
 }
 
 // Ingest validates and stores one window reported by workload id. The
@@ -105,12 +116,65 @@ func (s *Service) Ingest(ctx context.Context, id identity.WorkloadID, req *inner
 	if res.Rejected > 0 {
 		s.log().Warn("flow records rejected", "workload_id", id, "rejected", res.Rejected, "accepted", len(window.Records))
 	}
+	for i, wg := range req.GetGaps() {
+		if i >= MaxGapsPerRequest {
+			res.GapsRejected += len(req.GetGaps()) - i
+			break
+		}
+		g, err := convertGap(wg)
+		if err != nil {
+			res.GapsRejected++
+			s.log().Debug("evidence gap rejected", "workload_id", id, "error", err)
+			continue
+		}
+		window.Gaps = append(window.Gaps, g)
+	}
+	res.Gaps = len(window.Gaps)
+	if res.GapsRejected > 0 {
+		s.log().Warn("evidence gaps rejected", "workload_id", id, "rejected", res.GapsRejected, "accepted", res.Gaps)
+	}
 	n, err := s.Flows.WriteWindow(ctx, window)
 	if err != nil {
 		return res, err
 	}
 	res.Accepted = n
 	return res, nil
+}
+
+// convertGap validates one wire gap and shapes it for storage. Unlike a
+// record's, a gap's bounds are not the window's: a gap is wherever the
+// loss happened.
+func convertGap(wg *innerwallv1.EvidenceGap) (flowstore.Gap, error) {
+	var g flowstore.Gap
+	switch wg.GetKind() {
+	case innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_OVERRUN, innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_RESTART,
+		innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_BUFFER_OVERFLOW, innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_DUMP_TRUNCATED:
+	case innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_UNSPECIFIED:
+		return g, errors.New("gap kind unspecified")
+	default:
+		return g, fmt.Errorf("unknown gap kind %d", wg.GetKind())
+	}
+	switch wg.GetSource() {
+	case innerwallv1.EvidenceSource_EVIDENCE_SOURCE_UNSPECIFIED, innerwallv1.EvidenceSource_EVIDENCE_SOURCE_CONNTRACK, innerwallv1.EvidenceSource_EVIDENCE_SOURCE_NFLOG:
+	default:
+		return g, fmt.Errorf("unknown gap source %d", wg.GetSource())
+	}
+	if wg.GetFrom() == nil || wg.GetTo() == nil {
+		return g, errors.New("gap bounds missing")
+	}
+	from, to := wg.GetFrom().AsTime(), wg.GetTo().AsTime()
+	if to.Before(from) {
+		return g, errors.New("gap ends before it starts")
+	}
+	g = flowstore.Gap{Kind: wg.GetKind(), Source: wg.GetSource(), From: from, To: to}
+	if wg.Count != nil {
+		n := wg.GetCount()
+		if n > math.MaxInt64 {
+			return flowstore.Gap{}, errors.New("gap count out of range")
+		}
+		g.Count = &n
+	}
+	return g, nil
 }
 
 // convert validates one wire record and shapes it for storage. Times the

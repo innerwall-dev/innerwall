@@ -12,11 +12,77 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 var (
 	ErrBatchAlreadyClosed = errors.New("batch already closed")
 )
+
+const insertFlowGap = `-- name: InsertFlowGap :batchexec
+
+INSERT INTO flow_gaps (workload_id, kind, source, gap_from, gap_to, lost_count)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (workload_id, kind, source, gap_from, gap_to) DO NOTHING
+`
+
+type InsertFlowGapBatchResults struct {
+	br     pgx.BatchResults
+	tot    int
+	closed bool
+}
+
+type InsertFlowGapParams struct {
+	WorkloadID uuid.UUID
+	Kind       int32
+	Source     int32
+	GapFrom    time.Time
+	GapTo      time.Time
+	LostCount  pgtype.Int8
+}
+
+// --- evidence gaps -------------------------------------------------------------
+//
+// Intervals in which a workload's evidence is known to be incomplete
+// (ADR-0019 as amended). Delivery is at least once: an interval repeated
+// exactly is stored once.
+func (q *Queries) InsertFlowGap(ctx context.Context, arg []InsertFlowGapParams) *InsertFlowGapBatchResults {
+	batch := &pgx.Batch{}
+	for _, a := range arg {
+		vals := []interface{}{
+			a.WorkloadID,
+			a.Kind,
+			a.Source,
+			a.GapFrom,
+			a.GapTo,
+			a.LostCount,
+		}
+		batch.Queue(insertFlowGap, vals...)
+	}
+	br := q.db.SendBatch(ctx, batch)
+	return &InsertFlowGapBatchResults{br, len(arg), false}
+}
+
+func (b *InsertFlowGapBatchResults) Exec(f func(int, error)) {
+	defer b.br.Close()
+	for t := 0; t < b.tot; t++ {
+		if b.closed {
+			if f != nil {
+				f(t, ErrBatchAlreadyClosed)
+			}
+			continue
+		}
+		_, err := b.br.Exec()
+		if f != nil {
+			f(t, err)
+		}
+	}
+}
+
+func (b *InsertFlowGapBatchResults) Close() error {
+	b.closed = true
+	return b.br.Close()
+}
 
 const upsertFlowTotal = `-- name: UpsertFlowTotal :batchexec
 INSERT INTO flow_totals (

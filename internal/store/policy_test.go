@@ -180,11 +180,11 @@ func TestRegistryAndRenderTx(t *testing.T) {
 	if err := s.RecordApplied(ctx, id, 4, innerwallv1.SyncState_SYNC_STATE_SYNCED, now); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.RecordHeartbeat(ctx, id, 7, "", now); err != nil {
+	if err := s.RecordHeartbeat(ctx, id, 7, 2, "", now); err != nil {
 		t.Fatal(err)
 	}
 	w, _ = s.LookupWorkload(ctx, id)
-	if len(w.Labels) != 2 || w.Labels[0].Key != "env" || w.Mode != innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED || w.Agent.Version != "v" || w.AppliedVersion != 4 || w.SyncState != innerwallv1.SyncState_SYNC_STATE_SYNCED || w.DroppedFlowRecords != 7 {
+	if len(w.Labels) != 2 || w.Labels[0].Key != "env" || w.Mode != innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED || w.Agent.Version != "v" || w.AppliedVersion != 4 || w.SyncState != innerwallv1.SyncState_SYNC_STATE_SYNCED || w.DroppedFlowRecords != 7 || w.SourceOverruns != 2 {
 		t.Fatalf("workload = %+v", w)
 	}
 	if err := s.SetSyncState(ctx, id, innerwallv1.SyncState_SYNC_STATE_DEGRADED, "boom", now); err != nil {

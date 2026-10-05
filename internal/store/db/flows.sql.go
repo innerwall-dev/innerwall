@@ -23,6 +23,31 @@ func (q *Queries) CountFlowWindows(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const deleteFlowGapsBefore = `-- name: DeleteFlowGapsBefore :execrows
+DELETE FROM flow_gaps
+WHERE id IN (
+    SELECT oldest.id FROM flow_gaps AS oldest
+    WHERE oldest.gap_to < $1
+    ORDER BY oldest.gap_to
+    LIMIT $2
+)
+`
+
+type DeleteFlowGapsBeforeParams struct {
+	Horizon   time.Time
+	BatchSize int32
+}
+
+// Retention: one bounded batch of the gaps that ended before the horizon,
+// so a gap outlives every window it could describe.
+func (q *Queries) DeleteFlowGapsBefore(ctx context.Context, arg DeleteFlowGapsBeforeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteFlowGapsBefore, arg.Horizon, arg.BatchSize)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteFlowWindowsBefore = `-- name: DeleteFlowWindowsBefore :execrows
 DELETE FROM flow_windows
 WHERE id IN (
@@ -68,6 +93,62 @@ type InsertFlowWindowsParams struct {
 	FirstSeen       time.Time
 	LastSeen        time.Time
 	ProcessName     string
+}
+
+const listFlowGaps = `-- name: ListFlowGaps :many
+SELECT id, region_id, workload_id, kind, source, gap_from, gap_to, lost_count, received_at FROM flow_gaps
+WHERE (cardinality($1::uuid[]) = 0 OR workload_id = ANY($1::uuid[]))
+  AND gap_from < $2
+  AND (gap_to > $3 OR (gap_from = gap_to AND gap_from >= $3))
+ORDER BY gap_from DESC, id DESC
+LIMIT $4
+`
+
+type ListFlowGapsParams struct {
+	WorkloadIds []uuid.UUID
+	Until       time.Time
+	Since       time.Time
+	RowLimit    int32
+}
+
+// The gaps of a workload set that intersect [since, until): a gap
+// [gap_from, gap_to) intersects it when it starts before the range ends
+// and ends after the range starts; an instantaneous gap intersects when
+// its instant lies in the range. Newest first, bounded; an empty workload
+// id array means every workload.
+func (q *Queries) ListFlowGaps(ctx context.Context, arg ListFlowGapsParams) ([]FlowGap, error) {
+	rows, err := q.db.Query(ctx, listFlowGaps,
+		arg.WorkloadIds,
+		arg.Until,
+		arg.Since,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []FlowGap{}
+	for rows.Next() {
+		var i FlowGap
+		if err := rows.Scan(
+			&i.ID,
+			&i.RegionID,
+			&i.WorkloadID,
+			&i.Kind,
+			&i.Source,
+			&i.GapFrom,
+			&i.GapTo,
+			&i.LostCount,
+			&i.ReceivedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listFlowTotals = `-- name: ListFlowTotals :many

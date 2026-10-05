@@ -64,6 +64,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/flows/gaps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The evidence gaps of a workload set intersecting a range.
+         * @description Intervals in which a workload's agent knows its flow evidence is
+         *     incomplete: the kernel dropped events because a source fell behind,
+         *     a source was down, the agent's buffer dropped windows while the
+         *     control plane was unreachable, or the connection table held more
+         *     entries at subscribe than the agent processes. What was lost cannot
+         *     be recovered; the interval bounds it. A gap `[from, to)` is returned
+         *     when it intersects the range, an instantaneous one when its instant
+         *     lies in it. Newest first, at most `limit`, with `truncated` set when
+         *     more exist. A range whose evidence has a gap in it is not complete
+         *     evidence for any verdict drawn from it.
+         */
+        get: operations["getFlowGaps"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/flows/rollup": {
         parameters: {
             query?: never;
@@ -621,6 +650,35 @@ export interface components {
             ports?: string[];
             protocol: components["schemas"]["Protocol"];
         };
+        /** @description One interval `[from, to)` in which a workload's flow evidence is known to be incomplete. */
+        EvidenceGap: {
+            /** @description Records or table entries lost, where known (a buffer overflow, a truncated dump); null for a kernel-side loss. */
+            count: number | null;
+            from: components["schemas"]["Timestamp"];
+            /**
+             * @description source_overrun — the kernel dropped events because a source's socket buffer was full.
+             *     source_restart — a source was down between a failure and its next subscribe.
+             *     buffer_overflow — the agent dropped closed windows while the control plane was unreachable.
+             *     dump_truncated — the connection table held more entries at subscribe than the agent processes.
+             * @enum {string}
+             */
+            kind: "source_overrun" | "source_restart" | "buffer_overflow" | "dump_truncated";
+            /**
+             * @description The flow source that lost the evidence; null for a loss that is not one source's (a buffer overflow).
+             * @enum {string|null}
+             */
+            source: "conntrack" | "nflog" | null;
+            to: components["schemas"]["Timestamp"];
+            workload: components["schemas"]["WorkloadRef"];
+        };
+        /** @description The evidence gaps of a workload set intersecting a range, newest first. */
+        EvidenceGaps: {
+            from: components["schemas"]["Timestamp"];
+            gaps: components["schemas"]["EvidenceGap"][];
+            to: components["schemas"]["Timestamp"];
+            /** @description More gaps intersect the range than were returned. */
+            truncated: boolean;
+        };
         /** @description One admission failure of a refused write. */
         Finding: {
             message: string;
@@ -976,6 +1034,8 @@ export interface components {
                 dropped_flow_records: number;
                 /** Format: date-time */
                 last_seen_at: string | null;
+                /** @description Moments the kernel dropped events because one of the agent's flow sources fell behind, since the agent started, as its heartbeat reports them. Each is also an evidence gap with its interval (`GET /flows/gaps`). */
+                source_overruns: number;
             };
             hostname: string;
             id: components["schemas"]["WorkloadID"];
@@ -1382,6 +1442,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FlowsPage"];
+                };
+            };
+            400: components["responses"]["InvalidParameter"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getFlowGaps: {
+        parameters: {
+            query?: {
+                /** @description Start of the range (RFC 3339). Defaults to a day before `to`. */
+                from?: components["parameters"]["from"];
+                /** @description A `key=value` requirement; repeat to AND keys, repeat a key to OR its values. Restricts to the workloads the selector currently matches. */
+                label?: components["parameters"]["label"];
+                /** @description Maximum gaps returned. */
+                limit?: number;
+                /** @description End of the range (RFC 3339), exclusive. Defaults to now. */
+                to?: components["parameters"]["to"];
+                /** @description Restrict to one workload. */
+                workload?: components["schemas"]["WorkloadID"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The gaps. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceGaps"];
                 };
             };
             400: components["responses"]["InvalidParameter"];
