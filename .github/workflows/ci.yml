@@ -1,6 +1,6 @@
 # Continuous integration: the console (lint, test, production build),
 # build (the console embedded, and the noconsole stub), test, the
-# network-namespace enforcement suite, lint, the operator surface
+# network-namespace enforcement and collection suites, lint, the operator surface
 # contract (spec lint), proto (lint, build, breaking-change gate),
 # generated-code drift, and DCO sign-off. Tool versions here are
 # mirrored in scripts/install-tools.sh so local regeneration matches CI.
@@ -93,9 +93,11 @@ jobs:
     name: enforcement (network namespace)
     runs-on: ubuntu-latest
     # The enforcement suite programs real nftables inside a fresh network
-    # namespace and sends real traffic into it, so it runs as root with the
-    # nftables userspace installed. Build-tagged so the ordinary test job
-    # never needs privileges.
+    # namespace and sends real traffic into it, and the collection suite
+    # drives the conntrack source against real connection tracking in
+    # namespaces of its own, so both run as root with the nftables
+    # userspace installed. Build-tagged so the ordinary test job never
+    # needs privileges.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

@@ -33,6 +33,8 @@ func runDaemon(ctx context.Context, args []string) error {
 	server := fs.String("server", "", "control-plane address, host:port")
 	stateDir := fs.String("state-dir", stateDirDefault(), "directory holding the key, credential, bundle, and last applied policy")
 	bufferRecords := fs.Int("flow-buffer-records", collect.DefaultBufferRecords, "flow records held in memory while the control plane is unreachable; the oldest are dropped beyond this")
+	netlinkBuffer := fs.Int("flow-netlink-buffer", collect.DefaultNetlinkBuffer, "receive buffer, in bytes, of each flow source's netlink socket; a larger buffer rides out longer bursts before the kernel drops events, and every drop is recorded as an evidence gap. 0 keeps the kernel default")
+	dumpMax := fs.Int("flow-dump-max", collect.DefaultBufferRecords, "connection-table entries processed from the dump at each conntrack subscribe, and connections tracked to count each once; entries past it are skipped and recorded as an evidence gap. Bounds processing, not the dump's peak memory")
 	table := fs.String("nft-table", nft.DefaultTable, "name of the owned nftables table")
 	nflogGroup := fs.Uint("nflog-group", uint(nft.DefaultNflogGroup), "netlink log group the terminal rule logs to")
 	if err := fs.Parse(args); err != nil {
@@ -40,6 +42,12 @@ func runDaemon(ctx context.Context, args []string) error {
 	}
 	if *server == "" {
 		return errors.New("--server is required")
+	}
+	if *netlinkBuffer < 0 {
+		return errors.New("--flow-netlink-buffer must not be negative")
+	}
+	if *dumpMax <= 0 {
+		return errors.New("--flow-dump-max must be positive")
 	}
 	if *nflogGroup > 65535 {
 		return errors.New("--nflog-group must be at most 65535")
@@ -79,12 +87,14 @@ func runDaemon(ctx context.Context, args []string) error {
 	// Collection: conntrack events classified by connection mark, log
 	// events from the terminal rule, aggregated per window, buffered,
 	// reported on a connection of their own so telemetry never shares the
-	// sync stream's fate (ADR-0015).
+	// sync stream's fate (ADR-0015). What the sources know they lost is
+	// recorded as evidence gaps.
 	buffer := collect.NewBuffer(*bufferRecords)
+	gaps := &collect.Gaps{Log: log.With("loop", "collect")}
 	collector := &collect.Collector{
 		Source: collect.Sources{
-			&conntrack.Source{Log: log.With("loop", "collect"), Classify: store.Classify},
-			&nflog.Source{Group: uint16(*nflogGroup), Decide: store.TerminalDecision, Log: log.With("loop", "collect")},
+			&conntrack.Source{Log: log.With("loop", "collect"), Classify: store.Classify, Gaps: gaps, ReadBuffer: *netlinkBuffer, DumpMax: *dumpMax},
+			&nflog.Source{Group: uint16(*nflogGroup), Decide: store.TerminalDecision, Log: log.With("loop", "collect"), Gaps: gaps, ReadBuffer: *netlinkBuffer},
 		},
 		Buffer: buffer,
 		Log:    log.With("loop", "collect"),

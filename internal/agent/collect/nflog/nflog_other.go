@@ -13,9 +13,11 @@ import (
 
 // Source is the log event source; unsupported on this host.
 type Source struct {
-	Group  uint16
-	Decide func() innerwallv1.PolicyDecision
-	Log    *slog.Logger
+	Group      uint16
+	Decide     func() innerwallv1.PolicyDecision
+	Log        *slog.Logger
+	Gaps       *collect.Gaps
+	ReadBuffer int
 }
 
 var _ collect.Source = (*Source)(nil)
