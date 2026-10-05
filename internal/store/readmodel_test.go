@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/innerwall-dev/innerwall/internal/enroll"
+	"github.com/innerwall-dev/innerwall/internal/flowstore"
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 	"github.com/innerwall-dev/innerwall/internal/identity"
 	"github.com/innerwall-dev/innerwall/internal/policy"
@@ -196,6 +197,22 @@ func TestSeedEstate(t *testing.T) {
 	// extra groups of three.
 	if len(workloads) != 3+190+30+6 {
 		t.Fatalf("workloads = %d, want %d", len(workloads), 3+190+30+6)
+	}
+	// db-1 lost evidence: an overrun inside the second window and a
+	// buffer overflow before the first, with three overruns counted.
+	gaps, err := s.Flows().ListGaps(ctx, flowstore.GapQuery{WorkloadIDs: []identity.WorkloadID{f.DB}, Since: f.Now.Add(-24 * time.Hour), Until: f.Now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gaps) != 2 || gaps[0].Kind != innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_OVERRUN || gaps[0].From.Before(f.Window2) || gaps[1].Count == nil || *gaps[1].Count != 42 {
+		t.Fatalf("db-1 gaps = %+v", gaps)
+	}
+	db, err := s.LookupWorkload(ctx, f.DB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if db.SourceOverruns != 3 || db.DroppedFlowRecords != 42 || db.CredentialRenewalError == "" {
+		t.Fatalf("db-1 health = %d overruns, %d dropped, %q", db.SourceOverruns, db.DroppedFlowRecords, db.CredentialRenewalError)
 	}
 	// The bastion reaches checkout through the ssh definition, which
 	// the rule references rather than stating inline.
