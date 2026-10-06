@@ -32,7 +32,8 @@ These are the constraints a plausible-looking change is most likely to violate. 
 ## Vocabulary and framing
 
 - Project terminology only: **provisioning token**, **agent**, **control plane**, **workload**, **label**, **signing authority**.
-- All docs, comments, commit messages, and identifiers argue from **first principles**. No references to other products, companies, or their terminology — anywhere in the repo. If a design needs motivation, derive it (e.g. "central planes fail by being chatty"), don't compare.
+- All docs, comments, commit messages, and identifiers argue from **first principles**. No comparisons to competing products, and no origin-story references (what the design was modeled on, which product it answers), anywhere in the repo. If a design needs motivation, derive it (e.g. "central planes fail by being chatty"), don't compare.
+- The implementation stack may be named: the languages, databases, libraries, tools, and services the repository builds on or runs with (the database, the packet filter, the UI framework, the review automation, a font's license holder). Required attribution and license text is never removed or reworded to satisfy this rule.
 
 ## Commands
 
