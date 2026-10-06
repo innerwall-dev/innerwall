@@ -92,7 +92,7 @@ For iterating on the console itself, `npm --prefix ui run dev` serves it with ho
 - `drift`: `scripts/check-drift.sh`, which runs `make proto sqlc console-api` and fails on any diff or untracked generated file
 - `dco`: `scripts/check-dco.sh`, which requires a `Signed-off-by` trailer on every commit in the PR
 
-`.github/workflows/claude.yml` runs the coding-agent jobs: `@claude` mentions on issues and PRs, and an advisory ADR-conformance review of every PR that posts findings as a sticky PR comment and never fails the build. Both authenticate through workload identity federation; there is no static credential in the workflow.
+`.github/workflows/claude.yml` runs the coding-agent jobs: `@claude` mentions on issues and PRs, and an advisory ADR-conformance review of every PR ready for review (a draft when it is marked ready; not one that changes only generated output or lockfiles) that posts findings as a sticky PR comment and never fails the build. Both authenticate through workload identity federation; there is no static credential in the workflow.
 
 ## Where things live
 

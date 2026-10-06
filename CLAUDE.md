@@ -44,5 +44,5 @@ These are the constraints a plausible-looking change is most likely to violate. 
 ## Change protocol
 
 - An ADR's core decision is immutable once Accepted; reversing or replacing it takes a superseding ADR (next number, `Supersedes: ADR-XXXX` header, old one marked Superseded, maintainer sign-off named in the PR). Additive detail, clarification, narrowing, or correction of a subsidiary point is a dated amendment note in the ADR itself, never a restatement. See `docs/adr/README.md`.
-- CI runs an automated review of every PR against the Accepted ADRs. If it flags your change, the fix is either the change or a superseding ADR — never silent drift.
+- CI runs an automated review against the Accepted ADRs of every PR that is ready for review (a draft is reviewed when it is marked ready), except one whose every changed file is generated output or a lockfile. If it flags your change, the fix is either the change or a superseding ADR — never silent drift.
 - Commits require DCO sign-off (`git commit -s`). (ADR-0013)
