@@ -102,13 +102,27 @@ func ParseURI(u *url.URL) (WorkloadID, error) {
 	if len(u.Path) < 2 || u.Path[0] != '/' {
 		return WorkloadID{}, fmt.Errorf("identity: uri %q: expected %s://%s/<uuid>", u, Scheme, hostWorkload)
 	}
+	if u.RawPath != "" {
+		// The formatter never percent-encodes: a path spelled with
+		// escapes that decode to a uuid is another spelling of it.
+		return WorkloadID{}, fmt.Errorf("identity: uri %q: the path must not be percent-encoded", u)
+	}
 	raw := u.Path[1:]
 	if len(raw) != 36 {
 		// uuid.Parse also accepts braced, URN-prefixed, and hex forms. A
 		// credential has one canonical spelling.
 		return WorkloadID{}, fmt.Errorf("identity: uri %q: workload id is not a canonical uuid", u)
 	}
-	return ParseWorkloadID(raw)
+	id, err := ParseWorkloadID(raw)
+	if err != nil {
+		return WorkloadID{}, err
+	}
+	if id.String() != raw {
+		// uuid.Parse is case-insensitive; the canonical form is lower
+		// case, and it is the only one a credential carries.
+		return WorkloadID{}, fmt.Errorf("identity: uri %q: workload id is not a canonical uuid", u)
+	}
+	return id, nil
 }
 
 // ParseURIString parses the textual form of a workload identity URI.

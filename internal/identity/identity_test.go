@@ -4,6 +4,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -65,6 +66,13 @@ func TestParseURIRejectsNonCanonicalForms(t *testing.T) {
 		"innerwall://workload/not-a-uuid",
 		"innerwall://workload/00000000-0000-0000-0000-000000000000",
 		"innerwall:workload/" + id.String(),
+		// Another spelling of a valid id is not the id: upper case, and a
+		// percent-encoded path that decodes to the canonical form.
+		"innerwall://workload/" + strings.ToUpper(id.String()),
+		"innerwall://workload/0192F4A0-2d6e-7c1a-9b3e-5f1c2d3e4f50",
+		"innerwall://workload/%30%31%392f4a0-2d6e-7c1a-9b3e-5f1c2d3e4f50",
+		"innerwall://workload/%30192f4a0-2d6e-7c1a-9b3e-5f1c2d3e4f50",
+		"innerwall://workload%2F" + id.String(),
 	}
 	for _, s := range bad {
 		if _, err := ParseURIString(s); err == nil {
@@ -106,4 +114,24 @@ func TestFromCertificate(t *testing.T) {
 			t.Fatal("foreign uri accepted")
 		}
 	})
+}
+
+// TestParseURIAcceptsOnlyTheFormattersSpelling is the regression for the
+// two spellings an audit found accepted: an upper-case uuid and a
+// percent-encoded path, each naming the same id as the canonical form.
+// Only the formatter's own output parses.
+func TestParseURIAcceptsOnlyTheFormattersSpelling(t *testing.T) {
+	canonical := "innerwall://workload/019a0000-0000-7000-8000-000000000001"
+	id, err := ParseURIString(canonical)
+	if err != nil || id.URI().String() != canonical {
+		t.Fatalf("canonical form = %v, %v", id, err)
+	}
+	for _, s := range []string{
+		"innerwall://workload/019A0000-0000-7000-8000-000000000001",
+		"innerwall://workload/%30%31%39a0000-0000-7000-8000-000000000001",
+	} {
+		if got, err := ParseURIString(s); err == nil {
+			t.Errorf("ParseURIString(%q) = %s, want rejection", s, got)
+		}
+	}
 }
