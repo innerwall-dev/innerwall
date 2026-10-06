@@ -32,7 +32,6 @@ Each of these is a decision or a named gap in the record; none is implied to exi
 - Cursor pagination for the configuration collections (ADR-0007 as amended).
 - A response-validation harness: the surface's responses checked against `api/openapi.yaml` in tests.
 - The command line over the surface, holding an operator token, as the single authentication plane (ADR-0021).
-- Multi-operator accounts and role-based authorization, a design of its own (ADR-0021).
 - Notifications, saved views, definitions screens, and a findings collection.
 
 **Scale**
