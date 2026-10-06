@@ -1,9 +1,10 @@
 // Package collect is the agent's flow collection loop: a Source observes
 // connections on the host, an Aggregator folds them into one record per
 // (source, destination, port, protocol, decision, rule) over the reporting
-// window the control plane configures, a bounded Buffer holds closed
-// windows until the Reporter ships them over ReportFlows, and overflow
-// drops the oldest windows and counts what it dropped for the heartbeat.
+// window the control plane configures, holding at most a bounded number
+// of distinct keys, a bounded Buffer holds closed windows until the
+// Reporter ships them over ReportFlows, and overflow at either bound
+// drops what does not fit and records the loss as an evidence gap.
 // Per-connection records never leave the host (ADR-0009); the conntrack
 // source is the first implementation behind the Source interface, and an
 // eBPF source is a later additive one (ADR-0003).
@@ -75,25 +76,61 @@ type Window struct {
 // Len returns the number of records.
 func (w *Window) Len() int { return len(w.Records) }
 
-// Aggregator folds observations into the open window.
+// DefaultWindowKeys bounds the distinct keys one open window holds unless
+// configured otherwise: the closed-window buffer's figure, so one window
+// can never hold more than the buffer would keep (ADR-0011).
+const DefaultWindowKeys = DefaultBufferRecords
+
+// Aggregator folds observations into the open window. The window holds at
+// most a bounded number of distinct keys: an observation for a new key
+// past the bound is dropped, and the window records the loss as a
+// window_overflow gap from the first drop to the window's close, with the
+// observations dropped. Observations for keys already held still fold in.
 type Aggregator struct {
+	// Gaps receives the overflow gap when a window closes; nil records
+	// nothing.
+	Gaps *Gaps
+
 	mu      sync.Mutex
 	start   time.Time
 	records map[Key]*record
+	maxKeys int
+	// The open window's overflow: observations dropped and the first
+	// drop's instant.
+	dropped   uint64
+	firstDrop time.Time
 }
 
-// NewAggregator opens a window starting at start.
+// NewAggregator opens a window starting at start, holding at most
+// DefaultWindowKeys keys.
 func NewAggregator(start time.Time) *Aggregator {
-	return &Aggregator{start: start, records: map[Key]*record{}}
+	return NewBoundedAggregator(start, DefaultWindowKeys)
 }
 
-// Add folds one observation into the open window.
+// NewBoundedAggregator opens a window starting at start holding at most
+// maxKeys distinct keys; DefaultWindowKeys when maxKeys is not positive.
+func NewBoundedAggregator(start time.Time, maxKeys int) *Aggregator {
+	if maxKeys <= 0 {
+		maxKeys = DefaultWindowKeys
+	}
+	return &Aggregator{start: start, records: map[Key]*record{}, maxKeys: maxKeys}
+}
+
+// Add folds one observation into the open window, or drops it when its
+// key is new and the window is full.
 func (a *Aggregator) Add(o Observation) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	key := Key{Src: o.Src, Dst: o.Dst, DstPort: o.DstPort, Protocol: o.Protocol, Decision: o.Decision, RuleID: o.RuleID}
 	r, ok := a.records[key]
 	if !ok {
+		if len(a.records) >= a.maxKeys {
+			if a.dropped == 0 || o.At.Before(a.firstDrop) {
+				a.firstDrop = o.At
+			}
+			a.dropped++
+			return
+		}
 		r = &record{first: o.At, last: o.At}
 		a.records[key] = r
 	}
@@ -117,11 +154,24 @@ func (a *Aggregator) Len() int {
 	return len(a.records)
 }
 
+// Dropped returns the observations the open window has dropped so far.
+func (a *Aggregator) Dropped() uint64 {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.dropped
+}
+
 // Close ends the open window at end, returns it, and opens the next one
-// starting at end.
+// starting at end. A window that dropped observations records its
+// window_overflow gap now: from the first drop to end, because every new
+// key in that interval was lost.
 func (a *Aggregator) Close(end time.Time) *Window {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if a.dropped > 0 {
+		a.Gaps.Record(Gap{Kind: GapWindowOverflow, Source: GapNoSource, From: a.firstDrop, To: end, Count: a.dropped, HasCount: true})
+		a.dropped = 0
+	}
 	w := &Window{Start: a.start, End: end, Records: make([]*innerwallv1.FlowRecord, 0, len(a.records))}
 	keys := make([]Key, 0, len(a.records))
 	for k := range a.records {

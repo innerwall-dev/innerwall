@@ -99,3 +99,25 @@ func TestGapsStoreReadAndPrune(t *testing.T) {
 		}
 	}
 }
+
+// TestWindowOverflowGapStored checks that the window-overflow kind the
+// agent reports when its open window is full is admitted and read back
+// with its count, beside the four kinds before it (migration 00009).
+func TestWindowOverflowGapStored(t *testing.T) {
+	ctx := context.Background()
+	s := storetest.Open(t)
+	f := storetest.SeedFleet(t, s)
+	flows := s.Flows()
+	dropped := uint64(1234)
+	gap := flowstore.Gap{Kind: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_WINDOW_OVERFLOW, From: f.Now.Add(-40 * time.Second), To: f.Now, Count: &dropped}
+	if _, err := flows.WriteWindow(ctx, flowstore.Window{WorkloadID: f.DB, Start: f.Now.Add(-time.Minute), End: f.Now, Gaps: []flowstore.Gap{gap}}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := flows.ListGaps(ctx, flowstore.GapQuery{WorkloadIDs: []identity.WorkloadID{f.DB}, Since: f.Now.Add(-time.Hour), Until: f.Now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Kind != gap.Kind || rows[0].Source != innerwallv1.EvidenceSource_EVIDENCE_SOURCE_UNSPECIFIED || rows[0].Count == nil || *rows[0].Count != dropped {
+		t.Fatalf("stored window-overflow gap = %+v", rows)
+	}
+}

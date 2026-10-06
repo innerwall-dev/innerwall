@@ -32,14 +32,16 @@ var policyMagic = []byte("innerwall-policy-v1\n")
 // on start what it last acknowledged (ADR-0011, ADR-0018). The file is
 // the deterministic serialization of the canonical policy, prefixed by a
 // magic line and followed by a SHA-256 of the serialization, written
-// atomically with mode 0600.
+// durably with mode 0600.
 type PolicyFile struct {
 	Path string
 }
 
-// Save writes policy atomically: a temporary file beside the path is
-// written, synced, and renamed into place, so a reader sees the old file
-// or the new one and never a partial write.
+// Save writes policy durably (WriteDurable): a reader sees the old file
+// or the new one and never a partial write, and once Save returns nil the
+// new file survives a crash or a power loss. The store saves before it
+// touches the kernel, so a policy is never acknowledged without its
+// persisted copy (ADR-0020).
 func (f PolicyFile) Save(policy *innerwallv1.WorkloadPolicy) error {
 	body, err := rendered.Marshal(policy)
 	if err != nil {
@@ -50,39 +52,7 @@ func (f PolicyFile) Save(policy *innerwallv1.WorkloadPolicy) error {
 	data = append(data, policyMagic...)
 	data = append(data, body...)
 	data = append(data, sum[:]...)
-	if err := os.MkdirAll(filepath.Dir(f.Path), 0o700); err != nil {
-		return fmt.Errorf("enforce: creating state directory: %w", err)
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(f.Path), "."+filepath.Base(f.Path)+".*")
-	if err != nil {
-		return fmt.Errorf("enforce: creating temporary policy file: %w", err)
-	}
-	tmpName := tmp.Name()
-	cleanup := func() { _ = os.Remove(tmpName) }
-	if err := tmp.Chmod(0o600); err != nil {
-		_ = tmp.Close()
-		cleanup()
-		return fmt.Errorf("enforce: setting policy file mode: %w", err)
-	}
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		cleanup()
-		return fmt.Errorf("enforce: writing policy file: %w", err)
-	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		cleanup()
-		return fmt.Errorf("enforce: syncing policy file: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		cleanup()
-		return fmt.Errorf("enforce: closing policy file: %w", err)
-	}
-	if err := os.Rename(tmpName, f.Path); err != nil {
-		cleanup()
-		return fmt.Errorf("enforce: installing policy file: %w", err)
-	}
-	return nil
+	return WriteDurable(f.Path, data)
 }
 
 // Load reads the persisted policy. It returns nil, nil when no file

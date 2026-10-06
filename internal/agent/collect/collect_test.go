@@ -92,6 +92,76 @@ func window(start time.Time, n int) *Window {
 	return w
 }
 
+// TestAggregatorBoundsOpenWindow is the regression for an open window
+// that grew with every distinct key: past its bound an observation for a
+// new key is dropped, an observation for a key already held still folds
+// in, and the window records one window_overflow gap at its close, from
+// the first drop to the close, counting the observations dropped. The
+// next window starts empty, with nothing dropped.
+func TestAggregatorBoundsOpenWindow(t *testing.T) {
+	gaps := &Gaps{}
+	a := NewBoundedAggregator(t0, 3)
+	a.Gaps = gaps
+	addr := func(i int) netip.Addr { return netip.AddrFrom4([4]byte{10, 1, byte(i >> 8), byte(i)}) }
+	for i := 0; i < 3; i++ {
+		a.Add(obs(t0.Add(time.Second), addr(i), 443, 1, 0))
+	}
+	// Two new keys past the bound are dropped, the first at t0+5s.
+	a.Add(obs(t0.Add(5*time.Second), addr(100), 443, 1, 0))
+	a.Add(obs(t0.Add(7*time.Second), addr(101), 443, 1, 0))
+	// A key already held folds in.
+	a.Add(obs(t0.Add(8*time.Second), addr(0), 443, 0, 900))
+	if a.Len() != 3 || a.Dropped() != 2 {
+		t.Fatalf("open window keys=%d dropped=%d, want 3 and 2", a.Len(), a.Dropped())
+	}
+	if gaps.Held() != 0 {
+		t.Fatal("a gap was recorded before the window closed")
+	}
+	w := a.Close(t0.Add(60 * time.Second))
+	if w.Len() != 3 {
+		t.Fatalf("closed window records = %d", w.Len())
+	}
+	var bytes uint64
+	for _, r := range w.Records {
+		bytes += r.GetByteCount()
+	}
+	if bytes != 900 {
+		t.Fatalf("bytes for a held key = %d, want 900", bytes)
+	}
+	got := gaps.Take()
+	want := Gap{Kind: GapWindowOverflow, Source: GapNoSource, From: t0.Add(5 * time.Second), To: t0.Add(60 * time.Second), Count: 2, HasCount: true}
+	if len(got) != 1 || got[0] != want {
+		t.Fatalf("gaps = %+v, want %+v", got, want)
+	}
+	if wire := got[0].Wire(); wire.GetKind() != innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_WINDOW_OVERFLOW || wire.GetCount() != 2 {
+		t.Fatalf("wire gap = %v", wire)
+	}
+	if a.Len() != 0 || a.Dropped() != 0 {
+		t.Fatalf("next window keys=%d dropped=%d", a.Len(), a.Dropped())
+	}
+	a.Close(t0.Add(120 * time.Second))
+	if gaps.Held() != 0 {
+		t.Fatal("a window without drops recorded a gap")
+	}
+	// The default bound is the closed buffer's figure.
+	if DefaultWindowKeys != DefaultBufferRecords {
+		t.Fatalf("DefaultWindowKeys = %d, want the buffer's %d", DefaultWindowKeys, DefaultBufferRecords)
+	}
+}
+
+// TestAggregatorDefaultBound is the audit's reproduction at the default
+// bound: one more distinct key than the bound leaves the window at the
+// bound.
+func TestAggregatorDefaultBound(t *testing.T) {
+	a := NewAggregator(t0)
+	for i := 0; i <= DefaultWindowKeys; i++ {
+		a.Add(Observation{At: t0, Src: netip.AddrFrom4([4]byte{10, byte(i >> 16), byte(i >> 8), byte(i)}), Dst: dst, DstPort: 80, Connections: 1})
+	}
+	if a.Len() != DefaultWindowKeys || a.Dropped() != 1 {
+		t.Fatalf("open window keys=%d dropped=%d, want %d and 1", a.Len(), a.Dropped(), DefaultWindowKeys)
+	}
+}
+
 // TestBufferDropsOldestOnOverflow checks the bound: windows beyond the
 // record capacity evict the oldest windows first, every evicted record is
 // counted, a requeued window is the oldest again, and a single window

@@ -1,6 +1,7 @@
 package nft
 
 import (
+	"errors"
 	"flag"
 	"os"
 	"path/filepath"
@@ -28,6 +29,21 @@ func multiRule(mode innerwallv1.EnforcementMode) *innerwallv1.WorkloadPolicy {
 	}}
 }
 
+// render renders policy with a fresh allocation, which numbers rules in
+// canonical order from 1: the numbering every golden file pins.
+func render(t *testing.T, policy *innerwallv1.WorkloadPolicy, opts Options) string {
+	t.Helper()
+	marks, err := NewAllocator().Allocate(policy, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	script, err := Render(policy, marks, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return script
+}
+
 func goldenCases() map[string]*innerwallv1.WorkloadPolicy {
 	return map[string]*innerwallv1.WorkloadPolicy{
 		"enforced":       multiRule(innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED),
@@ -45,7 +61,7 @@ func goldenCases() map[string]*innerwallv1.WorkloadPolicy {
 func TestRenderGolden(t *testing.T) {
 	for name, policy := range goldenCases() {
 		t.Run(name, func(t *testing.T) {
-			got := Render(policy, Options{})
+			got := render(t, policy, Options{})
 			path := filepath.Join("testdata", name+".nft")
 			if *update {
 				if err := os.WriteFile(path, []byte(got), 0o644); err != nil { //nolint:gosec // test fixture
@@ -69,8 +85,8 @@ func TestRenderGolden(t *testing.T) {
 // simulation verdict is evidence about exactly the ruleset enforcement
 // would install.
 func TestSimulationDiffersOnlyInTerminalRule(t *testing.T) {
-	enforced := strings.Split(Render(multiRule(innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED), Options{}), "\n")
-	simulated := strings.Split(Render(multiRule(innerwallv1.EnforcementMode_ENFORCEMENT_MODE_SIMULATION), Options{}), "\n")
+	enforced := strings.Split(render(t, multiRule(innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED), Options{}), "\n")
+	simulated := strings.Split(render(t, multiRule(innerwallv1.EnforcementMode_ENFORCEMENT_MODE_SIMULATION), Options{}), "\n")
 	if len(enforced) != len(simulated) {
 		t.Fatalf("line counts differ: %d vs %d", len(enforced), len(simulated))
 	}
@@ -102,7 +118,7 @@ func TestSimulationDiffersOnlyInTerminalRule(t *testing.T) {
 // canonical order carrying the rule id and mark in their comment, and the
 // terminal rule last.
 func TestRenderStructure(t *testing.T) {
-	script := Render(multiRule(innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED), Options{Table: "iwtest", NflogGroup: 7})
+	script := render(t, multiRule(innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED), Options{Table: "iwtest", NflogGroup: 7})
 	lines := strings.Split(strings.TrimSpace(script), "\n")
 	if lines[0] != "table inet iwtest {}" || lines[1] != "delete table inet iwtest" || lines[2] != "table inet iwtest {" {
 		t.Fatalf("transaction prologue = %v", lines[:3])
@@ -183,15 +199,18 @@ func TestSetNameAndMarks(t *testing.T) {
 	if got := SetName("a-b/udp", true); got != "r_a_b_udp_v6" {
 		t.Fatalf("SetName = %s", got)
 	}
-	marks := Marks(multiRule(innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED))
-	if len(marks) != 3 || marks[1] != ruleWeb || marks[2] != ruleDNS || marks[3] != rulePng {
-		t.Fatalf("marks = %v", marks)
+	marks, err := NewAllocator().Allocate(multiRule(innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED), nil)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, ok := marks[WouldBlockMark]; ok {
-		t.Fatal("the would-block mark collides with a rule mark")
+	if len(marks) != 3 || marks[ruleWeb] != 1 || marks[ruleDNS] != 2 || marks[rulePng] != 3 {
+		t.Fatalf("fresh allocation = %v", marks)
 	}
-	if len(Marks(nil)) != 0 {
-		t.Fatal("nil policy has marks")
+	// A rule the allocation gives no value is refused, never rendered
+	// with a made-up one.
+	delete(marks, ruleDNS)
+	if _, err := Render(multiRule(innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED), marks, Options{}); !errors.Is(err, ErrUnallocatedRule) {
+		t.Fatalf("Render without a value for every rule: %v", err)
 	}
 }
 

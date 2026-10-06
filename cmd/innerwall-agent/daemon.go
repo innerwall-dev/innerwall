@@ -33,6 +33,7 @@ func runDaemon(ctx context.Context, args []string) error {
 	server := fs.String("server", "", "control-plane address, host:port")
 	stateDir := fs.String("state-dir", stateDirDefault(), "directory holding the key, credential, bundle, and last applied policy")
 	bufferRecords := fs.Int("flow-buffer-records", collect.DefaultBufferRecords, "flow records held in memory while the control plane is unreachable; the oldest are dropped beyond this")
+	windowKeys := fs.Int("flow-window-keys", collect.DefaultWindowKeys, "distinct flow keys one open aggregation window holds; observations for new keys past it are dropped until the window closes, and the loss is recorded as an evidence gap")
 	netlinkBuffer := fs.Int("flow-netlink-buffer", collect.DefaultNetlinkBuffer, "receive buffer, in bytes, of each flow source's netlink socket; a larger buffer rides out longer bursts before the kernel drops events, and every drop is recorded as an evidence gap. 0 keeps the kernel default")
 	dumpMax := fs.Int("flow-dump-max", collect.DefaultBufferRecords, "connection-table entries processed from the dump at each conntrack subscribe, and connections tracked to count each once; entries past it are skipped and recorded as an evidence gap. Bounds processing, not the dump's peak memory")
 	table := fs.String("nft-table", nft.DefaultTable, "name of the owned nftables table")
@@ -48,6 +49,9 @@ func runDaemon(ctx context.Context, args []string) error {
 	}
 	if *dumpMax <= 0 {
 		return errors.New("--flow-dump-max must be positive")
+	}
+	if *windowKeys <= 0 {
+		return errors.New("--flow-window-keys must be positive")
 	}
 	if *nflogGroup > 65535 {
 		return errors.New("--nflog-group must be at most 65535")
@@ -87,8 +91,8 @@ func runDaemon(ctx context.Context, args []string) error {
 	// Collection: conntrack events classified by connection mark, log
 	// events from the terminal rule, aggregated per window, buffered,
 	// reported on a connection of their own so telemetry never shares the
-	// sync stream's fate (ADR-0015). What the sources and the buffer
-	// know they lost is recorded as evidence gaps and shipped with the
+	// sync stream's fate (ADR-0015). What the sources, the open window,
+	// and the buffer know they lost is recorded as evidence gaps and shipped with the
 	// windows.
 	gaps := &collect.Gaps{Log: log.With("loop", "collect")}
 	buffer := collect.NewBuffer(*bufferRecords)
@@ -98,9 +102,10 @@ func runDaemon(ctx context.Context, args []string) error {
 			&conntrack.Source{Log: log.With("loop", "collect"), Classify: store.Classify, Gaps: gaps, ReadBuffer: *netlinkBuffer, DumpMax: *dumpMax},
 			&nflog.Source{Group: uint16(*nflogGroup), Decide: store.TerminalDecision, Log: log.With("loop", "collect"), Gaps: gaps, ReadBuffer: *netlinkBuffer},
 		},
-		Buffer: buffer,
-		Gaps:   gaps,
-		Log:    log.With("loop", "collect"),
+		Buffer:     buffer,
+		Gaps:       gaps,
+		WindowKeys: *windowKeys,
+		Log:        log.With("loop", "collect"),
 	}
 	reporter := &collect.Reporter{
 		Buffer: buffer,

@@ -652,7 +652,7 @@ export interface components {
         };
         /** @description One interval `[from, to)` in which a workload's flow evidence is known to be incomplete. */
         EvidenceGap: {
-            /** @description Records or table entries lost, where known (a buffer overflow, a truncated dump); null for a kernel-side loss. */
+            /** @description Records, table entries, or observations lost, where known (a buffer overflow, a truncated dump, a window overflow); null for a kernel-side loss. */
             count: number | null;
             from: components["schemas"]["Timestamp"];
             /**
@@ -660,11 +660,12 @@ export interface components {
              *     source_restart — a source was down between a failure and its next subscribe.
              *     buffer_overflow — the agent dropped closed windows while the control plane was unreachable.
              *     dump_truncated — the connection table held more entries at subscribe than the agent processes.
+             *     window_overflow — the agent's open aggregation window held as many distinct keys as it may, and observations for new keys were dropped until it closed.
              * @enum {string}
              */
-            kind: "source_overrun" | "source_restart" | "buffer_overflow" | "dump_truncated";
+            kind: "source_overrun" | "source_restart" | "buffer_overflow" | "dump_truncated" | "window_overflow";
             /**
-             * @description The flow source that lost the evidence; null for a loss that is not one source's (a buffer overflow).
+             * @description The flow source that lost the evidence; null for a loss that is not one source's (a buffer or window overflow).
              * @enum {string|null}
              */
             source: "conntrack" | "nflog" | null;

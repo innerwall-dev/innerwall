@@ -6,6 +6,8 @@ import (
 	"io"
 	"math/rand/v2"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -17,6 +19,7 @@ import (
 
 	"github.com/innerwall-dev/innerwall/internal/agent/credential"
 	"github.com/innerwall-dev/innerwall/internal/agent/enforce"
+	"github.com/innerwall-dev/innerwall/internal/agent/enforce/nft"
 	agentsync "github.com/innerwall-dev/innerwall/internal/agent/sync"
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 	"github.com/innerwall-dev/innerwall/internal/rendered"
@@ -142,6 +145,12 @@ func startDaemon(t *testing.T, cfg agentsync.Config) (*enforce.MemoryStore, <-ch
 	t.Helper()
 	store := &enforce.MemoryStore{}
 	cfg.Store = store
+	return store, runDaemon(t, cfg)
+}
+
+// runDaemon runs a daemon over the store cfg names.
+func runDaemon(t *testing.T, cfg agentsync.Config) <-chan error {
+	t.Helper()
 	cfg.AgentVersion = "test"
 	if cfg.BackoffBase == 0 {
 		cfg.BackoffBase = time.Millisecond
@@ -152,7 +161,7 @@ func startDaemon(t *testing.T, cfg agentsync.Config) (*enforce.MemoryStore, <-ch
 	done := make(chan error, 1)
 	go func() { done <- d.Run(ctx) }()
 	t.Cleanup(cancel)
-	return store, done
+	return done
 }
 
 func TestAppliesInOrderAndAcksEach(t *testing.T) {
@@ -221,6 +230,49 @@ func TestFailedApplyKeepsLastGoodAndAcksFailed(t *testing.T) {
 	c.expectAck(t, 3, innerwallv1.AckStatus_ACK_STATUS_APPLIED)
 	if cur := store.Current(); cur.GetVersion() != 3 {
 		t.Fatalf("installed version = %d, want 3", cur.GetVersion())
+	}
+}
+
+// kernel is an nft runner that accepts every script.
+type kernel struct{}
+
+func (kernel) Apply(context.Context, string) error          { return nil }
+func (kernel) List(context.Context, string) (string, error) { return "", nil }
+
+// TestUnpersistedApplyAcksFailed runs the daemon over the nftables store
+// with a kernel that accepts everything and a state directory that stops
+// accepting writes after the first policy: the policy that cannot be
+// persisted is acknowledged FAILED, never APPLIED, and the agent stays on
+// the version it acknowledged before (ADR-0011, ADR-0020).
+func TestUnpersistedApplyAcksFailed(t *testing.T) {
+	srv, dial := startServer(t)
+	dir := t.TempDir()
+	store := nft.New(nft.Config{Runner: kernel{}, StateDir: dir})
+	runDaemon(t, agentsync.Config{Dial: dial, Store: store})
+	c := <-srv.conns
+	c.expect(t)
+	c.send(t, helloAck(0, 0))
+	v1 := policy(1, rule("a/tcp", "10.0.0.1/32"))
+	v2 := policy(2, rule("a/tcp", "10.0.0.9/32"))
+	c.send(t, snapshot(v1))
+	c.expectAck(t, 1, innerwallv1.AckStatus_ACK_STATUS_APPLIED)
+
+	// The policy file's place is taken by a non-empty directory: the
+	// durable write's rename cannot land.
+	path := enforce.PolicyPath(dir)
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(path, "occupied"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	c.send(t, delta(rendered.Delta(v1, v2)))
+	ack := c.expectAck(t, 2, innerwallv1.AckStatus_ACK_STATUS_FAILED)
+	if !strings.Contains(ack.GetErrorDetail(), "persisting the policy") {
+		t.Fatalf("detail = %q", ack.GetErrorDetail())
+	}
+	if cur := store.Current(); !rendered.Equal(cur, v1) {
+		t.Fatalf("installed = %v, want v1", cur)
 	}
 }
 
