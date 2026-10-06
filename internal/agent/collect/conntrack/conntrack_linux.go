@@ -55,7 +55,11 @@ const acctPath = "/proc/sys/net/netfilter/nf_conntrack_acct"
 // eventQueue bounds events waiting to be classified.
 const eventQueue = 4096
 
-// localRefresh is how often the host's own addresses are re-read.
+// localRefresh is how often the host's own addresses are re-read, to tell
+// inbound connections from others. It is a host-local read, not a poll of
+// the control plane, and the one recorded exception to steady-state
+// polling (ADR-0002 as amended); a netlink address-change watch that
+// replaces it is backlog.
 const localRefresh = 30 * time.Second
 
 // conn is the part of a conntrack netlink connection the source uses.

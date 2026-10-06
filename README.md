@@ -4,14 +4,14 @@ Open-source microsegmentation for heterogeneous server estates: VMs, bare metal,
 
 A small agent on each workload observes network flows and programs the operating system's native firewall. A control plane turns label-based policy into per-host rulesets, pushes them over persistent streams, and renders the estate's real traffic as a live dependency map.
 
-**Status:** pre-release. Enrollment, the sync stream, policy authoring from the command line, flow telemetry from the host to queryable storage, and enforcement and simulation on Linux (nftables) work end to end; the UI follows. See [ROADMAP.md](ROADMAP.md).
+**Status:** pre-release. Enrollment, the sync stream, policy authoring from the command line, flow telemetry from the host to queryable storage, and enforcement and simulation on Linux (nftables) work end to end, and the operator console embedded in the control plane covers the flow map, the fleet, the policy editor, and the simulation review. See [ROADMAP.md](ROADMAP.md).
 
 ## Why
 
 - **East-west traffic is the blind spot.** Perimeter controls say nothing about lateral movement, and most estates cannot even see it.
-- **You cannot safely enforce what you cannot see.** The workflow is visibility, then simulation, then enforcement, and the platform enforces that order (ADR-0001).
+- **You cannot safely enforce what you cannot see.** The workflow is visibility, then simulation, then enforcement: visibility is every workload's starting mode, the evidence is shown at each step, and promotion past evidence that does not support it takes an explicit acknowledgment (ADR-0001).
 - **The host already has a firewall.** Innerwall programs the existing packet filter atomically and observably instead of shipping a datapath (ADR-0003).
-- **Central planes fail by being chatty.** Agents hold one persistent stream; policy moves as versioned desired state; nothing polls (ADR-0002).
+- **Central planes fail by being chatty.** Agents hold one persistent stream; policy moves as versioned desired state; nothing polls the control plane (ADR-0002).
 - **Fail static.** Losing the control plane changes nothing on any host. Last-known policy stays enforced from local disk (ADR-0011).
 
 ## Quickstart
@@ -24,13 +24,14 @@ cd innerwall
 make dev        # docker compose: control plane + Postgres
 ```
 
-Enrolling an agent takes a provisioning token and nothing else:
+Enrolling an agent takes a provisioning token and the signing authority's certificate, delivered together out of band; the console's shown-once token dialog prints the command with the gateway address filled in:
 
 ```sh
-curl -fsSL https://<control-plane>/install.sh | sh -s -- --token <provisioning-token>
+sudo innerwall-agent enroll --server <control-plane>:8443 --token <provisioning-token> --bootstrap-ca ca.crt
+sudo innerwall-agent daemon --server <control-plane>:8443
 ```
 
-Today the same exchange is `innerwall-agent enroll --server <host:port> --token <provisioning-token> --bootstrap-ca <ca.crt>`; the installer wraps it in a later milestone. See `docs/deploy/README.md`.
+See `docs/deploy/README.md`.
 
 ## Layout
 

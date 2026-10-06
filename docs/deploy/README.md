@@ -99,7 +99,12 @@ Control-plane replicas are stateless; anything durable is in Postgres. HA is the
 
 The property that makes downtime survivable is agent-side: agents fail static (ADR-0011). Control-plane downtime degrades management, never enforcement.
 
-Long-lived agent streams need a load balancer and any intermediate firewalls that tolerate persistent outbound TLS; keepalive and middlebox-timeout guidance lands with the gateway (M3).
+Long-lived agent streams need a load balancer and any intermediate firewalls that tolerate persistent outbound TLS (ADR-0002):
+
+- **Pass TLS through at layer 4.** The agent gateway terminates the agents' mutual TLS itself and reads each workload's identity from its client certificate, so anything in front of it must forward the TCP connection untouched. A proxy that terminates TLS strips the certificate and every agent call except enrollment is refused.
+- **Idle timeouts above 30 seconds.** Each agent sends a heartbeat on its sync stream every 30 seconds (the control plane's default in `SyncConfig`), and that traffic is what keeps the stream active through a middlebox: neither side configures transport-level keepalive pings, so a NAT, firewall, or load balancer that drops connections idle for less than the heartbeat interval will cut streams. Any idle timeout comfortably above 30 seconds is enough.
+- **A cut stream costs a reconnect, not policy.** An agent whose stream is cut keeps enforcing (ADR-0011), reconnects with full-jitter backoff, and receives a fresh snapshot of its current policy on the new stream (ADR-0015). A load balancer that caps connection lifetime therefore causes periodic reconnects and nothing worse; set the cap long, hours rather than minutes, so a fleet does not churn handshakes.
+- **Flow reports are short-lived.** The reporter opens one `ReportFlows` call per window (60 seconds by default) on a connection of its own; it needs nothing beyond what the sync stream needs.
 
 ## Sizing honesty
 

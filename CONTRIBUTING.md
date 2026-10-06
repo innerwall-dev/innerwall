@@ -23,7 +23,7 @@ Every commit must be signed off (`git commit -s`), certifying the [DCO](https://
 ## Style notes
 
 - Go: `golangci-lint` config in the repo is the ruleset; no debates in PRs.
-- Docs and comments follow the project's framing rules: project terminology only, first-principles reasoning, no references to other products or companies.
+- Docs and comments follow the project's framing rules: project terminology only, first-principles reasoning, no comparisons to competing products and no origin-story references. The implementation stack may be named.
 - The Makefile stays thin: targets wrap tools; logic lives in `scripts/`.
 
 ## Security issues

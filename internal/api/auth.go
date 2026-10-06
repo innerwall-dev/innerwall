@@ -125,7 +125,10 @@ func (a *Authenticator) log() *slog.Logger {
 }
 
 // sessionCookie is the cookie a login sets: unreadable by scripts, sent
-// only over TLS, and not sent on cross-site navigations (ADR-0021).
+// only over TLS, and SameSite=Lax, so it stays off cross-site subrequests
+// and writes but does travel on a top-level cross-site navigation by a
+// safe method. The defense against a cross-site write is the origin guard
+// every unsafe request passes (csrf.go), not this attribute (ADR-0021).
 func sessionCookie(id string, ttl time.Duration) *http.Cookie {
 	return &http.Cookie{
 		Name:     SessionCookie,
