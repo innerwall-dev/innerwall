@@ -107,14 +107,14 @@ internal/gateway          agent gRPC surface: enrollment, renewal, the sync stre
 internal/compiler         renders the authored model into per-workload policies; versions by diff
 internal/policy           authored model (services, address groups, rulesets), admission, documents
 internal/rendered         rendered-model algebra: canonical form, Diff, Apply (shared with the agent)
-internal/ingest           flow enrichment, bidirectional dedupe
+internal/ingest           flow ingestion: validation, peer resolution at ingest, writes through the FlowStore (no dedupe: v1 reports each connection once, inbound)
 internal/flowstore        FlowStore interface + Postgres implementation
 internal/ca               Authority interface; fileca/ is the file-backed implementation
 internal/identity         workload identity and its URI SAN form (the only place it is built or parsed)
 internal/enroll           provisioning tokens, enrollment, renewal
 internal/registry         workloads: labels, mode, facts and addresses, sync status
 internal/store            queries/ (SQL), migrations/ (goose), db/ (sqlc output); storetest/ opens a test database and seeds the review fleet and estate (also behind `innerwall dev seed`)
-internal/agent            credential/ (enroll, renew, holder, renewal timer), sync/ (daemon), enforce/ (policy store), inventory/, collect/, health/
+internal/agent            credential/ (enroll, renew, holder, renewal timer), sync/ (daemon), enforce/ (policy store; nft/ is the nftables backend), inventory/, collect/ (sources, aggregation, buffer, reporter), health/ (reserved; no code)
 internal/gen              buf output (generated; never edited)
 proto/innerwall/v1        the API contract (buf.yaml and buf.gen.yaml at the repo root)
 ui/                       the operator console: Vite + React + TypeScript; src/{api,auth,theme,shell,routes,components}
@@ -123,7 +123,6 @@ ui/src/tokens.css         the design tokens, names and values verbatim; src/inde
 ui/src/routes/map/        the flow map: model.ts (rollups to label groups), layout.ts, geometry.ts, the graph and matrix takes, the drawer
 ui/src/routes/policy/     the policy editor: model.ts (cells, drafts, findings, the dry run's request and reading), data.ts, the rail, scope card, rules table, and dry-run card
 ui/scripts/               generate-api.mjs (the console's types) and capture-composites.mjs (the review composites)
-deploy/install.sh         agent installer (provisioning token in)
 scripts/                  everything the Makefile calls that has logic
 docs/adr                  decisions; docs/deploy: running it; docs/img: diagrams
 ```
