@@ -1533,9 +1533,11 @@ func (x *ReportFlowsResponse) GetAcceptedRecords() uint64 {
 }
 
 // An aggregated flow observation. Flows are aggregated per unique
-// (src_address, dst_address, dst_port, protocol, direction, decision) within
-// the reporting window; the ephemeral source port is deliberately not part of
-// the record, since it carries no policy meaning and would defeat aggregation.
+// (src_address, dst_address, dst_port, protocol, direction, decision,
+// matched_rule_id) within the reporting window: two records alike in every
+// other key but admitted by different rules stay two records. The ephemeral
+// source port is deliberately not part of the record, since it carries no
+// policy meaning and would defeat aggregation.
 type FlowRecord struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
 	SrcAddress string                 `protobuf:"bytes,1,opt,name=src_address,json=srcAddress,proto3" json:"src_address,omitempty"`
