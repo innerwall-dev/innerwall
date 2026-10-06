@@ -8,12 +8,16 @@ Full bidirectional policy doubles the surface an operator must reason about befo
 
 ## Decision
 
-- **v1 compiles and enforces inbound rules only.** Each workload's ruleset constrains what may reach it. Outbound remains observed (full flow visibility in both directions) but unenforced.
+- **v1 compiles and enforces inbound rules only.** Each workload's ruleset constrains what may reach it. v1 also observes inbound only: each agent reports the connections that reach its own workload, so a connection between two managed workloads is seen once, at its destination, and a connection from a managed workload to an unmanaged destination is not seen. Outbound observation arrives with outbound enforcement. *(Amended 2026-10-06; see Amendments.)*
 - **v2 introduces outbound as a layered model**: shared **baseline policies** owned by platform operators (estate-wide dependencies declared once) composed under **app-scoped policies** owned by application teams. Composition, precedence, and simulation semantics for layering are v2 design work and get their own ADRs.
 
 ## Consequences
 
 - Operators reach safe, comprehensible enforcement dramatically sooner.
 - Lateral-movement protection is already substantially delivered inbound-side: a workload that accepts connections only from its declared dependents is a hard target regardless of its neighbors' egress.
-- Compromised-host egress control is honestly deferred and documented as such.
+- Compromised-host egress control, and the egress visibility it would rest on, are honestly deferred and documented as such. *(Amended 2026-10-06; see Amendments.)*
 - The policy schema reserves direction now so v2 is additive, not migratory.
+
+## Amendments
+
+- **2026-10-06 (PR #25, conformance-audit absorption).** The core decision stands: version 1 compiles and enforces inbound rules only, and outbound arrives as a layered model in version 2. The sentence that outbound "remains observed (full flow visibility in both directions)" was never true of the shipped agent and is corrected in place: the collector reports inbound connections only, ingestion accepts inbound records only, and the wire contract defers outbound observation (`FlowRecord.direction`). Outbound observation arrives with outbound enforcement, not before it. The egress-deferral consequence follows.
