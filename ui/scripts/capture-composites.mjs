@@ -265,6 +265,7 @@ const scenes = [
 		path: "/workloads/tokens",
 		ready: "table",
 		act: async (page) => {
+			await showSyntheticSecret(page);
 			await page.getByRole("button", { name: "Mint token" }).click();
 			const form = page.getByRole("dialog");
 			await form.getByLabel("Name").fill("checkout-prod-image");
@@ -364,6 +365,40 @@ async function session(browser, base) {
 	return sessions.get(base);
 }
 
+// syntheticSecret is what the shown-once dialog displays in a capture. A
+// composite is published in the repository, so it must never picture a
+// real secret: the mint is real (the control plane stores its digest and
+// the listing shows its non-secret prefix), but its response is rewritten
+// in the browser before the console renders it, so the plaintext on screen
+// is plainly not a credential.
+const syntheticSecret = "iw_EXAMPLE-synthetic-not-a-token";
+
+async function showSyntheticSecret(page) {
+	await page.route("**/api/v1/provisioning-tokens", async (route) => {
+		if (route.request().method() !== "POST") return route.fallback();
+		const response = await route.fetch();
+		const body = await response.json();
+		if (typeof body.token !== "string")
+			throw new Error("mint response carries no token to replace");
+		await route.fulfill({
+			response,
+			json: { ...body, token: syntheticSecret },
+		});
+	});
+}
+
+// assertNoRealSecret refuses to save a capture whose shown-once dialog
+// holds anything but the synthetic value.
+async function assertNoRealSecret(page) {
+	const shown = page.getByTestId("minted-secret");
+	if ((await shown.count()) === 0) return;
+	const text = (await shown.innerText()).trim();
+	if (text !== syntheticSecret)
+		throw new Error(
+			"the shown-once dialog holds a real secret; refusing to capture it",
+		);
+}
+
 async function shoot(browser, scene, theme) {
 	const base = scene.cp === "fresh" ? opt.fresh : opt.seeded;
 	const ctx = await browser.newContext({
@@ -386,6 +421,7 @@ async function shoot(browser, scene, theme) {
 	await page.goto(path);
 	await page.waitForSelector(scene.ready, { timeout: 20_000 });
 	if (scene.act) await scene.act(page);
+	await assertNoRealSecret(page);
 	await page.evaluate(() => document.fonts.ready);
 	await page.waitForTimeout(400);
 	const png = await page.screenshot({ type: "png" });
