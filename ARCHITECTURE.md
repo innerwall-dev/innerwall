@@ -112,7 +112,7 @@ Safety properties (ADR-0011):
 
 - **Fail static.** Disconnection changes nothing. Last-known policy remains enforced from disk across agent restarts and host reboots: the persisted file is checksummed, a corrupt one applies nothing and is reported, and the kernel keeps what it holds.
 - **Local kill switch.** An operator with root on the host can always disable enforcement locally (`innerwall-agent down` deletes the Innerwall table and nothing else) without control-plane involvement. Root on the box outranks the platform — by design, and stated loudly, because it is the first question a security architect asks.
-- **Bounded telemetry.** The agent bounds the telemetry it holds: the open window in distinct keys, the closed-window buffer in records, the connection-table dump in entries processed. Past any bound it drops, records the loss as an evidence gap, and counts it, before it would ever burden the host. Sampling, buffering to disk, and a whole-process memory budget are deferred (ADR-0011 as amended).
+- **Resource budgets.** The agent bounds the telemetry it holds: the open window in distinct keys, the closed-window buffer in records, the connection-table dump in entries processed. Past any bound it drops, records the loss as an evidence gap, and counts it, before it would ever burden the host. Sampling, buffering to disk, and a whole-process memory budget are deferred (ADR-0011 as amended).
 - **No self-update in v1.** The agent updates through the host's normal package management. A platform that can silently replace its own root-privileged binary is a supply-chain liability; that convenience is deferred until it can be done with proper signing and staged rollout.
 
 ## 6. Identity and enrollment
