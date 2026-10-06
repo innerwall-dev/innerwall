@@ -8,7 +8,7 @@
 // The chain accepts loopback, accepts established and related traffic,
 // then accepts what each rule permits (source in the rule's set, the
 // rule's protocol and ports) while marking the connection with the rule's
-// index, and ends in a terminal rule that decides what the policy did not
+// stable value from the Allocator, and ends in a terminal rule that decides what the policy did not
 // permit: in enforced mode it logs the packet and drops it; in simulation
 // mode it logs the packet, marks the connection as one enforcement would
 // have dropped, and accepts it. Everything else is identical between the
@@ -70,18 +70,23 @@ const (
 // place: the mark with all region bits set and the foreign bits clear.
 const WouldBlockMark uint32 = WouldBlockIndex << MarkShift
 
-// RuleMark returns the mark value, in place, of rule number index (from
-// 1), with the foreign bits clear.
+// RuleMark returns the mark value, in place, of region value index (from
+// 1, as the Allocator hands them out), with the foreign bits clear.
 func RuleMark(index uint32) uint32 { return index << MarkShift }
 
-// RuleIndex reads the region out of a connection mark: the rule number
-// that accepted the connection, WouldBlockIndex, or 0 when the agent
+// RuleIndex reads the region out of a connection mark: the value of the
+// rule that accepted the connection, WouldBlockIndex, or 0 when the agent
 // never marked it. The foreign bits are ignored.
 func RuleIndex(mark uint32) uint32 { return (mark & MarkMask) >> MarkShift }
 
 // ErrTooManyRules is returned when a policy has more rules than the mark
 // region can number.
 var ErrTooManyRules = errors.New("nft: policy has more rules than the connection-mark region can number")
+
+// ErrUnallocatedRule is returned by Render for a rule the mark allocation
+// gives no value. The store allocates every rule before rendering, so it
+// is a defect, refused before the kernel sees it.
+var ErrUnallocatedRule = errors.New("nft: rule has no allocated connection-mark value")
 
 // LogPrefix is the prefix on every logged packet.
 const LogPrefix = "innerwall "
@@ -106,20 +111,6 @@ func (o Options) group() uint16 {
 		return o.NflogGroup
 	}
 	return DefaultNflogGroup
-}
-
-// Marks returns the rule number of every rule in the canonical policy:
-// rules in canonical order (sorted by id) are numbered from 1, and the
-// number is what the rule writes into the mark region (RuleMark). The
-// mapping is a pure function of the policy, so the collector's
-// classification of a marked connection needs nothing beyond the policy
-// that set the mark.
-func Marks(policy *innerwallv1.WorkloadPolicy) map[uint32]string {
-	out := map[uint32]string{}
-	for i, r := range rendered.Canonical(policy).GetInboundRules() {
-		out[uint32(i+1)] = r.GetRuleId() //nolint:gosec // rule counts are small
-	}
-	return out
 }
 
 // SetName returns the name of the set holding a rule's peers for one
@@ -149,9 +140,11 @@ func SetName(ruleID string, v6 bool) string {
 // content of the owned table, as one transaction: the table is declared
 // (a no-op when it exists), deleted, and recreated with its new content,
 // so the kernel holds either the previous ruleset or this one and never a
-// mixture (ADR-0003, ADR-0015). A policy with more rules than the mark
-// region can number is refused by the store before it reaches here.
-func Render(policy *innerwallv1.WorkloadPolicy, opts Options) string {
+// mixture (ADR-0003, ADR-0015). Each rule writes the value marks gives it,
+// which the Allocator keeps stable across versions; a rule without one is
+// refused. A policy with more rules than the mark region can number is
+// refused by the store before it reaches here.
+func Render(policy *innerwallv1.WorkloadPolicy, marks map[string]uint32, opts Options) (string, error) {
 	policy = rendered.Canonical(policy)
 	table := opts.table()
 	var b strings.Builder
@@ -162,9 +155,14 @@ func Render(policy *innerwallv1.WorkloadPolicy, opts Options) string {
 		// Visibility installs no verdict chain: nothing is evaluated,
 		// nothing is dropped, and collection continues from conntrack.
 		b.WriteString("}\n")
-		return b.String()
+		return b.String(), nil
 	}
 	rules := policy.GetInboundRules()
+	for _, r := range rules {
+		if m, ok := marks[r.GetRuleId()]; !ok || m == 0 || m >= WouldBlockIndex {
+			return "", fmt.Errorf("%w: %s", ErrUnallocatedRule, r.GetRuleId())
+		}
+	}
 	for _, r := range rules {
 		v4, v6 := splitPeers(r.GetPeerCidrs())
 		writeSet(&b, SetName(r.GetRuleId(), false), "ipv4_addr", v4)
@@ -179,8 +177,8 @@ func Render(policy *innerwallv1.WorkloadPolicy, opts Options) string {
 	// outbound connection the agent initiated, its return traffic is
 	// established, and nothing after this line can touch it.
 	b.WriteString("\t\tct state established,related accept\n")
-	for i, r := range rules {
-		index := uint32(i + 1) //nolint:gosec // bounded by MaxRules
+	for _, r := range rules {
+		index := marks[r.GetRuleId()]
 		comment := fmt.Sprintf("innerwall rule %s mark %d", r.GetRuleId(), index)
 		match := l4Match(r)
 		// The write keeps the foreign bits: (ct mark & foreign) | ours.
@@ -196,7 +194,7 @@ func Render(policy *innerwallv1.WorkloadPolicy, opts Options) string {
 		// Handled above.
 	}
 	b.WriteString("\t}\n}\n")
-	return b.String()
+	return b.String(), nil
 }
 
 // RenderTeardown returns the script that deletes the owned table and

@@ -31,6 +31,7 @@ import (
 	"testing"
 	"time"
 
+	ct "github.com/ti-mo/conntrack"
 	"github.com/vishvananda/netlink"
 
 	"github.com/innerwall-dev/innerwall/internal/agent/collect"
@@ -50,11 +51,17 @@ const (
 	targetIP   = "10.99.0.1"
 	peerIP     = "10.99.0.2"
 	peer2IP    = "10.99.0.3"
+	// Two peers whose connections are held open across policy changes.
+	heldIP        = "10.99.0.4"
+	heldRemovedIP = "10.99.0.5"
 
 	portAllowed = 18080
 	portDenied  = 19090
 
 	ruleA = "0191e5c0-0000-7000-8000-00000000000a/tcp"
+	// ruleEarly sorts before ruleA: adding it is what used to renumber
+	// ruleA.
+	ruleEarly = "0191e5c0-0000-7000-8000-000000000001/tcp"
 
 	nflogGroup = 201
 	tableName  = "innerwalltest"
@@ -97,6 +104,22 @@ func dialFrom(local string, port int) outcome {
 		return timedOut
 	}
 	return outcome("error: " + err.Error())
+}
+
+// holdOpen opens a connection from a local address and leaves it open,
+// having sent a line so the connection carries traffic.
+func holdOpen(t *testing.T, local string, port int) net.Conn {
+	t.Helper()
+	d := net.Dialer{Timeout: 2 * time.Second, LocalAddr: &net.TCPAddr{IP: net.ParseIP(local)}}
+	c, err := d.Dial("tcp", net.JoinHostPort(targetIP, fmt.Sprint(port)))
+	if err != nil {
+		t.Fatalf("holding a connection from %s: %v", local, err)
+	}
+	if _, err := c.Write([]byte("held\n")); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+	return c
 }
 
 func expectDial(t *testing.T, local string, port int, want outcome) {
@@ -160,7 +183,7 @@ func TestEnforcementInNamespace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, a := range []string{peerIP + "/24", peer2IP + "/24"} {
+	for _, a := range []string{peerIP + "/24", peer2IP + "/24", heldIP + "/24", heldRemovedIP + "/24"} {
 		addr, _ := netlink.ParseAddr(a)
 		if err := netlink.AddrAdd(peer, addr); err != nil {
 			t.Fatal(err)
@@ -191,6 +214,19 @@ func TestEnforcementInNamespace(t *testing.T) {
 
 	child.expectReady("delta")
 	expectDial(t, peer2IP, portAllowed, connected)
+	child.proceed()
+
+	// Connections held open while the target adds a rule that sorts
+	// before theirs and then removes theirs: the kernel keeps each
+	// connection's mark, and the agent must keep naming the rule that
+	// admitted it.
+	child.expectReady("hold")
+	held := holdOpen(t, heldIP, portAllowed)
+	heldRemoved := holdOpen(t, heldRemovedIP, portAllowed)
+	child.proceed()
+	child.expectReady("held")
+	_ = held.Close()
+	_ = heldRemoved.Close()
 	child.proceed()
 
 	child.expectReady("simulation")
@@ -334,7 +370,7 @@ func TestNetnsRole(t *testing.T) {
 		if err := s.Load(); err != nil {
 			t.Fatal(err)
 		}
-		if s.Current().GetVersion() != 4 || s.Mode() != innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED {
+		if s.Current().GetVersion() != 7 || s.Mode() != innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED {
 			t.Fatalf("loaded policy = %v", s.Current())
 		}
 		if err := s.Restore(context.Background()); err != nil {
@@ -439,6 +475,35 @@ func (r *rawMarks) noneWithout(t *testing.T, foreign uint32) {
 		if nft.RuleIndex(m) != 0 && m&nft.ForeignMask != foreign {
 			t.Fatalf("mark %#x carries our region but lost the foreign bits %#x", m, foreign)
 		}
+	}
+}
+
+// liveMark dumps the namespace's connection table and returns the mark of
+// the tracked connection from src to the allowed port. Polling is a test
+// device only.
+func liveMark(t *testing.T, src string) uint32 {
+	t.Helper()
+	c, err := ct.Dial(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Close() }()
+	want := netip.MustParseAddr(src)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		flows, err := c.Dump(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, f := range flows {
+			if f.TupleOrig.IP.SourceAddress.Unmap() == want && f.TupleOrig.Proto.DestinationPort == portAllowed {
+				return f.Mark
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no tracked connection from %s", src)
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }
 
@@ -565,9 +630,53 @@ func runTarget(t *testing.T) {
 		return from(peer2IP, portAllowed, innerwallv1.PolicyDecision_POLICY_DECISION_ALLOWED)(o) && o.RuleID == ruleA
 	})
 
+	// Held connections: two peers join rule A and hold a connection open
+	// each, marked with rule A's value.
+	held := policyAt(3, innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED, peerIP+"/32", peer2IP+"/32", heldIP+"/32", heldRemovedIP+"/32")
+	if err := store.Apply(ctx, held); err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println("READY hold")
+	waitGo()
+	markA, ok := store.Mark(ruleA)
+	if !ok {
+		t.Fatal("rule A has no value")
+	}
+	for _, src := range []string{heldIP, heldRemovedIP} {
+		if got := liveMark(t, src); nft.RuleIndex(got) != nft.RuleIndex(markA) {
+			t.Fatalf("held connection from %s carries %#x, want rule A's %#x", src, got, markA)
+		}
+	}
+	// A rule that sorts before rule A is added. Rule A keeps its value, and
+	// the held connection, marked under the earlier version, still names
+	// rule A, not the newcomer.
+	early := &innerwallv1.ResolvedRule{RuleId: ruleEarly, Protocol: innerwallv1.Protocol_PROTOCOL_TCP, PeerCidrs: []string{"10.99.0.200/32"}, Ports: []*innerwallv1.PortRange{{Start: portDenied, End: portDenied}}}
+	renumbered := policyAt(4, innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED, peerIP+"/32", peer2IP+"/32", heldIP+"/32", heldRemovedIP+"/32")
+	renumbered.InboundRules = append(renumbered.InboundRules, early)
+	if err := store.Apply(ctx, renumbered); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := store.Mark(ruleEarly); m == markA {
+		t.Fatal("the new rule took rule A's value")
+	}
+	if d, id := store.Classify(liveMark(t, heldIP)); d != innerwallv1.PolicyDecision_POLICY_DECISION_ALLOWED || id != ruleA {
+		t.Fatalf("held connection after a rule was added before its rule = %v %s, want rule A", d, id)
+	}
+	// Rule A is removed. The established connection survives, still
+	// marked, and names the removed rule A, never the rule left in place.
+	removed := &innerwallv1.WorkloadPolicy{Version: 5, Mode: innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED, InboundRules: []*innerwallv1.ResolvedRule{early}}
+	if err := store.Apply(ctx, removed); err != nil {
+		t.Fatal(err)
+	}
+	if d, id := store.Classify(liveMark(t, heldRemovedIP)); d != innerwallv1.PolicyDecision_POLICY_DECISION_ALLOWED || id != ruleA {
+		t.Fatalf("held connection after its rule was removed = %v %s, want the removed rule A", d, id)
+	}
+	fmt.Println("READY held")
+	waitGo()
+
 	// Simulation: everything passes; what enforcement would drop is
-	// reported as WOULD_BLOCK.
-	if err := store.Apply(ctx, policyAt(3, innerwallv1.EnforcementMode_ENFORCEMENT_MODE_SIMULATION, peerIP+"/32", peer2IP+"/32")); err != nil {
+	// reported as WOULD_BLOCK. Rule A returns on its own value.
+	if err := store.Apply(ctx, policyAt(6, innerwallv1.EnforcementMode_ENFORCEMENT_MODE_SIMULATION, peerIP+"/32", peer2IP+"/32")); err != nil {
 		t.Fatal(err)
 	}
 	if store.LastApply() != nft.ApplyFull {
@@ -587,7 +696,10 @@ func runTarget(t *testing.T) {
 	})
 
 	// Back to enforced, then exit with the rules in place.
-	if err := store.Apply(ctx, policyAt(4, innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED, peerIP+"/32", peer2IP+"/32")); err != nil {
+	if m, _ := store.Mark(ruleA); m != markA {
+		t.Fatalf("rule A returned on %#x, want its own %#x", m, markA)
+	}
+	if err := store.Apply(ctx, policyAt(7, innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED, peerIP+"/32", peer2IP+"/32")); err != nil {
 		t.Fatal(err)
 	}
 	listing, err := store.List(ctx)
