@@ -10,21 +10,21 @@ Direction, not dates. Ordering follows ADR-0001: every milestone before enforcem
 ## M2 — Enrollment and identity
 - Control plane: Postgres schema + migrations, provisioning tokens, file-backed signing authority behind the `ca.Authority` interface
 - Agent: enrollment client, mTLS bring-up, cert renewal loop
-- `install.sh` — token in, enrolled agent out
+- Enrollment from the agent's own command (`innerwall-agent enroll`); an installer that wraps it is not built
 
 ## M3 — Flows and the map (first demo-able moment)
-- Agent: conntrack collector, windowed aggregation, disk buffering, sync loop with fail-static persistence
-- Control plane: gateway streams, ingestion (enrichment + bidirectional dedupe), Postgres `FlowStore`
+- Agent: conntrack collector, windowed aggregation, a bounded in-memory buffer with drops recorded as evidence gaps (disk buffering deferred), sync loop with fail-static persistence
+- Control plane: gateway streams, ingestion (peer resolution at ingest; inbound only, so nothing to deduplicate), Postgres `FlowStore`
 - Control plane: operator surface — second TLS-only listener, single-operator authentication, session and identity endpoints (ADR-0021); the read model behind the console's screens (flow rollups, flow pages, workloads, rendered policy); the write paths (authoring with conditional writes and structured findings, label edits, bulk mode changes as recorded intents, selector preview, dry-run render, token management) and the hand-authored contract in `api/openapi.yaml`
 - UI: embedded SPA shell, ReactFlow dependency map with label-group aggregation, workload inventory
 
 ## M4 — Policy, simulation, drafts
 - Labels and label-based rules; policy compiler emitting versioned per-agent rulesets (inbound-only)
-- Draft/diff editor; simulation replaying observed flows against drafts
+- Live policy editor with conditional writes and a dry-run render (no drafts); simulation as the enforced ruleset recording what it would drop, and the simulation review
 - Desired-vs-actual version drift surfaced in inventory
 
 ## M5 — Enforcement (opt-in, per scope)
-- Agent reconcile loop: owned nftables table, atomic replacement, local kill switch, resource budgets
+- Agent enforcement inside the sync daemon's apply: owned nftables table, atomic replacement, local kill switch, bounded telemetry (sampling and disk buffering deferred)
 - Per-workload / per-label enforcement state transitions: visibility → simulated → enforced
 - Audit trail for provision and enforcement-state changes
 
