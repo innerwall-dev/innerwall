@@ -8,7 +8,9 @@ RUN npm ci --no-audit --no-fund
 COPY ui/ ./
 RUN npm run build
 
-FROM golang:1.25-alpine AS build
+# The Go base is pinned to the patch release go.mod requires, so the image
+# never builds with an older, unpatched toolchain.
+FROM golang:1.25.14-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download

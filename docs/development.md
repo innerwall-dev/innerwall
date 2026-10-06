@@ -6,7 +6,7 @@ One page: what to install, what the make targets do, how to regenerate code, and
 
 | Tool | Version | Why |
 |---|---|---|
-| Go | as pinned in `go.mod` | Both binaries; also runs the protoc plugins via `go tool` |
+| Go | as pinned in `go.mod` (a patched release; an older toolchain downloads it) | Both binaries; also runs the protoc plugins via `go tool` |
 | Node.js + npm | 22.x | Builds, lints, and tests the operator console in `ui/` |
 | buf | 1.72.0 | Proto lint, breaking-change detection, code generation |
 | sqlc | 1.31.1 | Compiles `internal/store/queries/*.sql` into Go |
@@ -29,6 +29,7 @@ The Makefile is a thin dispatcher. Every target wraps a tool in one to three lin
 | `make test` | `go test -race ./...`, plus the `noconsole` stub's own test |
 | `make test-console` | Vitest over the console (`npm --prefix ui run test`) |
 | `make lint` | golangci-lint, `buf lint`, and Biome (`biome ci`) over `ui/` |
+| `make vulncheck` | govulncheck over the shipped code: fails on a known vulnerability it can reach |
 | `make openapi` | Lints the operator surface contract, `api/openapi.yaml` (spec lint only) |
 | `make proto` | `buf generate` from `proto/` into `internal/gen/` |
 | `make sqlc` | `sqlc generate` from `internal/store/queries/` into `internal/store/db/` |
@@ -85,6 +86,7 @@ For iterating on the console itself, `npm --prefix ui run dev` serves it with ho
 `.github/workflows/ci.yml` runs on every push to `main` and every PR:
 
 - `console` (Biome, Vitest, production build on the pinned Node) runs first and hands its `ui/dist/` to `build`, which embeds it, then proves the `noconsole` stub and the `dev` command compile; `test`, `lint` (Go). The `test` job runs a Postgres service container and sets `INNERWALL_TEST_DATABASE_URL`; tests that need a database skip when it is unset, so `make test` works offline and runs the integration tests when you point that variable at a disposable database. Database tests hold a session-level advisory lock for their duration, so the packages `go test` runs in parallel take turns on the one database rather than truncating each other's tables.
+- `vulncheck`: `make vulncheck`, on the toolchain `go.mod` pins; a known vulnerability reachable from code built without the `dev` tag fails it.
 - `openapi`: `scripts/check-openapi.sh`, which lints `api/openapi.yaml` as OpenAPI 3.1 against the rules in `api/vacuum-ruleset.yaml`. That is a check on the document alone; a Go test in `internal/api` checks the document against the routes the surface mounts and the closed sets it names. Nothing conforms responses to the document at runtime.
 - `proto`: `buf lint`, `buf build`, and `scripts/check-proto-breaking.sh`, which runs `buf breaking` against `main` and fails unless the PR title or body references an ADR (`ADR-NNNN`)
 - `drift`: `scripts/check-drift.sh`, which runs `make proto sqlc console-api` and fails on any diff or untracked generated file
