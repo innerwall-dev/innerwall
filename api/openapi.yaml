@@ -188,6 +188,8 @@ paths:
                 type: object
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/CrossOrigin"
   /me:
     get:
       operationId: getMe
@@ -492,6 +494,8 @@ paths:
           $ref: "#/components/responses/Validation"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/CrossOrigin"
         "404":
           $ref: "#/components/responses/NotFound"
         "412":
@@ -527,6 +531,8 @@ paths:
                 $ref: "#/components/schemas/ResendSnapshotAck"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/CrossOrigin"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -592,6 +598,8 @@ paths:
           $ref: "#/components/responses/Validation"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/CrossOrigin"
         "409":
           $ref: "#/components/responses/DuplicateName"
   /rulesets/{id}:
@@ -638,6 +646,8 @@ paths:
           $ref: "#/components/responses/Validation"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/CrossOrigin"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -657,6 +667,8 @@ paths:
           description: Deleted.
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/CrossOrigin"
         "404":
           $ref: "#/components/responses/NotFound"
         "412":
@@ -689,6 +701,8 @@ paths:
           $ref: "#/components/responses/Validation"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/CrossOrigin"
         "404":
           $ref: "#/components/responses/NotFound"
         "412":
@@ -743,6 +757,8 @@ paths:
           $ref: "#/components/responses/Validation"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/CrossOrigin"
         "404":
           $ref: "#/components/responses/NotFound"
         "412":
@@ -760,6 +776,8 @@ paths:
           description: Deleted.
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/CrossOrigin"
         "404":
           $ref: "#/components/responses/NotFound"
         "412":
@@ -808,6 +826,8 @@ paths:
           $ref: "#/components/responses/Validation"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/CrossOrigin"
         "409":
           $ref: "#/components/responses/DuplicateName"
   /services/{id}:
@@ -853,6 +873,8 @@ paths:
           $ref: "#/components/responses/Validation"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/CrossOrigin"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -872,6 +894,8 @@ paths:
           description: Deleted.
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/CrossOrigin"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -923,6 +947,8 @@ paths:
           $ref: "#/components/responses/Validation"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/CrossOrigin"
         "409":
           $ref: "#/components/responses/DuplicateName"
   /address-groups/{id}:
@@ -968,6 +994,8 @@ paths:
           $ref: "#/components/responses/Validation"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/CrossOrigin"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -987,6 +1015,8 @@ paths:
           description: Deleted.
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/CrossOrigin"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -1030,6 +1060,8 @@ paths:
           $ref: "#/components/responses/Validation"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/CrossOrigin"
         "409":
           description: The selection resolved to a different number of workloads than expected (`match-count-mismatch`).
           content:
@@ -1078,6 +1110,8 @@ paths:
           $ref: "#/components/responses/Validation"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/CrossOrigin"
   /policies/render-dryrun:
     post:
       operationId: renderDryRun
@@ -1123,6 +1157,8 @@ paths:
           $ref: "#/components/responses/Validation"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/CrossOrigin"
   /provisioning-tokens:
     get:
       operationId: listProvisioningTokens
@@ -1186,6 +1222,8 @@ paths:
           $ref: "#/components/responses/Validation"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/CrossOrigin"
   /provisioning-tokens/{id}:
     parameters:
       - $ref: "#/components/parameters/id"
@@ -1199,6 +1237,8 @@ paths:
           description: Revoked.
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/CrossOrigin"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -1263,6 +1303,8 @@ paths:
           $ref: "#/components/responses/InvalidRequest"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/CrossOrigin"
   /operator-tokens/{id}:
     parameters:
       - $ref: "#/components/parameters/id"
@@ -1276,6 +1318,8 @@ paths:
           description: Revoked.
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/CrossOrigin"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -1418,6 +1462,12 @@ components:
                 items:
                   type: string
   responses:
+    CrossOrigin:
+      description: A browser marked the request as coming from another origin (`cross-origin`). Every request that is not a read passes the same origin guard, so every unsafe operation can return this.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
     Unauthenticated:
       description: No valid credential was presented (`unauthenticated`).
       headers:

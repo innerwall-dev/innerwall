@@ -110,3 +110,24 @@ func TestContractClosedSets(t *testing.T) {
 		t.Fatalf("problem types documented:\n%s\nin code:\n%s", strings.Join(problemTypes, "\n"), strings.Join(code, "\n"))
 	}
 }
+
+// TestContractDeclaresTheOriginGuard checks that every operation that is
+// not a read declares the 403 the shared origin guard returns for a
+// cross-site request: the guard sits in front of every unsafe method, so
+// the refusal is part of each one's contract, not only of the prose.
+func TestContractDeclaresTheOriginGuard(t *testing.T) {
+	c := loadContract(t)
+	for path, item := range c.Paths {
+		for method, op := range item {
+			switch method {
+			case "post", "put", "delete", "patch":
+			default:
+				continue
+			}
+			responses, _ := op.(map[string]any)["responses"].(map[string]any)
+			if _, ok := responses["403"]; !ok {
+				t.Errorf("%s %s declares no 403 for the origin guard", strings.ToUpper(method), path)
+			}
+		}
+	}
+}

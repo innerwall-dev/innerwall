@@ -1102,6 +1102,15 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /** @description A browser marked the request as coming from another origin (`cross-origin`). Every request that is not a read passes the same origin guard, so every unsafe operation can return this. */
+        CrossOrigin: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description Another object of the kind already has that name, or a rule with that id already exists (`duplicate-name`). */
         DuplicateName: {
             headers: {
@@ -1317,6 +1326,7 @@ export interface operations {
             };
             400: components["responses"]["Validation"];
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["CrossOrigin"];
             409: components["responses"]["DuplicateName"];
         };
     };
@@ -1373,6 +1383,7 @@ export interface operations {
             };
             400: components["responses"]["Validation"];
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["CrossOrigin"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["DuplicateName"];
             412: components["responses"]["PreconditionFailed"];
@@ -1402,6 +1413,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["CrossOrigin"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["InUse"];
             412: components["responses"]["PreconditionFailed"];
@@ -1574,6 +1586,7 @@ export interface operations {
             };
             400: components["responses"]["Validation"];
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["CrossOrigin"];
             /** @description The selection resolved to a different number of workloads than expected (`match-count-mismatch`). */
             409: {
                 headers: {
@@ -1650,6 +1663,7 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["CrossOrigin"];
         };
     };
     revokeOperatorToken: {
@@ -1672,6 +1686,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["CrossOrigin"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["AlreadyRevoked"];
         };
@@ -1704,6 +1719,7 @@ export interface operations {
             };
             400: components["responses"]["Validation"];
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["CrossOrigin"];
         };
     };
     listProvisioningTokens: {
@@ -1763,6 +1779,7 @@ export interface operations {
             };
             400: components["responses"]["Validation"];
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["CrossOrigin"];
         };
     };
     revokeProvisioningToken: {
@@ -1785,6 +1802,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["CrossOrigin"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["AlreadyRevoked"];
         };
@@ -1835,6 +1853,7 @@ export interface operations {
             };
             400: components["responses"]["Validation"];
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["CrossOrigin"];
             409: components["responses"]["DuplicateName"];
         };
     };
@@ -1891,6 +1910,7 @@ export interface operations {
             };
             400: components["responses"]["Validation"];
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["CrossOrigin"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["DuplicateName"];
             412: components["responses"]["PreconditionFailed"];
@@ -1920,6 +1940,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["CrossOrigin"];
             404: components["responses"]["NotFound"];
             412: components["responses"]["PreconditionFailed"];
             428: components["responses"]["PreconditionRequired"];
@@ -1950,6 +1971,7 @@ export interface operations {
             };
             400: components["responses"]["Validation"];
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["CrossOrigin"];
             404: components["responses"]["NotFound"];
             412: components["responses"]["PreconditionFailed"];
         };
@@ -2011,6 +2033,7 @@ export interface operations {
             };
             400: components["responses"]["Validation"];
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["CrossOrigin"];
             404: components["responses"]["NotFound"];
             412: components["responses"]["PreconditionFailed"];
             428: components["responses"]["PreconditionRequired"];
@@ -2041,6 +2064,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["CrossOrigin"];
             404: components["responses"]["NotFound"];
             412: components["responses"]["PreconditionFailed"];
             428: components["responses"]["PreconditionRequired"];
@@ -2076,6 +2100,7 @@ export interface operations {
             };
             400: components["responses"]["Validation"];
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["CrossOrigin"];
         };
     };
     listServices: {
@@ -2123,6 +2148,7 @@ export interface operations {
             };
             400: components["responses"]["Validation"];
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["CrossOrigin"];
             409: components["responses"]["DuplicateName"];
         };
     };
@@ -2179,6 +2205,7 @@ export interface operations {
             };
             400: components["responses"]["Validation"];
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["CrossOrigin"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["DuplicateName"];
             412: components["responses"]["PreconditionFailed"];
@@ -2208,6 +2235,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["CrossOrigin"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["InUse"];
             412: components["responses"]["PreconditionFailed"];
@@ -2290,6 +2318,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["CrossOrigin"];
         };
     };
     listWorkloads: {
@@ -2413,6 +2442,7 @@ export interface operations {
             };
             400: components["responses"]["Validation"];
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["CrossOrigin"];
             404: components["responses"]["NotFound"];
             412: components["responses"]["PreconditionFailed"];
             428: components["responses"]["PreconditionRequired"];
@@ -2465,6 +2495,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["CrossOrigin"];
             404: components["responses"]["NotFound"];
             /** @description The workload's agent is offline as last recorded (`agent-offline`); nothing was sent. `last_seen_at` is when it was last heard from, null when never. */
             409: {
