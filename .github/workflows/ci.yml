@@ -40,6 +40,9 @@ jobs:
       - run: npm --prefix ui run lint
       - run: npm --prefix ui run test
       - run: npm --prefix ui run build
+      # The built console carries its third-party licenses: the notices
+      # file at its root and each font family's license beside the fonts.
+      - run: test -s ui/dist/THIRD-PARTY-NOTICES.txt && ls ui/dist/assets/*-LICENSE.txt
       - uses: actions/upload-artifact@v4
         with:
           name: console-dist
