@@ -3,8 +3,9 @@
 # network-namespace enforcement and collection suites, lint, known
 # vulnerabilities reachable from the shipped code, the operator surface
 # contract (spec lint), proto (lint, build, breaking-change gate),
-# generated-code drift, and DCO sign-off. Tool versions here are
-# mirrored in scripts/install-tools.sh so local regeneration matches CI.
+# generated-code drift, applied migrations unchanged, and DCO sign-off.
+# Tool versions here are mirrored in scripts/install-tools.sh so local
+# regeneration matches CI.
 # Every Go job installs exactly the toolchain go.mod's go directive names,
 # a patched release; the Dockerfile's build stage pins the same one.
 name: ci
@@ -194,6 +195,18 @@ jobs:
           PR_TEXT: |
             ${{ github.event.pull_request.title }}
             ${{ github.event.pull_request.body }}
+
+  migrations:
+    name: applied migrations unchanged
+    runs-on: ubuntu-latest
+    # A migration on main is applied: once there it never changes, and a
+    # fix is a new migration. A pull request is checked against its base;
+    # a push to main against the commit it moved main from.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: scripts/check-migrations.sh "${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}"
 
   dco:
     if: github.event_name == 'pull_request'

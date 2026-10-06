@@ -1,8 +1,15 @@
 # Migrations
 
 Ordered goose SQL files, applied in filename order and reviewed like code
-(ADR-0006). Never edit a migration once it has been applied anywhere; add a new
-one.
+(ADR-0006). Never edit a migration once it has been applied; add a new one.
+
+"Applied" means present on `main`. Once a file is on `main`, any database may
+have recorded it, goose will never run it again, and an edit would leave
+databases migrated before and after the edit with different schemas. While a
+migration exists only on the branch that adds it, it may be amended in that
+pull request before merge. CI enforces the rule: `scripts/check-migrations.sh`
+fails a pull request that modifies, renames, or deletes a migration its base
+already has, and a push to `main` that does the same.
 
 Naming: `NNNNN_short_description.sql`, starting at `00001`. Each file carries a
 `-- +goose Up` section and a `-- +goose Down` section. The files are embedded
