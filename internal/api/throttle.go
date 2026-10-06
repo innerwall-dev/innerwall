@@ -1,6 +1,7 @@
 package api
 
 import (
+	"container/list"
 	"net"
 	"net/http"
 	"strconv"
@@ -14,8 +15,11 @@ const (
 	DefaultLoginWindow   = time.Minute
 )
 
-// throttleMaxSources bounds the in-process table; when it is exceeded,
-// windows that have already elapsed are dropped.
+// throttleMaxSources bounds the in-process table. A new source at the
+// bound first drops windows that have elapsed and then, if the table is
+// still full, the window that started earliest, even though it has not
+// elapsed: the table never holds more than this many sources, and each
+// attempt costs constant work, however many distinct sources arrive.
 const throttleMaxSources = 4096
 
 // Throttle is a fixed-window attempt limiter keyed by source address. It
@@ -23,7 +27,13 @@ const throttleMaxSources = 4096
 // password guessing, not a distributed rate limiter (ADR-0021). The key is
 // the connection's own address, never a forwarded header, so a proxy in
 // front collapses every client into one source and the brake tightens
-// accordingly.
+// accordingly. The table is bounded (throttleMaxSources), so the brake
+// is bounded too: a guesser that rotates through more source addresses
+// than the bound within one window pushes its own oldest windows out and
+// resets their counts. Against that, the throttle costs the process
+// bounded memory and constant work per attempt, and nothing more is
+// claimed; protection from a distributed guesser sits in front of the
+// control plane (ADR-0021).
 type Throttle struct {
 	// Limit is the number of attempts allowed per window;
 	// DefaultLoginAttempts if zero.
@@ -34,10 +44,14 @@ type Throttle struct {
 	Now func() time.Time
 
 	mu      sync.Mutex
-	windows map[string]*window
+	windows map[string]*list.Element
+	// order holds every window, earliest start first: a window is
+	// appended when it starts, so the front is always the oldest.
+	order *list.List
 }
 
 type window struct {
+	key   string
 	start time.Time
 	count int
 }
@@ -71,15 +85,22 @@ func (t *Throttle) Allow(key string) (ok bool, retryAfter time.Duration) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.windows == nil {
-		t.windows = map[string]*window{}
+		t.windows = map[string]*list.Element{}
+		t.order = list.New()
 	}
-	w := t.windows[key]
-	if w == nil || now.Sub(w.start) >= t.window() {
-		if len(t.windows) >= throttleMaxSources {
-			t.evict(now)
+	var w *window
+	if e, ok := t.windows[key]; ok {
+		w = e.Value.(*window) //nolint:forcetypeassert // the list holds only windows
+		if now.Sub(w.start) >= t.window() {
+			// A new window for a known source starts now: it is the
+			// newest, so it moves to the back.
+			w.start, w.count = now, 0
+			t.order.MoveToBack(e)
 		}
-		w = &window{start: now}
-		t.windows[key] = w
+	} else {
+		t.makeRoom()
+		w = &window{key: key, start: now}
+		t.windows[key] = t.order.PushBack(w)
 	}
 	w.count++
 	if w.count > t.limit() {
@@ -88,13 +109,24 @@ func (t *Throttle) Allow(key string) (ok bool, retryAfter time.Duration) {
 	return true, 0
 }
 
-// evict drops every elapsed window. Called with the lock held.
-func (t *Throttle) evict(now time.Time) {
-	for k, w := range t.windows {
-		if now.Sub(w.start) >= t.window() {
-			delete(t.windows, k)
-		}
+// makeRoom makes space for one more source by dropping the oldest window
+// while the table is full. Windows are ordered by start, so the elapsed
+// ones go first; a window still running goes only when every older one
+// has gone and the table is still full. Called with the lock held.
+func (t *Throttle) makeRoom() {
+	for len(t.windows) >= throttleMaxSources {
+		front := t.order.Front()
+		w := front.Value.(*window) //nolint:forcetypeassert // the list holds only windows
+		t.order.Remove(front)
+		delete(t.windows, w.key)
 	}
+}
+
+// Sources returns the number of sources the table holds.
+func (t *Throttle) Sources() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return len(t.windows)
 }
 
 // Middleware applies the throttle to the login route only.
