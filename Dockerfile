@@ -6,6 +6,9 @@ WORKDIR /src/ui
 COPY ui/package.json ui/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY ui/ ./
+# The build generates the console's API types from the operator surface's
+# contract, which lives outside ui/.
+COPY api/openapi.yaml ../api/openapi.yaml
 RUN npm run build
 
 # The Go base is pinned to the patch release go.mod requires, so the image
