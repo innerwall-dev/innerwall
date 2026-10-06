@@ -1,9 +1,13 @@
 # Continuous integration: the console (lint, test, production build),
 # build (the console embedded, and the noconsole stub), test, the
-# network-namespace enforcement and collection suites, lint, the operator surface
+# network-namespace enforcement and collection suites, lint, known
+# vulnerabilities reachable from the shipped code, the operator surface
 # contract (spec lint), proto (lint, build, breaking-change gate),
-# generated-code drift, and DCO sign-off. Tool versions here are
-# mirrored in scripts/install-tools.sh so local regeneration matches CI.
+# generated-code drift, applied migrations unchanged, and DCO sign-off.
+# Tool versions here are mirrored in scripts/install-tools.sh so local
+# regeneration matches CI.
+# Every Go job installs exactly the toolchain go.mod's go directive names,
+# a patched release; the Dockerfile's build stage pins the same one.
 name: ci
 
 on:
@@ -37,6 +41,9 @@ jobs:
       - run: npm --prefix ui run lint
       - run: npm --prefix ui run test
       - run: npm --prefix ui run build
+      # The built console carries its third-party licenses: the notices
+      # file at its root and each font family's license beside the fonts.
+      - run: test -s ui/dist/THIRD-PARTY-NOTICES.txt && ls ui/dist/assets/*-LICENSE.txt
       - uses: actions/upload-artifact@v4
         with:
           name: console-dist
@@ -117,6 +124,20 @@ jobs:
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
 
+  vulncheck:
+    name: known vulnerabilities
+    runs-on: ubuntu-latest
+    # Fails on a known vulnerability the shipped code can reach, in the
+    # standard library or a dependency, built as released: without the dev
+    # build tag. A finding in a module the code requires but never calls
+    # is reported and does not fail the job.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: make vulncheck
+
   openapi:
     name: operator surface contract
     runs-on: ubuntu-latest
@@ -174,6 +195,18 @@ jobs:
           PR_TEXT: |
             ${{ github.event.pull_request.title }}
             ${{ github.event.pull_request.body }}
+
+  migrations:
+    name: applied migrations unchanged
+    runs-on: ubuntu-latest
+    # A migration on main is applied: once there it never changes, and a
+    # fix is a new migration. A pull request is checked against its base;
+    # a push to main against the commit it moved main from.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: scripts/check-migrations.sh "${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}"
 
   dco:
     if: github.event_name == 'pull_request'

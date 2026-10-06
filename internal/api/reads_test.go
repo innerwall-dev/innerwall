@@ -61,7 +61,11 @@ func newReadFixture(now time.Time) *readFixture {
 	fl := &readmodeltest.MemFlows{
 		Result: &flowstore.GroupResult{
 			Groups: []flowstore.Group{
-				{RuleID: ruleID, Peer: flowstore.Peer{Kind: flowstore.PeerWorkload, Key: web.String(), Labels: map[string]string{"role": "web", "env": "prod"}}, WorkloadID: db, FlowCount: 2, ConnectionCount: 240, ByteCount: 960_000, FirstSeen: now.Add(-2 * time.Hour), LastSeen: now.Add(-time.Hour)},
+				// The memory store answers every grouping with these groups,
+				// so each carries every key any grouping reads: a service
+				// grouping of the rule's traffic is tcp/5432, never an
+				// unspecified protocol the contract does not admit.
+				{RuleID: ruleID, Peer: flowstore.Peer{Kind: flowstore.PeerWorkload, Key: web.String(), Labels: map[string]string{"role": "web", "env": "prod"}}, WorkloadID: db, DstPort: 5432, Protocol: innerwallv1.Protocol_PROTOCOL_TCP, FlowCount: 2, ConnectionCount: 240, ByteCount: 960_000, FirstSeen: now.Add(-2 * time.Hour), LastSeen: now.Add(-time.Hour)},
 				{Peer: flowstore.Peer{Kind: flowstore.PeerAddressGroup, Key: group.ID.String()}, WorkloadID: db, DstPort: 5432, Protocol: innerwallv1.Protocol_PROTOCOL_TCP, WorkloadCount: 2, FlowCount: 2, ConnectionCount: 6, FirstSeen: now.Add(-2 * time.Hour), LastSeen: now.Add(-time.Hour)},
 				{Peer: flowstore.Peer{Kind: flowstore.PeerUnknown, Key: "198.51.100.7"}, WorkloadID: db, DstPort: 22, Protocol: innerwallv1.Protocol_PROTOCOL_TCP, WorkloadCount: 1, FlowCount: 2, ConnectionCount: 18, FirstSeen: now.Add(-2 * time.Hour), LastSeen: now.Add(-time.Hour)},
 			},
@@ -245,6 +249,22 @@ func TestRollupEndpoint(t *testing.T) {
 	}
 	if _, present := field(body, "groups.2").(map[string]any)["workload_count"]; present {
 		t.Fatalf("dst,service group carries workload_count: %v", field(body, "groups.2"))
+	}
+	// Every service key, in every grouping that has one, names a protocol
+	// the contract admits.
+	for _, groupBy := range []string{"dst,service", "peer,service&verdict=would_block&label=role=db"} {
+		resp, body = s.get(t, "/api/v1/flows/rollup?group_by="+groupBy)
+		if resp.status != http.StatusOK {
+			t.Fatalf("%s: %d %v", groupBy, resp.status, body)
+		}
+		for i, g := range field(body, "groups").([]any) {
+			proto := g.(map[string]any)["keys"].(map[string]any)["service"].(map[string]any)["protocol"]
+			switch proto {
+			case "tcp", "udp", "icmp":
+			default:
+				t.Fatalf("%s group %d service protocol = %v", groupBy, i, proto)
+			}
+		}
 	}
 	// A rule group carries the workloads that reported it, as hit
 	// counters with "matched on N workloads".

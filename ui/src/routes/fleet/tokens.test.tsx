@@ -5,7 +5,10 @@ import type { Me, ProvisioningToken } from "@/api/schema";
 import { minutesAgo, token } from "@/test/fixtures";
 import { mockSurface, operator, type Route, renderApp } from "@/test/harness";
 
-const secret = "iw_Qm8xZk3vT2pLw9sYh4RaN7cJe1Bd6FgUiVoXt0KqM5";
+// A visibly synthetic secret: it has the token's prefix so the dialog
+// renders it as one, and is plainly not a credential, long enough that the
+// install line masks it.
+const secret = "iw_EXAMPLE-synthetic-not-a-token";
 
 function surface(
 	tokens: () => ProvisioningToken[],
@@ -150,7 +153,7 @@ describe("mint dialog", () => {
 		let minted = false;
 		const listed = token({
 			name: "search-staging-image",
-			prefix: "iw_Qm8x",
+			prefix: "iw_EXAM",
 			labels: { app: "search", env: "staging" },
 			use_count: 0,
 			last_used_at: null,
@@ -212,7 +215,7 @@ describe("mint dialog", () => {
 		expect(done).toHaveTextContent(
 			"This is the only time the plaintext is shown.",
 		);
-		expect(done).toHaveTextContent("--token iw_Qm8x…qM5");
+		expect(done).toHaveTextContent("--token iw_EXAM…ken");
 		// No advertised gateway address: the command keeps its placeholder
 		// and says where the value comes from.
 		expect(done).toHaveTextContent("--server <agent-gateway>");

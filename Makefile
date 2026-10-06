@@ -1,7 +1,7 @@
 # Thin dispatcher. Every target is a 1–3-line wrapper over a real tool;
 # anything with logic lives in scripts/.
 
-.PHONY: build build-noconsole test test-netns test-console lint openapi proto sqlc console-api console ui dev seed drift tools migrate
+.PHONY: build build-noconsole test test-netns test-console lint vulncheck openapi proto sqlc console-api console ui dev seed drift tools migrate
 
 build:
 	CGO_ENABLED=0 go build -trimpath -o bin/ ./cmd/...
@@ -23,6 +23,9 @@ lint:
 	golangci-lint run ./...
 	buf lint
 	npm --prefix ui run lint
+
+vulncheck:
+	go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 
 openapi:
 	scripts/check-openapi.sh

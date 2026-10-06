@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import type { Workload } from "@/api/schema";
 import { hoursFromNow, minutesAgo, workload } from "@/test/fixtures";
 import {
@@ -10,6 +10,17 @@ import {
 	renderApp,
 	signedIn,
 } from "@/test/harness";
+
+// The clock is fixed for this file: the fixtures below are instants
+// relative to now, built when the module loads, and the assertions read
+// the spans the screen prints from them ("20s", "42s ago"). With a moving
+// clock the two disagree whenever a second boundary passes between
+// building a fixture and rendering it. Only Date is fixed; timers stay
+// real, so waiting for the screen still works.
+vi.useFakeTimers({ now: new Date("2026-10-05T12:00:00Z"), toFake: ["Date"] });
+afterAll(() => {
+	vi.useRealTimers();
+});
 
 const frame: Route[] = [
 	signedIn,

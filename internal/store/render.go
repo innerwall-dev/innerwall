@@ -174,6 +174,11 @@ func (s *Store) listenOnce(ctx context.Context, onReady func(), fn func(compiler
 	}
 	conn := pooled.Hijack()
 	defer func() { _ = conn.Close(context.Background()) }()
+	// LISTEN takes an identifier, not a parameter, so this one statement
+	// is not sqlc input: it is fixed text, a compile-time constant
+	// appended to a literal, with no runtime value in it. Every other
+	// statement, NOTIFY included, is a hand-written query under queries/
+	// (ADR-0006).
 	if _, err := conn.Exec(ctx, "LISTEN "+PolicyChannel); err != nil {
 		return fmt.Errorf("store: listen: %w", err)
 	}

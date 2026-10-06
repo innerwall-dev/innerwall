@@ -46,7 +46,7 @@ Today the same exchange is `innerwall-agent enroll --server <host:port> --token 
 
 ## Contributing
 
-Read [ARCHITECTURE.md](ARCHITECTURE.md), then [docs/adr/](docs/adr/), then [CONTRIBUTING.md](CONTRIBUTING.md). Every commit is DCO signed off. Every PR is reviewed against the ADRs, including by an automated pass.
+Read [ARCHITECTURE.md](ARCHITECTURE.md), then [docs/adr/](docs/adr/), then [CONTRIBUTING.md](CONTRIBUTING.md). Every commit is DCO signed off. Every PR is reviewed against the ADRs, including by an automated pass once it is ready for review.
 
 ## License
 
