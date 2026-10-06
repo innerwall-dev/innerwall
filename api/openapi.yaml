@@ -2028,23 +2028,24 @@ components:
           $ref: "#/components/schemas/WorkloadRef"
         kind:
           type: string
-          enum: [source_overrun, source_restart, buffer_overflow, dump_truncated]
+          enum: [source_overrun, source_restart, buffer_overflow, dump_truncated, window_overflow]
           description: |
             source_overrun — the kernel dropped events because a source's socket buffer was full.
             source_restart — a source was down between a failure and its next subscribe.
             buffer_overflow — the agent dropped closed windows while the control plane was unreachable.
             dump_truncated — the connection table held more entries at subscribe than the agent processes.
+            window_overflow — the agent's open aggregation window held as many distinct keys as it may, and observations for new keys were dropped until it closed.
         source:
           type: [string, "null"]
           enum: [conntrack, nflog, null]
-          description: The flow source that lost the evidence; null for a loss that is not one source's (a buffer overflow).
+          description: The flow source that lost the evidence; null for a loss that is not one source's (a buffer or window overflow).
         from:
           $ref: "#/components/schemas/Timestamp"
         to:
           $ref: "#/components/schemas/Timestamp"
         count:
           type: [integer, "null"]
-          description: Records or table entries lost, where known (a buffer overflow, a truncated dump); null for a kernel-side loss.
+          description: Records, table entries, or observations lost, where known (a buffer overflow, a truncated dump, a window overflow); null for a kernel-side loss.
     Rollup:
       description: A grouped, bounded rollup of stored windows over a range.
       type: object

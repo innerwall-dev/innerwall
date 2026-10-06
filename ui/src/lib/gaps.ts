@@ -91,6 +91,8 @@ export function kindText(kind: EvidenceGap["kind"]): string {
 			return "the agent dropped buffered windows";
 		case "dump_truncated":
 			return "the connection table was cut at its bound";
+		case "window_overflow":
+			return "the agent's flow window was full";
 	}
 }
 

@@ -49,6 +49,9 @@ type Collector struct {
 	Log  *slog.Logger
 	// Now is the clock; time.Now if nil.
 	Now func() time.Time
+	// WindowKeys bounds the distinct keys one open window holds;
+	// DefaultWindowKeys when zero.
+	WindowKeys int
 	// BackoffBase and BackoffCap bound the wait before a failed source is
 	// restarted: one second and one minute when zero.
 	BackoffBase time.Duration
@@ -101,7 +104,8 @@ func (c *Collector) Run(ctx context.Context) error {
 	}
 	rng := rand.New(rand.NewPCG(uint64(c.now().UnixNano()), 2)) //nolint:gosec // jitter, not secrecy
 
-	agg := NewAggregator(c.now())
+	agg := NewBoundedAggregator(c.now(), c.WindowKeys)
+	agg.Gaps = c.Gaps
 	go restarter{log: c.log(), base: base, limit: limit, rng: rng, now: c.Now}.run(ctx, c.Source, agg.Add)
 
 	timer := time.NewTimer(c.Window())

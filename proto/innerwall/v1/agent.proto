@@ -239,8 +239,9 @@ message EvidenceGap {
   EvidenceSource source = 2;
   google.protobuf.Timestamp from = 3;
   google.protobuf.Timestamp to = 4;
-  // How many records or table entries were lost, when that is known: for a
-  // buffer overflow and a truncated dump. A kernel-side loss has no count.
+  // How many records, table entries, or observations were lost, when that
+  // is known: for a buffer overflow, a truncated dump, and a window
+  // overflow. A kernel-side loss has no count.
   optional uint64 count = 5;
 }
 
@@ -257,6 +258,11 @@ enum EvidenceGapKind {
   // processes; the interval runs from the subscribe to the last skipped
   // connection seen closing.
   EVIDENCE_GAP_KIND_DUMP_TRUNCATED = 4;
+  // The open aggregation window held as many distinct keys as the agent
+  // allows, and observations for new keys were dropped; the interval runs
+  // from the first drop to the window's close, and the count is the
+  // observations dropped.
+  EVIDENCE_GAP_KIND_WINDOW_OVERFLOW = 5;
 }
 
 // The agent's flow sources.
