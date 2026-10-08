@@ -294,8 +294,10 @@ function Row({
 	const labels = labelPairs(w.labels);
 	const cred = credential(w);
 	const note = syncNote(w);
+	// row-dense is the row pitch including its hairline: the 22px mode
+	// pill, 7px above and 6px below it, and the 1px separator make 36.
 	const cell =
-		"h-row-dense border-b border-subtle px-3 py-[7px] type-ui [&>*]:align-middle";
+		"h-row-dense border-b border-subtle px-3 pt-[7px] pb-[6px] type-ui [&>*]:align-middle";
 	return (
 		// The whole row opens the workload for a pointer; the hostname link
 		// is the keyboard's way in, and the checkbox selects without opening.

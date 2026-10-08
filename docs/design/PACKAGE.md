@@ -53,6 +53,10 @@ Both are drawn on the 16×16 grid at a 1.5px stroke, at the `glyph-sm` / `glyph-
   - `error`: credential expired, and every refusal, problem, and validation error.
 - **Design-system artifact.** The design-system artifact of record (StatusGlyph doc, README status section, legend board) is updated to match separately.
 
+## Clarifications
+
+- **2026-10-08, maintainer-ruled: `row-dense` is the row pitch, separator included.** The reference stylesheet gives `.iw-td` `height: var(--row-dense)` under `box-sizing: border-box`, so a body row's 1px `border-subtle` hairline sits inside the 36px. That leaves a 35px box for content and padding. In the fleet table, the 22px tinted mode pill takes 7px of padding above and 6px below. The token's value is unchanged; this records how the console measures it.
+
 ## Errata
 
 - "Known non-screens" says the Policy nav entry "links nowhere by design". That sentence describes the canvas, not the repository. The repository's Policy entry links to `/policy`, the shipped policy editor.
