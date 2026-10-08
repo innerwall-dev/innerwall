@@ -10,10 +10,15 @@ package nft_test
 // build tag so the ordinary test job is unaffected; `make test-netns`
 // runs it locally and the enforcement CI job runs it on a runner.
 //
-// One test binary plays every part. The parent test creates the
+// One test binary plays every part. Each parent test creates its own
 // namespace (a holder process started with a new network namespace keeps
 // it alive), builds the veth pair, and runs itself again inside the
 // namespace for each phase, driving it over stdin/stdout.
+//
+// A fresh namespace has no connection tracking until a loaded ruleset
+// references it, so each namespace is also a host on which nothing but
+// the agent engages connection tracking. The visibility test depends on
+// that and installs nothing beside the owned table.
 
 import (
 	"bufio"
@@ -129,9 +134,12 @@ func expectDial(t *testing.T, local string, port int, want outcome) {
 	}
 }
 
-// TestEnforcementInNamespace is the parent: it builds the topology and
-// drives the phases.
-func TestEnforcementInNamespace(t *testing.T) {
+// namespace builds a fresh target namespace joined to this one by the
+// veth pair, with every peer address on our end, and returns the state
+// directory the target's runs share and a way to run a command inside
+// the namespace. It skips the test without root, nft, or nsenter.
+func namespace(t *testing.T) (stateDir string, inNamespace func(args ...string) *exec.Cmd) {
+	t.Helper()
 	if os.Getenv(envRole) != "" {
 		t.Skip("helper process")
 	}
@@ -143,7 +151,7 @@ func TestEnforcementInNamespace(t *testing.T) {
 			t.Skipf("%s not on PATH", bin)
 		}
 	}
-	stateDir := t.TempDir()
+	stateDir = t.TempDir()
 
 	// A holder process keeps the target namespace alive across phases.
 	holder := exec.Command(os.Args[0], "-test.run=^TestNetnsRole$") //nolint:gosec // the test runs itself
@@ -193,11 +201,17 @@ func TestEnforcementInNamespace(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	inNamespace := func(args ...string) *exec.Cmd {
+	return stateDir, func(args ...string) *exec.Cmd {
 		cmd := exec.Command("nsenter", append([]string{"--net=" + nsPath, "--"}, args...)...) //nolint:gosec // the test runs itself inside the namespace
 		cmd.Env = append(os.Environ(), envStateDir+"="+stateDir)
 		return cmd
 	}
+}
+
+// TestEnforcementInNamespace is the parent: it builds the topology and
+// drives the phases.
+func TestEnforcementInNamespace(t *testing.T) {
+	stateDir, inNamespace := namespace(t)
 	nftList := func() string {
 		out, _ := inNamespace("nft", "list", "table", "inet", tableName).CombinedOutput()
 		return string(out)
@@ -279,6 +293,23 @@ func TestEnforcementInNamespace(t *testing.T) {
 	if out, err := inNamespace("nft", "list", "table", "inet", foreignTable).CombinedOutput(); err != nil || !strings.Contains(string(out), "premark") {
 		t.Fatalf("foreign table after teardown: %v\n%s", err, out)
 	}
+}
+
+// TestVisibilityObservationInNamespace is the parent of the visibility
+// test: a fresh namespace in which nothing but the agent's owned table
+// ever references connection tracking. The target starts its collector,
+// then applies a visibility policy, as a newly enrolled agent does with
+// its first snapshot; the peer connects; and the target must see the
+// connections arrive in a closed flow window, without restarting
+// anything. Nothing is dropped, on any port, from any peer.
+func TestVisibilityObservationInNamespace(t *testing.T) {
+	_, inNamespace := namespace(t)
+	child := newChild(t, inNamespace(os.Args[0], "-test.run=^TestNetnsRole$", "-test.v"), "visibility")
+	child.expectReady("visibility")
+	expectDial(t, peerIP, portAllowed, connected)
+	expectDial(t, peer2IP, portDenied, connected)
+	child.proceed()
+	child.wait()
 }
 
 // child drives one in-namespace run of this binary.
@@ -365,6 +396,8 @@ func TestNetnsRole(t *testing.T) {
 		_, _ = io.Copy(io.Discard, os.Stdin)
 	case "target":
 		runTarget(t)
+	case "visibility":
+		runVisibility(t)
 	case "restart":
 		s := nft.New(nft.Config{StateDir: os.Getenv(envStateDir), Table: tableName, NflogGroup: nflogGroup})
 		if err := s.Load(); err != nil {
@@ -524,46 +557,7 @@ func runTarget(t *testing.T) {
 		}
 	}
 
-	// Bring the namespace up: loopback and our end of the veth pair.
-	lo, err := netlink.LinkByName("lo")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = netlink.LinkSetUp(lo)
-	var link netlink.Link
-	for deadline := time.Now().Add(5 * time.Second); ; {
-		link, err = netlink.LinkByName(vethTarget)
-		if err == nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("%s never appeared: %v", vethTarget, err)
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	addr, _ := netlink.ParseAddr(targetIP + "/24")
-	if err := netlink.AddrAdd(link, addr); err != nil {
-		t.Fatal(err)
-	}
-	if err := netlink.LinkSetUp(link); err != nil {
-		t.Fatal(err)
-	}
-	for _, port := range []int{portAllowed, portDenied} {
-		l, err := net.Listen("tcp", net.JoinHostPort(targetIP, fmt.Sprint(port)))
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer func() { _ = l.Close() }()
-		go func() {
-			for {
-				c, err := l.Accept()
-				if err != nil {
-					return
-				}
-				go func() { _, _ = io.Copy(io.Discard, c); _ = c.Close() }()
-			}
-		}()
-	}
+	upTarget(t)
 
 	// Another user of the connection mark, installed before the agent
 	// and never touched by it.
@@ -709,4 +703,132 @@ func runTarget(t *testing.T) {
 	fmt.Println("READY final")
 	waitGo()
 	obs.waitFor(t, "blocked again after returning to enforced", from(peerIP, portDenied, innerwallv1.PolicyDecision_POLICY_DECISION_BLOCKED))
+}
+
+// upTarget brings the target namespace up: loopback, our end of the veth
+// pair with the target address, and a listener on each port that reads
+// whatever it is sent. The listeners close when the test ends.
+func upTarget(t *testing.T) {
+	t.Helper()
+	lo, err := netlink.LinkByName("lo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = netlink.LinkSetUp(lo)
+	var link netlink.Link
+	for deadline := time.Now().Add(5 * time.Second); ; {
+		link, err = netlink.LinkByName(vethTarget)
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%s never appeared: %v", vethTarget, err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	addr, _ := netlink.ParseAddr(targetIP + "/24")
+	if err := netlink.AddrAdd(link, addr); err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.LinkSetUp(link); err != nil {
+		t.Fatal(err)
+	}
+	for _, port := range []int{portAllowed, portDenied} {
+		l, err := net.Listen("tcp", net.JoinHostPort(targetIP, fmt.Sprint(port)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = l.Close() })
+		go func() {
+			for {
+				c, err := l.Accept()
+				if err != nil {
+					return
+				}
+				go func() { _, _ = io.Copy(io.Discard, c); _ = c.Close() }()
+			}
+		}()
+	}
+}
+
+// runVisibility is the target of the visibility test. Nothing in this
+// namespace references connection tracking before the agent applies, and
+// nothing but the owned table ever does: no foreign table, no scratch
+// rule. The collector, sources, aggregation, and buffer are the daemon's,
+// on a one-second window, and they start before the policy is applied, as
+// they do on a newly enrolled host, so the test also shows that sources
+// subscribed before connection tracking was engaged need no restart.
+func runVisibility(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stdin := bufio.NewScanner(os.Stdin)
+
+	upTarget(t)
+
+	store := nft.New(nft.Config{StateDir: os.Getenv(envStateDir), Table: tableName, NflogGroup: nflogGroup})
+	if err := store.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if store.Current() != nil {
+		t.Fatalf("a fresh state directory loaded %v", store.Current())
+	}
+	buffer := collect.NewBuffer(0)
+	collector := &collect.Collector{
+		Source: collect.Sources{
+			&conntrack.Source{Classify: store.Classify},
+			&nflog.Source{Group: nflogGroup, Decide: store.TerminalDecision},
+		},
+		Buffer: buffer,
+		Gaps:   &collect.Gaps{},
+	}
+	collector.SetConfig(&innerwallv1.SyncConfig{FlowAggregationWindowSeconds: 1})
+	go func() { _ = collector.Run(ctx) }()
+	time.Sleep(300 * time.Millisecond) // let both subscriptions register
+
+	// The first snapshot: visibility, carrying a rule that, enforced,
+	// would admit only the first peer to the allowed port. In visibility
+	// it renders nothing.
+	if err := store.Apply(ctx, policyAt(1, innerwallv1.EnforcementMode_ENFORCEMENT_MODE_VISIBILITY, peerIP+"/32")); err != nil {
+		t.Fatal(err)
+	}
+	listing, err := store.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(listing, "chain "+nft.ObserveChainName+" {") || !strings.Contains(listing, "ct state new") ||
+		strings.Count(listing, "chain ") != 1 || strings.Contains(listing, "set ") ||
+		strings.Contains(listing, "drop") || strings.Contains(listing, "log ") || strings.Contains(listing, "mark") {
+		t.Fatalf("visibility table is not exactly the observation chain:\n%s", listing)
+	}
+	fmt.Println("READY visibility")
+	if !stdin.Scan() {
+		t.Fatal("parent closed stdin")
+	}
+
+	// Both connections, the one the rule names and the one it does not,
+	// arrive in a closed window as OBSERVED, and nothing else does.
+	want := map[string]bool{
+		fmt.Sprintf("%s:%d", peerIP, portAllowed): false,
+		fmt.Sprintf("%s:%d", peer2IP, portDenied): false,
+	}
+	wait, stop := context.WithTimeout(ctx, 15*time.Second)
+	defer stop()
+	var seen []*innerwallv1.FlowRecord
+	for missing := len(want); missing > 0; {
+		w, ok := buffer.Pop(wait)
+		if !ok {
+			t.Fatalf("no flow window carried every connection within 15s; records seen: %v", seen)
+		}
+		for _, r := range w.Records {
+			seen = append(seen, r)
+			if r.GetDecision() != innerwallv1.PolicyDecision_POLICY_DECISION_OBSERVED || r.GetMatchedRuleId() != "" {
+				t.Fatalf("visibility reported a decision: %v", r)
+			}
+			key := fmt.Sprintf("%s:%d", r.GetSrcAddress(), r.GetDstPort())
+			if done, ok := want[key]; ok && !done && r.GetConnectionCount() > 0 && r.GetProtocol() == innerwallv1.Protocol_PROTOCOL_TCP {
+				want[key] = true
+				missing--
+			}
+		}
+	}
 }

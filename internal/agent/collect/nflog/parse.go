@@ -3,7 +3,11 @@
 // packet was dropped and becomes a BLOCKED observation; under simulation
 // it was accepted and becomes a WOULD_BLOCK observation. Because a dropped
 // packet never becomes a tracked connection, this is the only path by
-// which blocked traffic reaches the flow map (ADR-0020).
+// which blocked traffic reaches the flow map. It is enforcement and
+// simulation only, by decision: a visibility table logs nothing, because
+// in visibility the agent decides nothing and there is no verdict for a
+// log to witness. What visibility reports is what connection tracking
+// reports (ADR-0020).
 package nflog
 
 import (

@@ -29,6 +29,7 @@ Two independent audits of the release candidate (`main` at `04e3209`) found defe
 - **A fleet test depended on wall-clock timing**, the OpenAPI contract omitted the origin guard's 403 on 22 unsafe operations, and a rollup test fixture emitted a protocol the contract does not admit (#24).
 - **Migrations had no immutability check.** CI now fails any change to a migration already on `main` (#24).
 - **The automated ADR review enforced rules the record had amended away**, and the documents claimed it reviews every pull request; both are corrected (#24).
+- **Visibility observed nothing on a host where nothing else engaged connection tracking.** The kernel tracks connections in a network namespace only once a loaded ruleset references connection tracking, and the visibility table was empty, so on a clean host the agent's sources subscribed and then reported no flows and no error. Visibility now installs one chain whose one rule engages connection tracking and accepts; it drops nothing, and the log source stays enforcement and simulation only. A network-namespace test with nothing else on the host holds it; found on a clean host evaluating the quickstart (#__PR__).
 - **The image did not build.** The console stage lacked the API contract its build generates types from, so `make dev` failed; found while verifying this release's quickstart (#26).
 
 ### Record corrected before release

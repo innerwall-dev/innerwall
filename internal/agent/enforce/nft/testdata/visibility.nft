@@ -1,4 +1,8 @@
 table inet innerwall {}
 delete table inet innerwall
 table inet innerwall {
+	chain observe {
+		type filter hook input priority filter + 10; policy accept;
+		ct state new counter accept comment "innerwall observation visibility"
+	}
 }

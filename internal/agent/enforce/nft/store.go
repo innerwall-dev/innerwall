@@ -274,8 +274,9 @@ func (s *Store) Mark(ruleID string) (uint32, bool) {
 
 // TerminalDecision is what a packet logged by the terminal rule means
 // under the installed mode: BLOCKED when enforced, WOULD_BLOCK when
-// simulated. In visibility mode nothing is logged; a stray event is
-// reported as unevaluated.
+// simulated. In visibility mode nothing is logged, by decision: the
+// observation chain has no log rule (ADR-0020). A stray event is reported
+// as unevaluated.
 func (s *Store) TerminalDecision() innerwallv1.PolicyDecision {
 	switch s.Mode() {
 	case innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED:
