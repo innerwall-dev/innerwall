@@ -194,28 +194,42 @@ export function StatusBadge({
 }
 
 // SeverityNote is a warning or an error in running text: its severity
-// glyph, then the words, both in the severity's tone. The glyph sits on
-// the first line when the text wraps.
+// glyph, then the words, both in the severity's tone. The glyph is
+// centered on the first line when the text wraps; size follows the text
+// (sm in 12px text, md in 13–14px).
 export function SeverityNote({
 	level,
+	size = "md",
 	className,
 	children,
 	role,
+	title,
 	...rest
 }: {
 	level: Severity;
+	size?: "sm" | "md";
 	className?: string;
 	children: ReactNode;
 	role?: "alert" | "status" | "note";
+	title?: string;
 	"data-testid"?: string;
 }) {
 	return (
 		<span
 			role={role}
+			title={title}
 			className={cn("inline-flex items-start gap-1.5", tone[level], className)}
 			{...rest}
 		>
-			<StatusGlyph status={level} size="md" className="mt-[3px]" />
+			<StatusGlyph
+				status={level}
+				size={size}
+				className={
+					size === "sm"
+						? "mt-[calc((1lh-var(--glyph-sm))/2)]"
+						: "mt-[calc((1lh-var(--glyph-md))/2)]"
+				}
+			/>
 			<span className="min-w-0">{children}</span>
 		</span>
 	);

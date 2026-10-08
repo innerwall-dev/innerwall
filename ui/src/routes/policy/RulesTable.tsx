@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import type { Rule } from "@/api/schema";
 import { Eyebrow, verdicts } from "@/components/fleet/status";
+import { Icon } from "@/components/Icon";
+import { SeverityNote, StatusGlyph } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { count } from "@/lib/format";
@@ -44,8 +46,9 @@ export function rowBlocked(row: RowState): boolean {
 }
 
 // A cell's padding: the table's outer columns carry the card's inset.
-const cell = "px-2 py-3 align-top first:pl-4 last:pr-4";
-const head = "px-2 py-2 font-normal first:pl-4 last:pr-4";
+const cell = "px-3 py-2 align-top type-ui first:pl-4 last:pr-4";
+const head =
+	"h-row-header whitespace-nowrap border-b border-default px-3 text-left type-label text-tertiary first:pl-4 last:pr-4";
 
 // RulesCard is the ruleset's inbound rules: who may connect to the
 // scoped workloads, on what, whether each rule is on, and what each
@@ -88,9 +91,9 @@ export function RulesCard({
 	return (
 		<section
 			aria-label="Inbound rules"
-			className="flex flex-col rounded-md border border-default bg-subtle"
+			className="flex shrink-0 flex-col overflow-hidden rounded-lg border border-default bg-app"
 		>
-			<div className="flex items-center gap-3 px-4 py-3">
+			<div className="flex items-center gap-3 px-4 py-2.5">
 				<Eyebrow>
 					Inbound rules — who may connect to scoped workloads, on what
 				</Eyebrow>
@@ -104,7 +107,8 @@ export function RulesCard({
 					}
 					onClick={onAdd}
 				>
-					+ Add rule
+					<Icon name="plus" />
+					Add rule
 				</Button>
 			</div>
 			{notice}
@@ -120,7 +124,7 @@ export function RulesCard({
 					<col className="w-[190px]" />
 				</colgroup>
 				<thead>
-					<tr className="border-b border-default text-[11px] uppercase tracking-[0.05em] text-tertiary">
+					<tr className="bg-subtle">
 						<th className={head}>On</th>
 						<th className={head}>Peers (may connect)</th>
 						<th className={head}>Services (on)</th>
@@ -131,7 +135,7 @@ export function RulesCard({
 				<tbody>
 					{rules.length === 0 && !row ? (
 						<tr>
-							<td colSpan={5} className="px-4 py-5 text-[12px] text-tertiary">
+							<td colSpan={5} className="px-4 py-5 type-ui text-tertiary">
 								No rules yet: nothing in this ruleset admits traffic to its
 								workloads.
 							</td>
@@ -168,9 +172,11 @@ export function RulesCard({
 				/>
 			) : null}
 			{traffic.status === "ready" && traffic.data.truncated ? (
-				<p className="border-t border-default px-4 py-2 text-[12px] text-tertiary">
-					The day's rule rollup was truncated: a rule without a figure may still
-					have admitted traffic.
+				<p className="border-t border-default px-4 py-2.5">
+					<SeverityNote level="alert" size="sm" className="type-caption">
+						The day's rule rollup was truncated: a rule without a figure may
+						still have admitted traffic.
+					</SeverityNote>
 				</p>
 			) : null}
 		</section>
@@ -196,8 +202,11 @@ function RuleRow({
 	const label = r.description || shortRuleId(id);
 	const cue = recency(r);
 	return (
-		<tr aria-label={label} className="border-b border-default last:border-b-0">
-			<td className={cn(cell, "pt-[15px]")}>
+		<tr
+			aria-label={label}
+			className="h-row-dense border-b border-subtle last:border-b-0 hover:bg-hover"
+		>
+			<td className={cn(cell, "pt-[11px]")}>
 				<Switch
 					on={r.enabled !== false}
 					label={`Rule ${label} enabled`}
@@ -206,7 +215,7 @@ function RuleRow({
 				/>
 			</td>
 			<td className={cell}>
-				<div className="flex flex-wrap gap-1.5">
+				<div className="flex flex-wrap gap-1">
 					{r.peers.map((p, i) => (
 						// Peers have no identity of their own; their order is theirs.
 						// biome-ignore lint/suspicious/noArrayIndexKey: see above
@@ -215,7 +224,7 @@ function RuleRow({
 				</div>
 			</td>
 			<td className={cell}>
-				<div className="flex flex-wrap gap-1.5">
+				<div className="flex flex-wrap gap-1">
 					{servicesCell(r, names).map((c, i) => (
 						// biome-ignore lint/suspicious/noArrayIndexKey: entries have no identity of their own
 						<ChipView key={i} chip={c} />
@@ -224,16 +233,20 @@ function RuleRow({
 			</td>
 			<td className={cell}>
 				<div className="flex flex-col gap-0.5">
-					<span className="text-[13px] text-primary">
+					<span className="text-primary">
 						{r.description || <span className="text-tertiary">—</span>}
 					</span>
-					<span className="flex flex-wrap items-baseline gap-x-2 font-mono text-[12px] text-tertiary">
+					<span className="flex flex-wrap items-center gap-x-2 type-mono-sm text-tertiary">
 						<span>{shortRuleId(id)}</span>
 						{cue ? (
-							<span data-testid="recency">
-								<span aria-hidden="true" className="text-health-pending">
-									●
-								</span>{" "}
+							<span
+								data-testid="recency"
+								className="inline-flex items-center gap-1.5"
+							>
+								<span
+									aria-hidden="true"
+									className="size-1.5 rounded-full bg-(--text-tertiary)"
+								/>
 								{cue}
 							</span>
 						) : null}
@@ -241,7 +254,7 @@ function RuleRow({
 							type="button"
 							onClick={onEdit}
 							disabled={locked}
-							className="cursor-pointer font-sans text-[11px] text-link hover:underline disabled:cursor-default disabled:opacity-50"
+							className="cursor-pointer type-caption text-link hover:underline disabled:cursor-default disabled:opacity-disabled"
 							aria-label={`Edit ${label}`}
 						>
 							Edit
@@ -269,18 +282,18 @@ function SimulationCell({
 }) {
 	if (r.enabled === false) {
 		return (
-			<span className="text-[12px] text-tertiary">
+			<span className="type-caption text-tertiary">
 				disabled — admits nothing while off
 			</span>
 		);
 	}
 	if (traffic.status === "loading") {
-		return <span className="font-mono text-[12px] text-tertiary">…</span>;
+		return <span className="type-mono-sm text-tertiary">…</span>;
 	}
 	if (traffic.status === "error") {
 		return (
 			<span
-				className="text-[12px] text-tertiary"
+				className="type-caption text-tertiary"
 				title={traffic.error.problem.detail ?? traffic.error.problem.title}
 			>
 				—
@@ -290,18 +303,23 @@ function SimulationCell({
 	const t = traffic.data.byRule.get(r.id ?? "");
 	if (!t) {
 		return (
-			<span className="text-[12px] text-tertiary">
+			<span className="type-caption text-tertiary">
 				{traffic.data.truncated ? "—" : "no matched traffic"}
 			</span>
 		);
 	}
 	return (
 		<span className="flex flex-col items-end gap-0.5">
-			<span className={cn("font-mono text-[13px]", verdicts.allowed.text)}>
-				<span aria-hidden="true">{verdicts.allowed.glyph}</span>{" "}
+			<span
+				className={cn(
+					"inline-flex items-center gap-1.5 type-mono-ui",
+					verdicts.allowed.text,
+				)}
+			>
+				<StatusGlyph status={verdicts.allowed.status} />
 				{count(t.connections)} allowed
 			</span>
-			<span className="text-[12px] text-tertiary">
+			<span className="type-caption text-tertiary">
 				matched on {count(t.workloads)}
 				{t.atLeast ? "+" : ""}{" "}
 				{t.workloads === 1 && !t.atLeast ? "workload" : "workloads"}
@@ -331,9 +349,9 @@ function EditRow({
 				aria-label={
 					id ? `Editing ${d.base?.description || shortRuleId(id)}` : "New rule"
 				}
-				className="bg-hover"
+				className="border-b border-subtle bg-hover last:border-b-0"
 			>
-				<td className={cn(cell, "pt-[15px]")}>
+				<td className={cn(cell, "pt-[13px]")}>
 					<Switch
 						on={d.enabled}
 						label="This rule enabled"
@@ -342,7 +360,7 @@ function EditRow({
 				</td>
 				<td className={cell}>
 					<div className="flex flex-col gap-1.5">
-						<span className="flex flex-wrap gap-1.5">
+						<span className="flex flex-wrap gap-1">
 							{d.peers.map((p) => (
 								<ChipView
 									key={p.key}
@@ -379,7 +397,7 @@ function EditRow({
 				</td>
 				<td className={cell}>
 					<div className="flex flex-col gap-1.5">
-						<span className="flex flex-wrap gap-1.5">
+						<span className="flex flex-wrap gap-1">
 							{d.refs.map((s) => (
 								<ChipView
 									key={s.key}
@@ -442,16 +460,19 @@ function EditRow({
 							placeholder="What this rule is for"
 							value={d.description}
 							onChange={(ev) => onDraft({ ...d, description: ev.target.value })}
-							className="rounded-[3px] border border-strong bg-raised px-2 py-1 text-[13px] text-primary placeholder:text-tertiary focus:outline-none focus-visible:border-selection-fg"
+							className="h-control-sm rounded-md border border-strong bg-app px-2.5 type-ui text-primary placeholder:text-tertiary"
 						/>
 						<FindingLines findings={f.columns.description} />
-						<span className="font-mono text-[12px] text-tertiary">
+						<span className="type-mono-sm text-tertiary">
 							{id ? shortRuleId(id) : "new rule"}
 						</span>
 					</div>
 				</td>
 				<td
-					className={cn(cell, "text-right font-mono text-[12px] text-tertiary")}
+					className={cn(
+						cell,
+						"pt-[13px] text-right type-mono-sm text-tertiary",
+					)}
 					data-testid="simulation"
 				>
 					<div>—</div>
@@ -459,8 +480,8 @@ function EditRow({
 				</td>
 			</tr>
 			{row.findings.row.length > 0 ? (
-				<tr className="bg-hover">
-					<td colSpan={5} className="px-4 pb-3">
+				<tr className="border-b border-subtle bg-hover last:border-b-0">
+					<td colSpan={5} className="px-4 py-2">
 						<FindingLines findings={row.findings.row} />
 					</td>
 				</tr>
@@ -492,15 +513,11 @@ function Footer({
 	const blocked = rowBlocked(row);
 	return (
 		<div className="flex flex-wrap items-center gap-3 border-t border-default px-4 py-3">
-			<span
-				className="text-[12.5px] text-status-critical-fg"
-				data-testid="row-errors"
-			>
+			<span data-testid="row-errors">
 				{errors > 0 ? (
-					<>
-						<span aria-hidden="true">✕</span> {errors}{" "}
-						{errors === 1 ? "error blocks" : "errors block"} saving
-					</>
+					<SeverityNote level="error" className="type-ui-strong">
+						{errors} {errors === 1 ? "error blocks" : "errors block"} saving
+					</SeverityNote>
 				) : null}
 			</span>
 			<div className="ml-auto flex items-center gap-2">

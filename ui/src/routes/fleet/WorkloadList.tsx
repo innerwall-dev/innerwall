@@ -17,22 +17,23 @@ import {
 	SyncLabel,
 	syncStates,
 } from "@/components/fleet/status";
+import { Icon } from "@/components/Icon";
 import { LoadingRow, ProblemNotice } from "@/components/Problem";
+import { SeverityNote } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
 import { labelPairs } from "@/lib/format";
 import { asProblem, useResource } from "@/lib/resource";
 import { cn } from "@/lib/utils";
 import { useShell } from "@/shell/Shell";
-import {
-	credential,
-	credentialTone,
-	lastSeen,
-	syncNote,
-	version,
-} from "./describe";
+import { credential, lastSeen, syncNote, version } from "./describe";
 import { ModeChangeDialog } from "./ModeChangeDialog";
 
 const states: SyncState[] = ["synced", "pending", "degraded", "offline"];
+
+// th is the table's header cell: label type in sentence case on the
+// subtle band, held at the top while the rows scroll under it.
+const th =
+	"h-row-header whitespace-nowrap border-b border-default bg-subtle px-3 text-left type-label text-tertiary";
 
 // parseRequirement accepts one label requirement in the domain's
 // selector form, `key=value`; the surface is the authority on anything
@@ -137,8 +138,8 @@ export function WorkloadList({
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
-			<div className="flex shrink-0 items-center gap-6 border-b border-default px-6 pt-3.5 pb-3">
-				<fieldset className="m-0 flex min-w-0 gap-4 border-0 p-0 text-[12px]">
+			<div className="flex shrink-0 items-center gap-2 border-b border-default px-6 py-3">
+				<fieldset className="m-0 flex min-w-0 gap-1 border-0 p-0">
 					<legend className="sr-only">Sync state</legend>
 					<FilterChip
 						on={syncState === null}
@@ -155,12 +156,11 @@ export function WorkloadList({
 						/>
 					))}
 				</fieldset>
-				<div className="ml-auto flex items-center gap-1.5">
+				<div className="ml-auto flex items-center gap-2">
 					<LabelFilter labels={labels} onChange={setLabels} />
 					<Button
 						variant="secondary"
 						size="sm"
-						className="rounded-sm"
 						disabled={selection.length === 0}
 						onClick={() => setChanging(true)}
 					>
@@ -168,18 +168,20 @@ export function WorkloadList({
 					</Button>
 				</div>
 			</div>
-			<div className="min-h-0 flex-1 overflow-auto px-6 pb-6">
+			<div className="min-h-0 flex-1 overflow-auto pb-6">
 				{resource.status === "error" ? (
-					<ProblemNotice
-						what="workloads"
-						error={resource.error}
-						onRetry={reload}
-					/>
+					<div className="px-6">
+						<ProblemNotice
+							what="workloads"
+							error={resource.error}
+							onRetry={reload}
+						/>
+					</div>
 				) : (
-					<table className="w-full border-collapse text-[12.5px]">
-						<thead>
-							<tr className="sticky top-0 bg-app text-left text-[11px] uppercase tracking-[0.05em] text-tertiary">
-								<th className="w-6 pt-2.5 pr-2 pb-2 font-medium">
+					<table className="w-full border-separate border-spacing-0">
+						<thead className="sticky top-0 z-10">
+							<tr>
+								<th className={cn(th, "w-px pr-1 pl-6")}>
 									<Checkbox
 										label="Select all shown"
 										checked={allSelected}
@@ -193,17 +195,13 @@ export function WorkloadList({
 										}
 									/>
 								</th>
-								<th className="px-2 pt-2.5 pb-2 font-medium">Hostname</th>
-								<th className="px-2 pt-2.5 pb-2 font-medium">Labels</th>
-								<th className="px-2 pt-2.5 pb-2 font-medium">Mode</th>
-								<th className="px-2 pt-2.5 pb-2 font-medium">Sync</th>
-								<th className="px-2 pt-2.5 pb-2 text-right font-medium">
-									Applied
-								</th>
-								<th className="px-2 pt-2.5 pb-2 font-medium">Credential</th>
-								<th className="pt-2.5 pb-2 pl-2 text-right font-medium">
-									Last seen
-								</th>
+								<th className={th}>Hostname</th>
+								<th className={th}>Labels</th>
+								<th className={th}>Mode</th>
+								<th className={th}>Sync</th>
+								<th className={cn(th, "text-right")}>Applied</th>
+								<th className={th}>Credential</th>
+								<th className={cn(th, "pr-6 text-right")}>Last seen</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -219,9 +217,13 @@ export function WorkloadList({
 						</tbody>
 					</table>
 				)}
-				{resource.status === "loading" ? <LoadingRow what="workloads" /> : null}
+				{resource.status === "loading" ? (
+					<div className="px-6">
+						<LoadingRow what="workloads" />
+					</div>
+				) : null}
 				{resource.status === "ready" && rows.length === 0 ? (
-					<div className="flex flex-col items-start gap-2 py-6 text-[12px] text-tertiary">
+					<div className="flex flex-col items-start gap-2 px-6 py-6 type-ui text-tertiary">
 						<span>No workloads match these filters.</span>
 						<button
 							type="button"
@@ -236,7 +238,7 @@ export function WorkloadList({
 					</div>
 				) : null}
 				{resource.status === "ready" && rows.length > 0 ? (
-					<div className="flex items-center gap-3 py-3 text-[12px] text-tertiary">
+					<div className="flex items-center gap-3 px-6 py-3 type-caption text-tertiary">
 						<span>
 							Showing {rows.length} · sorted by sync state, then last seen
 						</span>
@@ -244,7 +246,6 @@ export function WorkloadList({
 							<Button
 								variant="secondary"
 								size="sm"
-								className="rounded-sm"
 								disabled={more.loading}
 								onClick={loadMore}
 							>
@@ -252,9 +253,9 @@ export function WorkloadList({
 							</Button>
 						) : null}
 						{more.error ? (
-							<span role="alert" className="text-status-critical-fg">
+							<SeverityNote level="error" role="alert">
 								{more.error}
-							</span>
+							</SeverityNote>
 						) : null}
 					</div>
 				) : null}
@@ -293,7 +294,7 @@ function Row({
 	const labels = labelPairs(w.labels);
 	const cred = credential(w);
 	const note = syncNote(w);
-	const cell = "border-t border-default p-2";
+	const cell = "h-row-dense border-b border-subtle px-3 py-1.5 type-ui";
 	return (
 		// The whole row opens the workload for a pointer; the hostname link
 		// is the keyboard's way in, and the checkbox selects without opening.
@@ -303,28 +304,31 @@ function Row({
 				onOpen();
 			}}
 			className={cn(
-				"cursor-pointer hover:bg-selection-bg",
-				selected && "bg-selection-bg",
+				"cursor-pointer",
+				selected ? "bg-selection-bg" : "hover:bg-hover",
 			)}
 		>
-			<td className={cn(cell, "pl-0")}>
+			<td className={cn(cell, "pr-1 pl-6")}>
 				<Checkbox
 					label={`Select ${w.hostname}`}
 					checked={selected}
 					onChange={onToggle}
 				/>
 			</td>
-			<td className={cn(cell, "font-mono text-primary")}>
-				<Link to={`/workloads/${w.id}`} className="hover:underline">
+			<td className={cn(cell, "whitespace-nowrap")}>
+				<Link
+					to={`/workloads/${w.id}`}
+					className="type-mono-ui font-medium text-primary hover:underline"
+				>
 					{w.hostname}
 				</Link>
 			</td>
 			<td className={cell}>
 				<div className="flex flex-wrap gap-1">
 					{labels.length === 0 ? (
-						<span className="text-[11px] text-status-warn-fg">
-							▲ no labels — matches no scope
-						</span>
+						<SeverityNote level="alert">
+							no labels — matches no scope
+						</SeverityNote>
 					) : (
 						labels.map(([k, v]) => <LabelChip key={k} k={k} v={v} />)
 					)}
@@ -336,18 +340,27 @@ function Row({
 			<td className={cn(cell, "whitespace-nowrap")}>
 				<SyncLabel state={w.sync.state} />
 				{note ? (
-					<span className="ml-1.5 text-[11px] text-tertiary">{note}</span>
+					<span className="ml-2 type-caption text-tertiary">{note}</span>
 				) : null}
 			</td>
-			<td className={cn(cell, "text-right font-mono")}>
+			<td className={cn(cell, "text-right type-mono-ui")}>
 				{version(w.sync.applied_version)}
 			</td>
-			<td
-				className={cn(cell, "font-mono text-[12px]", credentialTone[cred.tone])}
-			>
-				{cred.text}
+			<td className={cn(cell, "whitespace-nowrap")}>
+				{cred.tone === "ok" ? (
+					<span className="text-secondary">{cred.text}</span>
+				) : (
+					<SeverityNote level={cred.tone === "warn" ? "alert" : "error"}>
+						{cred.text}
+					</SeverityNote>
+				)}
 			</td>
-			<td className={cn(cell, "pr-0 text-right font-mono text-secondary")}>
+			<td
+				className={cn(
+					cell,
+					"whitespace-nowrap pr-6 text-right type-mono-ui text-secondary",
+				)}
+			>
 				{lastSeen(w)}
 			</td>
 		</tr>
@@ -376,7 +389,7 @@ function Checkbox({
 			aria-label={label}
 			checked={checked}
 			onChange={onChange}
-			className="cursor-pointer align-middle"
+			className="size-3.5 cursor-pointer align-middle"
 		/>
 	);
 }
@@ -418,7 +431,7 @@ function LabelFilter({
 	}
 
 	return (
-		<fieldset className="m-0 flex min-w-0 items-center gap-1.5 border-0 p-0">
+		<fieldset className="m-0 flex min-w-0 items-center gap-1 border-0 p-0">
 			<legend className="sr-only">Label filter</legend>
 			{labels.map((l) => {
 				const [k, ...v] = l.split("=");
@@ -429,10 +442,10 @@ function LabelFilter({
 						title={`Remove ${l}`}
 						aria-label={`Remove ${l}`}
 						onClick={() => onChange(labels.filter((x) => x !== l))}
-						className="inline-flex cursor-pointer items-center gap-1"
+						className="inline-flex h-control-sm cursor-pointer items-center gap-1 rounded-md px-1 hover:bg-hover"
 					>
 						<LabelChip k={k ?? ""} v={v.join("=")} />
-						<span className="font-mono text-[11px] text-tertiary">×</span>
+						<Icon name="x" className="size-3.5" />
 					</button>
 				);
 			})}
@@ -451,16 +464,17 @@ function LabelFilter({
 						}}
 						onKeyDown={key}
 						onBlur={() => add()}
-						className="w-[150px] rounded-sm border border-dashed border-strong bg-transparent px-[9px] py-1 font-mono text-[12px] text-primary placeholder:text-tertiary focus:outline-none aria-invalid:border-status-critical-fg"
+						className="h-control-sm w-[150px] rounded-md border border-strong bg-app px-2.5 type-mono-sm text-primary outline-none placeholder:text-tertiary focus-visible:focus-ring aria-invalid:border-status-critical-fg"
 					/>
 				</form>
 			) : (
 				<button
 					type="button"
 					onClick={() => setEditing(true)}
-					className="cursor-pointer rounded-sm border border-dashed border-strong px-[9px] py-1 text-[12px] text-tertiary hover:text-primary"
+					className="inline-flex h-control-sm cursor-pointer items-center gap-1.5 rounded-md border border-dashed border-strong px-2.5 type-caption text-secondary hover:bg-hover hover:text-primary"
 				>
-					+ label filter
+					<Icon name="plus" className="size-3.5" />
+					label filter
 				</button>
 			)}
 		</fieldset>

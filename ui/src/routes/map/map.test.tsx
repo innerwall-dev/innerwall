@@ -577,7 +577,7 @@ describe("flow map", () => {
 		const { calls } = surface();
 		const user = userEvent.setup();
 		await openMap();
-		await user.click(screen.getByRole("button", { name: "+ filter" }));
+		await user.click(screen.getByRole("button", { name: "filter" }));
 		await user.type(screen.getByLabelText("Label requirement"), "bogus{Enter}");
 		expect(
 			screen.getByText("A label is written key=value."),

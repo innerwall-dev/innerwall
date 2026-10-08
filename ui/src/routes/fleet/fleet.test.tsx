@@ -134,7 +134,7 @@ describe("fleet workloads", () => {
 		expect(a.getByText("v89 rendered 42s ago")).toBeInTheDocument();
 
 		const l = within(rowOf("legacy-vm-0117"));
-		expect(l.getByText("▲ no labels — matches no scope")).toBeInTheDocument();
+		expect(l.getByText("no labels — matches no scope")).toBeInTheDocument();
 		expect(l.getByText("no stream for 3d")).toBeInTheDocument();
 		expect(l.getByText("expired 2d ago")).toBeInTheDocument();
 
@@ -175,12 +175,12 @@ describe("fleet workloads", () => {
 			"true",
 		);
 
-		await user.click(screen.getByRole("button", { name: "+ label filter" }));
+		await user.click(screen.getByRole("button", { name: "label filter" }));
 		await user.type(
 			screen.getByLabelText("Label requirement"),
 			"app=checkout{Enter}",
 		);
-		await user.click(screen.getByRole("button", { name: "+ label filter" }));
+		await user.click(screen.getByRole("button", { name: "label filter" }));
 		await user.type(screen.getByLabelText("Label requirement"), "tier{Enter}");
 		expect(screen.getByLabelText("Label requirement")).toHaveAttribute(
 			"aria-invalid",

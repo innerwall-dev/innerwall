@@ -3,6 +3,7 @@ import { getRollup, listFlows } from "@/api/fleet";
 import type { FlowsPage, RenderedPolicy, Verdict } from "@/api/schema";
 import { FilterChip, VerdictPill, verdicts } from "@/components/fleet/status";
 import { LoadingRow, ProblemNotice } from "@/components/Problem";
+import { SeverityNote } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
 import { count, since } from "@/lib/format";
 import { asProblem, useResource } from "@/lib/resource";
@@ -80,7 +81,7 @@ export function FlowsTab({
 
 	return (
 		<div>
-			<fieldset className="m-0 mb-3 flex min-w-0 gap-1.5 border-0 p-0">
+			<fieldset className="m-0 mb-4 flex min-w-0 items-center gap-2 border-0 p-0">
 				<legend className="sr-only">Decision</legend>
 				<FilterChip
 					on={verdict === null}
@@ -102,91 +103,94 @@ export function FlowsTab({
 			{resource.status === "error" ? (
 				<ProblemNotice what="flows" error={resource.error} onRetry={reload} />
 			) : (
-				<table className="w-full border-collapse text-[12.5px]">
-					<thead>
-						<tr className="text-left text-[11px] uppercase tracking-[0.05em] text-tertiary">
-							<th className="py-1.5 pr-2 font-medium">Decision</th>
-							<th className="px-2 py-1.5 font-medium">Source</th>
-							<th className="px-2 py-1.5 font-medium">Port</th>
-							<th className="px-2 py-1.5 font-medium">Process</th>
-							<th className="px-2 py-1.5 font-medium">Matched rule</th>
-							<th className="px-2 py-1.5 text-right font-medium">Conns</th>
-							<th className="py-1.5 pl-2 text-right font-medium">Last seen</th>
-						</tr>
-					</thead>
-					<tbody>
-						{rows.map((f) => {
-							const rule = matchedRule(f, rules);
-							const cell = "border-t border-default p-2";
-							return (
-								<tr
-									key={f.id}
-									title={`window ${f.window_start} – ${f.window_end}`}
-								>
-									<td className={cn(cell, "pl-0")}>
-										<VerdictPill verdict={f.verdict} />
-									</td>
-									<td className={cell}>
-										<div className="flex items-center gap-1.5">
-											<span className="font-mono">{f.src_address}</span>
-											<span className="text-[11px] text-tertiary">
-												{peerNote(f.peer)}
-											</span>
-										</div>
-									</td>
-									<td className={cn(cell, "font-mono")}>
-										{f.service.protocol === "icmp"
-											? "icmp"
-											: `${f.service.protocol}/${f.service.port}`}
-									</td>
-									<td className={cn(cell, "font-mono text-secondary")}>
-										{f.process_name || "—"}
-									</td>
-									<td className={cn(cell, "text-secondary")}>
-										{rule.text}
-										{rule.id ? (
-											<span
-												className={cn(
-													"font-mono text-[11px] text-tertiary",
-													rule.text && "ml-1.5",
-												)}
-											>
-												{rule.id}
-											</span>
-										) : null}
-									</td>
-									<td className={cn(cell, "text-right font-mono")}>
-										{count(f.connection_count)}
-									</td>
-									<td
-										className={cn(
-											cell,
-											"pr-0 text-right font-mono text-secondary",
-										)}
+				<div className="overflow-hidden rounded-lg border border-default">
+					<table className="w-full border-separate border-spacing-0">
+						<thead>
+							<tr className="h-row-header bg-subtle">
+								<th className={th}>Decision</th>
+								<th className={th}>Source</th>
+								<th className={th}>Port</th>
+								<th className={th}>Process</th>
+								<th className={th}>Matched rule</th>
+								<th className={cn(th, "text-right")}>Conns</th>
+								<th className={cn(th, "text-right")}>Last seen</th>
+							</tr>
+						</thead>
+						<tbody>
+							{rows.map((f) => {
+								const rule = matchedRule(f, rules);
+								return (
+									<tr
+										key={f.id}
+										title={`window ${f.window_start} – ${f.window_end}`}
+										className="h-row-dense hover:bg-hover [&:last-child>td]:border-b-0"
 									>
-										{since(f.last_seen)}
-									</td>
-								</tr>
-							);
-						})}
-					</tbody>
-				</table>
+										<td className={td}>
+											<VerdictPill verdict={f.verdict} />
+										</td>
+										<td className={cn(td, "type-ui")}>
+											<div className="flex flex-wrap items-baseline gap-x-2">
+												<span className="type-mono-ui text-primary">
+													{f.src_address}
+												</span>
+												<span className="type-caption text-tertiary">
+													{peerNote(f.peer)}
+												</span>
+											</div>
+										</td>
+										<td className={cn(td, "type-mono-ui")}>
+											{f.service.protocol === "icmp"
+												? "icmp"
+												: `${f.service.protocol}/${f.service.port}`}
+										</td>
+										<td className={cn(td, "type-mono-ui text-secondary")}>
+											{f.process_name || "—"}
+										</td>
+										<td className={cn(td, "type-ui text-secondary")}>
+											{rule.text}
+											{rule.id ? (
+												<span
+													className={cn(
+														"type-mono-xs whitespace-nowrap text-tertiary",
+														rule.text && "ml-2",
+													)}
+												>
+													{rule.id}
+												</span>
+											) : null}
+										</td>
+										<td className={cn(td, "text-right type-mono-ui")}>
+											{count(f.connection_count)}
+										</td>
+										<td
+											className={cn(
+												td,
+												"text-right type-mono-ui text-secondary",
+											)}
+										>
+											{since(f.last_seen)}
+										</td>
+									</tr>
+								);
+							})}
+						</tbody>
+					</table>
+				</div>
 			)}
 			{resource.status === "loading" ? <LoadingRow what="flows" /> : null}
 			{resource.status === "ready" && rows.length === 0 ? (
-				<p className="py-6 text-[12px] text-tertiary">
+				<p className="py-6 type-ui text-tertiary">
 					{verdict
 						? `No ${verdicts[verdict].label} flows in the last 14 days.`
 						: "No inbound flows recorded in the last 14 days."}
 				</p>
 			) : null}
 			{cursor || more.error ? (
-				<div className="flex items-center gap-3 py-3 text-[12px]">
+				<div className="flex items-center gap-3 pt-4">
 					{cursor ? (
 						<Button
 							variant="secondary"
 							size="sm"
-							className="rounded-sm"
 							disabled={more.loading}
 							onClick={loadMore}
 						>
@@ -194,12 +198,17 @@ export function FlowsTab({
 						</Button>
 					) : null}
 					{more.error ? (
-						<span role="alert" className="text-status-critical-fg">
+						<SeverityNote level="error" role="alert" className="type-ui">
 							{more.error}
-						</span>
+						</SeverityNote>
 					) : null}
 				</div>
 			) : null}
 		</div>
 	);
 }
+
+// The table's header and body cells.
+const th =
+	"border-b border-default px-3 text-left type-label whitespace-nowrap text-tertiary";
+const td = "border-b border-subtle px-3 py-2 text-primary";

@@ -3,6 +3,8 @@ import { Navigate, useLocation, useNavigate } from "react-router";
 import { ProblemError } from "@/api/client";
 import { ProblemType } from "@/api/schema";
 import { useSession } from "@/auth/SessionProvider";
+import { Icon } from "@/components/Icon";
+import { SeverityNote } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -83,17 +85,17 @@ export function Login() {
 
 	return (
 		<div className="flex min-h-dvh items-center justify-center bg-app px-6 py-12 text-primary">
-			<div className="w-full max-w-[380px] rounded-xl border border-strong bg-raised p-7 ">
+			<div className="w-full max-w-[380px] rounded-xl border border-default bg-raised p-6">
 				<div className="flex items-center gap-2.5">
 					<Lockup />
-					<span className="ml-auto font-mono text-[11px] text-tertiary">
+					<span className="ml-auto type-mono-xs text-tertiary">
 						operator console
 					</span>
 				</div>
 				{noPassword ? (
 					<FreshInstall onRetry={() => setProblem(null)} />
 				) : (
-					<form onSubmit={submit} className="mt-7" noValidate>
+					<form onSubmit={submit} className="mt-6" noValidate>
 						<Label htmlFor={passwordId}>Operator password</Label>
 						<Input
 							id={passwordId}
@@ -109,15 +111,10 @@ export function Login() {
 							className="mt-2 font-mono"
 						/>
 						{problem ? (
-							<p
-								id={problemId}
-								role="alert"
-								className="mt-2.5 flex items-start gap-2 text-[12px] text-status-critical-fg"
-							>
-								<span className="font-mono" aria-hidden="true">
-									✕
-								</span>
-								<span>{describe(problem, retryIn)}</span>
+							<p id={problemId} role="alert" className="mt-2.5">
+								<SeverityNote level="error" size="sm" className="type-caption">
+									{describe(problem, retryIn)}
+								</SeverityNote>
 							</p>
 						) : null}
 						<Button
@@ -165,20 +162,25 @@ export function describe(
 function FreshInstall({ onRetry }: { onRetry: () => void }) {
 	return (
 		<div className="mt-6" data-testid="fresh-install">
-			<h1 className="text-[15px] font-semibold">
-				No operator password has been set
-			</h1>
-			<p className="mt-2 text-[13px] leading-[1.6] text-secondary">
-				This control plane is freshly installed. The password is set from the
-				command line on the control-plane host, and nowhere else:
-			</p>
-			<pre className="mt-3 overflow-x-auto rounded-md border border-strong bg-hover px-3 py-2.5 font-mono text-[12px] text-primary">
-				innerwall operator set-password
-			</pre>
-			<p className="mt-3 text-[12px] leading-[1.6] text-tertiary">
-				The command also takes the display name shown in this console. Once it
-				has run, sign in here.
-			</p>
+			<div className="flex gap-2.5 rounded-lg border border-default bg-subtle px-4 py-3">
+				<Icon name="info" className="mt-0.5" />
+				<div className="min-w-0 flex-1">
+					<h1 className="type-body-strong text-primary">
+						No operator password has been set
+					</h1>
+					<p className="mt-1.5 type-body text-secondary">
+						This control plane is freshly installed. The password is set from
+						the command line on the control-plane host, and nowhere else:
+					</p>
+					<pre className="mt-3 overflow-x-auto rounded-md border border-strong bg-app px-3 py-2 type-mono-sm text-primary">
+						innerwall operator set-password
+					</pre>
+					<p className="mt-3 type-caption text-tertiary">
+						The command also takes the display name shown in this console. Once
+						it has run, sign in here.
+					</p>
+				</div>
+			</div>
 			<Button
 				variant="secondary"
 				size="block"

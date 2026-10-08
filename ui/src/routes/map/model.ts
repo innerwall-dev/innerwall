@@ -410,37 +410,40 @@ export function defaultKey(workloads: Workload[], keys: string[]): string {
 	return ranked[0]?.k ?? keys[0] ?? "app";
 }
 
-// Stroke widths, from the tokens' edge geometry: observed, allowed, and
-// would-block edges are 1.5px and blocked edges 2px; a selected edge is
-// --viz-edge-selected-width. Volume widens an edge within its decision's
-// band on a log scale, from 1.5px for the quietest edge on the map to
-// 2px for the busiest, so a blocked edge is never thinner than the
-// tokens draw it and no unselected edge reaches the selected width.
-export const baseWidth = 1.5;
-export const blockedWidth = 2;
-
-export function strokeWidth(
-	e: Pick<MapEdge, "decision" | "connections">,
-	min: number,
-	max: number,
-): number {
-	if (e.decision === "blocked") return blockedWidth;
-	if (max <= min) return baseWidth;
-	const t =
-		(Math.log(Math.max(e.connections, 1)) - Math.log(Math.max(min, 1))) /
-		(Math.log(Math.max(max, 1)) - Math.log(Math.max(min, 1)));
-	const clamped = Math.min(1, Math.max(0, t));
-	return baseWidth + (blockedWidth - baseWidth) * clamped;
+// Edge width encodes volume (tokens.css, edge-width-*): log-scaled
+// across the edges in view, from --edge-width-min for none to
+// --edge-width-max for the busiest edge on the map. Decision rides on
+// color and dash, and selection on dimming everything else, so width
+// carries volume alone.
+export function volumeScale(connections: number, max: number): number {
+	if (max <= 0) return 0;
+	const t = Math.log1p(Math.max(connections, 0)) / Math.log1p(max);
+	return Math.min(1, Math.max(0, t));
 }
 
-// Dash geometry travels with decision (tokens.css): observed "2 4",
-// would-block "8 4", allowed and blocked solid. Unmanaged nodes are
-// dashed "5 4", unlabeled ones "2 3".
-export const edgeDash: Record<Verdict, string | undefined> = {
-	observed: "2 4",
-	allowed: undefined,
-	would_block: "8 4",
-	blocked: undefined,
+export function strokeWidth(
+	e: Pick<MapEdge, "connections">,
+	max: number,
+): string {
+	const t = volumeScale(e.connections, max);
+	return `calc(var(--edge-width-min) + (var(--edge-width-max) - var(--edge-width-min)) * ${t.toFixed(4)})`;
+}
+
+// Dash geometry travels with decision (tokens.css, edge-dash-*):
+// allowed solid, would-block "6 4", blocked "8 3 2 3", observed "1 4"
+// drawn with round caps.
+export const edgeDash: Record<Verdict, string> = {
+	observed: "var(--edge-dash-observed)",
+	allowed: "var(--edge-dash-allowed)",
+	would_block: "var(--edge-dash-would-block)",
+	blocked: "var(--edge-dash-blocked)",
+};
+
+export const edgeCap: Record<Verdict, "round" | "butt"> = {
+	observed: "round",
+	allowed: "butt",
+	would_block: "butt",
+	blocked: "butt",
 };
 
 export const edgeColor: Record<Verdict, string> = {
@@ -478,10 +481,10 @@ export function resolveSelection(model: MapModel, s: Selection): Selection {
 	return model.nodes.some((n) => n.id === s.id) ? s : null;
 }
 
-// Emphasis is how selection draws an edge. An edge selection widens the
-// selected edge and dims the observed edges around it, as the tokens
-// say; a node selection scopes the map to the node's own edges and dims
-// every other one.
+// Emphasis is how selection draws an edge: everything not in the
+// current selection fades to --opacity-dimmed. An edge selection keeps
+// the selected edge and its two ends; a node selection scopes the map
+// to the node's own edges and neighbours.
 export function edgeEmphasis(
 	e: MapEdge,
 	s: Selection,
@@ -489,7 +492,7 @@ export function edgeEmphasis(
 	if (!s) return { selected: false, dimmed: false };
 	if (s.kind === "edge") {
 		const selected = s.id === e.id;
-		return { selected, dimmed: !selected && e.decision === "observed" };
+		return { selected, dimmed: !selected };
 	}
 	const touches = e.source === s.id || e.target === s.id;
 	return { selected: false, dimmed: !touches };
@@ -500,6 +503,10 @@ export function nodeDimmed(
 	nodeId: string,
 	s: Selection,
 ): boolean {
+	if (s?.kind === "edge") {
+		const e = model.edges.find((x) => x.id === s.id);
+		return e !== undefined && e.source !== nodeId && e.target !== nodeId;
+	}
 	if (s?.kind !== "node" || s.id === nodeId) return false;
 	return !model.edges.some(
 		(e) =>

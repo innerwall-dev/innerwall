@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { Icon } from "@/components/Icon";
 
 // The time ranges the rollup screens offer. Stored windows are what a
 // rollup counts, so a range covers the windows that lie inside it and its
@@ -45,8 +45,10 @@ export function extent(from: string, to: string): string {
 	return `windows ${at(a)} → ${at(b)} UTC`;
 }
 
-const chip =
-	"rounded-sm border border-strong px-[9px] py-1 font-mono text-[12px] text-secondary";
+// The range picker is a toolbar control: control-sm tall on the default
+// hairline, the clock icon, the word, the value, and the caret.
+const control =
+	"relative flex h-control-sm items-center gap-1.5 rounded-md border border-default bg-app pr-2 pl-2 type-caption text-secondary hover:bg-hover has-[:focus-visible]:focus-ring";
 
 // RangeControl picks the range and says what it covers. A rollup counts
 // whole stored windows inside the range, so the extent shown is the
@@ -69,13 +71,14 @@ export function RangeControl({
 }) {
 	return (
 		<div className="flex items-center gap-2">
-			<label className={cn(chip, "flex items-center gap-1")}>
-				<span className="font-sans text-secondary">last</span>
+			<label className={control}>
+				<Icon name="clock" />
+				<span>last</span>
 				<select
 					aria-label="Time range"
 					value={range}
 					onChange={(ev) => onChange(ev.target.value as RangeKey)}
-					className="cursor-pointer appearance-none bg-transparent font-mono text-[12px] text-secondary focus:outline-none"
+					className="cursor-pointer appearance-none bg-transparent pr-5 type-mono-sm text-primary focus:outline-none"
 				>
 					{Object.keys(ranges).map((r) => (
 						<option key={r} value={r}>
@@ -83,9 +86,13 @@ export function RangeControl({
 						</option>
 					))}
 				</select>
+				<Icon
+					name="chevron-down"
+					className="pointer-events-none absolute right-2"
+				/>
 			</label>
 			<span
-				className="font-mono text-[11px] text-tertiary"
+				className="type-mono-xs text-tertiary"
 				data-testid={testId}
 				title={`Flows are stored in reporting windows; ${what} count the windows that lie wholly inside the range.`}
 			>

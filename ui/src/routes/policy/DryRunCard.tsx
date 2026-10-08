@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import type { DryRunResult, Finding } from "@/api/schema";
 import { Eyebrow, modes } from "@/components/fleet/status";
+import { SeverityNote, StatusGlyph } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
 import { count } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -21,13 +22,15 @@ export type DryRunState =
 			label: (resolvedId: string) => string;
 	  };
 
+// The diff marks are typographic: a change is not a status, so the
+// marks and words stay gray.
 const kinds: Record<
 	DeltaLine["kind"],
 	{ glyph: string; word: string; cls: string }
 > = {
-	added: { glyph: "+", word: "gains", cls: "text-flow-allowed" },
-	removed: { glyph: "−", word: "loses", cls: "text-status-critical-fg" },
-	changed: { glyph: "~", word: "changes", cls: "text-health-pending" },
+	added: { glyph: "+", word: "gains", cls: "text-secondary" },
+	removed: { glyph: "−", word: "loses", cls: "text-secondary" },
+	changed: { glyph: "~", word: "changes", cls: "text-secondary" },
 };
 
 // DryRunCard is the render-dryrun endpoint's reading: what saving the
@@ -46,7 +49,7 @@ export function DryRunCard({
 	return (
 		<section
 			aria-label="Dry run"
-			className="flex flex-col gap-3 rounded-md border border-default bg-subtle px-4 py-3.5"
+			className="flex flex-col gap-3 rounded-lg border border-default bg-app p-4"
 		>
 			<div className="flex items-center gap-3">
 				<Eyebrow>Dry run — what saving these changes would change</Eyebrow>
@@ -62,27 +65,27 @@ export function DryRunCard({
 				) : null}
 			</div>
 			{state === null ? (
-				<p className="text-[12px] text-tertiary">
+				<p className="type-caption text-tertiary">
 					Render the current set with your unsaved changes and see each
 					workload's added, removed, and changed rules. It reads; it never
 					saves, and saving never waits for it.
 				</p>
 			) : state.status === "running" ? (
-				<p className="font-mono text-[12px] text-tertiary" aria-busy="true">
+				<p className="type-mono-sm text-tertiary" aria-busy="true">
 					Rendering…
 				</p>
 			) : state.status === "refused" ? (
 				<div className="flex flex-col gap-1.5" role="alert">
-					<p className="text-[12px] text-status-critical-fg">
+					<SeverityNote level="error" className="type-ui">
 						The control plane refused this set as a write would: the findings
 						are shown at the fields they name.
-					</p>
+					</SeverityNote>
 					<FindingLines findings={state.findings} />
 				</div>
 			) : state.status === "failed" ? (
-				<p role="alert" className="text-[12px] text-status-critical-fg">
+				<SeverityNote level="error" role="alert" className="type-ui">
 					The dry run failed: {state.message}
-				</p>
+				</SeverityNote>
 			) : (
 				<Result state={state} />
 			)}
@@ -102,59 +105,58 @@ function Result({
 				<div
 					role="status"
 					data-testid="dryrun-freshness"
-					className="rounded-md border border-status-warn-border bg-status-warn-bg px-3 py-2 text-[12px]"
+					className="flex items-start gap-1.5 rounded-lg border border-status-warn-border bg-status-warn-bg px-3 py-2.5 type-ui"
 				>
-					<span className="font-semibold text-status-warn-fg">
-						<span aria-hidden="true">▲</span>{" "}
-						{freshness === "stale"
-							? "The state moved before this ran."
-							: "The state has moved since this ran."}
-					</span>{" "}
-					<span className="text-secondary">
-						{freshness === "stale"
-							? "It was computed against the current state, but your changes were made on an older read. Reload and re-run to see them against what is stored now."
-							: "A write has landed since. Re-run to see what saving would change now."}
+					<StatusGlyph status="alert" className="mt-[3px]" />
+					<span>
+						<span className="type-ui-strong text-status-warn-fg">
+							{freshness === "stale"
+								? "The state moved before this ran."
+								: "The state has moved since this ran."}
+						</span>{" "}
+						<span className="text-secondary">
+							{freshness === "stale"
+								? "It was computed against the current state, but your changes were made on an older read. Reload and re-run to see them against what is stored now."
+								: "A write has landed since. Re-run to see what saving would change now."}
+						</span>
 					</span>
 				</div>
 			) : null}
 			{result.workloads.length === 0 ? (
-				<p className="text-[12px] text-secondary" data-testid="dryrun-summary">
+				<p className="type-ui text-secondary" data-testid="dryrun-summary">
 					Nothing would change: no workload's rendered policy differs from what
 					it has now.
 				</p>
 			) : (
 				<>
-					<p
-						className="text-[12px] text-secondary"
-						data-testid="dryrun-summary"
-					>
+					<p className="type-ui text-secondary" data-testid="dryrun-summary">
 						Saving would change the rendered policy of{" "}
-						<span className="font-mono text-primary">
+						<span className="font-mono tabular-nums text-primary">
 							{count(result.workloads.length)}
 						</span>{" "}
 						{result.workloads.length === 1 ? "workload" : "workloads"}.
 					</p>
-					<ul className="flex flex-col divide-y divide-default">
+					<ul className="flex flex-col divide-y divide-subtle border-t border-subtle">
 						{result.workloads.map((w) => (
 							<li
 								key={w.workload.id}
 								className="flex flex-col gap-1 py-2"
 								data-testid="dryrun-workload"
 							>
-								<div className="flex flex-wrap items-baseline gap-2 text-[12.5px]">
+								<div className="flex flex-wrap items-baseline gap-2 type-ui">
 									<Link
 										to={`/workloads/${encodeURIComponent(w.workload.id)}`}
-										className="font-mono text-primary hover:text-link"
+										className="type-mono-ui font-medium text-primary hover:underline"
 									>
 										{w.workload.hostname || w.workload.id}
 									</Link>
-									<span className="font-mono text-[11px] text-tertiary">
+									<span className="type-mono-xs text-tertiary">
 										{w.version > 0
 											? `against v${w.version}`
 											: "nothing rendered yet"}
 									</span>
 									{w.mode ? (
-										<span className="text-[12px] text-secondary">
+										<span className="type-caption text-secondary">
 											mode {modes[w.mode.from].label.toLowerCase()} →{" "}
 											{modes[w.mode.to].label.toLowerCase()}
 										</span>
@@ -165,7 +167,7 @@ function Result({
 										<li
 											// biome-ignore lint/suspicious/noArrayIndexKey: lines are positional within one workload
 											key={i}
-											className="flex flex-wrap gap-x-2 font-mono text-[12px]"
+											className="flex flex-wrap gap-x-2 type-mono-sm"
 										>
 											<span
 												className={cn("w-3", kinds[l.kind].cls)}

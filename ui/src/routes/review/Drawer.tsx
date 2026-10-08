@@ -12,8 +12,10 @@ import {
 	type Rule,
 	type Ruleset,
 } from "@/api/schema";
-import { Eyebrow, VerdictPill, verdicts } from "@/components/fleet/status";
+import { Eyebrow, VerdictPill } from "@/components/fleet/status";
+import { Icon } from "@/components/Icon";
 import { LoadingRow, ProblemNotice } from "@/components/Problem";
+import { SeverityNote, StatusGlyph } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
 import { count, shortId, since } from "@/lib/format";
 import { asProblem, useResource, useWrite } from "@/lib/resource";
@@ -80,35 +82,36 @@ export function ReviewDrawer({
 	return (
 		<aside
 			aria-label="Pair detail"
-			className="flex w-[400px] shrink-0 flex-col overflow-hidden border-l border-default bg-subtle"
+			className="flex w-[400px] shrink-0 flex-col overflow-hidden border-l border-default bg-raised"
 		>
-			<div className="flex flex-col gap-2 border-b border-default px-4 py-3.5">
+			<div className="flex flex-col gap-3 border-b border-subtle p-4">
 				<div className="flex items-center gap-2">
-					<VerdictPill verdict={row.verdict} />
-					<button
-						type="button"
+					<VerdictPill verdict={row.verdict} variant="tinted" />
+					<Button
+						variant="ghost"
+						size="sm"
 						aria-label="Close"
 						onClick={onClose}
-						className="ml-auto cursor-pointer text-[16px] leading-none text-tertiary hover:text-primary"
+						className="ml-auto size-control-sm px-0"
 					>
-						×
-					</button>
+						<Icon name="x" />
+					</Button>
 				</div>
-				<div className="font-mono text-[13px] break-words">
+				<div className="type-title-section break-words font-mono">
 					{row.peer.full ?? row.peer.title}{" "}
-					<span className="text-disabled" aria-hidden="true">
+					<span className="text-tertiary" aria-hidden="true">
 						→
 					</span>
 					<span className="sr-only">on</span> {row.service}
 				</div>
-				<p className="text-[12px] text-secondary" data-testid="explain">
+				<p className="type-body text-secondary" data-testid="explain">
 					{explain(row, exact)}
 				</p>
-				<div className="flex flex-wrap gap-1.5">
+				<div className="flex flex-wrap gap-2">
 					{row.peer.kind === "address" ? (
 						<InertAction label="Add to an address group" />
 					) : null}
-					<Button variant="secondary" size="sm" className="rounded-sm" asChild>
+					<Button variant="secondary" size="sm" asChild>
 						<Link to={editorPath(ruleset.name)}>Open in policy editor</Link>
 					</Button>
 				</div>
@@ -125,7 +128,7 @@ export function ReviewDrawer({
 					to={to}
 					onChanged={onChanged}
 				/>
-				<div className="px-4 pt-2.5 pb-1">
+				<div className="px-4 pt-4 pb-2">
 					<Eyebrow>
 						Flows ·{" "}
 						<span className="font-mono">
@@ -161,7 +164,6 @@ function InertAction({ label }: { label: string }) {
 			size="sm"
 			aria-disabled="true"
 			title={inert}
-			className="rounded-sm"
 			onClick={(ev) => ev.preventDefault()}
 		>
 			{label}
@@ -210,7 +212,7 @@ function RuleSection({
 	onChanged: () => void;
 }) {
 	return (
-		<div className="flex flex-col gap-2 border-b border-default px-4 py-3">
+		<div className="flex flex-col gap-2 border-b border-subtle p-4">
 			<Eyebrow>Rule</Eyebrow>
 			{row.verdict === "allowed" ? (
 				<MatchedRules
@@ -223,10 +225,7 @@ function RuleSection({
 				/>
 			) : (
 				<>
-					<p
-						className="text-[12px] text-secondary"
-						data-testid="rule-statement"
-					>
+					<p className="type-ui text-secondary" data-testid="rule-statement">
 						No enabled rule matched: nothing in the policy these workloads run
 						admits this peer on {row.service}.
 					</p>
@@ -293,28 +292,27 @@ function MatchedRules({
 	});
 	if (found.length === 0) {
 		return (
-			<p className="text-[12px] text-secondary">
+			<p className="type-ui text-secondary">
 				The windows name no rule this listing holds.
 			</p>
 		);
 	}
 	return (
-		<ul
-			className="flex flex-col gap-1 text-[12px]"
-			data-testid="rule-statement"
-		>
+		<ul className="flex flex-col gap-1 type-ui" data-testid="rule-statement">
 			{found.map((f) => (
 				<li key={f.id}>
 					{f.rule && f.ruleset ? (
 						<>
 							Matched{" "}
-							<span className="font-mono text-primary">{ruleName(f.rule)}</span>{" "}
-							in <span className="font-mono">{f.ruleset.name}</span>
+							<span className="type-mono-ui font-medium text-primary">
+								{ruleName(f.rule)}
+							</span>{" "}
+							in <span className="type-mono-ui">{f.ruleset.name}</span>
 						</>
 					) : (
 						<>
-							Matched rule <span className="font-mono">{shortId(f.id)}</span>,
-							which no longer exists
+							Matched rule <span className="type-mono-ui">{shortId(f.id)}</span>
+							, which no longer exists
 						</>
 					)}
 				</li>
@@ -404,30 +402,35 @@ function Candidates({
 	return (
 		<div className="flex flex-col gap-2">
 			{outcome?.kind === "enabled" ? (
-				<p role="status" className="text-[12px] text-flow-allowed">
-					<span aria-hidden="true">✓</span> Enabled{" "}
-					<span className="font-mono">{outcome.rule}</span>. It takes effect as
-					each workload in scope applies its next version; stored windows keep
-					the decision they were recorded with.
+				<p
+					role="status"
+					className="flex items-start gap-1.5 type-ui text-primary"
+				>
+					<StatusGlyph status="allowed" size="md" className="mt-[3px]" />
+					<span className="min-w-0">
+						Enabled <span className="type-mono-ui">{outcome.rule}</span>. It
+						takes effect as each workload in scope applies its next version;
+						stored windows keep the decision they were recorded with.
+					</span>
 				</p>
 			) : outcome?.kind === "stale" ? (
 				<div
 					role="alert"
-					className="flex flex-col gap-1 rounded-md border border-status-warn-border bg-status-warn-bg px-3 py-2.5 text-[12px]"
+					className="flex flex-col gap-1.5 rounded-lg border border-status-warn-border bg-status-warn-bg px-3 py-2.5 type-ui"
 				>
-					<span className="font-semibold text-status-warn-fg">
-						▲ {outcome.rule} changed since this review read it
-					</span>
+					<SeverityNote level="alert" className="font-medium">
+						{outcome.rule} changed since this review read it
+					</SeverityNote>
 					<span className="text-secondary">
 						The rule is now at version{" "}
-						<span className="font-mono">{outcome.current ?? "unknown"}</span>
+						<span className="type-mono-ui">{outcome.current ?? "unknown"}</span>
 						{"; nothing was changed."} Reload to see the rule as it stands, then
 						decide again.
 					</span>
 					<Button
 						variant="secondary"
 						size="sm"
-						className="mt-1 self-start rounded-sm"
+						className="mt-1 self-start"
 						onClick={() => {
 							setOutcome(null);
 							onChanged();
@@ -437,30 +440,34 @@ function Candidates({
 					</Button>
 				</div>
 			) : outcome?.kind === "failed" ? (
-				<p role="alert" className="text-[12px] text-status-critical-fg">
-					<span aria-hidden="true">✕</span> {outcome.message}
-				</p>
+				<SeverityNote level="error" role="alert" className="type-ui">
+					{outcome.message}
+				</SeverityNote>
 			) : null}
 			{disabled.length === 0 ? (
-				<p className="text-[12px] text-secondary">
-					{ruleset.name} has no disabled rules.
+				<p className="type-ui text-secondary">
+					<span className="type-mono-ui">{ruleset.name}</span> has no disabled
+					rules.
 				</p>
 			) : (
 				<>
-					<p className="text-[12px] text-secondary">
-						Disabled rules in <span className="font-mono">{ruleset.name}</span>.
-						Whether one covers this traffic is for you to judge; enabling it
-						renders a new version for the scope.
+					<p className="type-ui text-secondary">
+						Disabled rules in{" "}
+						<span className="type-mono-ui">{ruleset.name}</span>. Whether one
+						covers this traffic is for you to judge; enabling it renders a new
+						version for the scope.
 					</p>
 					<ul className="flex flex-col gap-1.5" aria-label="Disabled rules">
 						{disabled.map((r) => (
 							<li
 								key={r.id}
-								className="flex items-start gap-2 rounded-md border border-strong bg-app px-3 py-2 text-[12px]"
+								className="flex items-start gap-2 rounded-lg border border-default bg-app px-3 py-2"
 							>
 								<div className="flex min-w-0 flex-1 flex-col gap-0.5">
-									<span className="font-mono text-primary">{ruleName(r)}</span>
-									<span className="font-mono text-[11px] text-tertiary break-words">
+									<span className="type-mono-ui font-medium text-primary">
+										{ruleName(r)}
+									</span>
+									<span className="break-words type-mono-sm text-tertiary">
 										{(r.peers ?? [])
 											.map((p) =>
 												p.workloads
@@ -478,8 +485,9 @@ function Candidates({
 									</span>
 								</div>
 								<Button
+									variant="secondary"
 									size="sm"
-									className="shrink-0 rounded-sm"
+									className="shrink-0"
 									disabled={busy !== null}
 									onClick={() => enable(r)}
 								>
@@ -511,91 +519,91 @@ function Pairs({
 }) {
 	const [open, setOpen] = useState<string | null>(null);
 	if (groups.length === 0) {
-		return (
-			<p className="text-[12px] text-secondary">No pairs in this range.</p>
-		);
+		return <p className="type-ui text-secondary">No pairs in this range.</p>;
 	}
-	const v = verdicts[row.verdict];
 	return (
-		<table className="w-full border-collapse text-[12px]">
-			<caption className="sr-only">Workload pairs behind this row</caption>
-			<thead>
-				<tr className="text-left text-[11px] text-tertiary">
-					<th className="py-1.5 font-normal">Source</th>
-					<th className="py-1.5 font-normal">Destination</th>
-					<th className="py-1.5 pl-3 text-right font-normal">Conns</th>
-					<th className="py-1.5 pl-3 text-right font-normal">Last</th>
-				</tr>
-			</thead>
-			<tbody className="font-mono">
-				{groups.map((g) => {
-					const src = g.keys.src;
-					const dst = g.keys.dst;
-					if (!src || !dst) return null;
-					const k = `${dst.id}|${peerKey(src)}`;
-					const isOpen = open === k;
-					return (
-						<PairRow
-							key={k}
-							isOpen={isOpen}
-							onToggle={() => setOpen(isOpen ? null : k)}
-							cells={
-								<>
-									<td className="border-t border-default py-1.5 text-secondary">
-										<button
-											type="button"
-											aria-expanded={isOpen}
-											onClick={() => setOpen(isOpen ? null : k)}
-											className="cursor-pointer text-left"
-										>
-											{peerName(src)}
-										</button>
-									</td>
-									<td className="border-t border-default py-1.5">
-										<Link
-											to={`/workloads/${dst.id}`}
-											className="text-link hover:underline"
-											onClick={(ev) => ev.stopPropagation()}
-										>
-											{dst.hostname}
-										</Link>
-										<span className="text-tertiary">
-											{row.service.includes("/")
-												? `:${row.service.split("/")[1]}`
-												: ""}
-										</span>
-									</td>
-									<td
-										className={cn(
-											"border-t border-default py-1.5 pl-3 text-right",
-											v.text,
-										)}
-									>
-										{count(g.connection_count)}
-									</td>
-									<td className="border-t border-default py-1.5 pl-3 text-right text-secondary">
-										{since(g.last_seen)}
-									</td>
-								</>
-							}
-							windows={
-								isOpen ? (
-									<PairWindows
-										workload={dst.id}
-										peer={peerKey(src)}
-										row={row}
-										from={from}
-										to={to}
-									/>
-								) : null
-							}
-						/>
-					);
-				})}
-			</tbody>
-		</table>
+		<div className="overflow-x-auto rounded-lg border border-default">
+			<table className="w-full border-collapse">
+				<caption className="sr-only">Workload pairs behind this row</caption>
+				<thead>
+					<tr className="h-row-header bg-subtle">
+						<th className={pth}>Source</th>
+						<th className={pth}>Destination</th>
+						<th className={cn(pth, "text-right")}>Conns</th>
+						<th className={cn(pth, "text-right")}>Last</th>
+					</tr>
+				</thead>
+				<tbody className="type-mono-xs">
+					{groups.map((g) => {
+						const src = g.keys.src;
+						const dst = g.keys.dst;
+						if (!src || !dst) return null;
+						const k = `${dst.id}|${peerKey(src)}`;
+						const isOpen = open === k;
+						return (
+							<PairRow
+								key={k}
+								isOpen={isOpen}
+								onToggle={() => setOpen(isOpen ? null : k)}
+								cells={
+									<>
+										<td className={cn(ptd, "text-secondary")}>
+											<button
+												type="button"
+												aria-expanded={isOpen}
+												onClick={() => setOpen(isOpen ? null : k)}
+												className="cursor-pointer text-left"
+											>
+												{peerName(src)}
+											</button>
+										</td>
+										<td className={ptd}>
+											<Link
+												to={`/workloads/${dst.id}`}
+												className="text-link hover:underline"
+												onClick={(ev) => ev.stopPropagation()}
+											>
+												{dst.hostname}
+											</Link>
+											<span className="text-tertiary">
+												{row.service.includes("/")
+													? `:${row.service.split("/")[1]}`
+													: ""}
+											</span>
+										</td>
+										<td className={cn(ptd, "text-right text-primary")}>
+											{count(g.connection_count)}
+										</td>
+										<td className={cn(ptd, "text-right text-secondary")}>
+											{since(g.last_seen)}
+										</td>
+									</>
+								}
+								windows={
+									isOpen ? (
+										<PairWindows
+											workload={dst.id}
+											peer={peerKey(src)}
+											row={row}
+											from={from}
+											to={to}
+										/>
+									) : null
+								}
+							/>
+						);
+					})}
+				</tbody>
+			</table>
+		</div>
 	);
 }
+
+// The drawer's tables: the shared table pattern at the drawer's width.
+const pth =
+	"h-row-header whitespace-nowrap border-b border-default px-2 text-left type-label text-tertiary first:pl-2.5 last:pr-2.5";
+const ptd =
+	"whitespace-nowrap border-t border-subtle px-2 py-2 first:pl-2.5 last:pr-2.5";
 
 function PairRow({
 	cells,
@@ -612,13 +620,16 @@ function PairRow({
 		<>
 			<tr
 				onClick={onToggle}
-				className={cn("cursor-pointer", isOpen && "bg-selection-bg")}
+				className={cn(
+					"h-row-dense cursor-pointer [&:first-child>td]:border-t-0",
+					isOpen ? "bg-selection-bg" : "hover:bg-hover",
+				)}
 			>
 				{cells}
 			</tr>
 			{windows ? (
 				<tr>
-					<td colSpan={4} className="pb-2 pl-2">
+					<td colSpan={4} className="bg-subtle px-2.5 pt-1 pb-2.5">
 						{windows}
 					</td>
 				</tr>
@@ -684,24 +695,36 @@ function PairWindows({
 	}
 	const flows = pages.flatMap((p) => p.flows);
 	return (
-		<div className="flex flex-col gap-1 font-sans" data-testid="pair-windows">
-			<table className="w-full border-collapse text-[11.5px]">
+		<div className="flex flex-col gap-1.5 font-sans" data-testid="pair-windows">
+			<table className="w-full border-collapse">
 				<caption className="sr-only">Stored windows of this pair</caption>
 				<thead>
-					<tr className="text-left text-[11px] text-tertiary">
-						<th className="py-1 font-normal">window</th>
-						<th className="py-1 font-normal">process</th>
-						<th className="py-1 text-right font-normal">conns</th>
-						<th className="py-1 text-right font-normal">last seen</th>
+					<tr>
+						<th className="h-7 pr-2 text-left type-label text-tertiary">
+							window
+						</th>
+						<th className="h-7 pr-2 text-left type-label text-tertiary">
+							process
+						</th>
+						<th className="h-7 pl-2 text-right type-label text-tertiary">
+							conns
+						</th>
+						<th className="h-7 pl-2 text-right type-label text-tertiary">
+							last seen
+						</th>
 					</tr>
 				</thead>
-				<tbody className="font-mono">
+				<tbody className="type-mono-xs">
 					{flows.map((f) => (
-						<tr key={f.id} className="border-t border-default">
-							<td className="py-1 text-secondary">{since(f.window_end)} ago</td>
-							<td className="py-1">{f.process_name || "—"}</td>
-							<td className="py-1 text-right">{count(f.connection_count)}</td>
-							<td className="py-1 text-right text-secondary">
+						<tr key={f.id} className="border-t border-subtle">
+							<td className="py-1 pr-2 text-secondary">
+								{since(f.window_end)} ago
+							</td>
+							<td className="py-1 pr-2">{f.process_name || "—"}</td>
+							<td className="py-1 pl-2 text-right">
+								{count(f.connection_count)}
+							</td>
+							<td className="py-1 pl-2 text-right text-secondary">
 								{since(f.last_seen)}
 							</td>
 						</tr>
@@ -713,15 +736,15 @@ function PairWindows({
 					type="button"
 					onClick={loadMore}
 					disabled={more.loading}
-					className="cursor-pointer self-start text-[11px] text-link hover:underline"
+					className="cursor-pointer self-start type-caption text-link hover:underline"
 				>
 					{more.loading ? "Loading…" : "Load more windows"}
 				</button>
 			) : null}
 			{more.error ? (
-				<span role="alert" className="text-[11px] text-status-critical-fg">
+				<SeverityNote level="error" role="alert" className="type-caption">
 					{more.error}
-				</span>
+				</SeverityNote>
 			) : null}
 		</div>
 	);

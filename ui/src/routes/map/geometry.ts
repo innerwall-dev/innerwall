@@ -13,14 +13,15 @@ export interface EdgeShape {
 	ly: number;
 }
 
-const chipHeight = 16;
+const chipHeight = 18;
 const chipGap = 3;
 
-// chipWidth is a label chip's width in the graph's 10px mono: the glyph,
-// a space, and the count, with the chip's padding and border.
+// chipWidth is a label chip's width in mono-xs (11px, about 6.6px a
+// figure): the 12px glyph, a 4px gap, and the count, with the chip's
+// padding and border.
 export function chipWidth(e: MapEdge): number {
 	const n = e.byDecision[e.decision]?.connections ?? e.connections;
-	return (2 + short(n).length) * 6 + 10;
+	return Math.ceil(12 + 4 + short(n).length * 6.6 + 10);
 }
 
 function bezier(t: number, a: number, b: number, c: number, d: number) {

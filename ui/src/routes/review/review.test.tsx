@@ -321,8 +321,8 @@ describe("simulation review", () => {
 		// The tabs are the enabled rulesets, each with its would-block pairs.
 		const tabs = screen.getAllByRole("tab");
 		expect(tabs.map((t) => t.textContent)).toEqual([
-			"checkout-inbound◆ 2 would block",
-			"ledger-inbound◆ 0 would block",
+			"checkout-inbound2 would block",
+			"ledger-inbound0 would block",
 		]);
 		expect(tabs[0]).toHaveAttribute("aria-selected", "true");
 		expect(screen.getByTestId("scope-line")).toHaveTextContent(
@@ -354,18 +354,18 @@ describe("simulation review", () => {
 			"2 peer/service pairs carrying 18,245 connections would be dropped.",
 		);
 		// Each number follows its term, which reads first.
-		expect(b).toHaveTextContent("◆ would block · peer/service2");
+		expect(b).toHaveTextContent("would block · peer/service2");
 		expect(b).toHaveTextContent("connections in range18.2k");
 		expect(b).toHaveTextContent("of 4 simulating workloads affected3");
-		expect(b).toHaveTextContent("✓ allowed · matched a rule1");
+		expect(b).toHaveTextContent("allowed · matched a rule1");
 		const caveats = within(b).getByRole("list", { name: "Caveats" });
 		expect(
 			within(caveats)
 				.getAllByRole("listitem")
 				.map((l) => l.textContent),
 		).toEqual([
-			"▲checkout-prod-07 is degraded (applied v41, rendered v42) — its flows were evaluated against stale policy",
-			"▲1 workload in scope is still in visibility mode and produced no verdict",
+			"checkout-prod-07 is degraded (applied v41, rendered v42) — its flows were evaluated against stale policy",
+			"1 workload in scope is still in visibility mode and produced no verdict",
 		]);
 		// Not safe: promotion is the secondary action.
 		expect(
@@ -624,7 +624,7 @@ describe("simulation review", () => {
 		);
 		const alert = await within(drawer).findByRole("alert");
 		expect(alert).toHaveTextContent(
-			"▲ metrics-scrape changed since this review read it",
+			"metrics-scrape changed since this review read it",
 		);
 		expect(alert).toHaveTextContent(
 			"The rule is now at version 4; nothing was changed.",
@@ -670,7 +670,7 @@ describe("promotion", () => {
 		expect([...rows].map((r) => r.textContent)).toEqual([
 			"Simulation → Enforced3 workloadsincluded",
 			"Visibility → Enforced never simulated1 workloadskipped",
-			"Degraded · checkout-prod-07 ▲ would enforce stale v411 workloadskipped",
+			"Degraded · checkout-prod-07 would enforce stale v411 workloadskipped",
 		]);
 		const submit = within(dialog).getByRole("button", {
 			name: "Enforce anyway on 3 workloads",
@@ -757,9 +757,7 @@ describe("promotion", () => {
 			}),
 		);
 		const alert = await within(dialog).findByRole("alert");
-		expect(alert).toHaveTextContent(
-			"▲ The set no longer resolves as previewed",
-		);
+		expect(alert).toHaveTextContent("The set no longer resolves as previewed");
 		expect(alert).toHaveTextContent(
 			"You submitted 3 workloads; the control plane resolved 2. Nothing was changed.",
 		);
@@ -812,7 +810,7 @@ describe("promotion", () => {
 		);
 		const alert = await within(dialog).findByRole("alert");
 		expect(alert).toHaveTextContent(
-			"▲ A workload in this set is no longer registered",
+			"A workload in this set is no longer registered",
 		);
 		expect(alert).toHaveTextContent("workload is not registered: w-c3");
 		expect(

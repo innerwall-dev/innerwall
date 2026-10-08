@@ -8,7 +8,9 @@ import {
 	type Ruleset,
 	type Selector,
 } from "@/api/schema";
+import { Icon } from "@/components/Icon";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useWrite } from "@/lib/resource";
 import { cn } from "@/lib/utils";
@@ -90,7 +92,7 @@ export function NewRuleset({
 							value={name}
 							onChange={(ev) => setName(ev.target.value)}
 							className={cn(
-								"w-[320px] rounded-md border bg-raised px-2.5 py-1 font-mono text-[18px] font-semibold text-primary placeholder:font-normal placeholder:text-tertiary focus:outline-none focus-visible:border-selection-fg",
+								"h-control-lg w-[320px] rounded-md border bg-app px-3 type-title-section font-mono text-primary placeholder:font-normal placeholder:text-tertiary",
 								at("name").length > 0
 									? "border-status-critical-fg"
 									: "border-strong",
@@ -98,7 +100,7 @@ export function NewRuleset({
 						/>
 						<FindingLines findings={at("name")} />
 					</div>
-					<span className="flex items-center gap-2 text-[13px] text-secondary">
+					<span className="flex items-center gap-2 type-ui text-secondary">
 						<Switch
 							size="header"
 							on={enabled}
@@ -108,23 +110,21 @@ export function NewRuleset({
 						{enabled ? "Enabled" : "Disabled"}
 					</span>
 				</div>
-				<input
+				<Input
 					aria-label="Ruleset description"
 					placeholder="What this ruleset protects, in a sentence"
 					value={description}
 					onChange={(ev) => setDescription(ev.target.value)}
-					className="max-w-[640px] rounded-md border border-strong bg-raised px-2.5 py-1 text-[13px] text-primary placeholder:text-tertiary focus:outline-none focus-visible:border-selection-fg"
+					className="max-w-[640px]"
 				/>
 				<FindingLines findings={at("description")} />
 			</header>
 			<div
 				role="note"
-				className="flex gap-3 rounded-md border border-strong bg-subtle px-4 py-3 text-[13px] text-secondary"
+				className="flex gap-2.5 rounded-lg border border-default bg-subtle px-4 py-3 type-body text-secondary"
 				data-testid="banner"
 			>
-				<span aria-hidden="true" className="font-mono text-icon-default">
-					i
-				</span>
+				<Icon name="info" className="mt-0.5" />
 				<span>
 					There is no draft. Creating the ruleset writes it at once; it holds no
 					rules, so it admits nothing until you add them, and each rule you save

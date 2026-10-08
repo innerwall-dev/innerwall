@@ -610,7 +610,7 @@ describe("policy editor", () => {
 		const user = userEvent.setup();
 		renderApp("/policy?ruleset=checkout-inbound");
 		await rulesTable();
-		await user.click(screen.getByRole("button", { name: "+ Add rule" }));
+		await user.click(screen.getByRole("button", { name: "Add rule" }));
 		const editing = await row("New rule");
 		const peer = within(editing).getByRole("textbox", { name: "Add a peer" });
 		await user.type(peer, "10.40.0.0/33{Enter}");
@@ -658,7 +658,7 @@ describe("policy editor", () => {
 		).toHaveClass("line-through");
 		// Errors only, counted; the identical row is not offered again.
 		expect(screen.getByTestId("row-errors")).toHaveTextContent(
-			"✕ 3 errors block saving",
+			"3 errors block saving",
 		);
 		expect(
 			screen.getByRole("button", { name: /Save — applies to 5 workloads now/ }),
@@ -669,7 +669,7 @@ describe("policy editor", () => {
 			within(editing).getByRole("button", { name: "Remove cidr 10.40.0.0/33" }),
 		);
 		expect(screen.getByTestId("row-errors")).toHaveTextContent(
-			"✕ 2 errors block saving",
+			"2 errors block saving",
 		);
 		expect(
 			screen.getByRole("button", { name: /Save — applies to 5 workloads now/ }),
@@ -809,7 +809,7 @@ describe("policy editor", () => {
 		const user = userEvent.setup();
 		renderApp("/policy?ruleset=checkout-inbound");
 		await rulesTable();
-		await user.click(screen.getByRole("button", { name: "+ Add rule" }));
+		await user.click(screen.getByRole("button", { name: "Add rule" }));
 		const editing = await row("New rule");
 		await user.type(
 			within(editing).getByRole("textbox", { name: "Add a peer" }),
@@ -972,7 +972,7 @@ describe("policy editor", () => {
 		const user = userEvent.setup();
 		renderApp("/policy?ruleset=checkout-inbound");
 		await rulesTable();
-		await user.click(screen.getByRole("button", { name: "+ Add rule" }));
+		await user.click(screen.getByRole("button", { name: "Add rule" }));
 		const editing = await row("New rule");
 		await user.type(
 			within(editing).getByRole("textbox", { name: "Add a peer" }),

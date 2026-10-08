@@ -10,6 +10,7 @@ import {
 	RangeControl,
 	type RangeKey,
 } from "@/components/RangeControl";
+import { type GlyphStatus, StatusGlyph } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
 import { count, short } from "@/lib/format";
 import { useResource } from "@/lib/resource";
@@ -195,9 +196,9 @@ function Review({
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-			<div className="flex shrink-0 flex-col gap-3.5 px-6 pt-[18px]">
-				<div className="flex items-start gap-4">
-					<div className="flex min-w-0 flex-col gap-1.5">
+			<div className="flex shrink-0 flex-col gap-4 px-6 pt-5">
+				<div className="flex flex-wrap items-start gap-x-4 gap-y-3">
+					<div className="flex min-w-0 flex-1 flex-col gap-2">
 						<RulesetTabs
 							rulesets={data.rulesets}
 							counts={data.counts}
@@ -220,7 +221,7 @@ function Review({
 				</div>
 				<VerdictBanner verdict={verdict} />
 				<div className="flex flex-wrap items-center gap-2">
-					<fieldset className="m-0 flex overflow-hidden rounded-md border border-strong p-0">
+					<fieldset className="m-0 flex h-control-sm overflow-hidden rounded-md border border-default p-0">
 						<legend className="sr-only">Take</legend>
 						{takes.map((t) => (
 							<button
@@ -234,17 +235,17 @@ function Review({
 									})
 								}
 								className={cn(
-									"cursor-pointer px-3 py-[5px] text-[12px]",
+									"cursor-pointer border-l border-default px-3 type-caption first-of-type:border-l-0",
 									take === t.key
-										? "bg-active text-primary"
-										: "text-secondary hover:text-primary",
+										? "bg-active font-medium text-primary"
+										: "text-secondary hover:bg-hover hover:text-primary",
 								)}
 							>
 								{t.label}
 							</button>
 						))}
 					</fieldset>
-					<div className="ml-2 flex gap-1.5">
+					<div className="flex flex-wrap gap-1">
 						{(["all", "would_block", "allowed"] as const).map((f) => (
 							<FilterChip
 								key={f}
@@ -278,8 +279,8 @@ function Review({
 					</div>
 				</div>
 			</div>
-			<div className="mt-3 flex min-h-0 flex-1 overflow-hidden border-t border-default">
-				<div className="min-w-0 flex-1 overflow-auto px-6 pb-6">
+			<div className="mt-4 flex min-h-0 flex-1 overflow-hidden border-t border-default">
+				<div className="min-w-0 flex-1 overflow-auto px-6 pt-4 pb-6">
 					{take === "grouped" ? (
 						<Grouped
 							rows={shown}
@@ -348,10 +349,8 @@ function RulesetTabs({
 	onPick: (name: string) => void;
 }) {
 	return (
-		<div className="flex flex-wrap items-center gap-2.5">
-			<span className="text-[11px] uppercase tracking-[0.06em] text-tertiary">
-				Ruleset
-			</span>
+		<div className="flex flex-wrap items-center gap-2">
+			<span className="type-label text-tertiary">Ruleset</span>
 			<div className="flex flex-wrap gap-1" role="tablist">
 				{rulesets.map((rs) => {
 					const on = rs.name === current.name;
@@ -364,22 +363,23 @@ function RulesetTabs({
 							aria-selected={on}
 							onClick={() => onPick(rs.name)}
 							className={cn(
-								"inline-flex cursor-pointer items-center gap-1.5 rounded-sm border px-[9px] py-[3px] font-mono text-[12px]",
+								"inline-flex h-control-sm cursor-pointer items-center gap-2 rounded-md border px-2.5 type-mono-sm",
 								on
 									? "border-strong bg-active text-primary"
-									: "border-transparent text-secondary hover:text-primary",
+									: "border-transparent text-secondary hover:bg-hover hover:text-primary",
 							)}
 						>
 							<span>{rs.name}</span>
 							{c ? (
 								<span
 									className={cn(
-										"text-[11px]",
-										c.pairs > 0 ? "text-flow-would-block" : "text-tertiary",
+										"inline-flex items-center gap-1 type-mono-xs",
+										on ? "text-secondary" : "text-tertiary",
 									)}
 									title={`${c.pairs}${c.truncated ? "+" : ""} would-block peer/service pairs in range`}
 								>
-									<span aria-hidden="true">◆</span> {c.pairs}
+									<StatusGlyph status="would-block" size="sm" />
+									{c.pairs}
 									{c.truncated ? "+" : ""}
 									<span className="sr-only"> would block</span>
 								</span>
@@ -412,10 +412,10 @@ function ScopeLine({
 	] as const;
 	return (
 		<div
-			className="flex flex-wrap items-center gap-2 text-[12px] text-secondary"
+			className="flex flex-wrap items-center gap-x-2 gap-y-1 type-caption text-secondary"
 			data-testid="scope-line"
 		>
-			<span className="font-mono text-secondary">
+			<span className="type-mono-sm text-secondary">
 				{scopeText(ruleset.scope)}
 			</span>
 			<span className="text-disabled" aria-hidden="true">
@@ -444,43 +444,49 @@ function ScopeLine({
 
 // VerdictBanner is the composed verdict: the headline, what it rests on,
 // the four numbers, and a line for every condition the scope fails and
-// every qualification. Its tint is the one place the soft status
-// alphas are used.
+// every qualification. It is tinted with the verdict's tone; the
+// would-block pairs are the screen's one headline metric.
 function VerdictBanner({ verdict }: { verdict: ReviewVerdictResult }) {
 	const k = verdict.kpis;
 	const safe = verdict.safe;
-	const glyph = safe ? "✓" : k.pairs > 0 ? "◆" : "▲";
+	// The headline's glyph agrees with the banner's tone: allowed when safe,
+	// the error severity when not; the reasons carry their own glyphs.
+	const glyph: GlyphStatus = safe ? "allowed" : "error";
 	return (
 		<section
 			aria-label="Verdict"
 			className={cn(
-				"rounded-lg border px-[18px] py-3.5",
+				"rounded-lg border px-4 py-3",
 				safe
 					? "border-status-ok-border bg-status-ok-bg"
-					: "border-status-warn-border bg-status-critical-bg",
+					: "border-status-critical-border bg-status-critical-bg",
 			)}
 		>
-			<div className="flex items-center gap-3.5">
-				<div
-					aria-hidden="true"
-					className={cn(
-						"flex size-[38px] shrink-0 items-center justify-center rounded-lg font-mono text-[20px]",
-						safe
-							? "bg-status-ok-bg text-flow-allowed"
-							: "bg-status-warn-bg text-flow-would-block",
-					)}
-				>
-					{glyph}
+			<div className="flex flex-wrap items-start gap-x-8 gap-y-3">
+				<div className="flex min-w-0 flex-1 basis-80 items-start gap-2.5">
+					<StatusGlyph status={glyph} size="lg" className="mt-0.5" />
+					<div className="flex min-w-0 flex-col gap-0.5">
+						<h1
+							className={cn(
+								"type-body-strong",
+								safe ? "text-status-ok-fg" : "text-status-critical-fg",
+							)}
+						>
+							{verdict.headline}
+						</h1>
+						<p className="type-body text-secondary">{verdict.sub}</p>
+					</div>
 				</div>
-				<div className="flex min-w-0 flex-col gap-0.5">
-					<h1 className="text-[17px] font-semibold">{verdict.headline}</h1>
-					<p className="text-[12px] text-secondary">{verdict.sub}</p>
-				</div>
-				<dl className="ml-auto grid shrink-0 grid-cols-[repeat(4,auto)] gap-x-7 text-right">
+				<dl className="flex max-w-full flex-wrap items-end gap-x-6 gap-y-3">
 					<Kpi
+						headline
 						value={count(k.pairs)}
-						valueClass="text-flow-would-block"
-						label="◆ would block · peer/service"
+						label={
+							<>
+								<StatusGlyph status="would-block" size="sm" />
+								<span>would block · peer/service</span>
+							</>
+						}
 					/>
 					<Kpi value={short(k.connections)} label="connections in range" />
 					<Kpi
@@ -489,22 +495,27 @@ function VerdictBanner({ verdict }: { verdict: ReviewVerdictResult }) {
 					/>
 					<Kpi
 						value={count(k.allowedPairs)}
-						valueClass="text-flow-allowed"
-						label="✓ allowed · matched a rule"
+						label={
+							<>
+								<StatusGlyph status="allowed" size="sm" />
+								<span>allowed · matched a rule</span>
+							</>
+						}
 					/>
 				</dl>
 			</div>
 			{verdict.caveats.length > 0 ? (
 				<ul
-					className="mt-2.5 flex flex-wrap gap-x-[18px] gap-y-1.5 border-t border-[var(--border-subtle)] pt-2.5 text-[12px] text-secondary"
+					className={cn(
+						"mt-3 flex flex-col gap-1.5 border-t pt-3 type-ui text-primary",
+						safe ? "border-status-ok-border" : "border-status-critical-border",
+					)}
 					aria-label="Caveats"
 				>
 					{verdict.caveats.map((c) => (
-						<li key={c} className="flex gap-1.5">
-							<span className="text-status-warn-fg" aria-hidden="true">
-								▲
-							</span>
-							<span>{c}</span>
+						<li key={c} className="flex items-start gap-2">
+							<StatusGlyph status="alert" size="md" className="mt-[3px]" />
+							<span className="min-w-0">{c}</span>
 						</li>
 					))}
 				</ul>
@@ -513,19 +524,32 @@ function VerdictBanner({ verdict }: { verdict: ReviewVerdictResult }) {
 	);
 }
 
+// Kpi is one of the banner's numbers under its term. The term reads
+// first; the number is drawn above it.
 function Kpi({
 	value,
 	label,
-	valueClass,
+	headline = false,
 }: {
 	value: string;
-	label: string;
-	valueClass?: string;
+	label: React.ReactNode;
+	headline?: boolean;
 }) {
 	return (
-		<div className="flex max-w-[150px] flex-col-reverse">
-			<dt className="text-[11px] text-tertiary">{label}</dt>
-			<dd className={cn("m-0 font-mono text-[20px]", valueClass)}>{value}</dd>
+		<div className="flex max-w-[160px] flex-col-reverse gap-0.5">
+			<dt className="flex items-start gap-1 type-caption text-secondary [&>svg]:mt-0.5">
+				{label}
+			</dt>
+			<dd
+				className={cn(
+					"m-0 text-primary",
+					headline
+						? "type-mono-kpi"
+						: "type-title-section font-mono font-medium tabular-nums",
+				)}
+			>
+				{value}
+			</dd>
 		</div>
 	);
 }

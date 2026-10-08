@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import type { RenderedPolicy, RenderedRule, Workload } from "@/api/schema";
 import { verdicts } from "@/components/fleet/status";
 import { LoadingRow, ProblemNotice } from "@/components/Problem";
+import { SeverityNote } from "@/components/StatusGlyph";
 import { ago } from "@/lib/format";
 import type { Resource } from "@/lib/resource";
 import { cn } from "@/lib/utils";
@@ -30,7 +31,7 @@ export function PolicyTab({
 
 	if (p.version === 0) {
 		return (
-			<p className="py-6 text-[12px] text-tertiary">
+			<p className="py-6 type-ui text-tertiary">
 				No policy has been rendered for this workload yet.
 			</p>
 		);
@@ -38,25 +39,25 @@ export function PolicyTab({
 
 	return (
 		<div>
-			<div className="mb-3 flex items-center gap-3 text-[12px]">
-				<span className="text-secondary">
+			<div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+				<span className="type-ui text-secondary">
 					{behind ? "Rendered policy" : "Rendered policy applied on host"}
 				</span>
-				<span className="rounded-sm border border-strong px-2 py-0.5 font-mono">
+				<span className="inline-flex h-[22px] items-center rounded-sm border border-strong bg-app px-2 type-mono-sm text-primary">
 					v{p.version}
 				</span>
 				{behind ? (
-					<span className="text-status-warn-fg">
-						▲ rendered{p.rendered_at ? ` ${ago(p.rendered_at)}` : ""}, not
-						applied —{" "}
+					<SeverityNote level="alert" className="type-ui">
+						rendered{p.rendered_at ? ` ${ago(p.rendered_at)}` : ""}, not applied
+						—{" "}
 						{applied === 0
 							? "host has applied none"
 							: `host is on ${version(applied)}`}
-					</span>
+					</SeverityNote>
 				) : null}
 			</div>
 			{p.rules.length === 0 ? (
-				<p className="py-4 text-[12px] text-tertiary">
+				<p className="py-4 type-ui text-tertiary">
 					No rule admits traffic to this workload.
 				</p>
 			) : (
@@ -66,11 +67,16 @@ export function PolicyTab({
 					))}
 				</div>
 			)}
-			<p className="mt-3 text-[11px] text-tertiary">
+			<p className="mt-4 max-w-[720px] type-caption text-tertiary">
 				Agents receive fully resolved rules (concrete peer addresses); selectors
 				are resolved by the control plane. Rule ids carry the authored rule for
 				provenance. Traffic no rule admits is{" "}
-				<span className={verdicts[p.terminal_verdict].text}>
+				<span
+					className={cn(
+						"inline-flex items-center gap-1 align-top type-label",
+						verdicts[p.terminal_verdict].text,
+					)}
+				>
 					{verdicts[p.terminal_verdict].glyph}{" "}
 					{verdicts[p.terminal_verdict].label}
 				</span>{" "}
@@ -83,34 +89,31 @@ export function PolicyTab({
 function RuleCard({ r }: { r: RenderedRule }) {
 	return (
 		<article
-			className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 rounded-md border border-default bg-subtle px-3.5 py-2.5"
+			className="grid grid-cols-[1fr_auto] items-baseline gap-x-4 gap-y-1 rounded-lg border border-default bg-subtle px-4 py-3"
 			aria-label={r.description || ruleId(r)}
 		>
 			<div className="flex items-center gap-2">
-				<span className="font-mono text-primary">{ruleId(r)}</span>
+				<span className="type-mono-ui text-primary">{ruleId(r)}</span>
 				{r.ruleset ? (
 					<>
-						<span className="text-[11px] text-tertiary">from ruleset</span>
-						<Link
-							to="/policy"
-							className="text-[12px] text-link hover:underline"
-						>
+						<span className="type-caption text-tertiary">from ruleset</span>
+						<Link to="/policy" className="type-ui text-link hover:underline">
 							{r.ruleset.name}
 						</Link>
 					</>
 				) : (
-					<span className="text-[11px] text-tertiary">
+					<span className="type-caption text-tertiary">
 						authored rule since removed
 					</span>
 				)}
 			</div>
-			<div className="text-right font-mono">{portsText(r)}</div>
-			<div className="text-[12px] text-secondary">{r.description || "—"}</div>
-			<div className="text-right font-mono text-[11px] text-tertiary">
+			<div className="text-right type-mono-ui text-primary">{portsText(r)}</div>
+			<div className="type-ui text-secondary">{r.description || "—"}</div>
+			<div className="text-right type-mono-xs text-tertiary">
 				{peersText(r)}
 			</div>
 			<div
-				className={cn("col-span-2 font-mono text-[11px] text-tertiary")}
+				className="col-span-2 mt-1 type-mono-xs text-tertiary"
 				data-testid="rule-instants"
 			>
 				{instants(r)}

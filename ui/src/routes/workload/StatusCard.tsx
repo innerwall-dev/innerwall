@@ -3,6 +3,7 @@ import type { ProblemError } from "@/api/client";
 import { resendSnapshot } from "@/api/fleet";
 import { ProblemType, type Workload } from "@/api/schema";
 import { syncStates } from "@/components/fleet/status";
+import { SeverityNote, StatusGlyph } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
 import { ago, since } from "@/lib/format";
 import { useWrite } from "@/lib/resource";
@@ -30,52 +31,49 @@ export function StatusCard({
 	const lag = s.latest_version > s.applied_version;
 	const tone = {
 		degraded: "border-status-warn-border bg-status-warn-bg",
-		pending: "border-strong",
-		synced: "border-default",
-		offline: "border-default",
+		pending: "border-strong bg-app",
+		synced: "border-default bg-app",
+		offline: "border-default bg-app",
 	}[s.state];
 
 	return (
 		<div
-			className={cn(
-				"flex flex-col gap-1.5 rounded-md border px-3 py-2.5",
-				tone,
-			)}
+			className={cn("flex flex-col gap-2.5 rounded-lg border px-3 py-3", tone)}
 			data-testid="status-card"
 		>
 			<div
 				className={cn(
-					"flex items-center gap-2 font-semibold",
+					"flex items-center gap-2 type-ui-strong",
 					syncStates[s.state].cls,
 				)}
 			>
-				<span aria-hidden="true">{syncStates[s.state].glyph}</span>
+				<StatusGlyph status={syncStates[s.state].status} size="md" />
 				<span>{headline(w)}</span>
 			</div>
-			<dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-[3px] text-[12px] text-secondary">
-				<dt className="text-tertiary">applied</dt>
-				<dd className="font-mono">{version(s.applied_version)}</dd>
-				<dt className="text-tertiary">rendered</dt>
-				<dd className="font-mono">
+			<dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-4 gap-y-1">
+				<dt className={field}>applied</dt>
+				<dd className={value}>{version(s.applied_version)}</dd>
+				<dt className={field}>rendered</dt>
+				<dd className={value}>
 					{version(s.latest_version)}
 					{lag ? <span className="text-tertiary"> (not applied)</span> : null}
 				</dd>
-				<dt className="text-tertiary">last ack</dt>
-				<dd className="font-mono" data-testid="ack-instant">
+				<dt className={field}>last ack</dt>
+				<dd className={value} data-testid="ack-instant">
 					<LastAck s={s} />
 				</dd>
 				{s.latest_rendered_at ? (
 					<>
-						<dt className="text-tertiary">rendered at</dt>
-						<dd className="font-mono">
+						<dt className={field}>rendered at</dt>
+						<dd className={value}>
 							<time dateTime={s.latest_rendered_at}>
 								{ago(s.latest_rendered_at)}
 							</time>
 						</dd>
 					</>
 				) : null}
-				<dt className="text-tertiary">last snapshot</dt>
-				<dd className="font-mono" data-testid="snapshot-instant">
+				<dt className={field}>last snapshot</dt>
+				<dd className={value} data-testid="snapshot-instant">
 					{s.last_snapshot_sent_at ? (
 						<time dateTime={s.last_snapshot_sent_at}>
 							{ago(s.last_snapshot_sent_at)}
@@ -86,12 +84,12 @@ export function StatusCard({
 				</dd>
 			</dl>
 			{s.error ? (
-				<div className="rounded-sm bg-app p-2 font-mono text-[11px] break-words whitespace-pre-wrap text-status-warn-fg">
+				<div className="rounded-md border border-default bg-app px-2.5 py-2 type-mono-xs break-words whitespace-pre-wrap text-status-warn-fg">
 					{s.error}
 				</div>
 			) : null}
 			{s.state === "degraded" ? (
-				<p className="text-[11px] text-secondary">
+				<p className="type-caption text-secondary">
 					{s.applied_version > 0
 						? `Host stays on ${version(s.applied_version)} (its last good policy).`
 						: "Host keeps the policy it had before; it has applied none from this control plane."}{" "}
@@ -128,6 +126,10 @@ function LastAck({ s }: { s: Workload["sync"] }) {
 		</>
 	);
 }
+
+// The card's field rows: a sentence-case label beside a mono value.
+const field = "type-label text-tertiary";
+const value = "min-w-0 type-mono-sm text-primary";
 
 function headline(w: Workload): string {
 	const s = w.sync;
@@ -186,41 +188,40 @@ function Resend({ w, onReread }: { w: Workload; onReread: () => void }) {
 	}
 
 	return (
-		<div className="mt-1 flex flex-col gap-1.5 border-t border-[var(--border-subtle)] pt-2">
+		<div className="flex flex-col gap-2 border-t border-subtle pt-3">
 			<div className="flex items-center gap-2">
-				<Button
-					variant="secondary"
-					size="sm"
-					className="rounded-sm bg-raised"
-					disabled={sending}
-					onClick={send}
-				>
+				<Button variant="secondary" size="sm" disabled={sending} onClick={send}>
 					{sending ? "Sending…" : "Resend snapshot"}
 				</Button>
 				{outcome.kind === "sent" && !moved ? (
 					<button
 						type="button"
 						onClick={onReread}
-						className="cursor-pointer text-[11px] text-link hover:underline"
+						className="cursor-pointer type-caption text-link hover:underline"
 					>
 						Read again
 					</button>
 				) : null}
 			</div>
 			{outcome.kind === "sent" ? (
-				<p role="status" className="text-[11px] text-secondary">
+				<p role="status" className="type-caption text-secondary">
 					{moved
 						? "The agent reconnected and was sent a fresh snapshot."
 						: "Reconnect requested. The snapshot instant above moves once the agent has reconnected."}
 				</p>
 			) : null}
 			{outcome.kind === "offline" ? (
-				<p role="alert" className="text-[11px] text-status-warn-fg">
-					▲ The agent is offline, so nothing was sent.{" "}
+				<SeverityNote
+					level="alert"
+					role="alert"
+					size="sm"
+					className="type-caption"
+				>
+					The agent is offline, so nothing was sent.{" "}
 					{outcome.lastSeen ? (
 						<>
 							Last heard from{" "}
-							<time dateTime={outcome.lastSeen} className="font-mono">
+							<time dateTime={outcome.lastSeen} className="type-mono-sm">
 								{ago(outcome.lastSeen)}
 							</time>{" "}
 							({new Date(outcome.lastSeen).toISOString().replace(".000Z", "Z")}
@@ -229,12 +230,17 @@ function Resend({ w, onReread }: { w: Workload; onReread: () => void }) {
 					) : (
 						"It has never been heard from."
 					)}
-				</p>
+				</SeverityNote>
 			) : null}
 			{outcome.kind === "failed" ? (
-				<p role="alert" className="text-[11px] text-status-critical-fg">
-					✕ {outcome.message}
-				</p>
+				<SeverityNote
+					level="error"
+					role="alert"
+					size="sm"
+					className="type-caption"
+				>
+					{outcome.message}
+				</SeverityNote>
 			) : null}
 		</div>
 	);
