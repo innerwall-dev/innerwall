@@ -250,7 +250,6 @@ function Review({
 								key={f}
 								on={filter === f}
 								glyph={f === "all" ? undefined : verdicts[f].glyph}
-								glyphClass={f === "all" ? undefined : verdicts[f].text}
 								label={f === "all" ? "all" : verdicts[f].label}
 								count={counts[f]}
 								onClick={() =>

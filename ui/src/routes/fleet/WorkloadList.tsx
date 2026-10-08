@@ -150,7 +150,6 @@ export function WorkloadList({
 							key={s}
 							on={syncState === s}
 							glyph={syncStates[s].glyph}
-							glyphClass={syncStates[s].cls}
 							label={s}
 							onClick={() => setSyncState(syncState === s ? null : s)}
 						/>

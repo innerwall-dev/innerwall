@@ -6,7 +6,7 @@ export function Input({ className, ...props }: React.ComponentProps<"input">) {
 		<input
 			data-slot="input"
 			className={cn(
-				"h-9 w-full min-w-0 rounded-md border border-strong bg-app px-3 text-[13px] text-primary placeholder:text-tertiary focus-visible:border-selection-fg focus-visible:outline-none aria-invalid:border-status-critical-fg",
+				"h-control-md w-full min-w-0 rounded-md border border-strong bg-app px-3 type-ui text-primary placeholder:text-tertiary aria-invalid:border-status-critical-fg",
 				className,
 			)}
 			{...props}

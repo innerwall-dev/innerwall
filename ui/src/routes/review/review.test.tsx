@@ -370,7 +370,7 @@ describe("simulation review", () => {
 		// Not safe: promotion is the secondary action.
 		expect(
 			screen.getByRole("button", { name: "Promote to enforced…" }),
-		).toHaveClass("border-strong");
+		).toHaveClass("border-default");
 	});
 
 	it("switches rulesets by tab, to a safe verdict", async () => {
@@ -439,7 +439,7 @@ describe("simulation review", () => {
 		const rows = within(table).getAllByRole("row").slice(1);
 		expect(
 			rows.map((r) => within(r).getAllByRole("cell")[0].textContent),
-		).toEqual(["◆would block", "◆would block"]);
+		).toEqual(["would block", "would block"]);
 		await userEvent.click(screen.getByRole("button", { name: /allowed 1/ }));
 		expect(within(table).getAllByRole("row").slice(1)).toHaveLength(1);
 		expect(table).toHaveTextContent("app=storefront-api");

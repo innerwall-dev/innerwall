@@ -4,6 +4,7 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import type { Workload } from "@/api/schema";
 import { hoursFromNow, minutesAgo, workload } from "@/test/fixtures";
 import {
+	chip,
 	mockSurface,
 	problem,
 	type Route,
@@ -119,7 +120,7 @@ describe("fleet workloads", () => {
 
 		const c = within(rowOf("checkout-prod-07"));
 		for (const l of ["app=checkout", "env=prod", "tier=api"]) {
-			expect(c.getByText(l)).toBeInTheDocument();
+			expect(c.getByText(chip(l))).toBeInTheDocument();
 		}
 		expect(c.getByText("Simulation")).toBeInTheDocument();
 		expect(c.getByText("Degraded")).toBeInTheDocument();

@@ -351,9 +351,11 @@ describe("workload detail", () => {
 			screen.getByRole("navigation", { name: "Breadcrumb" }),
 		).toHaveTextContent("Workloads/db-1");
 		const nav = screen.getByRole("navigation", { name: "Sections" });
-		expect(within(nav).getByRole("link", { name: /db-1/ })).toHaveTextContent(
-			"▲",
-		);
+		expect(
+			within(within(nav).getByRole("link", { name: /db-1/ })).getByRole("img", {
+				name: "Degraded",
+			}),
+		).toHaveAttribute("data-status", "degraded");
 	});
 
 	it("lists flow windows by the required workload filter, with counts per decision", async () => {

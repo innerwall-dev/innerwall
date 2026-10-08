@@ -358,13 +358,13 @@ describe("policy editor", () => {
 		const api = await row("Production API may reach checkout.");
 		await waitFor(() =>
 			expect(within(api).getByTestId("simulation")).toHaveTextContent(
-				"✓ 412,880 allowedmatched on 40 workloads",
+				"412,880 allowedmatched on 40 workloads",
 			),
 		);
 		// Two protocols: the larger count, as a lower bound.
 		expect(
 			within(await row("Operator SSH via bastion.")).getByTestId("simulation"),
-		).toHaveTextContent("✓ 88 allowedmatched on 12+ workloads");
+		).toHaveTextContent("88 allowedmatched on 12+ workloads");
 		expect(
 			within(await row("Scrapes from the metrics collectors.")).getByTestId(
 				"simulation",
@@ -397,7 +397,7 @@ describe("policy editor", () => {
 			),
 		);
 		expect(screen.getByTestId("match-mix")).toHaveTextContent(
-			"◐ 4 simulation◌ 1 visibility▲ 1 degraded",
+			"4 simulation 1 visibility 1 degraded",
 		);
 		expect(screen.getByTestId("banner")).toHaveTextContent(
 			"There is no draft. Saving an enabled rule re-renders the 5 workloads in scope and pushes the change to their agents immediately. Workloads in simulation still drop nothing.",

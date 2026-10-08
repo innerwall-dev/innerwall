@@ -1,8 +1,8 @@
 import { NavLink } from "react-router";
 import { cn } from "@/lib/utils";
 
-// UnderlineTab is a screen's tab: the active one carries the accent rule
-// the design draws under it. A count is shown only when it is known.
+// UnderlineTab is a screen's tab: the active one carries a text-primary
+// rule under it (location, so never blue). A count is shown only when it is known.
 export function UnderlineTab({
 	to,
 	label,
@@ -21,16 +21,16 @@ export function UnderlineTab({
 			role="tab"
 			className={({ isActive }) =>
 				cn(
-					"-mb-px border-b-2 px-3 py-2 text-[12.5px]",
+					"-mb-px flex h-10 items-center border-b-2 px-3 type-ui",
 					isActive
-						? "border-[var(--selection-fg)] text-primary"
+						? "border-(--text-primary) font-medium text-primary"
 						: "border-transparent text-secondary hover:text-primary",
 				)
 			}
 		>
 			{label}
 			{count !== undefined ? (
-				<span className="ml-1.5 font-mono text-tertiary">{count}</span>
+				<span className="ml-1.5 type-mono-xs text-tertiary">{count}</span>
 			) : null}
 		</NavLink>
 	);
@@ -39,7 +39,7 @@ export function UnderlineTab({
 export function TabList({ children }: { children: React.ReactNode }) {
 	return (
 		<div
-			className="flex shrink-0 gap-0.5 border-b border-default px-6 pt-3"
+			className="flex shrink-0 gap-0.5 border-b border-default px-6"
 			role="tablist"
 		>
 			{children}

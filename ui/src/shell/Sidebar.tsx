@@ -1,26 +1,48 @@
 import { matchPath, NavLink, useLocation } from "react-router";
-import { useMe } from "@/auth/SessionProvider";
 import { syncStates } from "@/components/fleet/status";
-import { cn } from "@/lib/utils";
-import { Lockup } from "./Logo";
+import { Icon, type IconName } from "@/components/Icon";
+import { StatusGlyph } from "@/components/StatusGlyph";
+import {
+	SidebarContent,
+	SidebarFooter,
+	SidebarGroup,
+	SidebarHeader,
+	SidebarMenu,
+	SidebarMenuBadge,
+	SidebarMenuButton,
+	SidebarMenuItem,
+	Sidebar as SidebarRail,
+	SidebarTrigger,
+} from "@/components/ui/sidebar";
+import { AccountPopover } from "./AccountPopover";
+import { LogoMark, Wordmark } from "./Logo";
 import type { OpenWorkload } from "./Shell";
 
-// The four sections in product order. Glyphs are the mono glyphs the
-// screens use; a count is shown only for a section that counts
-// something, and only when the frame knows it exactly.
-export const sections = [
-	{ to: "/simulation", label: "Simulation review", glyph: "◆", counted: false },
-	{ to: "/map", label: "Flow map", glyph: "⇄", counted: false },
-	{ to: "/workloads", label: "Workloads", glyph: "▦", counted: true },
-	{ to: "/policy", label: "Policy", glyph: "≡", counted: true },
-] as const;
+// The four sections in product order, each with its Lucide icon. A
+// count is shown only for a section that counts something, and only
+// when the frame knows it exactly.
+export const sections: {
+	to: string;
+	label: string;
+	icon: IconName;
+	counted: boolean;
+}[] = [
+	{
+		to: "/simulation",
+		label: "Simulation review",
+		icon: "flask-conical",
+		counted: false,
+	},
+	{ to: "/map", label: "Flow map", icon: "network", counted: false },
+	{ to: "/workloads", label: "Workloads", icon: "server", counted: true },
+	{ to: "/policy", label: "Policy", icon: "scroll-text", counted: true },
+];
 
-const navRow = ({ isActive }: { isActive: boolean }) =>
-	cn(
-		"flex w-full items-center gap-2.5 rounded-md px-2.5 py-[7px] text-[13px]",
-		isActive ? "bg-active text-primary" : "text-secondary hover:bg-hover",
-	);
-
+// Sidebar is the console's only global navigation: the brand mark and
+// name, the sections, the workload a detail screen last showed, and in
+// the footer the collapse control and the operator's account. It
+// collapses to an icon rail, where every entry keeps its accessible name
+// and shows its name as a tooltip.
 export function Sidebar({
 	counts = {},
 	fleetEmpty = null,
@@ -30,91 +52,94 @@ export function Sidebar({
 	fleetEmpty?: boolean | null;
 	open?: OpenWorkload | null;
 }) {
-	const me = useMe();
-	// A workload's detail has its own row; the fleet row is the fleet's.
+	// A workload's detail has its own entry; the fleet entry is the fleet's.
 	const { pathname } = useLocation();
 	const detail = matchPath("/workloads/:id/*", pathname);
 	const onDetail = detail !== null && detail.params.id !== "tokens";
+	const current = (to: string) =>
+		matchPath({ path: to, end: false }, pathname) !== null &&
+		!(to === "/workloads" && onDetail);
 	return (
-		<aside className="flex h-full w-[212px] shrink-0 flex-col border-r border-default bg-subtle">
-			<div className="flex items-center gap-2.5 border-b border-default px-4 pt-4 pb-3.5">
-				<Lockup />
-				{me.site ? (
-					<span
-						className="ml-auto font-mono text-[10px] text-tertiary"
-						data-testid="site-label"
-					>
-						{me.site}
-					</span>
-				) : null}
-			</div>
-			<nav className="flex flex-col gap-0.5 px-2 py-2.5" aria-label="Sections">
-				{sections.map((s) => (
-					<NavLink
-						key={s.to}
-						to={s.to}
-						className={
-							s.to === "/workloads"
-								? ({ isActive }) => navRow({ isActive: isActive && !onDetail })
-								: navRow
-						}
-					>
-						<span
-							className="w-4 text-center font-mono text-[12px] text-icon-default"
-							aria-hidden="true"
-						>
-							{s.glyph}
-						</span>
-						<span>{s.label}</span>
-						{s.counted && counts[s.to] !== undefined ? (
-							<span className="ml-auto font-mono text-[11px] text-tertiary">
-								{counts[s.to]}
-							</span>
-						) : null}
-					</NavLink>
-				))}
-				{open ? (
-					<NavLink to={`/workloads/${open.id}`} className={navRow}>
-						<span
-							className="w-4 text-center font-mono text-[12px] text-icon-default"
-							aria-hidden="true"
-						>
-							▫
-						</span>
-						<span className="truncate">{open.hostname}</span>
-						<span
-							className={cn(
-								"ml-auto font-mono text-[11px]",
-								syncStates[open.state].cls,
-							)}
-							title={syncStates[open.state].label}
-						>
-							{syncStates[open.state].glyph}
-						</span>
-					</NavLink>
-				) : null}
-			</nav>
+		<SidebarRail collapsible="icon">
+			<SidebarHeader>
+				<div className="mb-1 flex h-sidebar-item items-center gap-2 px-2 group-data-[collapsible=icon]:px-[9px]">
+					<LogoMark />
+					<Wordmark className="truncate group-data-[collapsible=icon]:hidden" />
+				</div>
+			</SidebarHeader>
+			<SidebarContent>
+				<SidebarGroup>
+					<nav aria-label="Sections">
+						<SidebarMenu>
+							{sections.map((s) => (
+								<SidebarMenuItem key={s.to}>
+									<SidebarMenuButton
+										asChild
+										isActive={current(s.to)}
+										tooltip={s.label}
+									>
+										<NavLink to={s.to}>
+											<Icon name={s.icon} />
+											<span>{s.label}</span>
+										</NavLink>
+									</SidebarMenuButton>
+									{s.counted && counts[s.to] !== undefined ? (
+										<SidebarMenuBadge>{counts[s.to]}</SidebarMenuBadge>
+									) : null}
+								</SidebarMenuItem>
+							))}
+							{open ? (
+								<SidebarMenuItem>
+									<SidebarMenuButton
+										asChild
+										isActive={onDetail && detail?.params.id === open.id}
+										tooltip={`${open.hostname} · ${syncStates[open.state].label}`}
+									>
+										<NavLink to={`/workloads/${open.id}`}>
+											<StatusGlyph
+												status={syncStates[open.state].status}
+												size="lg"
+												label={syncStates[open.state].label}
+											/>
+											<span>{open.hostname}</span>
+										</NavLink>
+									</SidebarMenuButton>
+								</SidebarMenuItem>
+							) : null}
+						</SidebarMenu>
+					</nav>
+				</SidebarGroup>
+			</SidebarContent>
 			{fleetEmpty ? <FleetSync /> : null}
-		</aside>
+			<SidebarFooter className="border-t border-subtle">
+				<SidebarMenu>
+					<SidebarMenuItem>
+						<SidebarTrigger />
+					</SidebarMenuItem>
+					<SidebarMenuItem>
+						<AccountPopover />
+					</SidebarMenuItem>
+				</SidebarMenu>
+			</SidebarFooter>
+		</SidebarRail>
 	);
 }
 
-// The fleet sync block at the foot of the sidebar, in its fresh-install
+// The fleet sync block above the sidebar's footer, in its fresh-install
 // form: the track alone. The populated form needs the fleet's per-state
 // totals, which no read supplies, so a fleet with workloads shows no
-// block rather than numbers the console cannot know.
+// block rather than numbers the console cannot know. The icon rail has
+// no room for it.
 function FleetSync() {
 	return (
-		<div className="mt-auto flex flex-col gap-1.5 border-t border-default px-4 py-3">
-			<div className="text-[11px] uppercase tracking-[0.06em] text-tertiary">
-				Fleet sync
-			</div>
+		<div className="flex flex-col gap-1.5 border-t border-subtle px-4 py-3 group-data-[collapsible=icon]:hidden">
+			<div className="type-label text-tertiary">Fleet sync</div>
 			<div
-				className="flex h-1.5 overflow-hidden rounded-[3px] bg-active"
+				className="flex h-1.5 overflow-hidden rounded-full bg-active"
 				role="presentation"
 			/>
-			<div className="font-mono text-[11px] text-secondary">no workloads</div>
-			<div className="text-[11px] text-tertiary">
+			<div className="type-mono-xs text-secondary">no workloads</div>
+			<div className="type-caption text-tertiary">
 				Enroll a workload to begin
 			</div>
 		</div>

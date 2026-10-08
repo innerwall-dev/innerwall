@@ -93,7 +93,6 @@ export function FlowsTab({
 						key={v}
 						on={verdict === v}
 						glyph={verdicts[v].glyph}
-						glyphClass={verdicts[v].text}
 						label={verdicts[v].label}
 						count={counts.status === "ready" ? counts.data.get(v) : undefined}
 						onClick={() => setVerdict(verdict === v ? null : v)}

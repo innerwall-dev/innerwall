@@ -3,26 +3,28 @@ import { cva, type VariantProps } from "class-variance-authority";
 import type * as React from "react";
 import { cn } from "@/lib/utils";
 
-// The design's two button forms: the gold primary (with its hairline
-// border, which the light theme draws in a darker gold and the dark
-// theme in the fill color itself) and the outlined secondary. Ghost is
-// for popover items and text-like controls. Buttons size by padding
-// over the body line, as the design's do, and only the primary is
-// semibold.
+// The design's button forms: the primary, inverted monochrome and one
+// per view, whose icon takes its label color; the secondary, a hairline
+// control on the canvas; and ghost, for popover items and text-like
+// controls. Heights are the control sizes: control-md by default,
+// control-sm in toolbars, control-lg for a dialog's primary action.
 const buttonVariants = cva(
-	"inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-md border font-sans text-[13px] transition-colors disabled:pointer-events-none disabled:opacity-50 aria-disabled:cursor-default",
+	"inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-md border type-ui-strong transition-colors disabled:pointer-events-none disabled:opacity-disabled aria-disabled:cursor-default",
 	{
 		variants: {
 			variant: {
 				primary:
-					"border-action-primary-bg bg-action-primary-bg font-semibold text-action-primary-fg hover:brightness-95",
-				secondary: "border-strong bg-transparent text-primary hover:bg-hover",
-				ghost: "border-transparent bg-transparent text-primary hover:bg-hover",
+					"border-action-primary-bg bg-action-primary-bg text-action-primary-fg hover:border-action-primary-hover hover:bg-action-primary-hover [&_[data-slot=icon]]:text-action-primary-fg",
+				secondary:
+					"border-default bg-app text-primary hover:border-strong hover:bg-hover",
+				ghost:
+					"border-transparent bg-transparent text-secondary hover:bg-hover hover:text-primary",
 			},
 			size: {
-				default: "px-3 py-[7px]",
-				sm: "px-2.5 py-[5px] text-[12px]",
-				block: "w-full px-3 py-[7px]",
+				default: "h-control-md px-3",
+				sm: "h-control-sm px-2.5 text-[12px]",
+				lg: "h-control-lg px-4",
+				block: "h-control-md w-full px-3",
 			},
 		},
 		defaultVariants: { variant: "primary", size: "default" },

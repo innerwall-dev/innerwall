@@ -192,3 +192,10 @@ export function renderAt(
 ): ReturnType<typeof render> {
 	return render(<MemoryRouter initialEntries={[path]}>{element}</MemoryRouter>);
 }
+
+// chip matches a label chip by its whole `key=value` text, which the
+// chip draws in two tones.
+export function chip(text: string) {
+	return (_: string, el: Element | null) =>
+		el?.getAttribute("data-slot") === "label-chip" && el.textContent === text;
+}
