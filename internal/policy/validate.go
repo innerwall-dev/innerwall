@@ -47,6 +47,9 @@ var ruleNames = map[error]string{
 	ErrBadDirection:         "direction",
 	ErrEmptySelector:        "selector-empty",
 	ErrEmptyLabelKey:        "label-key-required",
+	ErrBadLabelKey:          "label-key",
+	ErrBadLabelValue:        "label-value",
+	ErrDuplicateLabelKey:    "label-key-duplicate",
 	ErrEmptyLabelValues:     "label-values-required",
 	ErrBadPortRange:         "port-range",
 	ErrBadPortSpec:          "port-spec",
@@ -239,7 +242,7 @@ func ValidateRule(r *Rule, refs References) error {
 }
 
 // ValidateSelector admits a selector on its own: never empty, every key
-// named, every key with at least one value.
+// and value in the label grammar, every key with at least one value.
 func ValidateSelector(s Selector) error {
 	f := &Findings{}
 	validateSelector(f, "", s)
@@ -321,12 +324,19 @@ func validateSelector(f *Findings, path string, s Selector) {
 		f.add(path, ErrEmptySelector, "")
 		return
 	}
-	for key, values := range s {
-		if key == "" {
-			f.add(path, ErrEmptyLabelKey, "")
+	for _, key := range sortedSelectorKeys(s) {
+		values := s[key]
+		if err := CheckLabelKey(key); err != nil {
+			f.add(path, err, quoted(key))
+			continue
 		}
 		if len(values) == 0 {
 			f.add(path+"["+key+"]", ErrEmptyLabelValues, "")
+		}
+		for _, v := range values {
+			if err := CheckLabelValue(v); err != nil {
+				f.add(path+"["+key+"]", err, quoted(key)+" = "+quoted(v))
+			}
 		}
 	}
 }

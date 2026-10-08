@@ -6,6 +6,7 @@ import type {
 	Workload,
 } from "@/api/schema";
 import { labelPairs, shortId } from "@/lib/format";
+import { labelText } from "@/lib/labels";
 
 // Authored rules carry no name, only an id and a description, so a rule
 // is shown by its description with the short form of its id beside it.
@@ -45,7 +46,7 @@ export function matchedRule(
 export function peerNote(peer: PeerRef): string {
 	if (peer.workload_id) {
 		const labels = labelPairs(peer.labels)
-			.map(([k, v]) => `${k}=${v}`)
+			.map(([k, v]) => labelText(k, v))
 			.join(" ");
 		return [peer.name ?? "workload", labels].filter(Boolean).join(" · ");
 	}

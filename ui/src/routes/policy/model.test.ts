@@ -15,7 +15,6 @@ import {
 	namesOf,
 	outstanding,
 	parsePeer,
-	parseRequirement,
 	parseService,
 	peerChip,
 	planDryRun,
@@ -56,6 +55,10 @@ describe("cells", () => {
 			tag: "LABELS",
 			text: "app=storefront-api env=prod",
 			reference: false,
+			requirements: [
+				{ key: "app", values: ["storefront-api"] },
+				{ key: "env", values: ["prod"] },
+			],
 		});
 		expect(peerChip({ workloads: { app: ["a", "b"] } }, names).text).toBe(
 			"app=a|b",
@@ -159,15 +162,6 @@ describe("traffic", () => {
 });
 
 describe("scope", () => {
-	it("reads a typed requirement as a key and its values, keeping what it cannot read", () => {
-		expect(parseRequirement("app = checkout | payments")).toEqual([
-			"app",
-			["checkout", "payments"],
-		]);
-		expect(parseRequirement("tier=")).toEqual(["tier", []]);
-		expect(parseRequirement("tier")).toEqual(["tier", []]);
-	});
-
 	it("joins the preview with the scoped walk for the mode mix and the list", () => {
 		const a = workload({ hostname: "checkout-prod-02", mode: "simulation" });
 		const b = workload({
@@ -241,11 +235,15 @@ describe("scope", () => {
 });
 
 describe("drafts and findings", () => {
-	it("reads typed peers and services, keeping what it cannot read for admission", () => {
+	it("reads typed peers and services: selectors through the label grammar, the rest kept for admission", () => {
 		expect(parsePeer("app=storefront-api env=prod")).toEqual({
 			workloads: { app: ["storefront-api"], env: ["prod"] },
 		});
-		expect(parsePeer("tier=")).toEqual({ workloads: { tier: [] } });
+		expect(parsePeer("app = a | b")).toEqual({
+			workloads: { app: ["a", "b"] },
+		});
+		expect(parsePeer("tier=")).toEqual({ error: "tier has no value." });
+		expect(parsePeer('app="web env"')).toHaveProperty("error");
 		expect(parsePeer("10.40.0.0/33")).toEqual({ cidr: "10.40.0.0/33" });
 		expect(parsePeer("corp-vpn")).toEqual({ address_group: "corp-vpn" });
 		expect(parseService("TCP/389")).toEqual({

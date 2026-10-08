@@ -8,9 +8,10 @@ import { SeverityNote } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
 import { count, headline } from "@/lib/format";
 import { between, kindText } from "@/lib/gaps";
+import { labelFormHint, shownLabelText } from "@/lib/labels";
 import { useResource } from "@/lib/resource";
 import { cn } from "@/lib/utils";
-import { parseRequirement } from "./fleet/WorkloadList";
+import { labelRequirements } from "./fleet/WorkloadList";
 import { Drawer } from "./map/Drawer";
 import {
 	defaultRange,
@@ -223,20 +224,22 @@ function Toolbar({
 }) {
 	const [adding, setAdding] = useState(false);
 	const [draft, setDraft] = useState("");
-	const [invalid, setInvalid] = useState(false);
+	const [invalid, setInvalid] = useState<string | null>(null);
 	const options = keys.includes(groupKey) ? keys : [groupKey, ...keys];
 
 	function addRequirement() {
-		const req = parseRequirement(draft);
-		if (!req) {
-			setInvalid(true);
+		const parsed = labelRequirements(draft);
+		if (!parsed.ok || parsed.requirements.length === 0) {
+			setInvalid(parsed.ok ? labelFormHint : parsed.error);
 			return;
 		}
 		update((p) => {
-			if (!p.getAll("label").includes(req)) p.append("label", req);
+			for (const req of parsed.requirements) {
+				if (!p.getAll("label").includes(req)) p.append("label", req);
+			}
 		});
 		setDraft("");
-		setInvalid(false);
+		setInvalid(null);
 		setAdding(false);
 	}
 
@@ -271,8 +274,10 @@ function Toolbar({
 					const i = req.indexOf("=");
 					return (
 						<span key={req} className={requirement}>
-							<span className="text-tertiary">{req.slice(0, i)} =</span>{" "}
-							{req.slice(i + 1)}
+							<span className="text-tertiary">
+								{shownLabelText(req.slice(0, i), "key")} =
+							</span>{" "}
+							{shownLabelText(req.slice(i + 1), "value")}
 							<button
 								type="button"
 								aria-label={`Remove ${req}`}
@@ -305,7 +310,7 @@ function Toolbar({
 							ref={(el) => el?.focus()}
 							onChange={(ev) => {
 								setDraft(ev.target.value);
-								setInvalid(false);
+								setInvalid(null);
 							}}
 							onKeyDown={(ev) => {
 								if (ev.key === "Escape") setAdding(false);
@@ -317,7 +322,7 @@ function Toolbar({
 						/>
 						{invalid ? (
 							<SeverityNote level="error" className="type-caption">
-								A label is written key=value.
+								{invalid}
 							</SeverityNote>
 						) : null}
 					</form>

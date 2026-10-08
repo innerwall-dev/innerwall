@@ -386,7 +386,12 @@ export function RulesetEditor({
 
 	const scopeShown = scopeDraft ?? ruleset.scope;
 	const refused = scopeFindings(scopeRefused, "scope");
-	const previewed = scopeFindings(edited ? draft.findings : [], "selector");
+	// The stored scope's refusal shows too: one stored before the label
+	// grammar (ADR-0022) is refused by the preview, and says where.
+	const previewed = scopeFindings(
+		edited ? draft.findings : persisted.findings,
+		"selector",
+	);
 	const findings = {
 		keys: { ...previewed.keys, ...refused.keys },
 		whole: [...previewed.whole, ...refused.whole],

@@ -251,6 +251,11 @@ func (s *Reader) scope(ctx context.Context, workload *identity.WorkloadID, selec
 	if len(selector) == 0 {
 		return ids, scoped, nil
 	}
+	// A requirement outside the label grammar can match no label, so it
+	// is refused rather than answered with an empty read (ADR-0022).
+	if err := policy.ValidateSelector(selector); err != nil {
+		return nil, true, err
+	}
 	index, err := s.Store.ListWorkloadLabelIndex(ctx)
 	if err != nil {
 		return nil, true, err

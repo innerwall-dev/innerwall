@@ -1397,7 +1397,7 @@ components:
     label:
       name: label
       in: query
-      description: A `key=value` requirement; repeat to AND keys, repeat a key to OR its values. Restricts to the workloads the selector currently matches.
+      description: A `key=value` requirement; repeat to AND keys, repeat a key to OR its values. Restricts to the workloads the selector currently matches. A key or value outside the label grammar (see LabelMap) can match no label and is refused as an invalid parameter.
       schema:
         type: array
         items:
@@ -1654,13 +1654,17 @@ components:
       type: string
       enum: [tcp, udp, icmp]
     LabelMap:
-      description: Labels as a key to value object.
+      description: >-
+        Labels as a key to value object. A key is 1 to 63 ASCII letters, digits, `.`, `_`, `-`, or `/`, and a value 1 to 63 letters, digits, `.`, `_`, or `-`; each begins and ends with a letter or digit (the label grammar, ADR-0022). A write outside the grammar
+        is refused with `label-key`, `label-value`, or `label-key-required`
+        findings; a label stored before the grammar was admitted is returned
+        as stored until a label edit replaces it.
       type: object
       additionalProperties:
         type: string
     Selector:
       type: object
-      description: Label requirements ANDed across keys; a key's values are ORed. An empty selector matches nothing and is refused.
+      description: Label requirements ANDed across keys; a key's values are ORed. An empty selector matches nothing and is refused, and so is a key or value outside the label grammar (see LabelMap).
       additionalProperties:
         type: array
         items:

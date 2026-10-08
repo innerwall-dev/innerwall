@@ -12,6 +12,7 @@ import (
 
 	"github.com/innerwall-dev/innerwall/internal/ca"
 	"github.com/innerwall-dev/innerwall/internal/identity"
+	"github.com/innerwall-dev/innerwall/internal/policy"
 )
 
 // DefaultLeafTTL is the lifetime of an issued workload credential when the
@@ -156,6 +157,9 @@ func (s *Service) Enroll(ctx context.Context, tokenPlaintext string, csrPEM []by
 	if err := tok.Check(now); err != nil {
 		return nil, err
 	}
+	if err := validateLabels(tok.Labels); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrTokenLabelsInvalid, err)
+	}
 
 	id, err := identity.NewWorkloadID()
 	if err != nil {
@@ -229,16 +233,13 @@ func (s *Service) issue(ctx context.Context, id identity.WorkloadID, csrPEM []by
 	}, nil
 }
 
+// validateLabels admits a token's labels against the label grammar
+// (ADR-0022), the one every label entering the system is held to; a
+// refusal is the grammar's findings.
 func validateLabels(labels []Label) error {
-	seen := make(map[string]struct{}, len(labels))
+	pairs := make([]policy.LabelPair, 0, len(labels))
 	for _, l := range labels {
-		if l.Key == "" {
-			return errors.New("enroll: label key must not be empty")
-		}
-		if _, dup := seen[l.Key]; dup {
-			return fmt.Errorf("enroll: duplicate label key %q", l.Key)
-		}
-		seen[l.Key] = struct{}{}
+		pairs = append(pairs, policy.LabelPair{Key: l.Key, Value: l.Value})
 	}
-	return nil
+	return policy.ValidateLabelSet(pairs)
 }

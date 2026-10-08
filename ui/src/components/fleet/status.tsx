@@ -9,6 +9,7 @@ import {
 	tint,
 	tone,
 } from "@/components/StatusGlyph";
+import { labelOutsideGrammar, shownLabelText } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 
 // The design's status vocabulary. Color is never the only encoding:
@@ -123,26 +124,50 @@ export function VerdictPill({
 // LabelChip is one `key=value` label, always mono and never truncated
 // mid-key: the key in text-tertiary, the value in text-primary, on
 // bg-subtle behind a hairline. The input form sits inside an editable
-// field, on its stronger border.
+// field, on its stronger border. A label outside the label grammar
+// (ADR-0022), which only one stored before it can be, is drawn quoted on
+// the warning tone and says why, so a value holding a space or an "="
+// never reads as two healthy labels.
 export function LabelChip({
 	k,
 	v,
 	size = "table",
 }: {
 	k: string;
-	v: string;
+	// v is a label's value, or a selector requirement's values, ORed.
+	v: string | readonly string[];
 	size?: "table" | "rail" | "input";
 }) {
+	const values = typeof v === "string" ? [v] : v;
+	const outside =
+		values.length === 0 || values.some((x) => labelOutsideGrammar(k, x));
 	return (
 		<span
 			data-slot="label-chip"
+			data-outside-grammar={outside || undefined}
+			title={
+				outside
+					? `This label is outside the label grammar, so nothing written key=value can match it: key ${JSON.stringify(k)}, ${values.length === 1 ? "value" : "values"} ${values.map((x) => JSON.stringify(x)).join(" | ") || "none"}. Replace it.`
+					: undefined
+			}
 			className={cn(
-				"inline-flex h-5 items-center whitespace-nowrap rounded-sm border bg-subtle px-1.5 type-mono-sm text-primary",
-				size === "input" ? "border-strong" : "border-default",
+				"inline-flex h-5 items-center whitespace-nowrap rounded-sm border px-1.5 type-mono-sm text-primary",
+				outside
+					? "border-dashed border-status-warn-border bg-status-warn-bg"
+					: cn(
+							"bg-subtle",
+							size === "input" ? "border-strong" : "border-default",
+						),
 			)}
 		>
-			<span className="text-tertiary">{k}=</span>
-			{v}
+			{outside ? (
+				<StatusGlyph status="alert" size="sm" className="mr-1" />
+			) : null}
+			<span className="text-tertiary">{shownLabelText(k, "key")}=</span>
+			{values.map((x) => shownLabelText(x, "value")).join("|")}
+			{outside ? (
+				<span className="sr-only"> (outside the label grammar)</span>
+			) : null}
 		</span>
 	);
 }

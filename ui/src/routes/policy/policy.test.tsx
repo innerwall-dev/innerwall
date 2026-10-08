@@ -8,6 +8,7 @@ import type {
 	Ruleset,
 	Workload,
 } from "@/api/schema";
+import { validLabelValue } from "@/lib/labels";
 import { minutesAgo, workload } from "@/test/fixtures";
 import {
 	freshInstall,
@@ -184,7 +185,9 @@ function surface(opts: Surface = {}) {
 			path: "/api/v1/selectors/preview",
 			reply: (body) => {
 				const sel = (body as { selector: Record<string, string[]> }).selector;
-				const bad = Object.entries(sel).find(([, vs]) => vs.length === 0);
+				const bad = Object.entries(sel).find(
+					([, vs]) => vs.length === 0 || vs.some((v) => !validLabelValue(v)),
+				);
 				if (Object.keys(sel).length === 0 || bad) {
 					return {
 						status: 400,
@@ -192,11 +195,17 @@ function surface(opts: Surface = {}) {
 							...problem("validation", 400),
 							errors: [
 								bad
-									? {
-											path: `selector[${bad[0]}]`,
-											rule: "label-values-required",
-											message: `${bad[0]} has no values; this selector matches nothing`,
-										}
+									? bad[1].length === 0
+										? {
+												path: `selector[${bad[0]}]`,
+												rule: "label-values-required",
+												message: `${bad[0]} has no values; this selector matches nothing`,
+											}
+										: {
+												path: `selector[${bad[0]}]`,
+												rule: "label-value",
+												message: `label value must be 1 to 63 letters, digits, '.', '_', or '-' (${JSON.stringify(bad[0])} = ${JSON.stringify(bad[1][0])})`,
+											}
 									: {
 											path: "selector",
 											rule: "selector-empty",
@@ -437,20 +446,56 @@ describe("policy editor", () => {
 				name: /Save scope — applies to 6 workloads now/,
 			}),
 		).toBeInTheDocument();
-		// A key without values: the control plane says it matches nothing,
-		// at the key.
-		await user.type(
-			screen.getByRole("textbox", { name: "Add a scope requirement" }),
-			"tier={Enter}",
-		);
-		expect(await screen.findByTestId("finding")).toHaveTextContent(
-			"tier has no values; this selector matches nothing",
-		);
+		// A key without a value is refused as typed, with the reason, and
+		// nothing is added or previewed (ADR-0022).
+		const add = screen.getByRole("textbox", {
+			name: "Add a scope requirement",
+		});
+		const before = calls.length;
+		await user.type(add, "tier={Enter}");
+		expect(add).toHaveAttribute("aria-invalid", "true");
+		expect(add).toHaveValue("tier=");
+		expect(screen.getByText("tier has no value.")).toBeInTheDocument();
 		expect(
 			screen
 				.getAllByTestId("requirement")
 				.find((r) => r.textContent?.startsWith("tier")),
-		).toHaveClass("border-status-critical-fg");
+		).toBeUndefined();
+		// A paste of two requirements adds both, never one value with a
+		// space in it.
+		await user.clear(add);
+		await user.type(add, "tier=api zone=a|b{Enter}");
+		await waitFor(() =>
+			expect(
+				screen.getAllByTestId("requirement").map((r) => r.textContent),
+			).toEqual(
+				expect.arrayContaining([
+					expect.stringContaining("tier = api"),
+					expect.stringContaining("zone = a | b"),
+				]),
+			),
+		);
+		expect(
+			calls
+				.slice(before)
+				.filter((c) => c.path.endsWith("/selectors/preview"))
+				.map((c) => (c.body as { selector: Record<string, string[]> }).selector)
+				.some((sel) => "tier" in sel && sel.tier?.includes("")),
+		).toBe(false);
+	});
+
+	it("draws a stored scope outside the label grammar quoted, and places the preview's refusal on it", async () => {
+		// What a token form that split on the first "=" produced, kept in a
+		// ruleset's scope from before the grammar was admitted.
+		const legacy = ruleset("legacy-inbound", { app: ["web env=lab"] }, []);
+		surface({ rulesets: [legacy, checkout] });
+		renderApp("/policy?ruleset=legacy-inbound");
+		const req = await screen.findByTestId("requirement");
+		expect(req).toHaveTextContent('app = "web env=lab"');
+		expect(await screen.findByTestId("finding")).toHaveTextContent(
+			'"app" = "web env=lab"',
+		);
+		await waitFor(() => expect(req).toHaveClass("border-status-critical-fg"));
 	});
 
 	it("enables a disabled rule from the table, conditioned on the version it read", async () => {
@@ -614,7 +659,7 @@ describe("policy editor", () => {
 		const editing = await row("New rule");
 		const peer = within(editing).getByRole("textbox", { name: "Add a peer" });
 		await user.type(peer, "10.40.0.0/33{Enter}");
-		await user.type(peer, "tier={Enter}");
+		await user.type(peer, "tier=web{Enter}");
 		const svc = within(editing).getByRole("textbox", { name: "Add a service" });
 		await user.type(svc, "svc_legacy_ldap{Enter}");
 		await user.type(svc, "tcp/389{Enter}");
@@ -634,7 +679,7 @@ describe("policy editor", () => {
 			direction: "inbound",
 			enabled: true,
 			description: "",
-			peers: [{ cidr: "10.40.0.0/33" }, { workloads: { tier: [] } }],
+			peers: [{ cidr: "10.40.0.0/33" }, { workloads: { tier: ["web"] } }],
 			services: ["svc_legacy_ldap"],
 			entries: [{ protocol: "tcp", ports: ["389"] }],
 		});

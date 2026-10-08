@@ -6,19 +6,6 @@ import { SeverityNote } from "@/components/StatusGlyph";
 import { cn } from "@/lib/utils";
 import type { Chip } from "./model";
 
-// requirements splits a LABELS chip's selector text back into its
-// `key=value` requirements, so each draws as one label chip. The text is
-// selectorText's: requirements ANDed by the space between them.
-function requirements(text: string): { k: string; v: string }[] {
-	return text
-		.split(/\s+/)
-		.filter((t) => t !== "")
-		.map((t) => {
-			const i = t.indexOf("=");
-			return i < 0 ? { k: "", v: t } : { k: t.slice(0, i), v: t.slice(i + 1) };
-		});
-}
-
 // ChipView is one authored element in a cell: its kind tag and its text,
 // solid when it states a value inline, dashed when it names something
 // defined elsewhere. A selector's labels draw as label chips. A refused
@@ -64,11 +51,14 @@ export function ChipView({
 				data-failed={failed || undefined}
 			>
 				<span className="type-mono-xs text-tertiary">{chip.tag}</span>
-				{requirements(chip.text).map((r, i) => (
-					// biome-ignore lint/suspicious/noArrayIndexKey: requirements are positional within one selector
-					<span key={i} className="contents">
+				{(chip.requirements ?? []).map((r, i) => (
+					<span key={r.key} className="contents">
 						{i > 0 ? " " : null}
-						<LabelChip k={r.k} v={r.v} size={input ? "input" : "table"} />
+						<LabelChip
+							k={r.key}
+							v={r.values}
+							size={input ? "input" : "table"}
+						/>
 					</span>
 				))}
 				{remove}
@@ -127,7 +117,9 @@ export function FindingLines({ findings }: { findings?: readonly Finding[] }) {
 }
 
 // AddInput is the field at the end of a chip list: what is typed becomes
-// one element on Enter, read as the placeholder describes.
+// one or more elements on Enter, read as the placeholder describes. When
+// onAdd refuses the text with a reason, the text stays, marked, with the
+// reason under it, and nothing is added.
 export function AddInput({
 	label,
 	placeholder,
@@ -136,28 +128,42 @@ export function AddInput({
 }: {
 	label: string;
 	placeholder: string;
-	onAdd: (text: string) => void;
+	onAdd: (text: string) => string | undefined;
 	className?: string;
 }) {
 	const [text, setText] = useState("");
+	const [refusal, setRefusal] = useState<string | null>(null);
 	const onKeyDown = (ev: KeyboardEvent<HTMLInputElement>) => {
 		if (ev.key !== "Enter") return;
 		ev.preventDefault();
 		if (text.trim() === "") return;
-		onAdd(text);
+		const refused = onAdd(text);
+		if (refused) {
+			setRefusal(refused);
+			return;
+		}
 		setText("");
+		setRefusal(null);
 	};
 	return (
-		<input
-			aria-label={label}
-			placeholder={placeholder}
-			value={text}
-			onChange={(ev) => setText(ev.target.value)}
-			onKeyDown={onKeyDown}
-			className={cn(
-				"h-control-sm min-w-[150px] rounded-md border border-strong bg-app px-2.5 type-mono-sm text-primary placeholder:text-tertiary",
-				className,
-			)}
-		/>
+		<span className={cn("inline-flex flex-col gap-1", className)}>
+			<input
+				aria-label={label}
+				aria-invalid={refusal !== null || undefined}
+				placeholder={placeholder}
+				value={text}
+				onChange={(ev) => {
+					setText(ev.target.value);
+					setRefusal(null);
+				}}
+				onKeyDown={onKeyDown}
+				className="h-control-sm min-w-[150px] rounded-md border border-strong bg-app px-2.5 type-mono-sm text-primary placeholder:text-tertiary aria-invalid:border-status-critical-fg"
+			/>
+			{refusal ? (
+				<SeverityNote level="error" size="sm" className="type-caption">
+					{refusal}
+				</SeverityNote>
+			) : null}
+		</span>
 	);
 }

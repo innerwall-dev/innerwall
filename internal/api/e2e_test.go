@@ -2,15 +2,22 @@ package api_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/innerwall-dev/innerwall/internal/agent/credential"
 	"github.com/innerwall-dev/innerwall/internal/api"
+	"github.com/innerwall-dev/innerwall/internal/ca/fileca"
 	"github.com/innerwall-dev/innerwall/internal/compiler"
 	"github.com/innerwall-dev/innerwall/internal/enroll"
 	"github.com/innerwall-dev/innerwall/internal/fleet"
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
+	"github.com/innerwall-dev/innerwall/internal/ingest"
 	"github.com/innerwall-dev/innerwall/internal/policy"
 	"github.com/innerwall-dev/innerwall/internal/readmodel"
 	"github.com/innerwall-dev/innerwall/internal/storetest"
@@ -151,5 +158,116 @@ func TestOperatorWritesEndToEnd(t *testing.T) {
 	_, body = ws.call(t, http.MethodGet, "/api/v1/workloads/"+f.Web.String(), "", nil)
 	if field(body, "sync.latest_version") != float64(3) {
 		t.Fatalf("a description edit advanced a rendered version: %v", body["sync"])
+	}
+}
+
+// TestMintedTokenEnrollsSelectableWorkload closes the gap between seeded
+// and enrolled labels: the seed writes clean labels straight into the
+// store, so no test exercised the path an operator's labels really take.
+// Here they go through the surface's mint, the enrollment function the
+// agent gateway calls, and ingestion, and are then selected the ways the
+// console selects them: the fleet filter, the selector preview, and the
+// flow rollup's label scope (ADR-0022). It skips without a database.
+func TestMintedTokenEnrollsSelectableWorkload(t *testing.T) {
+	st := storetest.Open(t)
+	ctx := context.Background()
+	now := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	authority, err := fileca.Init(t.TempDir(), fileca.InitOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := &compiler.Engine{Store: st, Now: clock}
+	enrollSvc := &enroll.Service{Store: st, Authority: authority, LeafTTL: time.Hour, Now: clock}
+	reads := &readmodel.Reader{Store: st, Flows: st.Flows(), Now: clock}
+	s := newSurface(t, api.Deps{
+		Reads: reads, Enroll: enrollSvc,
+		Fleet:     &fleet.Service{Store: st, Engine: engine, Reads: reads, Now: clock},
+		Authoring: &policy.Authoring{Store: st, Renderer: renderer{engine}, Now: clock},
+	})
+	s.setPassword(t, "Ada")
+	bearer, _, err := s.operators.MintToken(ctx, "e2e", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws := &writeSurface{surface: s, bearer: map[string]string{"Authorization": "Bearer " + bearer}}
+	csr := func() []byte {
+		key, err := credential.GenerateKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		pem, err := credential.NewCSR(key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pem
+	}
+
+	// The body a form that split on the first "=" sent: refused, and
+	// nothing is stored.
+	resp, body := ws.call(t, http.MethodPost, "/api/v1/provisioning-tokens", jsonBody(map[string]any{"name": "lab", "labels": map[string]string{"app": "web env=lab"}}), nil)
+	expectFindings(t, resp, body, "labels[0]")
+	_, body = ws.call(t, http.MethodGet, "/api/v1/provisioning-tokens", "", nil)
+	if len(field(body, "tokens").([]any)) != 0 {
+		t.Fatalf("a refused mint stored a token: %v", body)
+	}
+
+	// The labels as two labels: minted, enrolled with, carried.
+	resp, body = ws.call(t, http.MethodPost, "/api/v1/provisioning-tokens", jsonBody(map[string]any{"name": "lab", "labels": map[string]string{"app": "web", "env": "lab"}}), nil)
+	if resp.status != http.StatusCreated {
+		t.Fatalf("mint: %d %v", resp.status, body)
+	}
+	enrolled, err := enrollSvc.Enroll(ctx, body["token"].(string), csr(), "web-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	web := enrolled.Workload.ID
+
+	_, body = ws.call(t, http.MethodGet, "/api/v1/workloads?label=app%3Dweb&label=env%3Dlab", "", nil)
+	if ws := field(body, "workloads").([]any); len(ws) != 1 || field(ws[0], "id") != web.String() || field(ws[0], "labels.app") != "web" || field(ws[0], "labels.env") != "lab" {
+		t.Fatalf("fleet filter = %v", body)
+	}
+	resp, body = ws.call(t, http.MethodPost, "/api/v1/selectors/preview", jsonBody(map[string]any{"selector": map[string][]string{"env": {"lab"}}}), nil)
+	if resp.status != http.StatusOK || body["count"] != float64(1) {
+		t.Fatalf("preview: %d %v", resp.status, body)
+	}
+
+	// Its agent reports a window; the label scope finds it.
+	start := now.Add(-time.Hour)
+	ing := &ingest.Service{Directory: st, Flows: st.Flows()}
+	if _, err := ing.Ingest(ctx, web, &innerwallv1.ReportFlowsRequest{
+		WindowStart: timestamppb.New(start), WindowEnd: timestamppb.New(start.Add(5 * time.Minute)),
+		Records: []*innerwallv1.FlowRecord{{
+			SrcAddress: "198.51.100.7", DstAddress: "10.0.0.10", DstPort: 443, Protocol: innerwallv1.Protocol_PROTOCOL_TCP,
+			Direction: innerwallv1.Direction_DIRECTION_INBOUND, Decision: innerwallv1.PolicyDecision_POLICY_DECISION_OBSERVED, ConnectionCount: 4,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range []string{"app%3Dweb", "env%3Dlab"} {
+		resp, body = ws.call(t, http.MethodGet, "/api/v1/flows/rollup?group_by=src,dst&label="+scope, "", nil)
+		if resp.status != http.StatusOK || body["group_count"] != float64(1) || field(body, "groups.0.keys.dst.hostname") != "web-1" {
+			t.Fatalf("rollup label=%s: %d %v", scope, resp.status, body)
+		}
+	}
+	// What the corrupt label looked like, typed as a filter, is refused
+	// rather than answered with an empty map.
+	resp, body = ws.call(t, http.MethodGet, "/api/v1/flows/rollup?group_by=src,dst&label=app%3Dweb%20env%3Dlab", "", nil)
+	expectInvalidParameter(t, resp, body, "label")
+
+	// A token stored before the grammar enrolls nothing.
+	plain, hash, err := enroll.NewToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.CreateToken(ctx, enroll.Token{ID: uuid.New(), Hash: hash, Name: "legacy", Labels: []enroll.Label{{Key: "app", Value: "web env=lab"}}, CreatedAt: now.Add(-time.Hour), ExpiresAt: now.Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := enrollSvc.Enroll(ctx, plain, csr(), "web-2"); !errors.Is(err, enroll.ErrTokenLabelsInvalid) {
+		t.Fatalf("legacy token: err = %v", err)
+	}
+	_, body = ws.call(t, http.MethodGet, "/api/v1/workloads", "", nil)
+	if len(field(body, "workloads").([]any)) != 1 {
+		t.Fatalf("a refused enrollment stored a workload: %v", body)
 	}
 }

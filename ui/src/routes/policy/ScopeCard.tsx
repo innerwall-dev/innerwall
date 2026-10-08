@@ -4,13 +4,13 @@ import type { Finding, Selector } from "@/api/schema";
 import { Eyebrow, modes, syncStates } from "@/components/fleet/status";
 import { Icon } from "@/components/Icon";
 import { count } from "@/lib/format";
+import { parseRequirements, shownLabelText } from "@/lib/labels";
 import type { Resource } from "@/lib/resource";
 import { cn } from "@/lib/utils";
 import { AddInput, FindingLines } from "./Chips";
 import {
 	type MatchedHost,
 	matchedHosts,
-	parseRequirement,
 	type ScopeMatch,
 	scopeMix,
 	withoutKey,
@@ -70,8 +70,16 @@ export function ScopeCard({
 							label="Add a scope requirement"
 							placeholder="key = value | value"
 							onAdd={(text) => {
-								const [k, vs] = parseRequirement(text);
-								onChange(withRequirement(scope, k, vs));
+								// A paste of several requirements adds each; text
+								// outside the label grammar adds nothing.
+								const parsed = parseRequirements(text, { alternatives: true });
+								if (!parsed.ok) return parsed.error;
+								let next = scope;
+								for (const r of parsed.requirements) {
+									next = withRequirement(next, r.key, r.values);
+								}
+								onChange(next);
+								return undefined;
 							}}
 						/>
 					</div>
@@ -114,10 +122,12 @@ function Requirement({
 		>
 			<span>
 				<span className="text-tertiary">
-					{k} <span>=</span>
+					{shownLabelText(k, "key")} <span>=</span>
 				</span>{" "}
 				{values.length > 0 ? (
-					values.join(" | ")
+					// A value stored before the label grammar is quoted, so it
+					// never reads as several requirements (ADR-0022).
+					values.map((v) => shownLabelText(v, "value")).join(" | ")
 				) : (
 					<span className="text-tertiary">(no values)</span>
 				)}

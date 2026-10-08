@@ -707,10 +707,6 @@ func (s *Server) mintProvisioningToken(w http.ResponseWriter, r *http.Request) {
 	}
 	plaintext, tok, err := s.enroll.MintToken(r.Context(), doc.Name, labels, doc.ttl())
 	if err != nil {
-		if strings.HasPrefix(err.Error(), "enroll: ") {
-			writeProblem(w, finding("labels", "invalid", strings.TrimPrefix(err.Error(), "enroll: ")))
-			return
-		}
 		s.writeProblemFor(w, err)
 		return
 	}

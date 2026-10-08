@@ -18,6 +18,7 @@ import type {
 	WorkloadRef,
 } from "@/api/schema";
 import { since } from "@/lib/format";
+import { parseRequirements, type Requirement } from "@/lib/labels";
 import { syncIssue } from "../review/model";
 
 type SyncIssue = NonNullable<ReturnType<typeof syncIssue>>;
@@ -38,6 +39,10 @@ export interface Chip {
 	tag: "LABELS" | "GROUP" | "CIDR" | "REF" | "TCP" | "UDP" | "ICMP";
 	text: string;
 	reference: boolean;
+	// requirements are a LABELS chip's selector, in key order, so each
+	// draws as one label chip from the selector itself, never from text
+	// re-split (a value stored before the label grammar may hold a space).
+	requirements?: Requirement[];
 }
 
 // selectorText is a selector as one chip's text: its requirements in key
@@ -68,7 +73,15 @@ export function namesOf(
 
 export function peerChip(p: Peer, names: Names): Chip {
 	if (p.workloads) {
-		return { tag: "LABELS", text: selectorText(p.workloads), reference: false };
+		const sel = p.workloads;
+		return {
+			tag: "LABELS",
+			text: selectorText(sel),
+			reference: false,
+			requirements: Object.keys(sel)
+				.sort()
+				.map((key) => ({ key, values: sel[key] ?? [] })),
+		};
 	}
 	if (p.address_group !== undefined) {
 		return {
@@ -179,21 +192,6 @@ export function trafficByRule(rollup: Rollup): Map<string, RuleTraffic> {
 }
 
 // --- the scope -----------------------------------------------------------------
-
-// parseRequirement reads one scope requirement as typed: `key = value |
-// value`. What it cannot read as a key and values it keeps as typed, so
-// the control plane's admission names the fault.
-export function parseRequirement(text: string): [string, string[]] {
-	const at = text.indexOf("=");
-	if (at < 0) return [text.trim(), []];
-	const key = text.slice(0, at).trim();
-	const values = text
-		.slice(at + 1)
-		.split("|")
-		.map((v) => v.trim())
-		.filter((v) => v !== "");
-	return [key, values];
-}
 
 // withRequirement adds or replaces one key's requirement.
 export function withRequirement(
@@ -363,18 +361,21 @@ export function dirty(d: RuleDraft): boolean {
 	return !d.base || !sameInput(d, draftOf(d.base, d.tempId));
 }
 
-// parsePeer reads one peer as typed. Requirements (`key=value`, several
-// separated by spaces, a key's values by "|") are a workload selector;
-// an address or a prefix is a CIDR; anything else names an address
-// group. What is typed is kept as typed, so the control plane's
-// admission names any fault in it.
-export function parsePeer(text: string): Peer {
+// parsePeer reads one peer as typed or pasted. Requirements (`key=value`,
+// several separated by spaces, a key's values by "|") are a workload
+// selector, read by the console's one label parser and refused with the
+// reason when they are outside the label grammar (ADR-0022); an address
+// or a prefix is a CIDR; anything else names an address group. A CIDR or
+// a group name is kept as typed, so the control plane's admission names
+// any fault in it.
+export function parsePeer(text: string): Peer | { error: string } {
 	const t = text.trim();
 	if (t.includes("=")) {
+		const parsed = parseRequirements(t, { alternatives: true });
+		if (!parsed.ok) return { error: parsed.error };
 		const sel: Selector = {};
-		for (const part of t.split(/\s+/)) {
-			const [k, vs] = parseRequirement(part);
-			sel[k] = [...(sel[k] ?? []), ...vs];
+		for (const r of parsed.requirements) {
+			sel[r.key] = [...(sel[r.key] ?? []), ...r.values];
 		}
 		return { workloads: sel };
 	}

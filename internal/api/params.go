@@ -166,6 +166,14 @@ func (s *Server) readProblem(w http.ResponseWriter, err error) {
 	switch {
 	case errors.As(err, &pe):
 		writeProblem(w, Problem{Type: ProblemInvalidParameter, Title: "Invalid parameter", Status: http.StatusBadRequest, Detail: pe.Error()})
+	case policy.AsFindings(err) != nil:
+		// The only admission a read performs is its label scope's.
+		f := policy.AsFindings(err)
+		msgs := make([]string, 0, len(f.Errors))
+		for _, e := range f.Errors {
+			msgs = append(msgs, e.Message())
+		}
+		writeProblem(w, Problem{Type: ProblemInvalidParameter, Title: "Invalid parameter", Status: http.StatusBadRequest, Detail: "parameter label: " + strings.Join(msgs, "; ")})
 	case readmodel.IsUnknown(err):
 		writeProblem(w, problemNotFound)
 	case errors.Is(err, readmodel.ErrInvalidCursor):

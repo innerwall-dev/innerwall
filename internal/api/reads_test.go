@@ -288,6 +288,17 @@ func TestRollupEndpoint(t *testing.T) {
 	if sq := s.fx.flows.LastGroup; sq.GroupBy != flowstore.GroupByPeerService || len(sq.WorkloadIDs) != 1 || sq.WorkloadIDs[0] != s.fx.db {
 		t.Fatalf("store query = %+v", sq)
 	}
+	// A requirement outside the label grammar matches no label, so it is
+	// refused, not answered with an empty rollup (ADR-0022).
+	resp, body = s.get(t, "/api/v1/flows/rollup?group_by=src,dst&label=app%3Dweb%20env%3Dlab")
+	expectInvalidParameter(t, resp, body, "label")
+	if !strings.Contains(body["detail"].(string), `"web env=lab"`) {
+		t.Fatalf("detail = %v", body["detail"])
+	}
+	resp, body = s.get(t, "/api/v1/flows/gaps?label=role%3D")
+	expectInvalidParameter(t, resp, body, "label")
+	resp, body = s.get(t, "/api/v1/workloads?label=ro%20le%3Ddb")
+	expectInvalidParameter(t, resp, body, "label")
 	// A scope matching nothing is an empty rollup with null bounds.
 	resp, body = s.get(t, "/api/v1/flows/rollup?group_by=rule&label=role=cache")
 	if resp.status != http.StatusOK || len(field(body, "groups").([]any)) != 0 || body["effective_from"] != nil || body["group_count"] != float64(0) {

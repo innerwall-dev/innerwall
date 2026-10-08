@@ -383,15 +383,15 @@ function EditRow({
 							label="Add a peer"
 							placeholder="app=web · 10.0.0.0/8 · group"
 							className="w-full"
-							onAdd={(text) =>
+							onAdd={(text) => {
+								const peer = parsePeer(text);
+								if ("error" in peer) return peer.error;
 								onDraft({
 									...d,
-									peers: [
-										...d.peers,
-										{ key: nextKey(), value: parsePeer(text) },
-									],
-								})
-							}
+									peers: [...d.peers, { key: nextKey(), value: peer }],
+								});
+								return undefined;
+							}}
 						/>
 					</div>
 				</td>
@@ -449,6 +449,7 @@ function EditRow({
 												],
 											},
 								);
+								return undefined;
 							}}
 						/>
 					</div>

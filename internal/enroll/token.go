@@ -38,6 +38,11 @@ var (
 	ErrTokenUnknown   = errors.New("enroll: provisioning token is not recognized")
 	ErrTokenExpired   = errors.New("enroll: provisioning token has expired")
 	ErrTokenRevoked   = errors.New("enroll: provisioning token has been revoked")
+	// ErrTokenLabelsInvalid refuses a token whose labels are outside the
+	// label grammar (ADR-0022): one minted before the grammar was
+	// admitted would hand every workload it enrolls a label no selector
+	// can match. Mint a new token.
+	ErrTokenLabelsInvalid = errors.New("enroll: provisioning token assigns labels outside the label grammar; mint a new token")
 )
 
 // Label is one key/value pair assigned to a workload.

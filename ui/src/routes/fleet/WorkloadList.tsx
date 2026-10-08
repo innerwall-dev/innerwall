@@ -22,6 +22,7 @@ import { LoadingRow, ProblemNotice } from "@/components/Problem";
 import { SeverityNote } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
 import { labelPairs } from "@/lib/format";
+import { parseRequirements } from "@/lib/labels";
 import { asProblem, useResource } from "@/lib/resource";
 import { cn } from "@/lib/utils";
 import { useShell } from "@/shell/Shell";
@@ -35,14 +36,19 @@ const states: SyncState[] = ["synced", "pending", "degraded", "offline"];
 const th =
 	"h-row-header whitespace-nowrap border-b border-default bg-subtle px-3 text-left type-label text-tertiary";
 
-// parseRequirement accepts one label requirement in the domain's
-// selector form, `key=value`; the surface is the authority on anything
-// finer and answers a malformed one as a problem.
-export function parseRequirement(text: string): string | null {
-	const t = text.trim();
-	const i = t.indexOf("=");
-	if (i <= 0 || i === t.length - 1) return null;
-	return `${t.slice(0, i).trim()}=${t.slice(i + 1).trim()}`;
+// labelRequirements reads typed or pasted filter text as `key=value`
+// requirements, one per label, through the console's one label parser
+// (ADR-0022): `app=web env=lab` is two requirements, and text outside the
+// grammar is refused with the reason.
+export function labelRequirements(
+	text: string,
+): { ok: true; requirements: string[] } | { ok: false; error: string } {
+	const parsed = parseRequirements(text);
+	if (!parsed.ok) return parsed;
+	return {
+		ok: true,
+		requirements: parsed.requirements.map((r) => `${r.key}=${r.values[0]}`),
+	};
 }
 
 // WorkloadList is the fleet tab: the workloads in fleet order (the ones
@@ -409,26 +415,35 @@ function LabelFilter({
 }) {
 	const [editing, setEditing] = useState(false);
 	const [text, setText] = useState("");
-	const [invalid, setInvalid] = useState(false);
+	const [invalid, setInvalid] = useState<string | null>(null);
 
 	function add(e?: FormEvent) {
 		e?.preventDefault();
-		const req = parseRequirement(text);
-		if (!req) {
-			setInvalid(text.trim() !== "");
-			if (text.trim() === "") setEditing(false);
+		if (text.trim() === "") {
+			setInvalid(null);
+			setEditing(false);
 			return;
 		}
-		if (!labels.includes(req)) onChange([...labels, req]);
+		const parsed = labelRequirements(text);
+		if (!parsed.ok) {
+			setInvalid(parsed.error);
+			return;
+		}
+		onChange([
+			...labels,
+			...parsed.requirements.filter(
+				(r, i, all) => !labels.includes(r) && all.indexOf(r) === i,
+			),
+		]);
 		setText("");
-		setInvalid(false);
+		setInvalid(null);
 		setEditing(false);
 	}
 
 	function key(e: KeyboardEvent<HTMLInputElement>) {
 		if (e.key === "Escape") {
 			setText("");
-			setInvalid(false);
+			setInvalid(null);
 			setEditing(false);
 		}
 	}
@@ -458,12 +473,13 @@ function LabelFilter({
 						// biome-ignore lint/a11y/noAutofocus: the field opens on request
 						autoFocus
 						aria-label="Label requirement"
-						aria-invalid={invalid || undefined}
+						aria-invalid={invalid !== null || undefined}
+						title={invalid ?? undefined}
 						placeholder="key=value"
 						value={text}
 						onChange={(e) => {
 							setText(e.target.value);
-							setInvalid(false);
+							setInvalid(null);
 						}}
 						onKeyDown={key}
 						onBlur={() => add()}

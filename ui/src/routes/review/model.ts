@@ -11,6 +11,7 @@ import type {
 import { extent } from "@/components/RangeControl";
 import { since } from "@/lib/format";
 import { between, gapsIn, kindText, span, workloadsWith } from "@/lib/gaps";
+import { labelText } from "@/lib/labels";
 import { peerKey } from "../map/model";
 
 // The simulation review's model: a ruleset's scope, the peer-and-service
@@ -52,8 +53,8 @@ export function scopeText(sel: Selector): string {
 		.map((k) => {
 			const vs = sel[k] ?? [];
 			return vs.length === 1
-				? `${k}=${vs[0]}`
-				: `(${vs.map((v) => `${k}=${v}`).join(" OR ")})`;
+				? labelText(k, vs[0] ?? "")
+				: `(${vs.map((v) => labelText(k, v)).join(" OR ")})`;
 		})
 		.join(" AND ");
 }
@@ -88,7 +89,7 @@ export interface PeerGroup {
 function labelSet(labels: LabelMap): string {
 	return Object.keys(labels)
 		.sort()
-		.map((k) => `${k}=${labels[k]}`)
+		.map((k) => labelText(k, labels[k] ?? ""))
 		.join(" ");
 }
 
@@ -109,7 +110,7 @@ export function peerGroupOf(
 				return {
 					id: `w:${set}`,
 					kind: "workloads",
-					title: `${lead}=${p.labels[lead]}`,
+					title: labelText(lead, p.labels[lead] ?? ""),
 					rest: labelSet(others),
 					full: set,
 					labels: p.labels,

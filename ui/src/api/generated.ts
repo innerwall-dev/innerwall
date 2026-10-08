@@ -715,7 +715,7 @@ export interface components {
             to: components["schemas"]["Timestamp"];
             workload: components["schemas"]["WorkloadRef"];
         };
-        /** @description Labels as a key to value object. */
+        /** @description Labels as a key to value object. A key is 1 to 63 ASCII letters, digits, `.`, `_`, `-`, or `/`, and a value 1 to 63 letters, digits, `.`, `_`, or `-`; each begins and ends with a letter or digit (the label grammar, ADR-0022). A write outside the grammar is refused with `label-key`, `label-value`, or `label-key-required` findings; a label stored before the grammar was admitted is returned as stored until a label edit replaces it. */
         LabelMap: {
             [key: string]: string;
         };
@@ -972,7 +972,7 @@ export interface components {
             rules: components["schemas"]["RuleInput"][];
             scope: components["schemas"]["Selector"];
         };
-        /** @description Label requirements ANDed across keys; a key's values are ORed. An empty selector matches nothing and is refused. */
+        /** @description Label requirements ANDed across keys; a key's values are ORed. An empty selector matches nothing and is refused, and so is a key or value outside the label grammar (see LabelMap). */
         Selector: {
             [key: string]: string[];
         };
@@ -1228,7 +1228,7 @@ export interface components {
         id: string;
         /** @description The version the caller last read, as the resource's entity tag. Required on every update and delete. */
         ifMatch: string;
-        /** @description A `key=value` requirement; repeat to AND keys, repeat a key to OR its values. Restricts to the workloads the selector currently matches. */
+        /** @description A `key=value` requirement; repeat to AND keys, repeat a key to OR its values. Restricts to the workloads the selector currently matches. A key or value outside the label grammar (see LabelMap) can match no label and is refused as an invalid parameter. */
         label: string[];
         /** @description A destination service, `<protocol>/<port>` such as `tcp/5432`, or `icmp`. */
         service: string;
@@ -1467,7 +1467,7 @@ export interface operations {
             query?: {
                 /** @description Start of the range (RFC 3339). Defaults to a day before `to`. */
                 from?: components["parameters"]["from"];
-                /** @description A `key=value` requirement; repeat to AND keys, repeat a key to OR its values. Restricts to the workloads the selector currently matches. */
+                /** @description A `key=value` requirement; repeat to AND keys, repeat a key to OR its values. Restricts to the workloads the selector currently matches. A key or value outside the label grammar (see LabelMap) can match no label and is refused as an invalid parameter. */
                 label?: components["parameters"]["label"];
                 /** @description Maximum gaps returned. */
                 limit?: number;
@@ -1505,7 +1505,7 @@ export interface operations {
                 from?: components["parameters"]["from"];
                 /** @description The grouping. The set is closed; nothing else is accepted. */
                 group_by: "rule" | "rule,peer" | "src,dst" | "dst,service" | "peer,service";
-                /** @description A `key=value` requirement; repeat to AND keys, repeat a key to OR its values. Restricts to the workloads the selector currently matches. */
+                /** @description A `key=value` requirement; repeat to AND keys, repeat a key to OR its values. Restricts to the workloads the selector currently matches. A key or value outside the label grammar (see LabelMap) can match no label and is refused as an invalid parameter. */
                 label?: components["parameters"]["label"];
                 /** @description Maximum groups returned; the store's default and maximum apply. */
                 limit?: number;
@@ -2326,7 +2326,7 @@ export interface operations {
             query?: {
                 /** @description The `next_cursor` of the previous page. */
                 cursor?: components["parameters"]["cursor"];
-                /** @description A `key=value` requirement; repeat to AND keys, repeat a key to OR its values. Restricts to the workloads the selector currently matches. */
+                /** @description A `key=value` requirement; repeat to AND keys, repeat a key to OR its values. Restricts to the workloads the selector currently matches. A key or value outside the label grammar (see LabelMap) can match no label and is refused as an invalid parameter. */
                 label?: components["parameters"]["label"];
                 /** @description Page size; the read model's default and maximum apply. */
                 limit?: number;

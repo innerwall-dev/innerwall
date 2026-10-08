@@ -606,6 +606,38 @@ describe("flow map", () => {
 		);
 	});
 
+	it("reads a pasted pair of requirements as two, and refuses a value outside the grammar", async () => {
+		const { calls } = surface();
+		const user = userEvent.setup();
+		await openMap();
+		await user.click(screen.getByRole("button", { name: "filter" }));
+		const input = screen.getByLabelText("Label requirement");
+		await user.click(input);
+		await user.paste("app=web=lab");
+		await user.keyboard("{Enter}");
+		expect(
+			screen.getByText(/^"web=lab" is not a label value/),
+		).toBeInTheDocument();
+		await user.clear(input);
+		await user.paste("app=checkout env=prod");
+		await user.keyboard("{Enter}");
+		await waitFor(() =>
+			expect(
+				calls.some(
+					(c) =>
+						c.path.includes("flows/rollup") &&
+						c.path.includes("label=app%3Dcheckout&label=env%3Dprod"),
+				),
+			).toBe(true),
+		);
+		expect(
+			await screen.findByRole("button", { name: "Remove app=checkout" }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Remove env=prod" }),
+		).toBeInTheDocument();
+	});
+
 	it("says when a scoped range has no flows", async () => {
 		surface({ byVerdict: {}, workloads: [] });
 		await openMap("/map?label=app%3Dsearch");
