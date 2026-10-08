@@ -83,7 +83,7 @@ export function ModeChangeDialog({
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent width={560}>
 				<DialogHeader title={title}>
-					<p className="text-[12px] text-foreground-tertiary">
+					<p className="text-[12px] text-secondary">
 						Sets the enforcement mode of{" "}
 						{workloads.length === 1
 							? "this workload"
@@ -94,9 +94,7 @@ export function ModeChangeDialog({
 				</DialogHeader>
 				<DialogBody>
 					<div className="flex flex-col gap-[5px]">
-						<span className="text-[12px] text-foreground-tertiary">
-							Workloads
-						</span>
+						<span className="text-[12px] text-secondary">Workloads</span>
 						<ul className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[12px]">
 							{workloads.slice(0, shown).map((w) => (
 								<li key={w.id} className="flex items-center gap-1.5">
@@ -110,16 +108,14 @@ export function ModeChangeDialog({
 								</li>
 							))}
 							{workloads.length > shown ? (
-								<li className="text-muted-foreground">
+								<li className="text-tertiary">
 									+{workloads.length - shown} more
 								</li>
 							) : null}
 						</ul>
 					</div>
 					<div className="flex flex-col gap-[5px]">
-						<span className="text-[12px] text-foreground-tertiary">
-							Target mode
-						</span>
+						<span className="text-[12px] text-secondary">Target mode</span>
 						<ChoiceChips
 							legend="Target mode"
 							name="target-mode"
@@ -139,7 +135,7 @@ export function ModeChangeDialog({
 							}))}
 						/>
 						{target && already > 0 ? (
-							<span className="text-[11px] text-muted-foreground">
+							<span className="text-[11px] text-tertiary">
 								{already === workloads.length
 									? `All ${already} are already in ${target}; nothing changes.`
 									: `${already} already in ${target}; the other ${workloads.length - already} change.`}
@@ -149,12 +145,12 @@ export function ModeChangeDialog({
 					{mismatch ? (
 						<div
 							role="alert"
-							className="flex flex-col gap-1 rounded border border-status-would-block-border bg-status-would-block-surface px-3 py-2.5 text-[12px]"
+							className="flex flex-col gap-1 rounded-md border border-status-warn-border bg-status-warn-bg px-3 py-2.5 text-[12px]"
 						>
-							<span className="font-semibold text-status-degraded">
+							<span className="font-semibold text-status-warn-fg">
 								▲ The selection no longer matches
 							</span>
-							<span className="text-foreground-secondary">
+							<span className="text-secondary">
 								You selected{" "}
 								<span className="font-mono">{mismatch.expected}</span>{" "}
 								workloads; the control plane resolved{" "}
@@ -165,7 +161,7 @@ export function ModeChangeDialog({
 							<Button
 								variant="secondary"
 								size="sm"
-								className="mt-1 self-start rounded-chip"
+								className="mt-1 self-start rounded-sm"
 								onClick={onReload}
 							>
 								Reload the list
@@ -174,7 +170,7 @@ export function ModeChangeDialog({
 					) : problem ? (
 						<p
 							role="alert"
-							className="flex items-start gap-2 text-[12px] text-destructive"
+							className="flex items-start gap-2 text-[12px] text-status-critical-fg"
 						>
 							<span className="font-mono" aria-hidden="true">
 								✕

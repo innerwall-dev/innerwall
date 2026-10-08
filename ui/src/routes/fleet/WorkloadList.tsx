@@ -137,7 +137,7 @@ export function WorkloadList({
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
-			<div className="flex shrink-0 items-center gap-6 border-b border-border px-6 pt-3.5 pb-3">
+			<div className="flex shrink-0 items-center gap-6 border-b border-default px-6 pt-3.5 pb-3">
 				<fieldset className="m-0 flex min-w-0 gap-4 border-0 p-0 text-[12px]">
 					<legend className="sr-only">Sync state</legend>
 					<FilterChip
@@ -161,7 +161,7 @@ export function WorkloadList({
 					<Button
 						variant="secondary"
 						size="sm"
-						className="rounded-chip"
+						className="rounded-sm"
 						disabled={selection.length === 0}
 						onClick={() => setChanging(true)}
 					>
@@ -179,7 +179,7 @@ export function WorkloadList({
 				) : (
 					<table className="w-full border-collapse text-[12.5px]">
 						<thead>
-							<tr className="sticky top-0 bg-background text-left text-[11px] uppercase tracking-[0.05em] text-muted-foreground">
+							<tr className="sticky top-0 bg-app text-left text-[11px] uppercase tracking-[0.05em] text-tertiary">
 								<th className="w-6 pt-2.5 pr-2 pb-2 font-medium">
 									<Checkbox
 										label="Select all shown"
@@ -222,11 +222,11 @@ export function WorkloadList({
 				)}
 				{resource.status === "loading" ? <LoadingRow what="workloads" /> : null}
 				{resource.status === "ready" && rows.length === 0 ? (
-					<div className="flex flex-col items-start gap-2 py-6 text-[12px] text-muted-foreground">
+					<div className="flex flex-col items-start gap-2 py-6 text-[12px] text-tertiary">
 						<span>No workloads match these filters.</span>
 						<button
 							type="button"
-							className="cursor-pointer text-link hover:text-link-hover"
+							className="cursor-pointer text-link hover:underline"
 							onClick={() => {
 								setSyncState(null);
 								setLabels([]);
@@ -237,7 +237,7 @@ export function WorkloadList({
 					</div>
 				) : null}
 				{resource.status === "ready" && rows.length > 0 ? (
-					<div className="flex items-center gap-3 py-3 text-[12px] text-muted-foreground">
+					<div className="flex items-center gap-3 py-3 text-[12px] text-tertiary">
 						<span>
 							Showing {rows.length} · sorted by sync state, then last seen
 						</span>
@@ -245,7 +245,7 @@ export function WorkloadList({
 							<Button
 								variant="secondary"
 								size="sm"
-								className="rounded-chip"
+								className="rounded-sm"
 								disabled={more.loading}
 								onClick={loadMore}
 							>
@@ -253,7 +253,7 @@ export function WorkloadList({
 							</Button>
 						) : null}
 						{more.error ? (
-							<span role="alert" className="text-destructive">
+							<span role="alert" className="text-status-critical-fg">
 								{more.error}
 							</span>
 						) : null}
@@ -294,7 +294,7 @@ function Row({
 	const labels = labelPairs(w.labels);
 	const cred = credential(w);
 	const note = syncNote(w);
-	const cell = "border-t border-border p-2";
+	const cell = "border-t border-default p-2";
 	return (
 		// The whole row opens the workload for a pointer; the hostname link
 		// is the keyboard's way in, and the checkbox selects without opening.
@@ -304,8 +304,8 @@ function Row({
 				onOpen();
 			}}
 			className={cn(
-				"cursor-pointer hover:bg-surface-row-selected",
-				selected && "bg-surface-row-selected",
+				"cursor-pointer hover:bg-selection-bg",
+				selected && "bg-selection-bg",
 			)}
 		>
 			<td className={cn(cell, "pl-0")}>
@@ -315,7 +315,7 @@ function Row({
 					onChange={onToggle}
 				/>
 			</td>
-			<td className={cn(cell, "font-mono text-foreground")}>
+			<td className={cn(cell, "font-mono text-primary")}>
 				<Link to={`/workloads/${w.id}`} className="hover:underline">
 					{w.hostname}
 				</Link>
@@ -323,7 +323,7 @@ function Row({
 			<td className={cell}>
 				<div className="flex flex-wrap gap-1">
 					{labels.length === 0 ? (
-						<span className="text-[11px] text-status-degraded">
+						<span className="text-[11px] text-status-warn-fg">
 							▲ no labels — matches no scope
 						</span>
 					) : (
@@ -337,9 +337,7 @@ function Row({
 			<td className={cn(cell, "whitespace-nowrap")}>
 				<SyncLabel state={w.sync.state} />
 				{note ? (
-					<span className="ml-1.5 text-[11px] text-muted-foreground">
-						{note}
-					</span>
+					<span className="ml-1.5 text-[11px] text-tertiary">{note}</span>
 				) : null}
 			</td>
 			<td className={cn(cell, "text-right font-mono")}>
@@ -350,12 +348,7 @@ function Row({
 			>
 				{cred.text}
 			</td>
-			<td
-				className={cn(
-					cell,
-					"pr-0 text-right font-mono text-foreground-tertiary",
-				)}
-			>
+			<td className={cn(cell, "pr-0 text-right font-mono text-secondary")}>
 				{lastSeen(w)}
 			</td>
 		</tr>
@@ -440,9 +433,7 @@ function LabelFilter({
 						className="inline-flex cursor-pointer items-center gap-1"
 					>
 						<LabelChip k={k ?? ""} v={v.join("=")} />
-						<span className="font-mono text-[11px] text-muted-foreground">
-							×
-						</span>
+						<span className="font-mono text-[11px] text-tertiary">×</span>
 					</button>
 				);
 			})}
@@ -461,14 +452,14 @@ function LabelFilter({
 						}}
 						onKeyDown={key}
 						onBlur={() => add()}
-						className="w-[150px] rounded-chip border border-dashed border-input-strong bg-transparent px-[9px] py-1 font-mono text-[12px] text-foreground placeholder:text-muted-foreground focus:outline-none aria-invalid:border-destructive"
+						className="w-[150px] rounded-sm border border-dashed border-strong bg-transparent px-[9px] py-1 font-mono text-[12px] text-primary placeholder:text-tertiary focus:outline-none aria-invalid:border-status-critical-fg"
 					/>
 				</form>
 			) : (
 				<button
 					type="button"
 					onClick={() => setEditing(true)}
-					className="cursor-pointer rounded-chip border border-dashed border-input-strong px-[9px] py-1 text-[12px] text-muted-foreground hover:text-foreground"
+					className="cursor-pointer rounded-sm border border-dashed border-strong px-[9px] py-1 text-[12px] text-tertiary hover:text-primary"
 				>
 					+ label filter
 				</button>

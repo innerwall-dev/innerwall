@@ -10,16 +10,14 @@ import { cn } from "@/lib/utils";
 // over the body line, as the design's do, and only the primary is
 // semibold.
 const buttonVariants = cva(
-	"inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded border font-sans text-[13px] transition-colors disabled:pointer-events-none disabled:opacity-50 aria-disabled:cursor-default",
+	"inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-md border font-sans text-[13px] transition-colors disabled:pointer-events-none disabled:opacity-50 aria-disabled:cursor-default",
 	{
 		variants: {
 			variant: {
 				primary:
-					"border-primary-border bg-primary font-semibold text-primary-foreground hover:brightness-95",
-				secondary:
-					"border-input-strong bg-transparent text-foreground hover:bg-muted",
-				ghost:
-					"border-transparent bg-transparent text-foreground hover:bg-muted",
+					"border-action-primary-bg bg-action-primary-bg font-semibold text-action-primary-fg hover:brightness-95",
+				secondary: "border-strong bg-transparent text-primary hover:bg-hover",
+				ghost: "border-transparent bg-transparent text-primary hover:bg-hover",
 			},
 			size: {
 				default: "px-3 py-[7px]",

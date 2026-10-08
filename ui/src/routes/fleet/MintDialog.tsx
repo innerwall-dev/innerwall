@@ -146,29 +146,27 @@ function MintForm({ onMinted }: { onMinted: (m: MintedToken) => void }) {
 	return (
 		<>
 			<DialogHeader title="Mint a provisioning token">
-				<p className="text-[12px] text-foreground-tertiary">
+				<p className="text-[12px] text-secondary">
 					Workloads enrolling with this token receive exactly these labels. They
 					cannot choose their own.
 				</p>
 			</DialogHeader>
 			<DialogBody className="text-[12.5px]">
 				<label htmlFor={nameId} className="flex flex-col gap-[5px]">
-					<span className="text-[12px] text-foreground-tertiary">Name</span>
+					<span className="text-[12px] text-secondary">Name</span>
 					<input
 						id={nameId}
 						value={name}
 						onChange={(e) => setName(e.target.value)}
-						className="rounded border border-input-strong bg-background px-2.5 py-[7px] font-mono outline-none focus-visible:border-ring"
+						className="rounded-md border border-strong bg-app px-2.5 py-[7px] font-mono outline-none focus-visible:border-selection-fg"
 					/>
 				</label>
 				<div className="flex flex-col gap-[5px]">
-					<span className="text-[12px] text-foreground-tertiary">
-						Assigns labels
-					</span>
+					<span className="text-[12px] text-secondary">Assigns labels</span>
 					<div
 						className={cn(
-							"flex flex-wrap items-center gap-1.5 rounded border bg-background px-2.5 py-[7px]",
-							draftInvalid ? "border-destructive" : "border-input-strong",
+							"flex flex-wrap items-center gap-1.5 rounded-md border bg-app px-2.5 py-[7px]",
+							draftInvalid ? "border-status-critical-fg" : "border-strong",
 						)}
 					>
 						{labelPairs(
@@ -202,17 +200,17 @@ function MintForm({ onMinted }: { onMinted: (m: MintedToken) => void }) {
 							}}
 							onKeyDown={onKey}
 							onBlur={() => commitDraft()}
-							className="min-w-[120px] flex-1 bg-transparent px-1 py-0.5 font-mono text-[12px] outline-none placeholder:text-muted-foreground"
+							className="min-w-[120px] flex-1 bg-transparent px-1 py-0.5 font-mono text-[12px] outline-none placeholder:text-tertiary"
 						/>
 					</div>
 					{draftInvalid ? (
-						<span className="text-[11px] text-destructive">
+						<span className="text-[11px] text-status-critical-fg">
 							A label is written key=value.
 						</span>
 					) : null}
 				</div>
 				<div className="flex flex-col gap-[5px]">
-					<span className="text-[12px] text-foreground-tertiary">Expires</span>
+					<span className="text-[12px] text-secondary">Expires</span>
 					<div className="flex items-center gap-1.5">
 						<ChoiceChips<Lifetime>
 							legend="Expires"
@@ -225,13 +223,13 @@ function MintForm({ onMinted }: { onMinted: (m: MintedToken) => void }) {
 							]}
 						/>
 						{lifetime === "custom" ? (
-							<label className="ml-1 flex items-center gap-1.5 text-foreground-tertiary">
+							<label className="ml-1 flex items-center gap-1.5 text-secondary">
 								<input
 									aria-label="Days"
 									inputMode="numeric"
 									value={customDays}
 									onChange={(e) => setCustomDays(e.target.value)}
-									className="w-14 rounded border border-input-strong bg-background px-2 py-1 text-right font-mono text-foreground outline-none focus-visible:border-ring"
+									className="w-14 rounded-md border border-strong bg-app px-2 py-1 text-right font-mono text-primary outline-none focus-visible:border-selection-fg"
 								/>
 								days
 							</label>
@@ -241,7 +239,7 @@ function MintForm({ onMinted }: { onMinted: (m: MintedToken) => void }) {
 				{problem ? (
 					<p
 						role="alert"
-						className="flex items-start gap-2 text-[12px] text-destructive"
+						className="flex items-start gap-2 text-[12px] text-status-critical-fg"
 					>
 						<span className="font-mono" aria-hidden="true">
 							✕
@@ -298,20 +296,20 @@ function ShownOnce({ minted }: { minted: MintedToken }) {
 	return (
 		<>
 			<DialogHeader title="Token minted — copy it now">
-				<p className="text-[12px] text-status-degraded">
+				<p className="text-[12px] text-status-warn-fg">
 					▲ This is the only time the plaintext is shown. Only its hash is
 					stored.
 				</p>
 			</DialogHeader>
 			<DialogBody className="gap-3">
-				<div className="flex items-center gap-2 rounded border border-input-strong bg-background px-3 py-2.5 font-mono text-[12.5px] break-all">
+				<div className="flex items-center gap-2 rounded-md border border-strong bg-app px-3 py-2.5 font-mono text-[12.5px] break-all">
 					<span className="flex-1" data-testid="minted-secret">
 						{minted.token}
 					</span>
 					<button
 						type="button"
 						onClick={copy}
-						className="cursor-pointer whitespace-nowrap rounded-chip border border-input-strong bg-card px-[9px] py-1 font-sans text-[11.5px]"
+						className="cursor-pointer whitespace-nowrap rounded-sm border border-strong bg-raised px-[9px] py-1 font-sans text-[11.5px]"
 					>
 						{copied === "copied"
 							? "Copied"
@@ -321,13 +319,11 @@ function ShownOnce({ minted }: { minted: MintedToken }) {
 					</button>
 				</div>
 				<div className="flex flex-col gap-[5px]">
-					<span className="text-[12px] text-foreground-tertiary">
-						Enroll a host
-					</span>
-					<pre className="rounded border border-input-strong bg-background px-3 py-2.5 font-mono text-[11.5px] whitespace-pre-wrap text-foreground-secondary">
+					<span className="text-[12px] text-secondary">Enroll a host</span>
+					<pre className="rounded-md border border-strong bg-app px-3 py-2.5 font-mono text-[11.5px] whitespace-pre-wrap text-secondary">
 						{`innerwall-agent enroll --server ${gateway} \\\n  --token ${masked(minted.token)} --bootstrap-ca ./innerwall-ca.crt`}
 					</pre>
-					<span className="text-[11px] text-muted-foreground">
+					<span className="text-[11px] text-tertiary">
 						Distribute the CA certificate alongside the token; the agent uses it
 						to verify the control plane on first contact.
 						{configured
@@ -337,7 +333,7 @@ function ShownOnce({ minted }: { minted: MintedToken }) {
 				</div>
 			</DialogBody>
 			<DialogFooter>
-				<span className="mr-auto text-[11px] text-muted-foreground">
+				<span className="mr-auto text-[11px] text-tertiary">
 					Expires in {lifetime}
 					{pairs.length > 0
 						? ` · assigns ${pairs.map(([k, v]) => `${k}=${v}`).join(" ")}`

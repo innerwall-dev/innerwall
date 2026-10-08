@@ -84,9 +84,9 @@ export function WorkloadDetail() {
 				{wl.error.type === ProblemType.notFound ? (
 					<div className="flex flex-col gap-2 py-6">
 						<h1 className="text-[16px] font-semibold">No such workload</h1>
-						<p className="text-[12px] text-foreground-tertiary">
+						<p className="text-[12px] text-secondary">
 							No workload is enrolled with this identity.{" "}
-							<Link to="/workloads" className="text-link hover:text-link-hover">
+							<Link to="/workloads" className="text-link hover:underline">
 								Back to the fleet
 							</Link>
 						</p>
@@ -184,13 +184,13 @@ function Rail({
 	const labels = labelPairs(w.labels);
 	const os = w.os;
 	return (
-		<aside className="flex w-[320px] shrink-0 flex-col gap-[18px] overflow-auto border-r border-border bg-surface-sidebar px-5 pt-5 pb-6">
+		<aside className="flex w-[320px] shrink-0 flex-col gap-[18px] overflow-auto border-r border-default bg-subtle px-5 pt-5 pb-6">
 			<div className="flex flex-col gap-1">
 				<h1 className="font-mono text-[16px] font-semibold">{w.hostname}</h1>
-				<div className="font-mono text-[11px] break-all text-muted-foreground">
+				<div className="font-mono text-[11px] break-all text-tertiary">
 					{w.id}
 				</div>
-				<div className="text-[11px] text-muted-foreground">
+				<div className="text-[11px] text-tertiary">
 					Identity is assigned at enrollment and cannot be edited.
 				</div>
 			</div>
@@ -199,63 +199,63 @@ function Rail({
 				<Eyebrow>Status</Eyebrow>
 				<StatusCard w={w} onReread={onReread} />
 				<dl className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5 text-[12px]">
-					<dt className="text-muted-foreground">mode</dt>
+					<dt className="text-tertiary">mode</dt>
 					<dd className="flex items-center gap-2">
 						<ModePill mode={w.mode} />
 						<button
 							type="button"
 							onClick={() => setChanging(true)}
-							className="cursor-pointer text-[11px] text-link hover:text-link-hover"
+							className="cursor-pointer text-[11px] text-link hover:underline"
 						>
 							change…
 						</button>
 					</dd>
-					<dt className="text-muted-foreground">last seen</dt>
+					<dt className="text-tertiary">last seen</dt>
 					<dd className="font-mono">
 						{w.health.last_seen_at ? `${lastSeen(w)} ago` : "never"}
 					</dd>
-					<dt className="text-muted-foreground">enrolled</dt>
+					<dt className="text-tertiary">enrolled</dt>
 					<dd className="font-mono">{ago(w.enrolled_at)}</dd>
-					<dt className="text-muted-foreground">credential</dt>
+					<dt className="text-tertiary">credential</dt>
 					<dd className={cn("font-mono", credentialTone[cred.tone])}>
 						{cred.text}
 						{w.health.credential.last_error ? (
-							<div className="font-sans text-[11px] text-muted-foreground">
+							<div className="font-sans text-[11px] text-tertiary">
 								{w.health.credential.last_error}
 							</div>
 						) : null}
 					</dd>
-					<dt className="text-muted-foreground">dropped flows</dt>
+					<dt className="text-tertiary">dropped flows</dt>
 					<dd
 						className={cn(
 							"font-mono",
-							w.health.dropped_flow_records > 0 && "text-status-degraded",
+							w.health.dropped_flow_records > 0 && "text-status-warn-fg",
 						)}
 					>
 						{count(w.health.dropped_flow_records)}
 						{w.health.dropped_flow_records > 0 ? (
-							<div className="font-sans text-[11px] text-muted-foreground">
+							<div className="font-sans text-[11px] text-tertiary">
 								Records the agent could not deliver; the flows shown are
 								incomplete.
 							</div>
 						) : null}
 					</dd>
-					<dt className="text-muted-foreground">overruns</dt>
+					<dt className="text-tertiary">overruns</dt>
 					<dd
 						className={cn(
 							"font-mono",
-							w.health.source_overruns > 0 && "text-status-degraded",
+							w.health.source_overruns > 0 && "text-status-warn-fg",
 						)}
 					>
 						{count(w.health.source_overruns)}
 						{w.health.source_overruns > 0 ? (
-							<div className="font-sans text-[11px] text-muted-foreground">
+							<div className="font-sans text-[11px] text-tertiary">
 								Times the kernel dropped events because a flow source fell
 								behind, since the agent started.
 							</div>
 						) : null}
 					</dd>
-					<dt className="self-start text-muted-foreground">evidence gaps</dt>
+					<dt className="self-start text-tertiary">evidence gaps</dt>
 					<dd>
 						<EvidenceGapsCell gaps={gaps} />
 					</dd>
@@ -275,7 +275,7 @@ function Rail({
 				</div>
 				<div className="flex flex-wrap gap-1.5">
 					{labels.length === 0 ? (
-						<span className="text-[11px] text-status-degraded">
+						<span className="text-[11px] text-status-warn-fg">
 							▲ no labels — matches no scope
 						</span>
 					) : (
@@ -284,7 +284,7 @@ function Rail({
 						))
 					)}
 				</div>
-				<div className="text-[11px] text-muted-foreground">
+				<div className="text-[11px] text-tertiary">
 					Assigned from token scope at enrollment; editable by operators only.
 				</div>
 			</div>
@@ -292,9 +292,9 @@ function Rail({
 			<div className="flex flex-col gap-2">
 				<Eyebrow>Host facts</Eyebrow>
 				<dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-[5px] font-mono text-[12px]">
-					<dt className="font-sans text-muted-foreground">hostname</dt>
+					<dt className="font-sans text-tertiary">hostname</dt>
 					<dd>{w.hostname}</dd>
-					<dt className="font-sans text-muted-foreground">os</dt>
+					<dt className="font-sans text-tertiary">os</dt>
 					<dd>
 						{os
 							? [
@@ -306,9 +306,9 @@ function Rail({
 									.join(" · ")
 							: "not reported"}
 					</dd>
-					<dt className="font-sans text-muted-foreground">agent</dt>
+					<dt className="font-sans text-tertiary">agent</dt>
 					<dd>{w.agent.version || "not reported"}</dd>
-					<dt className="font-sans text-muted-foreground">addresses</dt>
+					<dt className="font-sans text-tertiary">addresses</dt>
 					<dd>
 						{w.addresses.length === 0
 							? "none reported"
@@ -338,14 +338,10 @@ function Rail({
 // which the agent knows it lost evidence: flows in them are incomplete.
 function EvidenceGapsCell({ gaps }: { gaps: Resource<EvidenceGaps> }) {
 	if (gaps.status === "loading") {
-		return <span className="font-mono text-muted-foreground">…</span>;
+		return <span className="font-mono text-tertiary">…</span>;
 	}
 	if (gaps.status === "error") {
-		return (
-			<span className="text-[11px] text-muted-foreground">
-				could not be read
-			</span>
-		);
+		return <span className="text-[11px] text-tertiary">could not be read</span>;
 	}
 	const shown = gaps.data.gaps.slice(0, gapsShown);
 	const more = gaps.data.gaps.length > gapsShown || gaps.data.truncated;
@@ -353,7 +349,7 @@ function EvidenceGapsCell({ gaps }: { gaps: Resource<EvidenceGaps> }) {
 		return (
 			<span className="font-mono">
 				none{" "}
-				<span className="font-sans text-[11px] text-muted-foreground">
+				<span className="font-sans text-[11px] text-tertiary">
 					in {rangeDays} days
 				</span>
 			</span>
@@ -361,14 +357,14 @@ function EvidenceGapsCell({ gaps }: { gaps: Resource<EvidenceGaps> }) {
 	}
 	return (
 		<div className="flex flex-col gap-1" data-testid="evidence-gaps">
-			<span className="font-mono text-status-degraded">
+			<span className="font-mono text-status-warn-fg">
 				{count(gaps.data.gaps.length)}
 				{more ? "+" : ""}{" "}
-				<span className="font-sans text-[11px] text-muted-foreground">
+				<span className="font-sans text-[11px] text-tertiary">
 					in {rangeDays} days
 				</span>
 			</span>
-			<ul className="flex flex-col gap-0.5 text-[11px] text-foreground-tertiary">
+			<ul className="flex flex-col gap-0.5 text-[11px] text-secondary">
 				{shown.map((g) => (
 					<li key={`${g.kind}|${g.source}|${g.from}|${g.to}`}>
 						▲ {kindText(g.kind)} between {between(g.from, g.to)}
@@ -376,7 +372,7 @@ function EvidenceGapsCell({ gaps }: { gaps: Resource<EvidenceGaps> }) {
 					</li>
 				))}
 			</ul>
-			<div className="text-[11px] text-muted-foreground">
+			<div className="text-[11px] text-tertiary">
 				Intervals the agent knows it lost evidence in; the flows shown in them
 				are incomplete.
 			</div>

@@ -24,21 +24,21 @@ export function ChipView({
 	return (
 		<span
 			className={cn(
-				"inline-flex max-w-full items-center gap-1.5 rounded-[3px] border bg-card px-1.5 py-[3px] font-mono text-[12px]",
+				"inline-flex max-w-full items-center gap-1.5 rounded-[3px] border bg-raised px-1.5 py-[3px] font-mono text-[12px]",
 				chip.reference || failed ? "border-dashed" : "border-solid",
-				failed ? "border-destructive" : "border-input-strong",
+				failed ? "border-status-critical-fg" : "border-strong",
 			)}
 			data-testid="chip"
 			data-failed={failed || undefined}
 		>
-			<span className="text-[10px] tracking-[0.04em] text-muted-foreground">
+			<span className="text-[10px] tracking-[0.04em] text-tertiary">
 				{chip.tag}
 			</span>
 			{chip.text ? (
 				<span
 					className={cn(
-						"break-all text-foreground",
-						unknown && "text-muted-foreground line-through",
+						"break-all text-primary",
+						unknown && "text-tertiary line-through",
 					)}
 				>
 					{chip.text}
@@ -49,7 +49,7 @@ export function ChipView({
 					type="button"
 					aria-label={`Remove ${chip.tag.toLowerCase()} ${chip.text}`.trim()}
 					onClick={onRemove}
-					className="cursor-pointer text-muted-foreground hover:text-foreground"
+					className="cursor-pointer text-tertiary hover:text-primary"
 				>
 					×
 				</button>
@@ -67,7 +67,7 @@ export function FindingLines({ findings }: { findings?: readonly Finding[] }) {
 			{findings.map((f) => (
 				<li
 					key={`${f.path}|${f.rule}`}
-					className="flex gap-1.5 text-[12px] text-destructive"
+					className="flex gap-1.5 text-[12px] text-status-critical-fg"
 					data-testid="finding"
 					data-path={f.path}
 				>
@@ -108,7 +108,7 @@ export function AddInput({
 			onChange={(ev) => setText(ev.target.value)}
 			onKeyDown={onKeyDown}
 			className={cn(
-				"min-w-[150px] rounded-[3px] border border-dashed border-input-strong bg-transparent px-2 py-[3px] font-mono text-[12px] text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:border-ring",
+				"min-w-[150px] rounded-[3px] border border-dashed border-strong bg-transparent px-2 py-[3px] font-mono text-[12px] text-primary placeholder:text-tertiary focus:outline-none focus-visible:border-selection-fg",
 				className,
 			)}
 		/>

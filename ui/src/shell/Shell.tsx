@@ -137,7 +137,7 @@ function Frame() {
 	if (rulesets.status === "ready") counts["/policy"] = rulesets.data;
 
 	return (
-		<div className="flex h-dvh w-full overflow-hidden bg-background text-foreground">
+		<div className="flex h-dvh w-full overflow-hidden bg-app text-primary">
 			<Sidebar counts={counts} fleetEmpty={fleetEmpty} open={open} />
 			<div className="flex min-w-0 flex-1 flex-col">
 				<TopBar crumbs={crumbsFor(location.pathname, location.search, open)} />
@@ -152,7 +152,7 @@ function Frame() {
 function Loading() {
 	return (
 		<div
-			className="flex h-dvh items-center justify-center bg-background text-muted-foreground"
+			className="flex h-dvh items-center justify-center bg-app text-tertiary"
 			aria-busy="true"
 		>
 			<span className="font-mono text-[12px]">…</span>

@@ -37,7 +37,8 @@ function systemTheme(): Theme {
 		: "light";
 }
 
-// ThemeProvider owns the .dark class on the root element: a stored
+// ThemeProvider owns the root element's data-theme attribute, which the
+// design tokens key on, and the .dark class that mirrors it: a stored
 // preference wins, the system preference is the default, and every
 // change is written back so the next load and the pre-paint script agree.
 export function ThemeProvider({ children }: { children: ReactNode }) {
@@ -46,7 +47,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 	);
 
 	useEffect(() => {
-		document.documentElement.classList.toggle("dark", theme === "dark");
+		const root = document.documentElement;
+		root.dataset.theme = theme;
+		root.classList.toggle("dark", theme === "dark");
 	}, [theme]);
 
 	const setTheme = useCallback((next: Theme) => {

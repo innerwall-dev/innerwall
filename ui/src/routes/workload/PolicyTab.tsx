@@ -30,7 +30,7 @@ export function PolicyTab({
 
 	if (p.version === 0) {
 		return (
-			<p className="py-6 text-[12px] text-muted-foreground">
+			<p className="py-6 text-[12px] text-tertiary">
 				No policy has been rendered for this workload yet.
 			</p>
 		);
@@ -39,14 +39,14 @@ export function PolicyTab({
 	return (
 		<div>
 			<div className="mb-3 flex items-center gap-3 text-[12px]">
-				<span className="text-foreground-tertiary">
+				<span className="text-secondary">
 					{behind ? "Rendered policy" : "Rendered policy applied on host"}
 				</span>
-				<span className="rounded-pill border border-input px-2 py-0.5 font-mono">
+				<span className="rounded-sm border border-strong px-2 py-0.5 font-mono">
 					v{p.version}
 				</span>
 				{behind ? (
-					<span className="text-status-degraded">
+					<span className="text-status-warn-fg">
 						▲ rendered{p.rendered_at ? ` ${ago(p.rendered_at)}` : ""}, not
 						applied —{" "}
 						{applied === 0
@@ -56,7 +56,7 @@ export function PolicyTab({
 				) : null}
 			</div>
 			{p.rules.length === 0 ? (
-				<p className="py-4 text-[12px] text-muted-foreground">
+				<p className="py-4 text-[12px] text-tertiary">
 					No rule admits traffic to this workload.
 				</p>
 			) : (
@@ -66,7 +66,7 @@ export function PolicyTab({
 					))}
 				</div>
 			)}
-			<p className="mt-3 text-[11px] text-muted-foreground">
+			<p className="mt-3 text-[11px] text-tertiary">
 				Agents receive fully resolved rules (concrete peer addresses); selectors
 				are resolved by the control plane. Rule ids carry the authored rule for
 				provenance. Traffic no rule admits is{" "}
@@ -83,38 +83,34 @@ export function PolicyTab({
 function RuleCard({ r }: { r: RenderedRule }) {
 	return (
 		<article
-			className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 rounded border border-border bg-surface-sidebar px-3.5 py-2.5"
+			className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 rounded-md border border-default bg-subtle px-3.5 py-2.5"
 			aria-label={r.description || ruleId(r)}
 		>
 			<div className="flex items-center gap-2">
-				<span className="font-mono text-foreground">{ruleId(r)}</span>
+				<span className="font-mono text-primary">{ruleId(r)}</span>
 				{r.ruleset ? (
 					<>
-						<span className="text-[11px] text-muted-foreground">
-							from ruleset
-						</span>
+						<span className="text-[11px] text-tertiary">from ruleset</span>
 						<Link
 							to="/policy"
-							className="text-[12px] text-link hover:text-link-hover"
+							className="text-[12px] text-link hover:underline"
 						>
 							{r.ruleset.name}
 						</Link>
 					</>
 				) : (
-					<span className="text-[11px] text-muted-foreground">
+					<span className="text-[11px] text-tertiary">
 						authored rule since removed
 					</span>
 				)}
 			</div>
 			<div className="text-right font-mono">{portsText(r)}</div>
-			<div className="text-[12px] text-foreground-tertiary">
-				{r.description || "—"}
-			</div>
-			<div className="text-right font-mono text-[11px] text-muted-foreground">
+			<div className="text-[12px] text-secondary">{r.description || "—"}</div>
+			<div className="text-right font-mono text-[11px] text-tertiary">
 				{peersText(r)}
 			</div>
 			<div
-				className={cn("col-span-2 font-mono text-[11px] text-muted-foreground")}
+				className={cn("col-span-2 font-mono text-[11px] text-tertiary")}
 				data-testid="rule-instants"
 			>
 				{instants(r)}

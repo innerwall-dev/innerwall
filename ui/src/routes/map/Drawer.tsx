@@ -56,7 +56,7 @@ export function Drawer({
 			aria-label={
 				selection.kind === "edge" ? "Traffic between groups" : "Group"
 			}
-			className="flex w-[380px] shrink-0 flex-col overflow-hidden border-l border-border bg-surface-sidebar"
+			className="flex w-[380px] shrink-0 flex-col overflow-hidden border-l border-default bg-subtle"
 		>
 			{selection.kind === "edge" ? (
 				<EdgeDrawer
@@ -94,14 +94,14 @@ function Header({
 	children: React.ReactNode;
 }) {
 	return (
-		<div className="flex flex-col gap-2 border-b border-border px-4 py-3.5">
+		<div className="flex flex-col gap-2 border-b border-default px-4 py-3.5">
 			<div className="flex items-center gap-2">
 				<Eyebrow>{eyebrow}</Eyebrow>
 				<button
 					type="button"
 					onClick={onClose}
 					aria-label="Close"
-					className="ml-auto cursor-pointer text-[16px] leading-none text-muted-foreground hover:text-foreground"
+					className="ml-auto cursor-pointer text-[16px] leading-none text-tertiary hover:text-primary"
 				>
 					×
 				</button>
@@ -122,7 +122,7 @@ function DecisionCount({
 	return (
 		<span
 			className={cn(
-				"inline-flex items-center gap-[5px] whitespace-nowrap rounded-pill border px-2 py-0.5 text-[11.5px]",
+				"inline-flex items-center gap-[5px] whitespace-nowrap rounded-sm border px-2 py-0.5 text-[11.5px]",
 				v.cls,
 			)}
 		>
@@ -263,7 +263,7 @@ function EdgeDrawer({
 			<Header eyebrow="Traffic between groups" onClose={onClose}>
 				<div className="flex items-center gap-2 font-mono text-[13px]">
 					<span>{src.title}</span>
-					<span className="text-foreground-separator" aria-hidden="true">
+					<span className="text-disabled" aria-hidden="true">
 						→
 					</span>
 					<span className="sr-only">to</span>
@@ -280,18 +280,18 @@ function EdgeDrawer({
 							/>
 						))}
 				</div>
-				<p className="text-[12px] text-foreground-tertiary">{note(e, dst)}</p>
+				<p className="text-[12px] text-secondary">{note(e, dst)}</p>
 			</Header>
-			<div className="flex flex-col gap-2 border-b border-border px-4 py-3">
+			<div className="flex flex-col gap-2 border-b border-default px-4 py-3">
 				<Eyebrow>Draw a rule from this</Eyebrow>
-				<dl className="flex flex-col gap-1.5 rounded border border-input bg-background px-3 py-2.5 text-[12px]">
+				<dl className="flex flex-col gap-1.5 rounded-md border border-strong bg-app px-3 py-2.5 text-[12px]">
 					<div className="flex gap-2">
-						<dt className="w-[60px] shrink-0 text-muted-foreground">ruleset</dt>
+						<dt className="w-[60px] shrink-0 text-tertiary">ruleset</dt>
 						<dd className="font-mono break-words" data-testid="rule-ruleset">
 							{target.status === "loading" ? (
-								<span className="text-muted-foreground">…</span>
+								<span className="text-tertiary">…</span>
 							) : target.status === "error" ? (
-								<span className="font-sans text-muted-foreground">
+								<span className="font-sans text-tertiary">
 									could not be resolved:{" "}
 									{target.error.problem.detail ?? target.error.problem.title}
 								</span>
@@ -299,40 +299,35 @@ function EdgeDrawer({
 								<>
 									{chosen.ruleset.name}
 									{chosen.ruleset.enabled === false ? (
-										<span className="font-sans text-muted-foreground">
-											{" "}
-											(disabled)
-										</span>
+										<span className="font-sans text-tertiary"> (disabled)</span>
 									) : null}
 									{target.data.length > 1 ? (
-										<span className="font-sans text-muted-foreground">
+										<span className="font-sans text-tertiary">
 											{" "}
 											and {target.data.length - 1} more
 										</span>
 									) : null}
 								</>
 							) : (
-								<span className="font-sans text-muted-foreground">
+								<span className="font-sans text-tertiary">
 									no ruleset's scope selects {dst.title} yet
 								</span>
 							)}
 						</dd>
 					</div>
 					<div className="flex gap-2">
-						<dt className="w-[60px] shrink-0 text-muted-foreground">peers</dt>
+						<dt className="w-[60px] shrink-0 text-tertiary">peers</dt>
 						<dd className="font-mono break-words" data-testid="rule-peers">
 							{peerSelector(e, src, groupKey, scope)}
 						</dd>
 					</div>
 					<div className="flex gap-2">
-						<dt className="w-[60px] shrink-0 text-muted-foreground">
-							services
-						</dt>
+						<dt className="w-[60px] shrink-0 text-tertiary">services</dt>
 						<dd className="font-mono" data-testid="rule-services">
 							{services && services.length > 0 ? (
 								services.join(", ")
 							) : (
-								<span className="font-sans text-muted-foreground">
+								<span className="font-sans text-tertiary">
 									open a pair below to read its services
 								</span>
 							)}
@@ -340,13 +335,13 @@ function EdgeDrawer({
 					</div>
 				</dl>
 				<div className="flex items-center gap-1.5">
-					<Button size="sm" className="rounded-chip" asChild>
+					<Button size="sm" className="rounded-sm" asChild>
 						<Link to={editorPath(chosen?.ruleset.name)}>
 							Open in policy editor
 						</Link>
 					</Button>
 					<span
-						className="text-[11px] text-muted-foreground"
+						className="text-[11px] text-tertiary"
 						data-testid="editor-effect"
 					>
 						{chosen
@@ -372,7 +367,7 @@ function EdgeDrawer({
 						const isOpen = k === open;
 						const v = verdicts[p.verdict];
 						return (
-							<li key={k} className="border-t border-border">
+							<li key={k} className="border-t border-default">
 								<button
 									type="button"
 									aria-expanded={isOpen}
@@ -382,12 +377,12 @@ function EdgeDrawer({
 									}}
 									className={cn(
 										"grid w-full cursor-pointer grid-cols-[1fr_auto_auto] items-center gap-x-2 py-[7px] text-left text-[12px]",
-										isOpen && "bg-surface-row-selected",
+										isOpen && "bg-selection-bg",
 									)}
 								>
 									<span className="min-w-0 truncate font-mono">
 										{peerName(p.src)}
-										<span className="text-foreground-separator"> → </span>
+										<span className="text-disabled"> → </span>
 										{p.dst.hostname}
 									</span>
 									<span className={cn("font-mono", v.text)}>
@@ -395,7 +390,7 @@ function EdgeDrawer({
 										{count(p.connections)}
 										<span className="sr-only"> {v.label}</span>
 									</span>
-									<span className="w-[34px] text-right font-mono text-foreground-tertiary">
+									<span className="w-[34px] text-right font-mono text-secondary">
 										{since(p.lastSeen)}
 									</span>
 								</button>
@@ -476,7 +471,7 @@ function PairFlows({
 			<table className="w-full border-collapse text-[12px]">
 				<caption className="sr-only">Stored windows of this pair</caption>
 				<thead>
-					<tr className="text-left text-[11px] text-muted-foreground">
+					<tr className="text-left text-[11px] text-tertiary">
 						<th className="py-1 font-normal">service</th>
 						<th className="py-1 font-normal">decision</th>
 						<th className="py-1 text-right font-normal">conns</th>
@@ -485,12 +480,12 @@ function PairFlows({
 				</thead>
 				<tbody>
 					{rows.map((f) => (
-						<tr key={f.id} className="border-t border-border">
+						<tr key={f.id} className="border-t border-default">
 							<td className="py-[5px] font-mono">{service(f)}</td>
 							<td className="py-[5px]">
 								<span
 									className={cn(
-										"inline-flex items-center gap-[5px] whitespace-nowrap rounded-pill border px-1.5 py-px text-[11px]",
+										"inline-flex items-center gap-[5px] whitespace-nowrap rounded-sm border px-1.5 py-px text-[11px]",
 										verdicts[f.verdict].cls,
 									)}
 								>
@@ -501,7 +496,7 @@ function PairFlows({
 							<td className="py-[5px] text-right font-mono">
 								{count(f.connection_count)}
 							</td>
-							<td className="py-[5px] text-right font-mono text-foreground-tertiary">
+							<td className="py-[5px] text-right font-mono text-secondary">
 								{since(f.last_seen)}
 							</td>
 						</tr>
@@ -511,7 +506,7 @@ function PairFlows({
 			<div className="flex items-center gap-3 text-[11px]">
 				<Link
 					to={`/workloads/${pair.dst.id}`}
-					className="text-link hover:text-link-hover"
+					className="text-link hover:underline"
 				>
 					Open {pair.dst.hostname}
 				</Link>
@@ -520,13 +515,13 @@ function PairFlows({
 						type="button"
 						onClick={loadMore}
 						disabled={more.loading}
-						className="cursor-pointer text-link hover:text-link-hover"
+						className="cursor-pointer text-link hover:underline"
 					>
 						{more.loading ? "Loading…" : "Load more windows"}
 					</button>
 				) : null}
 				{more.error ? (
-					<span role="alert" className="text-destructive">
+					<span role="alert" className="text-status-critical-fg">
 						{more.error}
 					</span>
 				) : null}
@@ -576,16 +571,14 @@ function NodeDrawer({
 		const other = nodes.get(dir === "in" ? e.source : e.target);
 		const v = verdicts[e.decision];
 		return (
-			<li key={e.id} className="border-t border-border">
+			<li key={e.id} className="border-t border-default">
 				<button
 					type="button"
 					onClick={() => onSelect({ kind: "edge", id: e.id })}
 					className="grid w-full cursor-pointer grid-cols-[1fr_auto] gap-x-2 py-[6px] text-left text-[12px]"
 				>
 					<span className="truncate font-mono">
-						<span className="text-foreground-separator">
-							{dir === "in" ? "← " : "→ "}
-						</span>
+						<span className="text-disabled">{dir === "in" ? "← " : "→ "}</span>
 						{other?.title}
 					</span>
 					<span className={cn("font-mono", v.text)}>
@@ -610,17 +603,17 @@ function NodeDrawer({
 					</div>
 				) : null}
 				<div className="flex flex-col gap-0.5 font-mono text-[11px]">
-					<span className="text-foreground-tertiary">{subtitle(n)}</span>
+					<span className="text-secondary">{subtitle(n)}</span>
 					<ModeLine n={n} />
 				</div>
 				{n.id === unlabeledId ? (
-					<p className="text-[12px] text-foreground-tertiary">
+					<p className="text-[12px] text-secondary">
 						These workloads carry no labels, so no ruleset's scope selects them
 						and no rule can name them as peers.
 					</p>
 				) : null}
 				{n.id === keylessId ? (
-					<p className="text-[12px] text-foreground-tertiary">
+					<p className="text-[12px] text-secondary">
 						These workloads carry labels, but none under {groupKey}.
 					</p>
 				) : null}
@@ -649,17 +642,17 @@ function NodeDrawer({
 								return (
 									<li
 										key={id}
-										className="flex items-center gap-2 border-t border-border py-[6px] text-[12px]"
+										className="flex items-center gap-2 border-t border-default py-[6px] text-[12px]"
 									>
 										<Link
 											to={`/workloads/${id}`}
-											className="min-w-0 flex-1 truncate font-mono text-link hover:text-link-hover"
+											className="min-w-0 flex-1 truncate font-mono text-link hover:underline"
 										>
 											{w?.hostname ?? sourceNames.get(id) ?? id}
 										</Link>
 										{w && w.health.dropped_flow_records > 0 ? (
 											<span
-												className="font-mono text-[11px] text-status-degraded"
+												className="font-mono text-[11px] text-status-warn-fg"
 												title="This workload's agent dropped flow records"
 											>
 												▲ {count(w.health.dropped_flow_records)} dropped
@@ -668,7 +661,7 @@ function NodeDrawer({
 										{w ? (
 											<ModePill mode={w.mode} />
 										) : (
-											<span className="text-[11px] text-muted-foreground">
+											<span className="text-[11px] text-tertiary">
 												outside scope
 											</span>
 										)}
@@ -683,7 +676,7 @@ function NodeDrawer({
 						<Eyebrow className="pb-1">CIDRs</Eyebrow>
 						<ul className="font-mono text-[12px]">
 							{(n.cidrs ?? []).map((c) => (
-								<li key={c} className="border-t border-border py-[6px]">
+								<li key={c} className="border-t border-default py-[6px]">
 									{c}
 								</li>
 							))}
@@ -695,17 +688,17 @@ function NodeDrawer({
 						<Eyebrow className="pb-1">Sources</Eyebrow>
 						<ul className="font-mono text-[12px]">
 							{n.addresses.map((a) => (
-								<li key={a} className="border-t border-border py-[6px]">
+								<li key={a} className="border-t border-default py-[6px]">
 									{a}
 								</li>
 							))}
 							{n.unrecognized.map((a) => (
 								<li
 									key={`u:${a}`}
-									className="flex gap-2 border-t border-border py-[6px]"
+									className="flex gap-2 border-t border-default py-[6px]"
 								>
 									<span>{a}</span>
-									<span className="font-sans text-[11px] text-muted-foreground">
+									<span className="font-sans text-[11px] text-tertiary">
 										stored with a peer kind this console does not recognize
 									</span>
 								</li>

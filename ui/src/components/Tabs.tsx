@@ -23,14 +23,14 @@ export function UnderlineTab({
 				cn(
 					"-mb-px border-b-2 px-3 py-2 text-[12.5px]",
 					isActive
-						? "border-[var(--checkbox-accent)] text-foreground"
-						: "border-transparent text-foreground-tertiary hover:text-foreground",
+						? "border-[var(--selection-fg)] text-primary"
+						: "border-transparent text-secondary hover:text-primary",
 				)
 			}
 		>
 			{label}
 			{count !== undefined ? (
-				<span className="ml-1.5 font-mono text-muted-foreground">{count}</span>
+				<span className="ml-1.5 font-mono text-tertiary">{count}</span>
 			) : null}
 		</NavLink>
 	);
@@ -39,7 +39,7 @@ export function UnderlineTab({
 export function TabList({ children }: { children: React.ReactNode }) {
 	return (
 		<div
-			className="flex shrink-0 gap-0.5 border-b border-border px-6 pt-3"
+			className="flex shrink-0 gap-0.5 border-b border-default px-6 pt-3"
 			role="tablist"
 		>
 			{children}

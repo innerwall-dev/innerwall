@@ -48,7 +48,7 @@ export function ListeningTab({
 
 	return (
 		<div>
-			<p className="mb-3 text-[12px] text-foreground-tertiary">
+			<p className="mb-3 text-[12px] text-secondary">
 				What is listening on this host, paired with whether anything actually
 				connects to it. Exposed-but-unused ports are candidates to leave out of
 				policy.
@@ -57,13 +57,13 @@ export function ListeningTab({
 				<ProblemNotice what="flow totals" error={use.error} onRetry={reload} />
 			) : null}
 			{w.listening_services.length === 0 ? (
-				<p className="py-6 text-[12px] text-muted-foreground">
+				<p className="py-6 text-[12px] text-tertiary">
 					The agent has reported no listening services.
 				</p>
 			) : (
 				<table className="w-full border-collapse text-[12.5px]">
 					<thead>
-						<tr className="text-left text-[11px] uppercase tracking-[0.05em] text-muted-foreground">
+						<tr className="text-left text-[11px] uppercase tracking-[0.05em] text-tertiary">
 							<th className="py-1.5 pr-2 font-medium">Service</th>
 							<th className="px-2 py-1.5 font-medium">Process</th>
 							<th className="px-2 py-1.5 font-medium">Path</th>
@@ -103,35 +103,35 @@ function Row({
 	const conns = use?.all.get(key) ?? 0;
 	const blocked = use?.wb.get(key) ?? 0;
 	const rules = coveringRules(policy, s);
-	const cell = "border-t border-border p-2";
+	const cell = "border-t border-default p-2";
 	let usage: { text: string; cls: string };
-	if (!use) usage = { text: "…", cls: "text-muted-foreground" };
+	if (!use) usage = { text: "…", cls: "text-tertiary" };
 	else if (blocked > 0)
 		usage = {
 			text:
 				blocked < conns
 					? `${compact(conns)} conns · ${compact(blocked)} would block`
 					: `${compact(conns)} conns · would block`,
-			cls: "text-status-would-block",
+			cls: "text-flow-would-block",
 		};
 	else if (conns > 0)
-		usage = { text: `${compact(conns)} conns`, cls: "text-status-allowed" };
+		usage = { text: `${compact(conns)} conns`, cls: "text-flow-allowed" };
 	else
 		usage = {
 			text: `no inbound flows in ${rangeDays}d`,
-			cls: "text-muted-foreground",
+			cls: "text-tertiary",
 		};
 	return (
 		<tr>
 			<td className={cn(cell, "pl-0 font-mono")}>{key}</td>
 			<td className={cn(cell, "font-mono")}>{s.process_name || "—"}</td>
-			<td className={cn(cell, "font-mono text-muted-foreground")}>
+			<td className={cn(cell, "font-mono text-tertiary")}>
 				{s.process_path || "—"}
 			</td>
 			<td className={cell}>
 				<span className={cn("text-[12px]", usage.cls)}>{usage.text}</span>
 			</td>
-			<td className={cn(cell, "pr-0 text-foreground-tertiary")}>
+			<td className={cn(cell, "pr-0 text-secondary")}>
 				{rules.length === 0
 					? "—"
 					: rules.map((r, i) => (

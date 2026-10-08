@@ -35,7 +35,7 @@ function Avatar({
 	return (
 		<span
 			className={cn(
-				"inline-flex shrink-0 items-center justify-center rounded-full border border-input-strong bg-muted font-sans text-[11px] font-semibold text-foreground",
+				"inline-flex shrink-0 items-center justify-center rounded-full border border-strong bg-hover font-sans text-[11px] font-semibold text-primary",
 				className,
 			)}
 			aria-hidden="true"
@@ -77,11 +77,11 @@ export function AccountPopover() {
 				<button
 					type="button"
 					aria-label="Account"
-					className="group shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+					className="group shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-selection-fg"
 				>
 					<Avatar
 						name={me.display_name}
-						className="size-7 tracking-[0.02em] transition-colors group-hover:border-ring"
+						className="size-7 tracking-[0.02em] transition-colors group-hover:border-selection-fg"
 					/>
 				</button>
 			</PopoverTrigger>
@@ -90,12 +90,12 @@ export function AccountPopover() {
 				sideOffset={8}
 				aria-label="Account"
 			>
-				<div className="mb-1 flex items-center gap-2.5 border-b border-input px-2.5 pt-2 pb-2.5">
+				<div className="mb-1 flex items-center gap-2.5 border-b border-strong px-2.5 pt-2 pb-2.5">
 					<Avatar name={me.display_name} className="size-[30px]" />
 					<div className="flex min-w-0 flex-col">
 						<div className="truncate text-[13px] font-semibold">{name}</div>
 						<div
-							className="truncate font-mono text-[11px] text-muted-foreground"
+							className="truncate font-mono text-[11px] text-tertiary"
 							data-testid="identity-line"
 						>
 							{identity}
@@ -108,12 +108,12 @@ export function AccountPopover() {
 				</div>
 				<button
 					type="button"
-					className="flex cursor-pointer items-center gap-2.5 rounded px-2.5 py-[7px] text-left text-[12.5px] hover:bg-muted disabled:cursor-default disabled:opacity-50"
+					className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-[7px] text-left text-[12.5px] hover:bg-hover disabled:cursor-default disabled:opacity-50"
 					onClick={signOut}
 					disabled={signingOut}
 				>
 					<span
-						className="w-3.5 font-mono text-foreground-glyph"
+						className="w-3.5 font-mono text-icon-default"
 						aria-hidden="true"
 					>
 						→
@@ -121,7 +121,10 @@ export function AccountPopover() {
 					Sign out
 				</button>
 				{failure ? (
-					<p className="px-2.5 pb-1 text-[12px] text-destructive" role="alert">
+					<p
+						className="px-2.5 pb-1 text-[12px] text-status-critical-fg"
+						role="alert"
+					>
 						{failure}
 					</p>
 				) : null}
@@ -144,17 +147,17 @@ function ThemeToggle({
 		{ value: "light", label: "Light" },
 	];
 	return (
-		<fieldset className="flex overflow-hidden rounded border border-input-strong text-[11.5px]">
+		<fieldset className="flex overflow-hidden rounded-md border border-strong text-[11.5px]">
 			<legend className="sr-only">Theme</legend>
 			{options.map((o, i) => (
 				<label
 					key={o.value}
 					className={cn(
 						"cursor-pointer px-2.5 py-[3px] transition-colors",
-						i > 0 && "border-l border-input-strong",
+						i > 0 && "border-l border-strong",
 						theme === o.value
-							? "bg-primary font-semibold text-primary-foreground"
-							: "text-foreground-tertiary hover:text-foreground",
+							? "bg-action-primary-bg font-semibold text-action-primary-fg"
+							: "text-secondary hover:text-primary",
 					)}
 				>
 					<input

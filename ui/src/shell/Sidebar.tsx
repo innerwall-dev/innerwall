@@ -17,10 +17,8 @@ export const sections = [
 
 const navRow = ({ isActive }: { isActive: boolean }) =>
 	cn(
-		"flex w-full items-center gap-2.5 rounded px-2.5 py-[7px] text-[13px]",
-		isActive
-			? "bg-surface-nav-active text-foreground"
-			: "text-foreground-secondary hover:bg-surface-nav-active/60",
+		"flex w-full items-center gap-2.5 rounded-md px-2.5 py-[7px] text-[13px]",
+		isActive ? "bg-active text-primary" : "text-secondary hover:bg-hover",
 	);
 
 export function Sidebar({
@@ -38,12 +36,12 @@ export function Sidebar({
 	const detail = matchPath("/workloads/:id/*", pathname);
 	const onDetail = detail !== null && detail.params.id !== "tokens";
 	return (
-		<aside className="flex h-full w-[212px] shrink-0 flex-col border-r border-border bg-surface-sidebar">
-			<div className="flex items-center gap-2.5 border-b border-border px-4 pt-4 pb-3.5">
+		<aside className="flex h-full w-[212px] shrink-0 flex-col border-r border-default bg-subtle">
+			<div className="flex items-center gap-2.5 border-b border-default px-4 pt-4 pb-3.5">
 				<Lockup />
 				{me.site ? (
 					<span
-						className="ml-auto font-mono text-[10px] text-muted-foreground"
+						className="ml-auto font-mono text-[10px] text-tertiary"
 						data-testid="site-label"
 					>
 						{me.site}
@@ -62,14 +60,14 @@ export function Sidebar({
 						}
 					>
 						<span
-							className="w-4 text-center font-mono text-[12px] text-foreground-glyph"
+							className="w-4 text-center font-mono text-[12px] text-icon-default"
 							aria-hidden="true"
 						>
 							{s.glyph}
 						</span>
 						<span>{s.label}</span>
 						{s.counted && counts[s.to] !== undefined ? (
-							<span className="ml-auto font-mono text-[11px] text-muted-foreground">
+							<span className="ml-auto font-mono text-[11px] text-tertiary">
 								{counts[s.to]}
 							</span>
 						) : null}
@@ -78,7 +76,7 @@ export function Sidebar({
 				{open ? (
 					<NavLink to={`/workloads/${open.id}`} className={navRow}>
 						<span
-							className="w-4 text-center font-mono text-[12px] text-foreground-glyph"
+							className="w-4 text-center font-mono text-[12px] text-icon-default"
 							aria-hidden="true"
 						>
 							▫
@@ -107,18 +105,16 @@ export function Sidebar({
 // block rather than numbers the console cannot know.
 function FleetSync() {
 	return (
-		<div className="mt-auto flex flex-col gap-1.5 border-t border-border px-4 py-3">
-			<div className="text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
+		<div className="mt-auto flex flex-col gap-1.5 border-t border-default px-4 py-3">
+			<div className="text-[11px] uppercase tracking-[0.06em] text-tertiary">
 				Fleet sync
 			</div>
 			<div
-				className="flex h-1.5 overflow-hidden rounded-[3px] bg-viz-sync-track"
+				className="flex h-1.5 overflow-hidden rounded-[3px] bg-active"
 				role="presentation"
 			/>
-			<div className="font-mono text-[11px] text-foreground-tertiary">
-				no workloads
-			</div>
-			<div className="text-[11px] text-muted-foreground">
+			<div className="font-mono text-[11px] text-secondary">no workloads</div>
+			<div className="text-[11px] text-tertiary">
 				Enroll a workload to begin
 			</div>
 		</div>

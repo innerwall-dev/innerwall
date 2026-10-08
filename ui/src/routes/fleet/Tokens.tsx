@@ -23,10 +23,10 @@ import { cn } from "@/lib/utils";
 import { MintDialog } from "./MintDialog";
 
 const status: Record<TokenState, { label: string; cls: string }> = {
-	valid: { label: "active", cls: "text-token-active" },
-	revoked: { label: "revoked", cls: "text-token-revoked" },
-	expired: { label: "expired", cls: "text-token-expired" },
-	invalid: { label: "invalid", cls: "text-token-expired" },
+	valid: { label: "active", cls: "text-status-ok-fg" },
+	revoked: { label: "revoked", cls: "text-status-critical-fg" },
+	expired: { label: "expired", cls: "text-tertiary" },
+	invalid: { label: "invalid", cls: "text-tertiary" },
 };
 
 // Tokens is the provisioning-tokens tab: every token by its listing
@@ -46,7 +46,7 @@ export function Tokens({
 	return (
 		<div className="flex flex-1 flex-col gap-[18px] overflow-auto px-6 pt-5 pb-8">
 			<div className="flex items-center gap-3">
-				<p className="max-w-[620px] text-[12px] text-foreground-tertiary">
+				<p className="max-w-[620px] text-[12px] text-secondary">
 					A token enrolls any number of workloads within its label scope until
 					it expires or is revoked. The plaintext is shown exactly once, at
 					mint; only its hash is stored.
@@ -60,7 +60,7 @@ export function Tokens({
 				<ProblemNotice what="tokens" error={tokens.error} onRetry={reload} />
 			) : null}
 			{tokens.status === "ready" && tokens.data.tokens.length === 0 ? (
-				<p className="py-5 text-[12px] text-muted-foreground">
+				<p className="py-5 text-[12px] text-tertiary">
 					No tokens yet. Mint one to enroll your first workload.
 				</p>
 			) : null}
@@ -68,7 +68,7 @@ export function Tokens({
 				<>
 					<table className="w-full border-collapse text-[12.5px]">
 						<thead>
-							<tr className="text-left text-[11px] uppercase tracking-[0.05em] text-muted-foreground">
+							<tr className="text-left text-[11px] uppercase tracking-[0.05em] text-tertiary">
 								<th className="py-2 pr-2 font-medium">Name</th>
 								<th className="p-2 font-medium">Assigns labels</th>
 								<th className="p-2 font-medium">Status</th>
@@ -86,7 +86,7 @@ export function Tokens({
 							))}
 						</tbody>
 					</table>
-					<p className="text-[11px] text-muted-foreground">
+					<p className="text-[11px] text-tertiary">
 						Revoking stops future enrollments only — workloads already enrolled
 						keep their credentials and identity.
 					</p>
@@ -112,14 +112,14 @@ function TokenRow({
 	t: ProvisioningToken;
 	onRevoke: () => void;
 }) {
-	const cell = "border-t border-border px-2 py-[9px]";
+	const cell = "border-t border-default px-2 py-[9px]";
 	const s = status[t.state];
 	return (
 		<tr>
 			<td className={cn(cell, "pl-0 font-mono")}>
 				{t.name}
 				{t.prefix ? (
-					<div className="text-[11px] text-muted-foreground">{t.prefix}…</div>
+					<div className="text-[11px] text-tertiary">{t.prefix}…</div>
 				) : null}
 			</td>
 			<td className={cell}>
@@ -133,10 +133,10 @@ function TokenRow({
 				<span className={cn("text-[12px]", s.cls)}>{s.label}</span>
 			</td>
 			<td className={cn(cell, "text-right font-mono")}>{count(t.use_count)}</td>
-			<td className={cn(cell, "text-right font-mono text-foreground-tertiary")}>
+			<td className={cn(cell, "text-right font-mono text-secondary")}>
 				{t.last_used_at ? ago(t.last_used_at) : "never"}
 			</td>
-			<td className={cn(cell, "text-right font-mono text-foreground-tertiary")}>
+			<td className={cn(cell, "text-right font-mono text-secondary")}>
 				{t.state === "revoked" ? "—" : relative(t.expires_at)}
 			</td>
 			<td className={cn(cell, "pr-0 text-right")}>
@@ -145,7 +145,7 @@ function TokenRow({
 						type="button"
 						onClick={onRevoke}
 						aria-label={`Revoke ${t.name}`}
-						className="cursor-pointer rounded-chip border border-status-blocked-border px-[9px] py-1 text-[11.5px] text-destructive hover:bg-status-blocked-bg"
+						className="cursor-pointer rounded-sm border border-status-critical-border px-[9px] py-1 text-[11.5px] text-status-critical-fg hover:bg-status-critical-bg"
 					>
 						Revoke
 					</button>
@@ -199,17 +199,17 @@ function RevokeDialog({
 		>
 			<DialogContent width={480}>
 				<DialogHeader title="Revoke this token?">
-					<p className="text-[12px] text-foreground-tertiary">
-						<span className="font-mono text-foreground">{token?.name}</span>{" "}
-						will refuse every future enrollment. Workloads it already enrolled
-						keep their credentials and identity. Revocation cannot be undone.
+					<p className="text-[12px] text-secondary">
+						<span className="font-mono text-primary">{token?.name}</span> will
+						refuse every future enrollment. Workloads it already enrolled keep
+						their credentials and identity. Revocation cannot be undone.
 					</p>
 				</DialogHeader>
 				{problem ? (
 					<DialogBody>
 						<p
 							role="alert"
-							className="flex items-start gap-2 text-[12px] text-destructive"
+							className="flex items-start gap-2 text-[12px] text-status-critical-fg"
 						>
 							<span className="font-mono" aria-hidden="true">
 								✕
@@ -226,7 +226,7 @@ function RevokeDialog({
 						type="button"
 						disabled={submitting}
 						onClick={revoke}
-						className="cursor-pointer rounded border border-status-blocked-border bg-status-blocked-bg px-3 py-[7px] text-[13px] font-semibold text-destructive disabled:opacity-50"
+						className="cursor-pointer rounded-md border border-status-critical-border bg-status-critical-bg px-3 py-[7px] text-[13px] font-semibold text-status-critical-fg disabled:opacity-50"
 					>
 						{submitting ? "Revoking…" : "Revoke token"}
 					</button>

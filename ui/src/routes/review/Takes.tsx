@@ -39,7 +39,7 @@ export function PeerKind({ peer }: { peer: PeerGroup }) {
 	return (
 		<span
 			className={cn(
-				"shrink-0 rounded-[3px] border border-foreground-separator px-[5px] py-px text-[10px] uppercase tracking-[0.04em] whitespace-nowrap text-foreground-glyph",
+				"shrink-0 rounded-[3px] border border-strong px-[5px] py-px text-[10px] uppercase tracking-[0.04em] whitespace-nowrap text-icon-default",
 				managed ? "border-solid" : "border-dashed",
 			)}
 		>
@@ -80,13 +80,13 @@ export function workloadsText(r: ReviewRow): string {
 }
 
 const barFill = {
-	would_block: "bg-viz-bar-would-block",
-	allowed: "bg-viz-bar-allowed",
+	would_block: "bg-flow-would-block",
+	allowed: "bg-flow-allowed",
 } as const;
 
 const cellFill = {
-	would_block: "bg-status-would-block-bg",
-	allowed: "bg-status-allowed-bg",
+	would_block: "bg-status-warn-bg",
+	allowed: "bg-status-ok-bg",
 } as const;
 
 export function Grouped({
@@ -105,8 +105,8 @@ export function Grouped({
 	}
 	const busiest = Math.max(...all.map((r) => r.connections));
 	const th =
-		"pb-2 pt-2.5 font-medium text-[11px] uppercase tracking-[0.05em] text-muted-foreground";
-	const td = "border-t border-border py-[9px]";
+		"pb-2 pt-2.5 font-medium text-[11px] uppercase tracking-[0.05em] text-tertiary";
+	const td = "border-t border-default py-[9px]";
 	return (
 		<table className="w-full border-collapse text-[12.5px]">
 			<caption className="sr-only">
@@ -133,8 +133,8 @@ export function Grouped({
 							key={r.id}
 							onClick={() => onSelect(on ? null : r.id)}
 							className={cn(
-								"cursor-pointer hover:bg-surface-row-selected",
-								on && "bg-surface-row-selected",
+								"cursor-pointer hover:bg-selection-bg",
+								on && "bg-selection-bg",
 							)}
 						>
 							<td className={cn(td, "pr-2")}>
@@ -151,17 +151,17 @@ export function Grouped({
 											onSelect(on ? null : r.id);
 										}}
 										title={r.peer.full ?? r.peer.title}
-										className="cursor-pointer text-left font-mono text-foreground"
+										className="cursor-pointer text-left font-mono text-primary"
 									>
 										{r.peer.title}
 									</button>
-									<span className="max-w-[100px] text-[11px] text-muted-foreground">
+									<span className="max-w-[100px] text-[11px] text-tertiary">
 										{peerNote(r.peer, r.members.length)}
 									</span>
 								</div>
 							</td>
 							<td className={cn(td, "px-2 font-mono")}>{r.service}</td>
-							<td className={cn(td, "px-2 text-foreground-tertiary")}>
+							<td className={cn(td, "px-2 text-secondary")}>
 								{r.verdict === "would_block"
 									? "no rule matched"
 									: "matched a rule"}
@@ -179,7 +179,7 @@ export function Grouped({
 							<td className={cn(td, "px-2")}>
 								<div className="flex items-center justify-end gap-2">
 									<div
-										className="h-1 w-[72px] overflow-hidden rounded-[2px] bg-viz-bar-track"
+										className="h-1 w-[72px] overflow-hidden rounded-[2px] bg-active"
 										aria-hidden="true"
 									>
 										<div
@@ -195,10 +195,7 @@ export function Grouped({
 								</div>
 							</td>
 							<td
-								className={cn(
-									td,
-									"pl-2 text-right font-mono text-foreground-tertiary",
-								)}
+								className={cn(td, "pl-2 text-right font-mono text-secondary")}
 							>
 								{since(r.lastSeen)}
 							</td>
@@ -225,13 +222,11 @@ function NoRows({
 }) {
 	if (filter === "would_block") {
 		return (
-			<div className="flex flex-col items-center gap-2 py-10 text-foreground-tertiary">
-				<div className="text-[28px] text-status-allowed" aria-hidden="true">
+			<div className="flex flex-col items-center gap-2 py-10 text-secondary">
+				<div className="text-[28px] text-flow-allowed" aria-hidden="true">
 					✓
 				</div>
-				<div className="font-semibold text-foreground">
-					No would-block flows
-				</div>
+				<div className="font-semibold text-primary">No would-block flows</div>
 				<p className="max-w-[440px] text-center text-[12px]">
 					Every inbound connection observed on the {simulating} simulating{" "}
 					{simulating === 1 ? "workload" : "workloads"} in the last {range}{" "}
@@ -242,7 +237,7 @@ function NoRows({
 		);
 	}
 	return (
-		<p className="py-10 text-center text-[12px] text-foreground-tertiary">
+		<p className="py-10 text-center text-[12px] text-secondary">
 			{all.length === 0
 				? `No inbound flows into this scope's simulating workloads were stored in the last ${range}. Widen the range, or give the scope time in simulation.`
 				: `No allowed flows in the last ${range}.`}
@@ -253,7 +248,7 @@ function NoRows({
 export function MatrixTake({ rows, range, selected, onSelect }: TakeProps) {
 	if (rows.length === 0) {
 		return (
-			<p className="py-10 text-center text-[12px] text-foreground-tertiary">
+			<p className="py-10 text-center text-[12px] text-secondary">
 				No peer and service pairs in the last {range}.
 			</p>
 		);
@@ -267,7 +262,7 @@ export function MatrixTake({ rows, range, selected, onSelect }: TakeProps) {
 		).size;
 	return (
 		<>
-			<table className="mt-4 w-full table-fixed border-collapse border border-viz-matrix-grid text-[12px]">
+			<table className="mt-4 w-full table-fixed border-collapse border border-subtle text-[12px]">
 				<caption className="sr-only">Peer by service</caption>
 				<colgroup>
 					<col className="w-[260px]" />
@@ -277,14 +272,14 @@ export function MatrixTake({ rows, range, selected, onSelect }: TakeProps) {
 				</colgroup>
 				<thead>
 					<tr>
-						<th className="border border-viz-matrix-grid bg-background px-3 py-2.5 text-left text-[11px] font-normal uppercase tracking-[0.05em] text-muted-foreground">
+						<th className="border border-subtle bg-app px-3 py-2.5 text-left text-[11px] font-normal uppercase tracking-[0.05em] text-tertiary">
 							Peer ↓ · Service →
 						</th>
 						{m.services.map((s) => (
 							<th
 								key={s}
 								scope="col"
-								className="border border-viz-matrix-grid bg-background px-3 py-2.5 text-left font-mono font-normal text-foreground-secondary"
+								className="border border-subtle bg-app px-3 py-2.5 text-left font-mono font-normal text-secondary"
 							>
 								{s}
 							</th>
@@ -296,19 +291,19 @@ export function MatrixTake({ rows, range, selected, onSelect }: TakeProps) {
 						<tr key={p.id}>
 							<th
 								scope="row"
-								className="border border-viz-matrix-grid bg-surface-sidebar px-3 py-2.5 text-left font-normal"
+								className="border border-subtle bg-subtle px-3 py-2.5 text-left font-normal"
 							>
 								<div className="flex min-w-0 flex-col gap-0.5">
-									<span className="text-[10px] uppercase tracking-[0.04em] text-muted-foreground">
+									<span className="text-[10px] uppercase tracking-[0.04em] text-tertiary">
 										{kindLabel[p.kind]}
 									</span>
 									<span
-										className="truncate font-mono text-foreground"
+										className="truncate font-mono text-primary"
 										title={p.full ?? p.title}
 									>
 										{p.title}
 									</span>
-									<span className="font-mono text-[11px] text-muted-foreground">
+									<span className="font-mono text-[11px] text-tertiary">
 										{peerNote(p, members(p))}
 									</span>
 								</div>
@@ -316,18 +311,13 @@ export function MatrixTake({ rows, range, selected, onSelect }: TakeProps) {
 							{m.services.map((s) => {
 								const cell = m.cells.get(cellKey(p.id, s));
 								if (!cell) {
-									return (
-										<td
-											key={s}
-											className="border border-viz-matrix-grid bg-viz-matrix-empty"
-										/>
-									);
+									return <td key={s} className="border border-subtle bg-app" />;
 								}
 								const r = cell.row;
 								const v = verdicts[r.verdict];
 								const on = selected === r.id;
 								return (
-									<td key={s} className="border border-viz-matrix-grid p-0">
+									<td key={s} className="border border-subtle p-0">
 										<button
 											type="button"
 											aria-pressed={on}
@@ -340,7 +330,7 @@ export function MatrixTake({ rows, range, selected, onSelect }: TakeProps) {
 												.join("; ")}
 											className={cn(
 												"flex w-full cursor-pointer flex-col gap-0.5 px-3 py-2.5 text-left",
-												on ? "bg-viz-matrix-selected" : cellFill[r.verdict],
+												on ? "bg-selection-bg" : cellFill[r.verdict],
 											)}
 										>
 											<span className={cn("font-mono text-[13px]", v.text)}>
@@ -348,7 +338,7 @@ export function MatrixTake({ rows, range, selected, onSelect }: TakeProps) {
 												{count(r.connections)}
 												<span className="sr-only"> {v.label}</span>
 											</span>
-											<span className="font-mono text-[11px] text-muted-foreground">
+											<span className="font-mono text-[11px] text-tertiary">
 												{v.label} · {workloadsText(r)} wl · {since(r.lastSeen)}
 												{cell.others.length > 0
 													? ` · +${cell.others.map((x) => verdicts[x.verdict].label).join(", ")}`
@@ -362,7 +352,7 @@ export function MatrixTake({ rows, range, selected, onSelect }: TakeProps) {
 					))}
 				</tbody>
 			</table>
-			<p className="mt-2.5 text-[11px] text-muted-foreground">
+			<p className="mt-2.5 text-[11px] text-tertiary">
 				Each cell: decision glyph and connection count; where a pair received
 				both decisions, the cell shows what enforcing would drop. Empty cells:
 				no traffic observed for that pair.
@@ -374,7 +364,7 @@ export function MatrixTake({ rows, range, selected, onSelect }: TakeProps) {
 export function Recency({ rows, range, selected, onSelect }: TakeProps) {
 	if (rows.length === 0) {
 		return (
-			<p className="py-10 text-center text-[12px] text-foreground-tertiary">
+			<p className="py-10 text-center text-[12px] text-secondary">
 				No peer and service pairs in the last {range}.
 			</p>
 		);
@@ -386,13 +376,13 @@ export function Recency({ rows, range, selected, onSelect }: TakeProps) {
 				{groups.map((g) => (
 					<li
 						key={g.bucket}
-						className="grid grid-cols-[110px_1fr] gap-4 border-t border-border py-3"
+						className="grid grid-cols-[110px_1fr] gap-4 border-t border-default py-3"
 					>
-						<span className="font-mono text-[12px] text-foreground-tertiary">
+						<span className="font-mono text-[12px] text-secondary">
 							{g.bucket}
 						</span>
 						{g.rows.length === 0 ? (
-							<span className="text-[12px] text-foreground-separator">—</span>
+							<span className="text-[12px] text-disabled">—</span>
 						) : (
 							<ul className="flex flex-col gap-1.5">
 								{g.rows.map((r) => {
@@ -404,21 +394,18 @@ export function Recency({ rows, range, selected, onSelect }: TakeProps) {
 												aria-pressed={on}
 												onClick={() => onSelect(on ? null : r.id)}
 												className={cn(
-													"-mx-1.5 flex cursor-pointer items-center gap-2.5 rounded px-1.5 py-0.5 text-left",
-													on && "bg-surface-row-selected",
+													"-mx-1.5 flex cursor-pointer items-center gap-2.5 rounded-md px-1.5 py-0.5 text-left",
+													on && "bg-selection-bg",
 												)}
 											>
 												<VerdictPill verdict={r.verdict} />
 												<span className="font-mono">{r.peer.title}</span>
-												<span
-													className="text-foreground-separator"
-													aria-hidden="true"
-												>
+												<span className="text-disabled" aria-hidden="true">
 													→
 												</span>
 												<span className="sr-only">on</span>
 												<span className="font-mono">{r.service}</span>
-												<span className="text-[11px] text-muted-foreground">
+												<span className="text-[11px] text-tertiary">
 													{count(r.connections)} conns · {workloadsText(r)}{" "}
 													workloads · {since(r.lastSeen)}
 												</span>
@@ -431,7 +418,7 @@ export function Recency({ rows, range, selected, onSelect }: TakeProps) {
 					</li>
 				))}
 			</ol>
-			<p className="mt-2.5 text-[11px] text-muted-foreground">
+			<p className="mt-2.5 text-[11px] text-tertiary">
 				Buckets use each pair's last-seen instant. Fresh would-block traffic at
 				the top is the strongest sign that enforcing would break something live.
 			</p>

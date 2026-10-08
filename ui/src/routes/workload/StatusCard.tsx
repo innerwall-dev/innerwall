@@ -29,15 +29,18 @@ export function StatusCard({
 	const s = w.sync;
 	const lag = s.latest_version > s.applied_version;
 	const tone = {
-		degraded: "border-status-would-block-border bg-status-would-block-surface",
-		pending: "border-accent-border",
-		synced: "border-border",
-		offline: "border-border",
+		degraded: "border-status-warn-border bg-status-warn-bg",
+		pending: "border-strong",
+		synced: "border-default",
+		offline: "border-default",
 	}[s.state];
 
 	return (
 		<div
-			className={cn("flex flex-col gap-1.5 rounded border px-3 py-2.5", tone)}
+			className={cn(
+				"flex flex-col gap-1.5 rounded-md border px-3 py-2.5",
+				tone,
+			)}
 			data-testid="status-card"
 		>
 			<div
@@ -49,23 +52,21 @@ export function StatusCard({
 				<span aria-hidden="true">{syncStates[s.state].glyph}</span>
 				<span>{headline(w)}</span>
 			</div>
-			<dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-[3px] text-[12px] text-foreground-secondary">
-				<dt className="text-muted-foreground">applied</dt>
+			<dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-[3px] text-[12px] text-secondary">
+				<dt className="text-tertiary">applied</dt>
 				<dd className="font-mono">{version(s.applied_version)}</dd>
-				<dt className="text-muted-foreground">rendered</dt>
+				<dt className="text-tertiary">rendered</dt>
 				<dd className="font-mono">
 					{version(s.latest_version)}
-					{lag ? (
-						<span className="text-muted-foreground"> (not applied)</span>
-					) : null}
+					{lag ? <span className="text-tertiary"> (not applied)</span> : null}
 				</dd>
-				<dt className="text-muted-foreground">last ack</dt>
+				<dt className="text-tertiary">last ack</dt>
 				<dd className="font-mono" data-testid="ack-instant">
 					<LastAck s={s} />
 				</dd>
 				{s.latest_rendered_at ? (
 					<>
-						<dt className="text-muted-foreground">rendered at</dt>
+						<dt className="text-tertiary">rendered at</dt>
 						<dd className="font-mono">
 							<time dateTime={s.latest_rendered_at}>
 								{ago(s.latest_rendered_at)}
@@ -73,24 +74,24 @@ export function StatusCard({
 						</dd>
 					</>
 				) : null}
-				<dt className="text-muted-foreground">last snapshot</dt>
+				<dt className="text-tertiary">last snapshot</dt>
 				<dd className="font-mono" data-testid="snapshot-instant">
 					{s.last_snapshot_sent_at ? (
 						<time dateTime={s.last_snapshot_sent_at}>
 							{ago(s.last_snapshot_sent_at)}
 						</time>
 					) : (
-						<span className="text-muted-foreground">none recorded</span>
+						<span className="text-tertiary">none recorded</span>
 					)}
 				</dd>
 			</dl>
 			{s.error ? (
-				<div className="rounded-pill bg-background p-2 font-mono text-[11px] break-words whitespace-pre-wrap text-status-degraded">
+				<div className="rounded-sm bg-app p-2 font-mono text-[11px] break-words whitespace-pre-wrap text-status-warn-fg">
 					{s.error}
 				</div>
 			) : null}
 			{s.state === "degraded" ? (
-				<p className="text-[11px] text-foreground-tertiary">
+				<p className="text-[11px] text-secondary">
 					{s.applied_version > 0
 						? `Host stays on ${version(s.applied_version)} (its last good policy).`
 						: "Host keeps the policy it had before; it has applied none from this control plane."}{" "}
@@ -112,7 +113,7 @@ function LastAck({ s }: { s: Workload["sync"] }) {
 		? Date.parse(s.last_apply_failed_at)
 		: null;
 	if (acked === null && failed === null) {
-		return <span className="text-muted-foreground">none recorded</span>;
+		return <span className="text-tertiary">none recorded</span>;
 	}
 	const lastFailed = failed !== null && (acked === null || failed > acked);
 	const at = (lastFailed ? s.last_apply_failed_at : s.last_acked_at) as string;
@@ -120,9 +121,9 @@ function LastAck({ s }: { s: Workload["sync"] }) {
 		<>
 			<time dateTime={at}>{ago(at)}</time>
 			{lastFailed ? (
-				<span className="text-status-degraded"> · FAILED</span>
+				<span className="text-status-warn-fg"> · FAILED</span>
 			) : (
-				<span className="text-muted-foreground"> · applied</span>
+				<span className="text-tertiary"> · applied</span>
 			)}
 		</>
 	);
@@ -185,12 +186,12 @@ function Resend({ w, onReread }: { w: Workload; onReread: () => void }) {
 	}
 
 	return (
-		<div className="mt-1 flex flex-col gap-1.5 border-t border-[var(--hairline-soft)] pt-2">
+		<div className="mt-1 flex flex-col gap-1.5 border-t border-[var(--border-subtle)] pt-2">
 			<div className="flex items-center gap-2">
 				<Button
 					variant="secondary"
 					size="sm"
-					className="rounded-chip bg-card"
+					className="rounded-sm bg-raised"
 					disabled={sending}
 					onClick={send}
 				>
@@ -200,21 +201,21 @@ function Resend({ w, onReread }: { w: Workload; onReread: () => void }) {
 					<button
 						type="button"
 						onClick={onReread}
-						className="cursor-pointer text-[11px] text-link hover:text-link-hover"
+						className="cursor-pointer text-[11px] text-link hover:underline"
 					>
 						Read again
 					</button>
 				) : null}
 			</div>
 			{outcome.kind === "sent" ? (
-				<p role="status" className="text-[11px] text-foreground-tertiary">
+				<p role="status" className="text-[11px] text-secondary">
 					{moved
 						? "The agent reconnected and was sent a fresh snapshot."
 						: "Reconnect requested. The snapshot instant above moves once the agent has reconnected."}
 				</p>
 			) : null}
 			{outcome.kind === "offline" ? (
-				<p role="alert" className="text-[11px] text-status-degraded">
+				<p role="alert" className="text-[11px] text-status-warn-fg">
 					▲ The agent is offline, so nothing was sent.{" "}
 					{outcome.lastSeen ? (
 						<>
@@ -231,7 +232,7 @@ function Resend({ w, onReread }: { w: Workload; onReread: () => void }) {
 				</p>
 			) : null}
 			{outcome.kind === "failed" ? (
-				<p role="alert" className="text-[11px] text-destructive">
+				<p role="alert" className="text-[11px] text-status-critical-fg">
 					✕ {outcome.message}
 				</p>
 			) : null}

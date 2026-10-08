@@ -444,10 +444,10 @@ export const edgeDash: Record<Verdict, string | undefined> = {
 };
 
 export const edgeColor: Record<Verdict, string> = {
-	observed: "var(--viz-edge-observed)",
-	allowed: "var(--viz-edge-allowed)",
-	would_block: "var(--viz-edge-would-block)",
-	blocked: "var(--viz-edge-blocked)",
+	observed: "var(--flow-observed)",
+	allowed: "var(--flow-allowed)",
+	would_block: "var(--flow-would-block)",
+	blocked: "var(--flow-blocked)",
 };
 
 // Selection is what the operator picked: an edge or a node, by id.

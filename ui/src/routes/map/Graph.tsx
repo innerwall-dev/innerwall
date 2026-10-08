@@ -167,7 +167,7 @@ export function Graph({
 			>
 				<Refit layout={layout} />
 			</ReactFlow>
-			<div className="absolute top-3 left-4 rounded border border-input bg-surface-translucent px-2 py-1.5">
+			<div className="absolute top-3 left-4 rounded-md border border-strong bg-raised px-2 py-1.5">
 				{range}
 			</div>
 			<Legend />
@@ -252,21 +252,21 @@ const unmanagedKinds = new Set(["address-group", "unknown"]);
 function frame(n: MapNode): { fill: string; stroke: string; dash?: string } {
 	if (unmanagedKinds.has(n.kind)) {
 		return {
-			fill: "var(--viz-node-unmanaged-fill)",
-			stroke: "var(--viz-node-unmanaged-stroke)",
+			fill: "var(--bg-app)",
+			stroke: "var(--border-strong)",
 			dash: "5 4",
 		};
 	}
 	if (n.kind === "unlabeled") {
 		return {
-			fill: "var(--viz-node-managed-fill)",
-			stroke: "var(--viz-node-unlabeled-stroke)",
+			fill: "var(--bg-raised)",
+			stroke: "var(--status-warn-border)",
 			dash: "2 3",
 		};
 	}
 	return {
-		fill: "var(--viz-node-managed-fill)",
-		stroke: "var(--viz-node-managed-stroke)",
+		fill: "var(--bg-raised)",
+		stroke: "var(--border-default)",
 	};
 }
 
@@ -301,30 +301,28 @@ export function subtitle(n: MapNode): string {
 export function ModeLine({ n }: { n: MapNode }) {
 	if (n.kind === "unlabeled") {
 		return (
-			<span className="text-[var(--viz-node-unlabeled-text)]">
+			<span className="text-[var(--status-warn-fg)]">
 				▲ no labels — matches no scope
 			</span>
 		);
 	}
 	if (n.kind === "address-group") {
 		return (
-			<span className="text-[var(--viz-node-unmanaged-text)]">
+			<span className="text-[var(--text-tertiary)]">
 				unmanaged · address group
 			</span>
 		);
 	}
 	if (n.kind === "unknown") {
 		return (
-			<span className="text-[var(--viz-node-unmanaged-text)]">
+			<span className="text-[var(--text-tertiary)]">
 				unmanaged · no address group
 			</span>
 		);
 	}
 	const m = modeSummary(n);
 	if (!m) {
-		return (
-			<span className="text-[var(--viz-node-subtitle)]">outside scope</span>
-		);
+		return <span className="text-[var(--text-tertiary)]">outside scope</span>;
 	}
 	if ("mode" in m) {
 		const d = modes[m.mode];
@@ -335,7 +333,7 @@ export function ModeLine({ n }: { n: MapNode }) {
 		);
 	}
 	return (
-		<span className="text-[var(--viz-node-subtitle)]">
+		<span className="text-[var(--text-tertiary)]">
 			{m.mixed.map(([mode, c], i) => (
 				<span key={mode}>
 					{i > 0 ? " " : ""}
@@ -366,7 +364,7 @@ function GroupNodeView({ data }: NodeProps<GroupNode>) {
 			style={{
 				width: nodeWidth,
 				height: nodeHeight,
-				opacity: dimmed ? "var(--viz-edge-dim-opacity)" : 1,
+				opacity: dimmed ? "var(--opacity-dimmed)" : 1,
 			}}
 		>
 			<svg
@@ -383,17 +381,17 @@ function GroupNodeView({ data }: NodeProps<GroupNode>) {
 					rx={6}
 					style={{
 						fill: f.fill,
-						stroke: selected ? "var(--ring)" : f.stroke,
+						stroke: selected ? "var(--selection-fg)" : f.stroke,
 						strokeWidth: selected ? 1.5 : 1,
 						strokeDasharray: f.dash,
 					}}
 				/>
 			</svg>
 			<span className="relative flex flex-col gap-[2px] px-2.5 pt-[7px] leading-[14px]">
-				<span className="truncate text-[12.5px] font-semibold text-[var(--viz-node-title)]">
+				<span className="truncate text-[12.5px] font-semibold text-[var(--text-primary)]">
 					{n.title}
 				</span>
-				<span className="truncate font-mono text-[10px] text-[var(--viz-node-subtitle)]">
+				<span className="truncate font-mono text-[10px] text-[var(--text-tertiary)]">
 					{subtitle(n)}
 				</span>
 				<span className="truncate font-mono text-[10px]">
@@ -429,7 +427,7 @@ function FlowEdgeView({ data }: EdgeProps<FlowEdge>) {
 	const { edge: e, width, selected, dimmed, onSelect } = data;
 	const { path, lx, ly } = data.shape;
 	const color = edgeColor[e.decision];
-	const opacity = dimmed ? "var(--viz-edge-dim-opacity)" : 1;
+	const opacity = dimmed ? "var(--opacity-dimmed)" : 1;
 	const v = verdicts[e.decision];
 	const shown = e.byDecision[e.decision]?.connections ?? e.connections;
 	const select = () => onSelect(selected ? null : { kind: "edge", id: e.id });
@@ -463,7 +461,7 @@ function FlowEdgeView({ data }: EdgeProps<FlowEdge>) {
 							transform: `translate(-50%, -50%) translate(${lx}px, ${ly}px)`,
 							color,
 							borderColor: color,
-							background: "var(--viz-edge-label-bg)",
+							background: "var(--bg-app)",
 							opacity,
 							zIndex: selected ? 1 : 0,
 						}}
@@ -494,10 +492,10 @@ function Legend() {
 	);
 	return (
 		<div
-			className="pointer-events-none absolute bottom-3.5 left-4 flex flex-col gap-1.5 rounded border border-input bg-surface-translucent px-3 py-2.5 text-[11px]"
+			className="pointer-events-none absolute bottom-3.5 left-4 flex flex-col gap-1.5 rounded-md border border-strong bg-raised px-3 py-2.5 text-[11px]"
 			data-testid="map-legend"
 		>
-			<div className="flex flex-wrap gap-x-3.5 gap-y-1 text-foreground-tertiary">
+			<div className="flex flex-wrap gap-x-3.5 gap-y-1 text-secondary">
 				<span className="flex items-center gap-1.5">
 					{sample("observed", 1.5)}○ observed · no policy evaluated
 				</span>
@@ -511,7 +509,7 @@ function Legend() {
 					{sample("blocked", 2)}✕ blocked · dropped
 				</span>
 			</div>
-			<div className="flex flex-wrap gap-x-3.5 gap-y-1 text-muted-foreground">
+			<div className="flex flex-wrap gap-x-3.5 gap-y-1 text-tertiary">
 				<span className="flex items-center gap-[5px]">
 					<svg width="12" height="8" aria-hidden="true">
 						<rect
@@ -520,7 +518,7 @@ function Legend() {
 							width="11"
 							height="7"
 							rx="2"
-							style={{ fill: "none", stroke: "var(--foreground-tertiary)" }}
+							style={{ fill: "none", stroke: "var(--text-secondary)" }}
 						/>
 					</svg>
 					managed label group
@@ -532,7 +530,7 @@ function Legend() {
 							y="0.5"
 							width="11"
 							height="7"
-							style={{ fill: "none", stroke: "var(--foreground-tertiary)" }}
+							style={{ fill: "none", stroke: "var(--text-secondary)" }}
 							strokeDasharray="5 4"
 						/>
 					</svg>

@@ -32,7 +32,7 @@ export function EmptyState({
 			style={{ maxWidth: width }}
 		>
 			<h1 className="text-[18px] font-semibold">{title}</h1>
-			<p className="text-foreground-tertiary">{children}</p>
+			<p className="text-secondary">{children}</p>
 			{steps ? (
 				<ol className="mt-1.5 grid grid-cols-[24px_1fr] gap-2.5 text-[12px]">
 					{steps.map((s, i) => (
@@ -41,16 +41,16 @@ export function EmptyState({
 								className={cn(
 									"flex size-[22px] items-center justify-center rounded-full border font-mono text-[11px]",
 									i === 0
-										? "border-[var(--checkbox-accent)] text-[var(--checkbox-accent)]"
-										: "border-input-strong text-muted-foreground",
+										? "border-[var(--selection-fg)] text-[var(--selection-fg)]"
+										: "border-strong text-tertiary",
 								)}
 								aria-hidden="true"
 							>
 								{i + 1}
 							</span>
 							<span>
-								<span className="text-foreground">{s.lead}</span>{" "}
-								<span className="text-muted-foreground">— {s.rest}</span>
+								<span className="text-primary">{s.lead}</span>{" "}
+								<span className="text-tertiary">— {s.rest}</span>
 							</span>
 						</li>
 					))}

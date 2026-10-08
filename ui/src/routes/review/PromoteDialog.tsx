@@ -147,7 +147,7 @@ export function PromoteDialog({
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent width={600}>
 				<DialogHeader title="Switch scope to enforced">
-					<p className="text-[12px] text-foreground-tertiary">
+					<p className="text-[12px] text-secondary">
 						Denied inbound traffic on these workloads will be dropped, starting
 						with the next policy version each agent applies.
 					</p>
@@ -155,19 +155,17 @@ export function PromoteDialog({
 				<DialogBody className="gap-2.5">
 					<div
 						className={cn(
-							"flex items-center gap-3 rounded border px-3 py-2.5",
+							"flex items-center gap-3 rounded-md border px-3 py-2.5",
 							verdict.safe
-								? "border-status-allowed-border bg-status-allowed-bg-soft"
-								: "border-status-would-block-border bg-status-would-block-bg-soft",
+								? "border-status-ok-border bg-status-ok-bg"
+								: "border-status-warn-border bg-status-critical-bg",
 						)}
 					>
 						<span
 							aria-hidden="true"
 							className={cn(
 								"font-mono text-[18px]",
-								verdict.safe
-									? "text-status-allowed"
-									: "text-status-would-block",
+								verdict.safe ? "text-flow-allowed" : "text-flow-would-block",
 							)}
 						>
 							{verdict.safe ? "✓" : k.pairs > 0 ? "◆" : "▲"}
@@ -176,7 +174,7 @@ export function PromoteDialog({
 							<div className="text-[13px] font-semibold">
 								{verdict.headline}
 							</div>
-							<div className="text-[12px] text-foreground-tertiary">
+							<div className="text-[12px] text-secondary">
 								{verdict.safe
 									? "No observed traffic would be dropped."
 									: k.pairs > 0
@@ -215,7 +213,7 @@ export function PromoteDialog({
 							/>
 						</>
 					) : null}
-					<p className="text-[11px] text-muted-foreground">
+					<p className="text-[11px] text-tertiary">
 						Mode is per workload. This records one mode change covering these
 						workloads; each workload's sync state shows when its agent has
 						applied the new version. Rollback is the same action in reverse.
@@ -257,7 +255,7 @@ export function PromoteDialog({
 					) : problem ? (
 						<p
 							role="alert"
-							className="flex items-start gap-2 text-[12px] text-destructive"
+							className="flex items-start gap-2 text-[12px] text-status-critical-fg"
 						>
 							<span className="font-mono" aria-hidden="true">
 								✕
@@ -280,7 +278,7 @@ export function PromoteDialog({
 						className={
 							verdict.safe
 								? undefined
-								: "border-status-would-block bg-transparent text-status-would-block hover:bg-status-would-block-bg-soft"
+								: "border-status-warn-fg bg-transparent text-flow-would-block hover:bg-status-critical-bg"
 						}
 					>
 						{submitting
@@ -306,12 +304,12 @@ function Matched({
 }) {
 	return (
 		<div className="flex flex-col gap-1 text-[12px]" data-testid="preview">
-			<span className="text-foreground-tertiary">
-				<span className="font-mono text-foreground-secondary">{scope}</span>{" "}
-				matches <span className="font-mono text-foreground">{count(n)}</span>{" "}
+			<span className="text-secondary">
+				<span className="font-mono text-secondary">{scope}</span> matches{" "}
+				<span className="font-mono text-primary">{count(n)}</span>{" "}
 				{n === 1 ? "workload" : "workloads"} now
 			</span>
-			<span className="font-mono text-[11px] text-muted-foreground">
+			<span className="font-mono text-[11px] text-tertiary">
 				{hostnames.slice(0, shown).join(" ")}
 				{hostnames.length > shown ? ` +${hostnames.length - shown} more` : ""}
 			</span>
@@ -331,32 +329,26 @@ function PartitionTable({
 	onPreview: () => void;
 }) {
 	const row =
-		"grid grid-cols-[1fr_auto_auto] items-center gap-x-4 border-t border-input px-3 py-[9px] first:border-t-0";
+		"grid grid-cols-[1fr_auto_auto] items-center gap-x-4 border-t border-strong px-3 py-[9px] first:border-t-0";
 	const n = (x: number) => `${count(x)} ${x === 1 ? "workload" : "workloads"}`;
 	return (
 		<div
-			className="overflow-hidden rounded border border-input text-[12.5px]"
+			className="overflow-hidden rounded-md border border-strong text-[12.5px]"
 			data-testid="partition"
 		>
 			<div className={row}>
 				<span>Simulation → Enforced</span>
-				<span className="text-foreground-tertiary">
-					{n(parts.included.length)}
-				</span>
-				<span className="text-status-allowed">included</span>
+				<span className="text-secondary">{n(parts.included.length)}</span>
+				<span className="text-flow-allowed">included</span>
 			</div>
 			{parts.visibility.length > 0 ? (
 				<div className={row}>
 					<span>
 						Visibility → Enforced{" "}
-						<span className="text-[11px] text-muted-foreground">
-							never simulated
-						</span>
+						<span className="text-[11px] text-tertiary">never simulated</span>
 					</span>
-					<span className="text-foreground-tertiary">
-						{n(parts.visibility.length)}
-					</span>
-					<span className="text-muted-foreground">skipped</span>
+					<span className="text-secondary">{n(parts.visibility.length)}</span>
+					<span className="text-tertiary">skipped</span>
 				</div>
 			) : null}
 			{parts.unsynced.map(({ workload: w, issue }) => {
@@ -373,19 +365,17 @@ function PartitionTable({
 								{issueLabel[issue]} ·{" "}
 								<Link
 									to={`/workloads/${w.id}`}
-									className="font-mono text-link hover:text-link-hover"
+									className="font-mono text-link hover:underline"
 								>
 									{w.hostname}
 								</Link>{" "}
-								<span className="text-[11px] text-status-degraded">
+								<span className="text-[11px] text-status-warn-fg">
 									▲ {issueText[issue](w.sync.applied_version)}
 								</span>
 							</span>
 						</label>
-						<span className="text-foreground-tertiary">{n(1)}</span>
-						<span
-							className={on ? "text-status-allowed" : "text-muted-foreground"}
-						>
+						<span className="text-secondary">{n(1)}</span>
+						<span className={on ? "text-flow-allowed" : "text-tertiary"}>
 							{on ? "included" : "skipped"}
 						</span>
 					</div>
@@ -394,24 +384,20 @@ function PartitionTable({
 			{parts.enforced.length > 0 ? (
 				<div className={row}>
 					<span>Already enforced</span>
-					<span className="text-foreground-tertiary">
-						{n(parts.enforced.length)}
-					</span>
-					<span className="text-muted-foreground">unchanged</span>
+					<span className="text-secondary">{n(parts.enforced.length)}</span>
+					<span className="text-tertiary">unchanged</span>
 				</div>
 			) : null}
 			{parts.unlisted.length > 0 ? (
 				<div className={row}>
-					<span className="text-status-degraded">
+					<span className="text-status-warn-fg">
 						▲ Matched but not listed: the fleet moved between reads
 					</span>
-					<span className="text-foreground-tertiary">
-						{n(parts.unlisted.length)}
-					</span>
+					<span className="text-secondary">{n(parts.unlisted.length)}</span>
 					<button
 						type="button"
 						onClick={onPreview}
-						className="cursor-pointer text-link hover:text-link-hover"
+						className="cursor-pointer text-link hover:underline"
 					>
 						Preview again
 					</button>
@@ -433,14 +419,14 @@ function StaleSet({
 	return (
 		<div
 			role="alert"
-			className="flex flex-col gap-1 rounded border border-status-would-block-border bg-status-would-block-surface px-3 py-2.5 text-[12px]"
+			className="flex flex-col gap-1 rounded-md border border-status-warn-border bg-status-warn-bg px-3 py-2.5 text-[12px]"
 		>
-			<span className="font-semibold text-status-degraded">▲ {title}</span>
-			<span className="text-foreground-secondary">{children}</span>
+			<span className="font-semibold text-status-warn-fg">▲ {title}</span>
+			<span className="text-secondary">{children}</span>
 			<Button
 				variant="secondary"
 				size="sm"
-				className="mt-1 self-start rounded-chip"
+				className="mt-1 self-start rounded-sm"
 				onClick={onPreview}
 			>
 				Preview again

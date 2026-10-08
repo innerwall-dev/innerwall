@@ -46,7 +46,7 @@ export function extent(from: string, to: string): string {
 }
 
 const chip =
-	"rounded-chip border border-input px-[9px] py-1 font-mono text-[12px] text-foreground-secondary";
+	"rounded-sm border border-strong px-[9px] py-1 font-mono text-[12px] text-secondary";
 
 // RangeControl picks the range and says what it covers. A rollup counts
 // whole stored windows inside the range, so the extent shown is the
@@ -70,12 +70,12 @@ export function RangeControl({
 	return (
 		<div className="flex items-center gap-2">
 			<label className={cn(chip, "flex items-center gap-1")}>
-				<span className="font-sans text-foreground-tertiary">last</span>
+				<span className="font-sans text-secondary">last</span>
 				<select
 					aria-label="Time range"
 					value={range}
 					onChange={(ev) => onChange(ev.target.value as RangeKey)}
-					className="cursor-pointer appearance-none bg-transparent font-mono text-[12px] text-foreground-secondary focus:outline-none"
+					className="cursor-pointer appearance-none bg-transparent font-mono text-[12px] text-secondary focus:outline-none"
 				>
 					{Object.keys(ranges).map((r) => (
 						<option key={r} value={r}>
@@ -85,7 +85,7 @@ export function RangeControl({
 				</select>
 			</label>
 			<span
-				className="font-mono text-[11px] text-muted-foreground"
+				className="font-mono text-[11px] text-tertiary"
 				data-testid={testId}
 				title={`Flows are stored in reporting windows; ${what} count the windows that lie wholly inside the range.`}
 			>

@@ -30,14 +30,14 @@ export function Switch({
 			className={cn(
 				"relative inline-flex shrink-0 cursor-pointer items-center rounded-full transition-colors disabled:cursor-default disabled:opacity-60",
 				size === "header" ? "h-[16px] w-[30px]" : "h-[14px] w-[26px]",
-				on ? "bg-status-allowed" : "bg-input-strong",
+				on ? "bg-selection-fg" : "bg-active",
 				className,
 			)}
 		>
 			<span
 				aria-hidden="true"
 				className={cn(
-					"absolute rounded-full bg-card transition-[left]",
+					"absolute rounded-full bg-raised transition-[left]",
 					size === "header" ? "size-[10px]" : "size-[9px]",
 					on
 						? size === "header"

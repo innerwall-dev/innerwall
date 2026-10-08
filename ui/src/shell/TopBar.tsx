@@ -11,21 +11,21 @@ export interface Crumb {
 // and the account popover.
 export function TopBar({ crumbs }: { crumbs: Crumb[] }) {
 	return (
-		<header className="flex h-11 shrink-0 items-center gap-3 border-b border-border bg-surface-sidebar px-5">
+		<header className="flex h-11 shrink-0 items-center gap-3 border-b border-default bg-subtle px-5">
 			<nav
 				aria-label="Breadcrumb"
-				className="flex min-w-0 items-center gap-1.5 text-[12px] text-foreground-tertiary"
+				className="flex min-w-0 items-center gap-1.5 text-[12px] text-secondary"
 			>
 				{crumbs.map((c, i) => (
 					<Fragment key={c.label}>
 						{i > 0 ? (
-							<span className="text-foreground-separator" aria-hidden="true">
+							<span className="text-disabled" aria-hidden="true">
 								/
 							</span>
 						) : null}
 						<span
 							className={
-								i === crumbs.length - 1 ? "truncate text-foreground" : undefined
+								i === crumbs.length - 1 ? "truncate text-primary" : undefined
 							}
 						>
 							{c.label}
@@ -33,7 +33,7 @@ export function TopBar({ crumbs }: { crumbs: Crumb[] }) {
 					</Fragment>
 				))}
 			</nav>
-			<label className="ml-auto flex w-[260px] items-center gap-2 rounded border border-input px-2.5 py-[5px] text-[12px] text-muted-foreground">
+			<label className="ml-auto flex w-[260px] items-center gap-2 rounded-md border border-strong px-2.5 py-[5px] text-[12px] text-tertiary">
 				<span className="font-mono" aria-hidden="true">
 					⌕
 				</span>
@@ -43,7 +43,7 @@ export function TopBar({ crumbs }: { crumbs: Crumb[] }) {
 					aria-label="Search"
 					disabled
 					title="Search arrives with the read screens"
-					className="min-w-0 flex-1 bg-transparent p-0 text-[12px] text-foreground placeholder:text-muted-foreground focus:outline-none disabled:cursor-default"
+					className="min-w-0 flex-1 bg-transparent p-0 text-[12px] text-primary placeholder:text-tertiary focus:outline-none disabled:cursor-default"
 				/>
 				<Kbd>⌘K</Kbd>
 			</label>

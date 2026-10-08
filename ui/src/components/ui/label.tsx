@@ -9,7 +9,7 @@ export function Label({ className, ...props }: React.ComponentProps<"label">) {
 		<label
 			data-slot="label"
 			className={cn(
-				"block text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground",
+				"block text-[11px] font-medium uppercase tracking-[0.08em] text-tertiary",
 				className,
 			)}
 			{...props}

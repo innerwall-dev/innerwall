@@ -105,7 +105,7 @@ export function FlowsTab({
 			) : (
 				<table className="w-full border-collapse text-[12.5px]">
 					<thead>
-						<tr className="text-left text-[11px] uppercase tracking-[0.05em] text-muted-foreground">
+						<tr className="text-left text-[11px] uppercase tracking-[0.05em] text-tertiary">
 							<th className="py-1.5 pr-2 font-medium">Decision</th>
 							<th className="px-2 py-1.5 font-medium">Source</th>
 							<th className="px-2 py-1.5 font-medium">Port</th>
@@ -118,7 +118,7 @@ export function FlowsTab({
 					<tbody>
 						{rows.map((f) => {
 							const rule = matchedRule(f, rules);
-							const cell = "border-t border-border p-2";
+							const cell = "border-t border-default p-2";
 							return (
 								<tr
 									key={f.id}
@@ -130,7 +130,7 @@ export function FlowsTab({
 									<td className={cell}>
 										<div className="flex items-center gap-1.5">
 											<span className="font-mono">{f.src_address}</span>
-											<span className="text-[11px] text-muted-foreground">
+											<span className="text-[11px] text-tertiary">
 												{peerNote(f.peer)}
 											</span>
 										</div>
@@ -140,17 +140,15 @@ export function FlowsTab({
 											? "icmp"
 											: `${f.service.protocol}/${f.service.port}`}
 									</td>
-									<td
-										className={cn(cell, "font-mono text-foreground-tertiary")}
-									>
+									<td className={cn(cell, "font-mono text-secondary")}>
 										{f.process_name || "—"}
 									</td>
-									<td className={cn(cell, "text-foreground-tertiary")}>
+									<td className={cn(cell, "text-secondary")}>
 										{rule.text}
 										{rule.id ? (
 											<span
 												className={cn(
-													"font-mono text-[11px] text-muted-foreground",
+													"font-mono text-[11px] text-tertiary",
 													rule.text && "ml-1.5",
 												)}
 											>
@@ -164,7 +162,7 @@ export function FlowsTab({
 									<td
 										className={cn(
 											cell,
-											"pr-0 text-right font-mono text-foreground-tertiary",
+											"pr-0 text-right font-mono text-secondary",
 										)}
 									>
 										{since(f.last_seen)}
@@ -177,7 +175,7 @@ export function FlowsTab({
 			)}
 			{resource.status === "loading" ? <LoadingRow what="flows" /> : null}
 			{resource.status === "ready" && rows.length === 0 ? (
-				<p className="py-6 text-[12px] text-muted-foreground">
+				<p className="py-6 text-[12px] text-tertiary">
 					{verdict
 						? `No ${verdicts[verdict].label} flows in the last 14 days.`
 						: "No inbound flows recorded in the last 14 days."}
@@ -189,7 +187,7 @@ export function FlowsTab({
 						<Button
 							variant="secondary"
 							size="sm"
-							className="rounded-chip"
+							className="rounded-sm"
 							disabled={more.loading}
 							onClick={loadMore}
 						>
@@ -197,7 +195,7 @@ export function FlowsTab({
 						</Button>
 					) : null}
 					{more.error ? (
-						<span role="alert" className="text-destructive">
+						<span role="alert" className="text-status-critical-fg">
 							{more.error}
 						</span>
 					) : null}

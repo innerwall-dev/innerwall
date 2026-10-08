@@ -43,7 +43,7 @@ export function ScopeCard({
 	return (
 		<section
 			aria-label="Scope"
-			className="flex flex-col gap-3 rounded border border-border bg-surface-sidebar px-4 py-3.5"
+			className="flex flex-col gap-3 rounded-md border border-default bg-subtle px-4 py-3.5"
 		>
 			<Eyebrow>Scope — workloads this ruleset protects</Eyebrow>
 			<div className="flex flex-wrap gap-6">
@@ -52,7 +52,7 @@ export function ScopeCard({
 						{keys.map((k, i) => (
 							<Fragment key={k}>
 								{i > 0 ? (
-									<span className="text-[11px] text-muted-foreground">AND</span>
+									<span className="text-[11px] text-tertiary">AND</span>
 								) : null}
 								<Requirement
 									k={k}
@@ -63,7 +63,7 @@ export function ScopeCard({
 							</Fragment>
 						))}
 						{keys.length > 0 ? (
-							<span className="text-[11px] text-muted-foreground">AND</span>
+							<span className="text-[11px] text-tertiary">AND</span>
 						) : null}
 						<AddInput
 							label="Add a scope requirement"
@@ -78,12 +78,12 @@ export function ScopeCard({
 						<FindingLines key={k} findings={findings.keys[k]} />
 					))}
 					<FindingLines findings={findings.whole} />
-					<p className="text-[12px] text-muted-foreground">
+					<p className="text-[12px] text-tertiary">
 						Keys are ANDed; several values for one key are ORed. An empty scope
 						matches nothing.
 					</p>
 				</div>
-				<div className="flex w-[300px] shrink-0 flex-col gap-1.5 border-l border-border pl-5">
+				<div className="flex w-[300px] shrink-0 flex-col gap-1.5 border-l border-default pl-5">
 					<Matches match={match} edited={edited} />
 				</div>
 			</div>
@@ -106,24 +106,24 @@ function Requirement({
 	return (
 		<span
 			className={cn(
-				"inline-flex items-center gap-2 rounded border bg-card px-2.5 py-1 font-mono text-[12.5px]",
-				failed ? "border-dashed border-destructive" : "border-input-strong",
+				"inline-flex items-center gap-2 rounded-md border bg-raised px-2.5 py-1 font-mono text-[12.5px]",
+				failed ? "border-dashed border-status-critical-fg" : "border-strong",
 			)}
 			data-testid="requirement"
 		>
 			<span>
-				{k} <span className="text-muted-foreground">=</span>{" "}
+				{k} <span className="text-tertiary">=</span>{" "}
 				{values.length > 0 ? (
 					values.join(" | ")
 				) : (
-					<span className="text-muted-foreground">(no values)</span>
+					<span className="text-tertiary">(no values)</span>
 				)}
 			</span>
 			<button
 				type="button"
 				aria-label={`Remove ${k}`}
 				onClick={onRemove}
-				className="cursor-pointer text-muted-foreground hover:text-foreground"
+				className="cursor-pointer text-tertiary hover:text-primary"
 			>
 				×
 			</button>
@@ -141,27 +141,21 @@ function Matches({
 	const [all, setAll] = useState(false);
 	if (match === null) {
 		return (
-			<p className="text-[12px] text-muted-foreground">
+			<p className="text-[12px] text-tertiary">
 				Add a requirement to see what this scope matches.
 			</p>
 		);
 	}
 	if (match.status === "loading") {
 		return (
-			<p
-				className="font-mono text-[12px] text-muted-foreground"
-				aria-busy="true"
-			>
+			<p className="font-mono text-[12px] text-tertiary" aria-busy="true">
 				Matching…
 			</p>
 		);
 	}
 	if (match.status === "error") {
 		return (
-			<p
-				className="text-[12px] text-muted-foreground"
-				data-testid="match-count"
-			>
+			<p className="text-[12px] text-tertiary" data-testid="match-count">
 				{edited
 					? "This scope matches nothing as written."
 					: `Could not resolve the scope: ${match.error.problem.detail ?? match.error.problem.title}`}
@@ -211,14 +205,14 @@ function Matches({
 		<>
 			<div className="flex items-baseline gap-2" data-testid="match-count">
 				<span className="font-mono text-[20px]">{count(m.count)}</span>
-				<span className="text-[13px] text-foreground-tertiary">
+				<span className="text-[13px] text-secondary">
 					{m.count === 1 ? "workload matches" : "workloads match"}{" "}
 					{edited ? "this scope" : "right now"}
 				</span>
 			</div>
 			{parts.length > 0 ? (
 				<div
-					className="flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-foreground-tertiary"
+					className="flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-secondary"
 					data-testid="match-mix"
 				>
 					{parts.map(([n, glyph, label, cls]) => (
@@ -232,22 +226,20 @@ function Matches({
 				</div>
 			) : null}
 			{hosts.length > 0 ? (
-				<p className="font-mono text-[12px] leading-[1.6] text-muted-foreground">
+				<p className="font-mono text-[12px] leading-[1.6] text-tertiary">
 					{shown.map((h, i) => (
 						<Fragment key={h.id}>
-							{i > 0 ? (
-								<span className="text-foreground-separator"> · </span>
-							) : null}
+							{i > 0 ? <span className="text-disabled"> · </span> : null}
 							<Host h={h} />
 						</Fragment>
 					))}
 					{!all && hosts.length > shownHosts ? (
 						<>
-							<span className="text-foreground-separator"> · </span>
+							<span className="text-disabled"> · </span>
 							<button
 								type="button"
 								onClick={() => setAll(true)}
-								className="cursor-pointer text-link hover:text-link-hover"
+								className="cursor-pointer text-link hover:underline"
 							>
 								+{count(hosts.length - shownHosts)} more
 							</button>
@@ -266,7 +258,7 @@ function Host({ h }: { h: MatchedHost }) {
 	return (
 		<Link
 			to={`/workloads/${encodeURIComponent(h.id)}`}
-			className="text-link hover:text-link-hover"
+			className="text-link hover:underline"
 			title={syncStates[h.issue].label}
 		>
 			{h.hostname}

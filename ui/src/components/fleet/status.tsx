@@ -12,17 +12,17 @@ export const modes: Record<
 	visibility: {
 		glyph: "◌",
 		label: "Visibility",
-		cls: "text-mode-visibility border-mode-visibility-border",
+		cls: "text-secondary border-default",
 	},
 	simulation: {
 		glyph: "◐",
 		label: "Simulation",
-		cls: "text-mode-simulation border-mode-simulation-border",
+		cls: "text-primary border-strong",
 	},
 	enforced: {
 		glyph: "●",
 		label: "Enforced",
-		cls: "text-mode-enforced border-mode-enforced-border",
+		cls: "text-primary border-strong",
 	},
 };
 
@@ -30,10 +30,10 @@ export const syncStates: Record<
 	SyncState,
 	{ glyph: string; label: string; cls: string }
 > = {
-	synced: { glyph: "●", label: "Synced", cls: "text-status-synced" },
-	pending: { glyph: "◔", label: "Pending", cls: "text-status-pending" },
-	degraded: { glyph: "▲", label: "Degraded", cls: "text-status-degraded" },
-	offline: { glyph: "○", label: "Offline", cls: "text-status-offline" },
+	synced: { glyph: "●", label: "Synced", cls: "text-health-synced" },
+	pending: { glyph: "◔", label: "Pending", cls: "text-health-pending" },
+	degraded: { glyph: "▲", label: "Degraded", cls: "text-status-warn-fg" },
+	offline: { glyph: "○", label: "Offline", cls: "text-health-offline" },
 };
 
 export const verdicts: Record<
@@ -43,26 +43,26 @@ export const verdicts: Record<
 	observed: {
 		glyph: "○",
 		label: "observed",
-		cls: "text-status-observed bg-status-observed-bg border-status-observed-border",
-		text: "text-status-observed",
+		cls: "text-flow-observed bg-status-neutral-bg border-status-neutral-border",
+		text: "text-flow-observed",
 	},
 	allowed: {
 		glyph: "✓",
 		label: "allowed",
-		cls: "text-status-allowed bg-status-allowed-bg border-status-allowed-border",
-		text: "text-status-allowed",
+		cls: "text-flow-allowed bg-status-ok-bg border-status-ok-border",
+		text: "text-flow-allowed",
 	},
 	would_block: {
 		glyph: "◆",
 		label: "would block",
-		cls: "text-status-would-block bg-status-would-block-bg border-status-would-block-border",
-		text: "text-status-would-block",
+		cls: "text-flow-would-block bg-status-warn-bg border-status-warn-border",
+		text: "text-flow-would-block",
 	},
 	blocked: {
 		glyph: "✕",
 		label: "blocked",
-		cls: "text-status-blocked bg-status-blocked-bg border-status-blocked-border",
-		text: "text-status-blocked",
+		cls: "text-flow-blocked bg-status-critical-bg border-status-critical-border",
+		text: "text-flow-blocked",
 	},
 };
 
@@ -71,7 +71,7 @@ export function ModePill({ mode }: { mode: Mode }) {
 	return (
 		<span
 			className={cn(
-				"inline-flex items-center gap-[5px] whitespace-nowrap rounded-pill border px-2 py-0.5 text-[11.5px]",
+				"inline-flex items-center gap-[5px] whitespace-nowrap rounded-sm border px-2 py-0.5 text-[11.5px]",
 				m.cls,
 			)}
 		>
@@ -101,7 +101,7 @@ export function VerdictPill({ verdict }: { verdict: Verdict }) {
 	return (
 		<span
 			className={cn(
-				"inline-flex items-center gap-[5px] whitespace-nowrap rounded-pill border px-2 py-0.5 text-[11.5px]",
+				"inline-flex items-center gap-[5px] whitespace-nowrap rounded-sm border px-2 py-0.5 text-[11.5px]",
 				v.cls,
 			)}
 		>
@@ -125,19 +125,19 @@ export function LabelChip({
 	return (
 		<span
 			className={cn(
-				"whitespace-nowrap border bg-card font-mono",
+				"whitespace-nowrap border bg-raised font-mono",
 				size === "table" &&
-					"rounded-[3px] border-input px-1.5 py-px text-[11px] text-foreground-secondary",
+					"rounded-[3px] border-strong px-1.5 py-px text-[11px] text-secondary",
 				size === "rail" &&
-					"rounded-pill border-input px-2 py-[3px] text-[11.5px]",
+					"rounded-sm border-strong px-2 py-[3px] text-[11.5px]",
 				size === "input" &&
-					"rounded-pill border-input-strong px-[7px] py-0.5 text-[12px]",
+					"rounded-sm border-strong px-[7px] py-0.5 text-[12px]",
 			)}
 		>
 			{size === "rail" ? (
 				<>
 					{k}
-					<span className="text-muted-foreground">=</span>
+					<span className="text-tertiary">=</span>
 					{v}
 				</>
 			) : (
@@ -170,10 +170,10 @@ export function FilterChip({
 			aria-pressed={on}
 			onClick={onClick}
 			className={cn(
-				"inline-flex cursor-pointer items-center gap-1.5 rounded-chip border px-[9px] py-[3px] text-[12px]",
+				"inline-flex cursor-pointer items-center gap-1.5 rounded-sm border px-[9px] py-[3px] text-[12px]",
 				on
-					? "border-accent-border bg-accent text-foreground"
-					: "border-input text-foreground-tertiary hover:text-foreground",
+					? "border-strong bg-active text-primary"
+					: "border-strong text-secondary hover:text-primary",
 			)}
 		>
 			{glyph ? (
@@ -183,7 +183,7 @@ export function FilterChip({
 			) : null}
 			<span>{label}</span>
 			{count !== undefined ? (
-				<span className="font-mono text-muted-foreground">{count}</span>
+				<span className="font-mono text-tertiary">{count}</span>
 			) : null}
 		</button>
 	);
@@ -200,7 +200,7 @@ export function Eyebrow({
 	return (
 		<div
 			className={cn(
-				"text-[11px] uppercase tracking-[0.05em] text-muted-foreground",
+				"text-[11px] uppercase tracking-[0.05em] text-tertiary",
 				className,
 			)}
 		>
@@ -235,10 +235,10 @@ export function ChoiceChips<T extends string>({
 				<label
 					key={o.value}
 					className={cn(
-						"inline-flex cursor-pointer items-center gap-[5px] rounded-chip border px-2.5 py-[5px] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-ring",
+						"inline-flex cursor-pointer items-center gap-[5px] rounded-sm border px-2.5 py-[5px] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-selection-fg",
 						value === o.value
-							? "border-primary bg-accent text-foreground"
-							: "border-input-strong text-foreground-tertiary hover:text-foreground",
+							? "border-strong bg-active text-primary"
+							: "border-strong text-secondary hover:text-primary",
 					)}
 				>
 					<input

@@ -450,7 +450,7 @@ describe("policy editor", () => {
 			screen
 				.getAllByTestId("requirement")
 				.find((r) => r.textContent?.startsWith("tier")),
-		).toHaveClass("border-destructive");
+		).toHaveClass("border-status-critical-fg");
 	});
 
 	it("enables a disabled rule from the table, conditioned on the version it read", async () => {

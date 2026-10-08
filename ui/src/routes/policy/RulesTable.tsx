@@ -88,7 +88,7 @@ export function RulesCard({
 	return (
 		<section
 			aria-label="Inbound rules"
-			className="flex flex-col rounded border border-border bg-surface-sidebar"
+			className="flex flex-col rounded-md border border-default bg-subtle"
 		>
 			<div className="flex items-center gap-3 px-4 py-3">
 				<Eyebrow>
@@ -110,7 +110,7 @@ export function RulesCard({
 			{notice}
 			<table
 				aria-label="Rules"
-				className="w-full table-fixed border-collapse border-t border-border text-left"
+				className="w-full table-fixed border-collapse border-t border-default text-left"
 			>
 				<colgroup>
 					<col className="w-[64px]" />
@@ -120,7 +120,7 @@ export function RulesCard({
 					<col className="w-[190px]" />
 				</colgroup>
 				<thead>
-					<tr className="border-b border-border text-[11px] uppercase tracking-[0.05em] text-muted-foreground">
+					<tr className="border-b border-default text-[11px] uppercase tracking-[0.05em] text-tertiary">
 						<th className={head}>On</th>
 						<th className={head}>Peers (may connect)</th>
 						<th className={head}>Services (on)</th>
@@ -131,10 +131,7 @@ export function RulesCard({
 				<tbody>
 					{rules.length === 0 && !row ? (
 						<tr>
-							<td
-								colSpan={5}
-								className="px-4 py-5 text-[12px] text-muted-foreground"
-							>
+							<td colSpan={5} className="px-4 py-5 text-[12px] text-tertiary">
 								No rules yet: nothing in this ruleset admits traffic to its
 								workloads.
 							</td>
@@ -171,7 +168,7 @@ export function RulesCard({
 				/>
 			) : null}
 			{traffic.status === "ready" && traffic.data.truncated ? (
-				<p className="border-t border-border px-4 py-2 text-[12px] text-muted-foreground">
+				<p className="border-t border-default px-4 py-2 text-[12px] text-tertiary">
 					The day's rule rollup was truncated: a rule without a figure may still
 					have admitted traffic.
 				</p>
@@ -199,7 +196,7 @@ function RuleRow({
 	const label = r.description || shortRuleId(id);
 	const cue = recency(r);
 	return (
-		<tr aria-label={label} className="border-b border-border last:border-b-0">
+		<tr aria-label={label} className="border-b border-default last:border-b-0">
 			<td className={cn(cell, "pt-[15px]")}>
 				<Switch
 					on={r.enabled !== false}
@@ -227,14 +224,14 @@ function RuleRow({
 			</td>
 			<td className={cell}>
 				<div className="flex flex-col gap-0.5">
-					<span className="text-[13px] text-foreground">
-						{r.description || <span className="text-muted-foreground">—</span>}
+					<span className="text-[13px] text-primary">
+						{r.description || <span className="text-tertiary">—</span>}
 					</span>
-					<span className="flex flex-wrap items-baseline gap-x-2 font-mono text-[12px] text-muted-foreground">
+					<span className="flex flex-wrap items-baseline gap-x-2 font-mono text-[12px] text-tertiary">
 						<span>{shortRuleId(id)}</span>
 						{cue ? (
 							<span data-testid="recency">
-								<span aria-hidden="true" className="text-status-pending">
+								<span aria-hidden="true" className="text-health-pending">
 									●
 								</span>{" "}
 								{cue}
@@ -244,7 +241,7 @@ function RuleRow({
 							type="button"
 							onClick={onEdit}
 							disabled={locked}
-							className="cursor-pointer font-sans text-[11px] text-link hover:text-link-hover disabled:cursor-default disabled:opacity-50"
+							className="cursor-pointer font-sans text-[11px] text-link hover:underline disabled:cursor-default disabled:opacity-50"
 							aria-label={`Edit ${label}`}
 						>
 							Edit
@@ -272,20 +269,18 @@ function SimulationCell({
 }) {
 	if (r.enabled === false) {
 		return (
-			<span className="text-[12px] text-muted-foreground">
+			<span className="text-[12px] text-tertiary">
 				disabled — admits nothing while off
 			</span>
 		);
 	}
 	if (traffic.status === "loading") {
-		return (
-			<span className="font-mono text-[12px] text-muted-foreground">…</span>
-		);
+		return <span className="font-mono text-[12px] text-tertiary">…</span>;
 	}
 	if (traffic.status === "error") {
 		return (
 			<span
-				className="text-[12px] text-muted-foreground"
+				className="text-[12px] text-tertiary"
 				title={traffic.error.problem.detail ?? traffic.error.problem.title}
 			>
 				—
@@ -295,7 +290,7 @@ function SimulationCell({
 	const t = traffic.data.byRule.get(r.id ?? "");
 	if (!t) {
 		return (
-			<span className="text-[12px] text-muted-foreground">
+			<span className="text-[12px] text-tertiary">
 				{traffic.data.truncated ? "—" : "no matched traffic"}
 			</span>
 		);
@@ -306,7 +301,7 @@ function SimulationCell({
 				<span aria-hidden="true">{verdicts.allowed.glyph}</span>{" "}
 				{count(t.connections)} allowed
 			</span>
-			<span className="text-[12px] text-muted-foreground">
+			<span className="text-[12px] text-tertiary">
 				matched on {count(t.workloads)}
 				{t.atLeast ? "+" : ""}{" "}
 				{t.workloads === 1 && !t.atLeast ? "workload" : "workloads"}
@@ -336,7 +331,7 @@ function EditRow({
 				aria-label={
 					id ? `Editing ${d.base?.description || shortRuleId(id)}` : "New rule"
 				}
-				className="bg-surface-row-editing"
+				className="bg-hover"
 			>
 				<td className={cn(cell, "pt-[15px]")}>
 					<Switch
@@ -447,19 +442,16 @@ function EditRow({
 							placeholder="What this rule is for"
 							value={d.description}
 							onChange={(ev) => onDraft({ ...d, description: ev.target.value })}
-							className="rounded-[3px] border border-input-strong bg-card px-2 py-1 text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:border-ring"
+							className="rounded-[3px] border border-strong bg-raised px-2 py-1 text-[13px] text-primary placeholder:text-tertiary focus:outline-none focus-visible:border-selection-fg"
 						/>
 						<FindingLines findings={f.columns.description} />
-						<span className="font-mono text-[12px] text-muted-foreground">
+						<span className="font-mono text-[12px] text-tertiary">
 							{id ? shortRuleId(id) : "new rule"}
 						</span>
 					</div>
 				</td>
 				<td
-					className={cn(
-						cell,
-						"text-right font-mono text-[12px] text-muted-foreground",
-					)}
+					className={cn(cell, "text-right font-mono text-[12px] text-tertiary")}
 					data-testid="simulation"
 				>
 					<div>—</div>
@@ -467,7 +459,7 @@ function EditRow({
 				</td>
 			</tr>
 			{row.findings.row.length > 0 ? (
-				<tr className="bg-surface-row-editing">
+				<tr className="bg-hover">
 					<td colSpan={5} className="px-4 pb-3">
 						<FindingLines findings={row.findings.row} />
 					</td>
@@ -499,8 +491,11 @@ function Footer({
 	const errors = outstanding(row.draft, row.findings);
 	const blocked = rowBlocked(row);
 	return (
-		<div className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-3">
-			<span className="text-[12.5px] text-destructive" data-testid="row-errors">
+		<div className="flex flex-wrap items-center gap-3 border-t border-default px-4 py-3">
+			<span
+				className="text-[12.5px] text-status-critical-fg"
+				data-testid="row-errors"
+			>
 				{errors > 0 ? (
 					<>
 						<span aria-hidden="true">✕</span> {errors}{" "}
@@ -519,7 +514,7 @@ function Footer({
 					variant={blocked ? "secondary" : "primary"}
 					onClick={onSave}
 					disabled={saving || blocked}
-					className={blocked ? "text-muted-foreground" : undefined}
+					className={blocked ? "text-tertiary" : undefined}
 				>
 					{inScope === null
 						? "Save — applies now"

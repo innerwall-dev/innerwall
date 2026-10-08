@@ -220,7 +220,7 @@ function Review({
 				</div>
 				<VerdictBanner verdict={verdict} />
 				<div className="flex flex-wrap items-center gap-2">
-					<fieldset className="m-0 flex overflow-hidden rounded border border-input p-0">
+					<fieldset className="m-0 flex overflow-hidden rounded-md border border-strong p-0">
 						<legend className="sr-only">Take</legend>
 						{takes.map((t) => (
 							<button
@@ -236,8 +236,8 @@ function Review({
 								className={cn(
 									"cursor-pointer px-3 py-[5px] text-[12px]",
 									take === t.key
-										? "bg-secondary text-foreground"
-										: "text-foreground-tertiary hover:text-foreground",
+										? "bg-active text-primary"
+										: "text-secondary hover:text-primary",
 								)}
 							>
 								{t.label}
@@ -279,7 +279,7 @@ function Review({
 					</div>
 				</div>
 			</div>
-			<div className="mt-3 flex min-h-0 flex-1 overflow-hidden border-t border-border">
+			<div className="mt-3 flex min-h-0 flex-1 overflow-hidden border-t border-default">
 				<div className="min-w-0 flex-1 overflow-auto px-6 pb-6">
 					{take === "grouped" ? (
 						<Grouped
@@ -350,7 +350,7 @@ function RulesetTabs({
 }) {
 	return (
 		<div className="flex flex-wrap items-center gap-2.5">
-			<span className="text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
+			<span className="text-[11px] uppercase tracking-[0.06em] text-tertiary">
 				Ruleset
 			</span>
 			<div className="flex flex-wrap gap-1" role="tablist">
@@ -365,10 +365,10 @@ function RulesetTabs({
 							aria-selected={on}
 							onClick={() => onPick(rs.name)}
 							className={cn(
-								"inline-flex cursor-pointer items-center gap-1.5 rounded-chip border px-[9px] py-[3px] font-mono text-[12px]",
+								"inline-flex cursor-pointer items-center gap-1.5 rounded-sm border px-[9px] py-[3px] font-mono text-[12px]",
 								on
-									? "border-accent-border bg-accent text-foreground"
-									: "border-transparent text-foreground-tertiary hover:text-foreground",
+									? "border-strong bg-active text-primary"
+									: "border-transparent text-secondary hover:text-primary",
 							)}
 						>
 							<span>{rs.name}</span>
@@ -376,9 +376,7 @@ function RulesetTabs({
 								<span
 									className={cn(
 										"text-[11px]",
-										c.pairs > 0
-											? "text-status-would-block"
-											: "text-muted-foreground",
+										c.pairs > 0 ? "text-flow-would-block" : "text-tertiary",
 									)}
 									title={`${c.pairs}${c.truncated ? "+" : ""} would-block peer/service pairs in range`}
 								>
@@ -415,13 +413,13 @@ function ScopeLine({
 	] as const;
 	return (
 		<div
-			className="flex flex-wrap items-center gap-2 text-[12px] text-foreground-tertiary"
+			className="flex flex-wrap items-center gap-2 text-[12px] text-secondary"
 			data-testid="scope-line"
 		>
-			<span className="font-mono text-foreground-secondary">
+			<span className="font-mono text-secondary">
 				{scopeText(ruleset.scope)}
 			</span>
-			<span className="text-foreground-separator" aria-hidden="true">
+			<span className="text-disabled" aria-hidden="true">
 				·
 			</span>
 			<span>
@@ -430,7 +428,7 @@ function ScopeLine({
 			</span>
 			{workloads.length > 0 ? (
 				<>
-					<span className="text-foreground-separator" aria-hidden="true">
+					<span className="text-disabled" aria-hidden="true">
 						·
 					</span>
 					<span>
@@ -457,32 +455,32 @@ function VerdictBanner({ verdict }: { verdict: ReviewVerdictResult }) {
 		<section
 			aria-label="Verdict"
 			className={cn(
-				"rounded-popover border px-[18px] py-3.5",
+				"rounded-lg border px-[18px] py-3.5",
 				safe
-					? "border-status-allowed-border bg-status-allowed-bg-soft"
-					: "border-status-would-block-border bg-status-would-block-bg-soft",
+					? "border-status-ok-border bg-status-ok-bg"
+					: "border-status-warn-border bg-status-critical-bg",
 			)}
 		>
 			<div className="flex items-center gap-3.5">
 				<div
 					aria-hidden="true"
 					className={cn(
-						"flex size-[38px] shrink-0 items-center justify-center rounded-popover font-mono text-[20px]",
+						"flex size-[38px] shrink-0 items-center justify-center rounded-lg font-mono text-[20px]",
 						safe
-							? "bg-status-allowed-bg text-status-allowed"
-							: "bg-status-would-block-bg text-status-would-block",
+							? "bg-status-ok-bg text-flow-allowed"
+							: "bg-status-warn-bg text-flow-would-block",
 					)}
 				>
 					{glyph}
 				</div>
 				<div className="flex min-w-0 flex-col gap-0.5">
 					<h1 className="text-[17px] font-semibold">{verdict.headline}</h1>
-					<p className="text-[12px] text-foreground-tertiary">{verdict.sub}</p>
+					<p className="text-[12px] text-secondary">{verdict.sub}</p>
 				</div>
 				<dl className="ml-auto grid shrink-0 grid-cols-[repeat(4,auto)] gap-x-7 text-right">
 					<Kpi
 						value={count(k.pairs)}
-						valueClass="text-status-would-block"
+						valueClass="text-flow-would-block"
 						label="◆ would block · peer/service"
 					/>
 					<Kpi value={short(k.connections)} label="connections in range" />
@@ -492,19 +490,19 @@ function VerdictBanner({ verdict }: { verdict: ReviewVerdictResult }) {
 					/>
 					<Kpi
 						value={count(k.allowedPairs)}
-						valueClass="text-status-allowed"
+						valueClass="text-flow-allowed"
 						label="✓ allowed · matched a rule"
 					/>
 				</dl>
 			</div>
 			{verdict.caveats.length > 0 ? (
 				<ul
-					className="mt-2.5 flex flex-wrap gap-x-[18px] gap-y-1.5 border-t border-[var(--hairline-soft)] pt-2.5 text-[12px] text-foreground-tertiary"
+					className="mt-2.5 flex flex-wrap gap-x-[18px] gap-y-1.5 border-t border-[var(--border-subtle)] pt-2.5 text-[12px] text-secondary"
 					aria-label="Caveats"
 				>
 					{verdict.caveats.map((c) => (
 						<li key={c} className="flex gap-1.5">
-							<span className="text-status-degraded" aria-hidden="true">
+							<span className="text-status-warn-fg" aria-hidden="true">
 								▲
 							</span>
 							<span>{c}</span>
@@ -527,7 +525,7 @@ function Kpi({
 }) {
 	return (
 		<div className="flex max-w-[150px] flex-col-reverse">
-			<dt className="text-[11px] text-muted-foreground">{label}</dt>
+			<dt className="text-[11px] text-tertiary">{label}</dt>
 			<dd className={cn("m-0 font-mono text-[20px]", valueClass)}>{value}</dd>
 		</div>
 	);

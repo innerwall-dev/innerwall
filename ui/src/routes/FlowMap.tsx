@@ -197,7 +197,7 @@ function MapView({
 }
 
 const chip =
-	"rounded-chip border border-input px-[9px] py-1 font-mono text-[12px] text-foreground-secondary";
+	"rounded-sm border border-strong px-[9px] py-1 font-mono text-[12px] text-secondary";
 
 function Toolbar({
 	model,
@@ -234,7 +234,7 @@ function Toolbar({
 	}
 
 	return (
-		<div className="flex shrink-0 flex-wrap items-center gap-2.5 border-b border-border px-6 pt-3.5 pb-3">
+		<div className="flex shrink-0 flex-wrap items-center gap-2.5 border-b border-default px-6 pt-3.5 pb-3">
 			<div className="flex flex-wrap items-center gap-1.5">
 				<label className={cn(chip, "flex items-center gap-1")}>
 					<span>group by:</span>
@@ -247,7 +247,7 @@ function Toolbar({
 								p.delete("sel");
 							})
 						}
-						className="cursor-pointer appearance-none bg-transparent font-mono text-[12px] text-foreground-secondary focus:outline-none"
+						className="cursor-pointer appearance-none bg-transparent font-mono text-[12px] text-secondary focus:outline-none"
 					>
 						{options.map((k) => (
 							<option key={k} value={k}>
@@ -271,7 +271,7 @@ function Toolbar({
 										for (const l of rest) p.append("label", l);
 									})
 								}
-								className="cursor-pointer text-muted-foreground hover:text-foreground"
+								className="cursor-pointer text-tertiary hover:text-primary"
 							>
 								×
 							</button>
@@ -300,12 +300,12 @@ function Toolbar({
 							}}
 							className={cn(
 								chip,
-								"w-[140px] bg-transparent focus:border-ring focus:outline-none",
-								invalid && "border-destructive",
+								"w-[140px] bg-transparent focus:border-selection-fg focus:outline-none",
+								invalid && "border-status-critical-fg",
 							)}
 						/>
 						{invalid ? (
-							<span className="text-[11px] text-destructive">
+							<span className="text-[11px] text-status-critical-fg">
 								A label is written key=value.
 							</span>
 						) : null}
@@ -314,13 +314,13 @@ function Toolbar({
 					<button
 						type="button"
 						onClick={() => setAdding(true)}
-						className="cursor-pointer rounded-chip border border-dashed border-input-strong px-[9px] py-1 text-[12px] text-muted-foreground hover:text-foreground"
+						className="cursor-pointer rounded-sm border border-dashed border-strong px-[9px] py-1 text-[12px] text-tertiary hover:text-primary"
 					>
 						+ filter
 					</button>
 				)}
 			</div>
-			<fieldset className="m-0 ml-2 flex overflow-hidden rounded border border-input p-0">
+			<fieldset className="m-0 ml-2 flex overflow-hidden rounded-md border border-strong p-0">
 				<legend className="sr-only">Take</legend>
 				{(["graph", "matrix"] as const).map((t) => (
 					<button
@@ -336,8 +336,8 @@ function Toolbar({
 						className={cn(
 							"cursor-pointer px-3.5 py-[5px] text-[12.5px]",
 							take === t
-								? "bg-secondary text-foreground"
-								: "text-foreground-tertiary hover:text-foreground",
+								? "bg-active text-primary"
+								: "text-secondary hover:text-primary",
 						)}
 					>
 						{t === "graph" ? "Graph" : "Matrix"}
@@ -380,15 +380,15 @@ function Totals({ model }: { model: MapModel }) {
 	const dropped = model.dropped.length;
 	const gapped = model.gapped.length;
 	return (
-		<div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-foreground-tertiary">
+		<div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-secondary">
 			<span>
-				<span className="font-mono text-foreground">
+				<span className="font-mono text-primary">
 					{headline(model.connections)}
 				</span>{" "}
 				connections
 			</span>
 			<span>
-				<span className="font-mono text-foreground">
+				<span className="font-mono text-primary">
 					{count(model.reporting)}
 					{model.truncated ? "+" : ""}
 				</span>{" "}
@@ -397,7 +397,7 @@ function Totals({ model }: { model: MapModel }) {
 			{gapped > 0 ? (
 				<span
 					role="status"
-					className="text-status-degraded"
+					className="text-status-warn-fg"
 					title={model.gaps
 						.map(
 							(g) =>
@@ -412,7 +412,7 @@ function Totals({ model }: { model: MapModel }) {
 			{dropped > 0 ? (
 				<span
 					role="status"
-					className="text-status-degraded"
+					className="text-status-warn-fg"
 					title={model.dropped.map((w) => w.hostname).join(", ")}
 				>
 					▲ {count(dropped)} {dropped === 1 ? "workload" : "workloads"} dropped
@@ -420,7 +420,7 @@ function Totals({ model }: { model: MapModel }) {
 				</span>
 			) : null}
 			{model.truncated ? (
-				<span role="status" className="text-status-degraded">
+				<span role="status" className="text-status-warn-fg">
 					▲ showing the busiest {count(rollupLimit)} pairs per decision — map is
 					incomplete
 				</span>

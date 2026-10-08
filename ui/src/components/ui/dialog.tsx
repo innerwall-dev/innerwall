@@ -16,13 +16,13 @@ export function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content> & { width?: number }) {
 	return (
 		<DialogPrimitive.Portal>
-			<DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-[var(--overlay)]" />
+			<DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-[var(--scrim)]" />
 			<div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center p-6">
 				<DialogPrimitive.Content
 					data-slot="dialog-content"
 					aria-describedby={undefined}
 					className={cn(
-						"pointer-events-auto flex max-h-[88vh] flex-col overflow-auto rounded-dialog border border-input-strong bg-muted text-foreground shadow-[0_24px_60px_var(--overlay)] outline-none",
+						"pointer-events-auto flex max-h-[88vh] flex-col overflow-auto rounded-xl border border-strong bg-hover text-primary shadow-[0_24px_60px_var(--scrim)] outline-none",
 						className,
 					)}
 					style={{ width }}
@@ -71,7 +71,7 @@ export function DialogFooter({
 	return (
 		<div
 			className={cn(
-				"flex items-center justify-end gap-2 border-t border-border px-5 pt-3 pb-4",
+				"flex items-center justify-end gap-2 border-t border-default px-5 pt-3 pb-4",
 				className,
 			)}
 			{...props}

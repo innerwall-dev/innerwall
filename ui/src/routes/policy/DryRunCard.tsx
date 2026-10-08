@@ -25,9 +25,9 @@ const kinds: Record<
 	DeltaLine["kind"],
 	{ glyph: string; word: string; cls: string }
 > = {
-	added: { glyph: "+", word: "gains", cls: "text-status-allowed" },
-	removed: { glyph: "−", word: "loses", cls: "text-destructive" },
-	changed: { glyph: "~", word: "changes", cls: "text-status-pending" },
+	added: { glyph: "+", word: "gains", cls: "text-flow-allowed" },
+	removed: { glyph: "−", word: "loses", cls: "text-status-critical-fg" },
+	changed: { glyph: "~", word: "changes", cls: "text-health-pending" },
 };
 
 // DryRunCard is the render-dryrun endpoint's reading: what saving the
@@ -46,7 +46,7 @@ export function DryRunCard({
 	return (
 		<section
 			aria-label="Dry run"
-			className="flex flex-col gap-3 rounded border border-border bg-surface-sidebar px-4 py-3.5"
+			className="flex flex-col gap-3 rounded-md border border-default bg-subtle px-4 py-3.5"
 		>
 			<div className="flex items-center gap-3">
 				<Eyebrow>Dry run — what saving these changes would change</Eyebrow>
@@ -62,28 +62,25 @@ export function DryRunCard({
 				) : null}
 			</div>
 			{state === null ? (
-				<p className="text-[12px] text-muted-foreground">
+				<p className="text-[12px] text-tertiary">
 					Render the current set with your unsaved changes and see each
 					workload's added, removed, and changed rules. It reads; it never
 					saves, and saving never waits for it.
 				</p>
 			) : state.status === "running" ? (
-				<p
-					className="font-mono text-[12px] text-muted-foreground"
-					aria-busy="true"
-				>
+				<p className="font-mono text-[12px] text-tertiary" aria-busy="true">
 					Rendering…
 				</p>
 			) : state.status === "refused" ? (
 				<div className="flex flex-col gap-1.5" role="alert">
-					<p className="text-[12px] text-destructive">
+					<p className="text-[12px] text-status-critical-fg">
 						The control plane refused this set as a write would: the findings
 						are shown at the fields they name.
 					</p>
 					<FindingLines findings={state.findings} />
 				</div>
 			) : state.status === "failed" ? (
-				<p role="alert" className="text-[12px] text-destructive">
+				<p role="alert" className="text-[12px] text-status-critical-fg">
 					The dry run failed: {state.message}
 				</p>
 			) : (
@@ -105,15 +102,15 @@ function Result({
 				<div
 					role="status"
 					data-testid="dryrun-freshness"
-					className="rounded border border-status-would-block-border bg-status-would-block-surface px-3 py-2 text-[12px]"
+					className="rounded-md border border-status-warn-border bg-status-warn-bg px-3 py-2 text-[12px]"
 				>
-					<span className="font-semibold text-status-degraded">
+					<span className="font-semibold text-status-warn-fg">
 						<span aria-hidden="true">▲</span>{" "}
 						{freshness === "stale"
 							? "The state moved before this ran."
 							: "The state has moved since this ran."}
 					</span>{" "}
-					<span className="text-foreground-tertiary">
+					<span className="text-secondary">
 						{freshness === "stale"
 							? "It was computed against the current state, but your changes were made on an older read. Reload and re-run to see them against what is stored now."
 							: "A write has landed since. Re-run to see what saving would change now."}
@@ -121,26 +118,23 @@ function Result({
 				</div>
 			) : null}
 			{result.workloads.length === 0 ? (
-				<p
-					className="text-[12px] text-foreground-tertiary"
-					data-testid="dryrun-summary"
-				>
+				<p className="text-[12px] text-secondary" data-testid="dryrun-summary">
 					Nothing would change: no workload's rendered policy differs from what
 					it has now.
 				</p>
 			) : (
 				<>
 					<p
-						className="text-[12px] text-foreground-tertiary"
+						className="text-[12px] text-secondary"
 						data-testid="dryrun-summary"
 					>
 						Saving would change the rendered policy of{" "}
-						<span className="font-mono text-foreground">
+						<span className="font-mono text-primary">
 							{count(result.workloads.length)}
 						</span>{" "}
 						{result.workloads.length === 1 ? "workload" : "workloads"}.
 					</p>
-					<ul className="flex flex-col divide-y divide-border">
+					<ul className="flex flex-col divide-y divide-default">
 						{result.workloads.map((w) => (
 							<li
 								key={w.workload.id}
@@ -150,17 +144,17 @@ function Result({
 								<div className="flex flex-wrap items-baseline gap-2 text-[12.5px]">
 									<Link
 										to={`/workloads/${encodeURIComponent(w.workload.id)}`}
-										className="font-mono text-foreground hover:text-link"
+										className="font-mono text-primary hover:text-link"
 									>
 										{w.workload.hostname || w.workload.id}
 									</Link>
-									<span className="font-mono text-[11px] text-muted-foreground">
+									<span className="font-mono text-[11px] text-tertiary">
 										{w.version > 0
 											? `against v${w.version}`
 											: "nothing rendered yet"}
 									</span>
 									{w.mode ? (
-										<span className="text-[12px] text-foreground-tertiary">
+										<span className="text-[12px] text-secondary">
 											mode {modes[w.mode.from].label.toLowerCase()} →{" "}
 											{modes[w.mode.to].label.toLowerCase()}
 										</span>
@@ -180,17 +174,13 @@ function Result({
 												{kinds[l.kind].glyph}
 											</span>
 											<span className="sr-only">{kinds[l.kind].word}</span>
-											<span className="text-foreground">{l.service}</span>
-											<span className="text-muted-foreground">
-												from {l.peers}
-											</span>
-											<span className="font-sans text-foreground-tertiary">
+											<span className="text-primary">{l.service}</span>
+											<span className="text-tertiary">from {l.peers}</span>
+											<span className="font-sans text-secondary">
 												· {l.rule}
 											</span>
 											{l.detail ? (
-												<span className="text-foreground-tertiary">
-													({l.detail})
-												</span>
+												<span className="text-secondary">({l.detail})</span>
 											) : null}
 										</li>
 									))}

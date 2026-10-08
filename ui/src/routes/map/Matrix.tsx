@@ -13,18 +13,18 @@ import type { MapEdge, MapModel, MapNode, Selection } from "./model";
 const unmanaged = new Set(["address-group", "unknown"]);
 
 const cellTone = {
-	observed: "bg-status-observed-bg text-status-observed",
-	allowed: "bg-status-allowed-bg text-status-allowed",
-	would_block: "bg-status-would-block-bg text-status-would-block",
-	blocked: "bg-status-blocked-bg text-status-blocked",
+	observed: "bg-status-neutral-bg text-flow-observed",
+	allowed: "bg-status-ok-bg text-flow-allowed",
+	would_block: "bg-status-warn-bg text-flow-would-block",
+	blocked: "bg-status-critical-bg text-flow-blocked",
 } as const;
 
 function rowEdge(n: MapNode): string {
 	if (unmanaged.has(n.kind))
-		return "border-l-2 border-dashed border-l-[var(--viz-node-unmanaged-stroke)]";
+		return "border-l-2 border-dashed border-l-[var(--border-strong)]";
 	if (n.kind === "unlabeled")
-		return "border-l-2 border-dotted border-l-[var(--viz-node-unlabeled-stroke)]";
-	return "border-l-2 border-solid border-l-[var(--viz-node-managed-stroke)]";
+		return "border-l-2 border-dotted border-l-[var(--status-warn-border)]";
+	return "border-l-2 border-solid border-l-[var(--border-default)]";
 }
 
 export function Matrix({
@@ -72,7 +72,7 @@ export function Matrix({
 			    each 1px gap is a grid line; a filled cell's tint sits on that
 			    color, as the design draws it, and an empty cell is opaque. */}
 				<table
-					className="w-full border-separate border-spacing-px border border-[var(--viz-matrix-grid)] bg-[var(--viz-matrix-grid)]"
+					className="w-full border-separate border-spacing-px border border-[var(--border-subtle)] bg-[var(--border-subtle)]"
 					style={{ minWidth: 150 + cols.length * 84 }}
 				>
 					<caption className="sr-only">
@@ -88,7 +88,7 @@ export function Matrix({
 						<tr>
 							<th
 								scope="col"
-								className="sticky left-0 bg-[var(--viz-matrix-empty)] px-2.5 py-2 text-left align-top text-[11px] font-normal uppercase tracking-[0.05em] text-muted-foreground"
+								className="sticky left-0 bg-[var(--bg-app)] px-2.5 py-2 text-left align-top text-[11px] font-normal uppercase tracking-[0.05em] text-tertiary"
 							>
 								source ↓ · destination →
 							</th>
@@ -97,15 +97,15 @@ export function Matrix({
 									key={c.id}
 									scope="col"
 									className={cn(
-										"bg-[var(--viz-matrix-empty)] p-0 align-top font-normal",
-										nodeSelected(c.id) && "bg-[var(--viz-matrix-selected)]",
+										"bg-[var(--bg-app)] p-0 align-top font-normal",
+										nodeSelected(c.id) && "bg-[var(--selection-bg)]",
 									)}
 								>
 									<button
 										type="button"
 										aria-pressed={nodeSelected(c.id)}
 										onClick={() => pickNode(c.id)}
-										className="w-full cursor-pointer px-1.5 py-2 text-center text-[11px] leading-[1.2] break-words text-foreground-secondary"
+										className="w-full cursor-pointer px-1.5 py-2 text-center text-[11px] leading-[1.2] break-words text-secondary"
 									>
 										{c.title}
 									</button>
@@ -119,16 +119,16 @@ export function Matrix({
 								<th
 									scope="row"
 									className={cn(
-										"sticky left-0 bg-surface-sidebar p-0 text-left font-normal",
+										"sticky left-0 bg-subtle p-0 text-left font-normal",
 										rowEdge(r),
-										nodeSelected(r.id) && "bg-[var(--viz-matrix-selected)]",
+										nodeSelected(r.id) && "bg-[var(--selection-bg)]",
 									)}
 								>
 									<button
 										type="button"
 										aria-pressed={nodeSelected(r.id)}
 										onClick={() => pickNode(r.id)}
-										className="w-full cursor-pointer truncate px-2.5 py-1.5 text-left font-mono text-[11.5px] whitespace-nowrap text-foreground-secondary"
+										className="w-full cursor-pointer truncate px-2.5 py-1.5 text-left font-mono text-[11.5px] whitespace-nowrap text-secondary"
 									>
 										{r.title}
 									</button>
@@ -136,9 +136,7 @@ export function Matrix({
 								{cols.map((c) => {
 									const e = edges.get(`${r.id}>${c.id}`);
 									if (!e) {
-										return (
-											<td key={c.id} className="bg-[var(--viz-matrix-empty)]" />
-										);
+										return <td key={c.id} className="bg-[var(--bg-app)]" />;
 									}
 									const selected =
 										selection?.kind === "edge" && selection.id === e.id;
@@ -158,7 +156,7 @@ export function Matrix({
 												className={cn(
 													"size-full cursor-pointer px-1.5 py-1.5 text-center font-mono text-[11.5px] whitespace-nowrap",
 													cellTone[e.decision],
-													selected && "bg-[var(--viz-matrix-selected)]",
+													selected && "bg-[var(--selection-bg)]",
 												)}
 											>
 												<span aria-hidden="true">{v.glyph}</span> {short(shown)}
@@ -171,7 +169,7 @@ export function Matrix({
 					</tbody>
 				</table>
 			</div>
-			<p className="mt-2.5 text-[11px] text-muted-foreground">
+			<p className="mt-2.5 text-[11px] text-tertiary">
 				Glyph encodes decision (○ observed · ✓ allowed · ◆ would block · ✕
 				blocked); number is connections under that decision, the one that takes
 				precedence among the cell's pairs. Row headers with dashed border are

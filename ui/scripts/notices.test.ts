@@ -6,6 +6,7 @@ import {
 	NOTICES,
 	noticeFiles,
 	productionTree,
+	vendoredFonts,
 } from "./notices";
 
 // The console root: the tests run under a browser-like environment, where
@@ -29,19 +30,21 @@ describe("third-party notices", () => {
 	});
 
 	it("carries the full text of each font family's license beside the fonts", () => {
-		const fonts = Object.keys(manifest.dependencies).filter((n) =>
-			n.startsWith("@fontsource/"),
-		);
-		expect(fonts.length).toBeGreaterThan(0);
-		for (const name of fonts) {
+		expect(vendoredFonts.length).toBeGreaterThan(0);
+		for (const font of vendoredFonts) {
 			const shipped = readFileSync(
-				`${root}/node_modules/${name}/LICENSE`,
+				`${root}/${font.licenseFile}`,
 				"utf8",
 			).trimEnd();
-			const beside = files.find((f) => f.fileName === fontLicenseName(name));
+			const beside = files.find(
+				(f) => f.fileName === fontLicenseName(font.name),
+			);
 			expect(beside?.fileName.startsWith("assets/")).toBe(true);
 			expect(beside?.text).toContain(shipped);
 			expect(beside?.text).toContain("SIL OPEN FONT LICENSE Version 1.1");
+			expect(notices).toContain(
+				`${font.name} ${font.version}\nLicense: OFL-1.1`,
+			);
 			expect(notices).toContain(shipped);
 		}
 	});

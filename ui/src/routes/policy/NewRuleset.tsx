@@ -90,15 +90,15 @@ export function NewRuleset({
 							value={name}
 							onChange={(ev) => setName(ev.target.value)}
 							className={cn(
-								"w-[320px] rounded border bg-card px-2.5 py-1 font-mono text-[18px] font-semibold text-foreground placeholder:font-normal placeholder:text-muted-foreground focus:outline-none focus-visible:border-ring",
+								"w-[320px] rounded-md border bg-raised px-2.5 py-1 font-mono text-[18px] font-semibold text-primary placeholder:font-normal placeholder:text-tertiary focus:outline-none focus-visible:border-selection-fg",
 								at("name").length > 0
-									? "border-destructive"
-									: "border-input-strong",
+									? "border-status-critical-fg"
+									: "border-strong",
 							)}
 						/>
 						<FindingLines findings={at("name")} />
 					</div>
-					<span className="flex items-center gap-2 text-[13px] text-foreground-secondary">
+					<span className="flex items-center gap-2 text-[13px] text-secondary">
 						<Switch
 							size="header"
 							on={enabled}
@@ -113,16 +113,16 @@ export function NewRuleset({
 					placeholder="What this ruleset protects, in a sentence"
 					value={description}
 					onChange={(ev) => setDescription(ev.target.value)}
-					className="max-w-[640px] rounded border border-input-strong bg-card px-2.5 py-1 text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:border-ring"
+					className="max-w-[640px] rounded-md border border-strong bg-raised px-2.5 py-1 text-[13px] text-primary placeholder:text-tertiary focus:outline-none focus-visible:border-selection-fg"
 				/>
 				<FindingLines findings={at("description")} />
 			</header>
 			<div
 				role="note"
-				className="flex gap-3 rounded border border-input-strong bg-surface-sidebar px-4 py-3 text-[13px] text-foreground-secondary"
+				className="flex gap-3 rounded-md border border-strong bg-subtle px-4 py-3 text-[13px] text-secondary"
 				data-testid="banner"
 			>
-				<span aria-hidden="true" className="font-mono text-primary">
+				<span aria-hidden="true" className="font-mono text-icon-default">
 					i
 				</span>
 				<span>

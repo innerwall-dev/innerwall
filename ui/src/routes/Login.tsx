@@ -82,11 +82,11 @@ export function Login() {
 	const noPassword = problem?.type === ProblemType.noPassword;
 
 	return (
-		<div className="flex min-h-dvh items-center justify-center bg-background px-6 py-12 text-foreground">
-			<div className="w-full max-w-[380px] rounded-dialog border border-input-strong bg-card p-7 shadow-popover">
+		<div className="flex min-h-dvh items-center justify-center bg-app px-6 py-12 text-primary">
+			<div className="w-full max-w-[380px] rounded-xl border border-strong bg-raised p-7 ">
 				<div className="flex items-center gap-2.5">
 					<Lockup />
-					<span className="ml-auto font-mono text-[11px] text-muted-foreground">
+					<span className="ml-auto font-mono text-[11px] text-tertiary">
 						operator console
 					</span>
 				</div>
@@ -112,7 +112,7 @@ export function Login() {
 							<p
 								id={problemId}
 								role="alert"
-								className="mt-2.5 flex items-start gap-2 text-[12px] text-destructive"
+								className="mt-2.5 flex items-start gap-2 text-[12px] text-status-critical-fg"
 							>
 								<span className="font-mono" aria-hidden="true">
 									✕
@@ -168,14 +168,14 @@ function FreshInstall({ onRetry }: { onRetry: () => void }) {
 			<h1 className="text-[15px] font-semibold">
 				No operator password has been set
 			</h1>
-			<p className="mt-2 text-[13px] leading-[1.6] text-foreground-tertiary">
+			<p className="mt-2 text-[13px] leading-[1.6] text-secondary">
 				This control plane is freshly installed. The password is set from the
 				command line on the control-plane host, and nowhere else:
 			</p>
-			<pre className="mt-3 overflow-x-auto rounded border border-input-strong bg-muted px-3 py-2.5 font-mono text-[12px] text-foreground">
+			<pre className="mt-3 overflow-x-auto rounded-md border border-strong bg-hover px-3 py-2.5 font-mono text-[12px] text-primary">
 				innerwall operator set-password
 			</pre>
-			<p className="mt-3 text-[12px] leading-[1.6] text-muted-foreground">
+			<p className="mt-3 text-[12px] leading-[1.6] text-tertiary">
 				The command also takes the display name shown in this console. Once it
 				has run, sign in here.
 			</p>

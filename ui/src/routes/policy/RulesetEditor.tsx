@@ -399,7 +399,7 @@ export function RulesetEditor({
 					<h1 className="font-mono text-[20px] font-semibold">
 						{ruleset.name}
 					</h1>
-					<span className="flex items-center gap-2 text-[13px] text-foreground-secondary">
+					<span className="flex items-center gap-2 text-[13px] text-secondary">
 						<Switch
 							size="header"
 							on={enabled}
@@ -418,18 +418,16 @@ export function RulesetEditor({
 					</Button>
 				</div>
 				{ruleset.description ? (
-					<p className="text-[13px] text-foreground-tertiary">
-						{ruleset.description}
-					</p>
+					<p className="text-[13px] text-secondary">{ruleset.description}</p>
 				) : null}
 			</header>
 			{headNotice ? <NoticeLine notice={headNotice} /> : null}
 			<div
 				role="note"
-				className="flex gap-3 rounded border border-input-strong bg-surface-sidebar px-4 py-3 text-[13px] text-foreground-secondary"
+				className="flex gap-3 rounded-md border border-strong bg-subtle px-4 py-3 text-[13px] text-secondary"
 				data-testid="banner"
 			>
-				<span aria-hidden="true" className="font-mono text-primary">
+				<span aria-hidden="true" className="font-mono text-icon-default">
 					i
 				</span>
 				<span>{bannerText({ enabled, count: inScope, mix })}</span>
@@ -445,8 +443,8 @@ export function RulesetEditor({
 				}}
 				footer={
 					edited ? (
-						<div className="flex items-center gap-2 border-t border-border pt-3">
-							<span className="text-[12px] text-muted-foreground">
+						<div className="flex items-center gap-2 border-t border-default pt-3">
+							<span className="text-[12px] text-tertiary">
 								The scope is not saved; the rules still apply to the{" "}
 								{inScope ?? "…"} workloads it matches now.
 							</span>
@@ -518,10 +516,10 @@ export function NoticeLine({
 				"flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12px]",
 				inset ? "mx-4 mb-3" : "",
 				notice.tone === "ok"
-					? "text-status-allowed"
+					? "text-flow-allowed"
 					: notice.tone === "conflict"
-						? "rounded border border-status-would-block-border bg-status-would-block-surface px-3 py-2.5 text-foreground-secondary"
-						: "text-destructive",
+						? "rounded-md border border-status-warn-border bg-status-warn-bg px-3 py-2.5 text-secondary"
+						: "text-status-critical-fg",
 			)}
 		>
 			<span>

@@ -80,43 +80,35 @@ export function ReviewDrawer({
 	return (
 		<aside
 			aria-label="Pair detail"
-			className="flex w-[400px] shrink-0 flex-col overflow-hidden border-l border-border bg-surface-sidebar"
+			className="flex w-[400px] shrink-0 flex-col overflow-hidden border-l border-default bg-subtle"
 		>
-			<div className="flex flex-col gap-2 border-b border-border px-4 py-3.5">
+			<div className="flex flex-col gap-2 border-b border-default px-4 py-3.5">
 				<div className="flex items-center gap-2">
 					<VerdictPill verdict={row.verdict} />
 					<button
 						type="button"
 						aria-label="Close"
 						onClick={onClose}
-						className="ml-auto cursor-pointer text-[16px] leading-none text-muted-foreground hover:text-foreground"
+						className="ml-auto cursor-pointer text-[16px] leading-none text-tertiary hover:text-primary"
 					>
 						×
 					</button>
 				</div>
 				<div className="font-mono text-[13px] break-words">
 					{row.peer.full ?? row.peer.title}{" "}
-					<span className="text-foreground-separator" aria-hidden="true">
+					<span className="text-disabled" aria-hidden="true">
 						→
 					</span>
 					<span className="sr-only">on</span> {row.service}
 				</div>
-				<p
-					className="text-[12px] text-foreground-tertiary"
-					data-testid="explain"
-				>
+				<p className="text-[12px] text-secondary" data-testid="explain">
 					{explain(row, exact)}
 				</p>
 				<div className="flex flex-wrap gap-1.5">
 					{row.peer.kind === "address" ? (
 						<InertAction label="Add to an address group" />
 					) : null}
-					<Button
-						variant="secondary"
-						size="sm"
-						className="rounded-chip"
-						asChild
-					>
+					<Button variant="secondary" size="sm" className="rounded-sm" asChild>
 						<Link to={editorPath(ruleset.name)}>Open in policy editor</Link>
 					</Button>
 				</div>
@@ -169,7 +161,7 @@ function InertAction({ label }: { label: string }) {
 			size="sm"
 			aria-disabled="true"
 			title={inert}
-			className="rounded-chip"
+			className="rounded-sm"
 			onClick={(ev) => ev.preventDefault()}
 		>
 			{label}
@@ -218,7 +210,7 @@ function RuleSection({
 	onChanged: () => void;
 }) {
 	return (
-		<div className="flex flex-col gap-2 border-b border-border px-4 py-3">
+		<div className="flex flex-col gap-2 border-b border-default px-4 py-3">
 			<Eyebrow>Rule</Eyebrow>
 			{row.verdict === "allowed" ? (
 				<MatchedRules
@@ -232,7 +224,7 @@ function RuleSection({
 			) : (
 				<>
 					<p
-						className="text-[12px] text-foreground-secondary"
+						className="text-[12px] text-secondary"
 						data-testid="rule-statement"
 					>
 						No enabled rule matched: nothing in the policy these workloads run
@@ -301,7 +293,7 @@ function MatchedRules({
 	});
 	if (found.length === 0) {
 		return (
-			<p className="text-[12px] text-foreground-tertiary">
+			<p className="text-[12px] text-secondary">
 				The windows name no rule this listing holds.
 			</p>
 		);
@@ -316,9 +308,7 @@ function MatchedRules({
 					{f.rule && f.ruleset ? (
 						<>
 							Matched{" "}
-							<span className="font-mono text-foreground">
-								{ruleName(f.rule)}
-							</span>{" "}
+							<span className="font-mono text-primary">{ruleName(f.rule)}</span>{" "}
 							in <span className="font-mono">{f.ruleset.name}</span>
 						</>
 					) : (
@@ -414,7 +404,7 @@ function Candidates({
 	return (
 		<div className="flex flex-col gap-2">
 			{outcome?.kind === "enabled" ? (
-				<p role="status" className="text-[12px] text-status-allowed">
+				<p role="status" className="text-[12px] text-flow-allowed">
 					<span aria-hidden="true">✓</span> Enabled{" "}
 					<span className="font-mono">{outcome.rule}</span>. It takes effect as
 					each workload in scope applies its next version; stored windows keep
@@ -423,12 +413,12 @@ function Candidates({
 			) : outcome?.kind === "stale" ? (
 				<div
 					role="alert"
-					className="flex flex-col gap-1 rounded border border-status-would-block-border bg-status-would-block-surface px-3 py-2.5 text-[12px]"
+					className="flex flex-col gap-1 rounded-md border border-status-warn-border bg-status-warn-bg px-3 py-2.5 text-[12px]"
 				>
-					<span className="font-semibold text-status-degraded">
+					<span className="font-semibold text-status-warn-fg">
 						▲ {outcome.rule} changed since this review read it
 					</span>
-					<span className="text-foreground-secondary">
+					<span className="text-secondary">
 						The rule is now at version{" "}
 						<span className="font-mono">{outcome.current ?? "unknown"}</span>
 						{"; nothing was changed."} Reload to see the rule as it stands, then
@@ -437,7 +427,7 @@ function Candidates({
 					<Button
 						variant="secondary"
 						size="sm"
-						className="mt-1 self-start rounded-chip"
+						className="mt-1 self-start rounded-sm"
 						onClick={() => {
 							setOutcome(null);
 							onChanged();
@@ -447,17 +437,17 @@ function Candidates({
 					</Button>
 				</div>
 			) : outcome?.kind === "failed" ? (
-				<p role="alert" className="text-[12px] text-destructive">
+				<p role="alert" className="text-[12px] text-status-critical-fg">
 					<span aria-hidden="true">✕</span> {outcome.message}
 				</p>
 			) : null}
 			{disabled.length === 0 ? (
-				<p className="text-[12px] text-foreground-tertiary">
+				<p className="text-[12px] text-secondary">
 					{ruleset.name} has no disabled rules.
 				</p>
 			) : (
 				<>
-					<p className="text-[12px] text-foreground-tertiary">
+					<p className="text-[12px] text-secondary">
 						Disabled rules in <span className="font-mono">{ruleset.name}</span>.
 						Whether one covers this traffic is for you to judge; enabling it
 						renders a new version for the scope.
@@ -466,13 +456,11 @@ function Candidates({
 						{disabled.map((r) => (
 							<li
 								key={r.id}
-								className="flex items-start gap-2 rounded border border-input bg-background px-3 py-2 text-[12px]"
+								className="flex items-start gap-2 rounded-md border border-strong bg-app px-3 py-2 text-[12px]"
 							>
 								<div className="flex min-w-0 flex-1 flex-col gap-0.5">
-									<span className="font-mono text-foreground">
-										{ruleName(r)}
-									</span>
-									<span className="font-mono text-[11px] text-muted-foreground break-words">
+									<span className="font-mono text-primary">{ruleName(r)}</span>
+									<span className="font-mono text-[11px] text-tertiary break-words">
 										{(r.peers ?? [])
 											.map((p) =>
 												p.workloads
@@ -491,7 +479,7 @@ function Candidates({
 								</div>
 								<Button
 									size="sm"
-									className="shrink-0 rounded-chip"
+									className="shrink-0 rounded-sm"
 									disabled={busy !== null}
 									onClick={() => enable(r)}
 								>
@@ -524,9 +512,7 @@ function Pairs({
 	const [open, setOpen] = useState<string | null>(null);
 	if (groups.length === 0) {
 		return (
-			<p className="text-[12px] text-foreground-tertiary">
-				No pairs in this range.
-			</p>
+			<p className="text-[12px] text-secondary">No pairs in this range.</p>
 		);
 	}
 	const v = verdicts[row.verdict];
@@ -534,7 +520,7 @@ function Pairs({
 		<table className="w-full border-collapse text-[12px]">
 			<caption className="sr-only">Workload pairs behind this row</caption>
 			<thead>
-				<tr className="text-left text-[11px] text-muted-foreground">
+				<tr className="text-left text-[11px] text-tertiary">
 					<th className="py-1.5 font-normal">Source</th>
 					<th className="py-1.5 font-normal">Destination</th>
 					<th className="py-1.5 pl-3 text-right font-normal">Conns</th>
@@ -555,7 +541,7 @@ function Pairs({
 							onToggle={() => setOpen(isOpen ? null : k)}
 							cells={
 								<>
-									<td className="border-t border-border py-1.5 text-foreground-secondary">
+									<td className="border-t border-default py-1.5 text-secondary">
 										<button
 											type="button"
 											aria-expanded={isOpen}
@@ -565,15 +551,15 @@ function Pairs({
 											{peerName(src)}
 										</button>
 									</td>
-									<td className="border-t border-border py-1.5">
+									<td className="border-t border-default py-1.5">
 										<Link
 											to={`/workloads/${dst.id}`}
-											className="text-link hover:text-link-hover"
+											className="text-link hover:underline"
 											onClick={(ev) => ev.stopPropagation()}
 										>
 											{dst.hostname}
 										</Link>
-										<span className="text-muted-foreground">
+										<span className="text-tertiary">
 											{row.service.includes("/")
 												? `:${row.service.split("/")[1]}`
 												: ""}
@@ -581,13 +567,13 @@ function Pairs({
 									</td>
 									<td
 										className={cn(
-											"border-t border-border py-1.5 pl-3 text-right",
+											"border-t border-default py-1.5 pl-3 text-right",
 											v.text,
 										)}
 									>
 										{count(g.connection_count)}
 									</td>
-									<td className="border-t border-border py-1.5 pl-3 text-right text-foreground-tertiary">
+									<td className="border-t border-default py-1.5 pl-3 text-right text-secondary">
 										{since(g.last_seen)}
 									</td>
 								</>
@@ -626,7 +612,7 @@ function PairRow({
 		<>
 			<tr
 				onClick={onToggle}
-				className={cn("cursor-pointer", isOpen && "bg-surface-row-selected")}
+				className={cn("cursor-pointer", isOpen && "bg-selection-bg")}
 			>
 				{cells}
 			</tr>
@@ -702,7 +688,7 @@ function PairWindows({
 			<table className="w-full border-collapse text-[11.5px]">
 				<caption className="sr-only">Stored windows of this pair</caption>
 				<thead>
-					<tr className="text-left text-[11px] text-muted-foreground">
+					<tr className="text-left text-[11px] text-tertiary">
 						<th className="py-1 font-normal">window</th>
 						<th className="py-1 font-normal">process</th>
 						<th className="py-1 text-right font-normal">conns</th>
@@ -711,13 +697,11 @@ function PairWindows({
 				</thead>
 				<tbody className="font-mono">
 					{flows.map((f) => (
-						<tr key={f.id} className="border-t border-border">
-							<td className="py-1 text-foreground-tertiary">
-								{since(f.window_end)} ago
-							</td>
+						<tr key={f.id} className="border-t border-default">
+							<td className="py-1 text-secondary">{since(f.window_end)} ago</td>
 							<td className="py-1">{f.process_name || "—"}</td>
 							<td className="py-1 text-right">{count(f.connection_count)}</td>
-							<td className="py-1 text-right text-foreground-tertiary">
+							<td className="py-1 text-right text-secondary">
 								{since(f.last_seen)}
 							</td>
 						</tr>
@@ -729,13 +713,13 @@ function PairWindows({
 					type="button"
 					onClick={loadMore}
 					disabled={more.loading}
-					className="cursor-pointer self-start text-[11px] text-link hover:text-link-hover"
+					className="cursor-pointer self-start text-[11px] text-link hover:underline"
 				>
 					{more.loading ? "Loading…" : "Load more windows"}
 				</button>
 			) : null}
 			{more.error ? (
-				<span role="alert" className="text-[11px] text-destructive">
+				<span role="alert" className="text-[11px] text-status-critical-fg">
 					{more.error}
 				</span>
 			) : null}
