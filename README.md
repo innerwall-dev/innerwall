@@ -8,15 +8,15 @@ A small agent on each workload observes the connections that reach it and progra
 
 ## The console
 
-Each image puts a screen of the shipped console (left) beside the design it was built to, or beside the same screen in the other theme. More, in both themes, are in [`docs/img/console/`](docs/img/console/).
+Each image puts a screen of the shipped console in its dark theme (left) beside the same state in its light theme. More are in [`docs/img/console/`](docs/img/console/).
 
 **Simulation review.** A ruleset's would-block traffic from the workloads simulating it, with the verdict on whether it is safe to enforce, the evidence it rests on, and the promotion to enforcement.
 
-![Simulation review: the console beside its design](docs/img/console/01-simulation-review-grouped-dark.jpg)
+![Simulation review, dark and light](docs/img/console/01-simulation-review-grouped.jpg)
 
 **Flow map.** The estate's real traffic between label groups, colored by what the policy decided or would decide.
 
-![Flow map: the console beside its design](docs/img/console/07-flow-map-graph-dark.jpg)
+![Flow map, dark and light](docs/img/console/07-flow-map-graph.jpg)
 
 **Policy editor.** Rules edited live, with every admission finding in place and a dry run that shows each workload's rendered change before anything is written.
 
@@ -24,7 +24,7 @@ Each image puts a screen of the shipped console (left) beside the design it was 
 
 **Fleet.** Every workload's mode, sync state against its latest rendered version, and agent health.
 
-![Fleet workloads: the console beside its design](docs/img/console/13-fleet-workloads-light.jpg)
+![Fleet workloads, dark and light](docs/img/console/13-fleet-workloads.jpg)
 
 ## Why
 
