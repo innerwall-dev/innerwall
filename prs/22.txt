@@ -1,0 +1,121 @@
+## What this is
+
+PR B of the flow-collection gaps work (Gap 3). It is stacked on [#21](https://github.com/innerwall-dev/innerwall/pull/21) (PR A) and targets that branch, so the diff shown is B alone; I'll retarget it to `main` once #21 merges.
+
+Evidence gaps (intervals in which an agent knows its evidence is incomplete) now travel the whole path:
+- the agent records them and ships them on `ReportFlows`;
+- the control plane stores them;
+- a separate read serves them;
+- a gap in the range fails the simulation verdict on its own.
+
+There is one loss model: the agent buffer's dropped windows are gaps too. There is no new ADR. ADR-0015 gets its first dated amendment and ADR-0019 gets a dated amendment. **Proto change: additive, under ADR-0015 as amended.**
+
+Commits, each building and vetting on its own:
+1. `feat(proto)`: `EvidenceGap` on `ReportFlowsRequest`, `Heartbeat.source_overruns`, the `connection_count` comment, and ADR-0015's amendment.
+2. `feat(agent)`: ship gaps with the windows; buffer drops become gaps; heartbeat overruns.
+3. `feat(store)`: migration 00008 `flow_gaps`, ingest, retention, and the overrun column.
+4. `feat(api)`: `GET /flows/gaps`, `innerwall flows gaps`, and overruns on workload health; spec plus regenerated types.
+5. `docs`: ADR-0019's amendment, the architecture overview, and the deploy guide.
+6. `feat(console)`: the verdict condition and gap surfacing, under the named exception.
+7. `feat(dev)`: the seeded gap state.
+8. `docs(console)`: composites for the gap states.
+
+## Contract (ADR-0015, amended 2026-10-04)
+
+`ReportFlowsRequest.gaps` is a repeated `EvidenceGap {kind, source, from, to, optional count}`:
+- **kind**: `SOURCE_OVERRUN`, `SOURCE_RESTART`, `BUFFER_OVERFLOW`, or `DUMP_TRUNCATED`.
+- **source**: `CONNTRACK` or `NFLOG`. It is `UNSPECIFIED` for a buffer overflow, because that loss isn't one source's. This is the one place the shape goes beyond `source: conntrack | nflog`.
+- **count**: present only where it is known (buffer overflow, truncated dump).
+
+Gaps ride the next window, and a window may carry gaps with no records. `Heartbeat.source_overruns` is the additive overrun counter. `FlowRecord.connection_count` now documents "opened, or found live at subscription, in the window", which PR A deferred here. `buf breaking` against `main` is clean.
+
+## Agent
+
+- **Buffer drops become gaps.** The buffer records each drop as a `buffer_overflow` gap over the dropped window's bounds, with the count. `dropped_flow_records` still counts as live health.
+- **Shipping.** The reporter takes the held gaps onto the first request of each window's stream. If the stream fails it puts them back unmerged, so a delivery that partly landed repeats them exactly; delivery is at least once, as for records. A window that closes empty is still queued while gaps wait, so gaps never wait for traffic.
+- **Bound.** Past its bound, the recorder now merges its two oldest gaps of the same kind and source. Precision is lost on the oldest evidence first, and the fact of a loss is never lost.
+
+## Storage (ADR-0019, amended 2026-10-04)
+
+- **Table.** Migration `00008_flow_gaps.sql` creates `flow_gaps`: workload (from the credential), kind, source, `gap_from`/`gap_to`, `lost_count` (NULL when unknown), `received_at`, and `region_id` reserved. It is unique on (workload, kind, source, from, to), so a repeated delivery is stored once. The same migration adds `workloads.source_overruns`.
+- **Indexes.** (workload, gap_to) serves the read; gap_to serves retention.
+- **Ingest.** Each gap is validated on its own; a malformed one is skipped and counted, like records, and at most 4,096 are accepted per request. Gaps are written in the window's transaction.
+- **Retention.** Gaps are deleted in the same locked batches as windows, once they *ended* before the horizon, so a gap is kept at least as long as any window it describes.
+
+## The gaps read
+
+- **Named statement.** `ListFlowGaps` returns the gaps of a workload set (one workload, a label scope resolved now, or every workload) intersecting `[from, to)`. An instantaneous gap counts when its instant lies in the range. Newest first, bounded.
+- **Surface.** `GET /api/v1/flows/gaps` takes the rollup's `from`/`to`/`workload`/`label` plus `limit` (default 500, at most 5,000) and returns `truncated`.
+- **CLI.** `innerwall flows gaps` calls the same read-model function (ADR-0021).
+- **Health.** `health.source_overruns` is added to workload health. The spec states both. `ui/src/api/generated.ts` is regenerated; under the standing fallout rule, the test fixture gains the new required field.
+
+## Console (the named in-scope exception)
+
+- **`composeVerdict`** gains `evidence-gaps`, a condition that fails on its own. It is raised when an in-scope workload has a gap intersecting the effective range (the requested range when no windows were covered), or when the gaps read was truncated.
+  - Wording: "Evidence incomplete for *db-1* between *t1* and *t2* — *reason*", with the interval clamped to the judged range. The reason is given only when one kind applies; with several workloads it reads "for *N* workloads in scope".
+  - When gaps are what fails, the sub line says so.
+  - The dropped-records note now covers only workloads whose loss no gap already places.
+- **Review banner and promote flow.** The review reads the scope's gaps over its one range. The generic "not safe" acknowledgment is the override. When would-block pairs lead the dialog, the acknowledgment adds "…, and that the evidence for this range is incomplete", since the dialog's banner shows the pairs alone. That is the one wording change.
+- **Flow map.** "*N* workloads lost evidence in this range — map is incomplete", with the gaps listed in its title. The live counter's "may be incomplete" hedge stays only for droppers that no gap explains.
+- **Workload detail.** The rail shows the overrun counter and the newest gaps over its 14-day range.
+- **Files outside the named screens**, and why:
+  - `ui/src/api/fleet.ts`: the `getGaps` request wrapper.
+  - `ui/src/api/schema.ts`: two type aliases.
+  - `ui/src/lib/gaps.ts`: the shared reading of a gap (intersection, clamped span, interval and reason wording), used by all three screens.
+  - Test helpers.
+
+## Seed and composites
+
+- **Seed.** `dev seed --estate` gives db-1 an nflog overrun inside the second window and a 42-record buffer overflow before the first, with 3 overruns on its heartbeat. db-1 is outside every scope a designed review scene shows. `TestSeedEstate` asserts the state.
+- **Captured, dark beside light** (no design shot exists for these states):
+  - `simulation-review-evidence-gaps`
+  - `simulation-review-evidence-gaps-promote-dialog`
+  - `workload-detail-evidence-gaps`
+  - the two undesigned `env=prod` map scenes, recaptured
+- **Not recaptured; blocked.** The designed composites **07** and **08** (the map header gains the gap warning) and **09** (db-1's rail gains two rows) need the design package's shots directory, which isn't available in this session.
+
+![review](https://github.com/innerwall-dev/innerwall/blob/claude/brave-brahmagupta-fwm5ik-gaps/docs/img/console/simulation-review-evidence-gaps.jpg?raw=true)
+![promote](``https://github.com/innerwall-dev/innerwall/blob/claude/brave-brahmagupta-fwm5ik-gaps/docs/img/console/simulation-review-evidence-gaps-promote-dialog.jpg?raw=true)``
+![workload](https://github.com/innerwall-dev/innerwall/blob/claude/brave-brahmagupta-fwm5ik-gaps/docs/img/console/workload-detail-evidence-gaps.jpg?raw=true)
+![map](https://github.com/innerwall-dev/innerwall/blob/claude/brave-brahmagupta-fwm5ik-gaps/docs/img/console/flow-map-node-selected.jpg?raw=true)
+
+## Tests
+
+- **Agent:**
+  - take/restore and the wire form;
+  - buffer overflow as a gap, and carry;
+  - the reporter shipping gaps on the first request and again on retry;
+  - oldest-first merging;
+  - the heartbeat carrying `source_overruns`.
+- **Ingest:** `TestIngestGaps` covers valid gaps outside the window's bounds, the five malformed kinds, and gaps with no records.
+- **Store (Postgres):** `TestGapsStoreReadAndPrune` covers repeat dedupe, the half-open and instant boundaries, scope, limit, and retention by gap end.
+- **End to end (Postgres and real gRPC):** `TestFlowPipelineEndToEnd` records a gap on the agent and checks it is stored under the credential's workload, and that the heartbeat's overruns land.
+- **Read model and handler:** `TestGapsScopeAndBound` and `TestFlowGapsEndpoint`.
+- **Console** (172 tests, 14 new). Verdict composition with gaps as an independently failing condition:
+  - alone;
+  - clamped;
+  - out of range or out of scope, so ignored;
+  - judged over the requested range when nothing was stored;
+  - several workloads;
+  - beside would-block traffic and beside a sync condition;
+  - a truncated read;
+  - the dropped-note handover.
+
+  Screens: the review banner and its read; both acknowledgment wordings; the map warning and its read; the workload rail.
+- **Netns:** the suite runs no control plane, so an end-to-end gap there isn't supported. The kernel overrun turning into a recorded gap is covered there by PR A; transport and storage are covered by the gateway test above.
+
+## Checks run on this head
+
+- `go test -race -count=1 -p 1 ./...` against Postgres 16: none skipped, all pass.
+- `golangci-lint run ./...`, also with `--build-tags dev` and `--build-tags netns`: 0 issues.
+- `make openapi`: passed, with 12 informs (was 11).
+- `scripts/check-drift.sh`: buf 1.72.0, sqlc 1.31.1, `console-api`. Generated code is up to date.
+- `buf lint`, and `buf breaking` against `main`: clean.
+- Console: `npm run lint`, `tsc --noEmit`, `vitest` (172), `npm run build`.
+- `scripts/test-netns.sh`: the enforcement and collection suites both pass.
+- `scripts/check-dco.sh origin/main..HEAD`; each commit builds and vets on its own.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+---
+_Generated by [Claude Code](https://claude.ai/code)_

@@ -1,0 +1,82 @@
+PR 2 of 4 in the v0.1.0 release train: the surface, toolchain, and asset findings from the two conformance audits, under the maintainer's rulings. No core decision changes. ADR-0014 gets one dated in-place amendment.
+
+## Login throttle (audit 2 #14)
+- **Before:** `internal/api/throttle.go` claimed a 4,096-source bound, but at the bound it only dropped expired windows. So while every window was still running, each new source was admitted and the table grew without limit, with a full map scan per arrival.
+- **Now:** windows sit in a list ordered by start time. A new source at the bound drops the oldest window, expired or not, so the table never exceeds 4,096 sources and each attempt costs constant work.
+- **Caveat, kept accurate:** the brake is per process and bounded. A guesser rotating through more than 4,096 addresses within one window resets its own oldest windows. ADR-0021's "the login throttle protects one process" still holds.
+- **Tests:** `TestThrottleBoundsSourcesWithinAWindow` is the audit's 5,000-sources-in-one-window case. `TestThrottleEvictsElapsedBeforeLive` covers eviction order.
+
+## Toolchain (audit 2 #9, #20; audit 1)
+- **Go version:** `go.mod` now requires **go 1.25.14**, the latest 1.25 patch release on the module proxy. It used to allow 1.25.0, which govulncheck reports with 30 reachable standard-library advisories.
+  - Every `setup-go` step installs exactly 1.25.14, from `go-version-file`.
+  - The Dockerfile pins `golang:1.25.14-alpine` instead of the floating `1.25` tag.
+- **New CI job, "known vulnerabilities":** `make vulncheck` runs govulncheck v1.7.0 (the newest release that builds on 1.25) over the code as shipped, without the `dev` tag. A reachable finding fails it; findings in required-but-never-called modules are reported only.
+- **npm, all dev-only:** the advisories are cleared by vitest **4.1.11** plus `npm audit fix`. That's vitest/@vitest/mocker and brace-expansion from the audits, plus tinypool and source-map-js, which appeared since. `npm audit` now reports 0 (production was 0 before).
+  - npm 10's resolver crashes on this tree (`Cannot read properties of null (reading 'edgesOut')`), so the lock was resolved with npm 11. `npm ci` on npm 10, CI's path, installs it cleanly.
+  - `jsdom` left the lock: it was a vitest 3 leftover, and the console tests run on happy-dom.
+  - All console tests pass unchanged on vitest 4.
+
+## Third-party licenses in the built console (audit 2 #12)
+- **Before:** the production build emitted six font files and no license text. The fonts' own metadata carries only a URL, and the font license requires the full text with every copy.
+- **Now:** a Vite plugin (`ui/scripts/notices.ts`) writes these on every production build, read from the installed packages so it can't fall behind the lockfile:
+  - `THIRD-PARTY-NOTICES.txt` at the console root: every production package with its version, license, and license text as shipped (MIT, ISC, BSD-3-Clause, 0BSD, Apache-2.0, OFL-1.1).
+  - each font family's full license **beside the fonts** in `assets/`.
+- Both are embedded in the binary. A Vitest suite checks the contents, and the console CI job fails a build that lacks the files.
+- `THIRD-PARTY-NOTICES.md` at the repo root records the Apache-2.0-vs-bundled distinction. It avoids naming third-party companies in prose, under the current vocabulary rule. The README's license section follows in PR 4, as ruled.
+
+## Capture script and token fixture (audit 2 #10, audit 1 m4)
+- **Capture script:** `capture-composites.mjs` used to mint a real token and photograph it.
+  - The mint stays real: the server keeps only its digest, and the listing shows the non-secret prefix.
+  - The mint response is now rewritten in the browser before the console renders it, so the dialog shows `iw_EXAMPLE-synthetic-not-a-token`.
+  - The script refuses to save a capture whose dialog shows anything else.
+- **Composite 16 recaptured in both themes** against a freshly seeded control plane, using the patched script.
+  - The design package's shots aren't in this environment, so the design pane was cropped pixel-exact from the previous composite (one more JPEG generation).
+  - That pane shows the design's own example value, which audit 2 classifies as a shape-invalid synthetic.
+  - Earlier image blobs stay in history, accepted as dev-only exposure by ruling.
+- **Test fixture:** the full-length `iw_` secret in `tokens.test.tsx` is now the same visibly synthetic value.
+
+## Fleet test clock (audit 1 M10)
+- `fleet.test.tsx` now fixes `Date` for the whole file. Timers stay real, so waiting on the screen still works. The "20s" / "42s ago" assertions no longer depend on wall time.
+
+## Spec (audit 2 #17, #18)
+- **403s:** a shared `CrossOrigin` 403 response is now declared on all **22** unsafe operations that lacked one. `TestContractDeclaresTheOriginGuard` fails any POST/PUT/DELETE/PATCH that omits it.
+- **Rollup fixture:** the fixture's rule group now carries its service, so `dst,service` / `peer,service` no longer encode protocol `unspecified`. The test asserts every service key in both service groupings names an admitted protocol.
+
+## Migrations
+- **New CI job, "applied migrations unchanged":** `scripts/check-migrations.sh` fails a PR that modifies, renames, or deletes a migration its base already has, and a push to `main` that does the same.
+  - Verified locally: it passes this branch, and fails a simulated edit of 00005.
+- The migrations README, CLAUDE.md and `docs/development.md` now say that "applied" means present on `main`, and that a migration may be amended in its own PR before merge.
+
+## Review workflow (audit 2 #11, audit 1 M6)
+- **Stale rules removed:** `claude.yml` no longer lists "hand-added REST routes not defined in proto/" or "unsigned policy bundles" as violations. It names the rules as ADR-0007 and ADR-0012 now state them:
+  - an operator handler that holds domain logic of its own;
+  - rendered policy that transits anything other than the mutually authenticated sync stream without an authenticity envelope.
+- **Coverage claim:** the claim that every PR is reviewed now matches what the workflow does, in CLAUDE.md, ADR-0014 (dated amendment), the workflow header, the development guide and the README. The workflow reviews a PR once it's ready for review (a draft when marked ready) and skips PRs that change only generated output or lockfiles.
+
+## Small items
+- `internal/ingest` doc: no deduplication in v1.
+- `internal/store/render.go`: a comment on the one `LISTEN` statement built in Go, citing ADR-0006.
+- `internal/agent/enforce` package doc: no longer says the nftables backend hasn't landed.
+- Proto `FlowRecord` aggregation-key comment: now includes `matched_rule_id`; generated code follows.
+
+## Verified locally in this session
+- Go 1.25.14, `go test -race ./...` with Postgres 16: all pass.
+- golangci-lint, `buf lint`, `make build`, `make build-noconsole`, `go build -tags dev`: all pass.
+- `make test-netns` (root, real nftables): both suites pass.
+- Console: `npm ci` (npm 10), lint, 176 tests, production build with the notices files present: all pass.
+- `make openapi`, `make drift`, the migration guard, DCO, proto breaking check: all clean.
+- **Not run locally:**
+  - **govulncheck:** this environment's egress policy blocks `vuln.go.dev`, so the new CI job is its first run.
+  - **Docker:** Docker Hub rate-limits this environment, so the `golang:1.25.14-alpine` tag wasn't pulled here. PR 4's quickstart run exercises the image build.
+
+## Citation checks
+Every PR 2 citation was checked against `main` @ `9865f09` and held:
+- `throttle.go`, `go.mod`, `Dockerfile`, `capture-composites.mjs`, `tokens.test.tsx`, `fleet.test.tsx`, `openapi.yaml`, `reads_test.go`;
+- `claude.yml:101` and its exclusions, `ingest/doc.go`, `render.go:177`, `enforce/doc.go`, `agent.proto` FlowRecord comment.
+
+The one exception is audit 1's migration-00005 finding, reported in PR 1: both commits first reached main together.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+---
+_Generated by [Claude Code](https://claude.ai/code)_

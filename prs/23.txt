@@ -1,0 +1,65 @@
+PR 1 of 4 in the v0.1.0 release train. It fixes the agent-correctness findings from the two conformance audits of `main` @ `04e3209`, following the maintainer's rulings. This PR changes no core decision. Every record change is a dated in-place amendment (`docs/adr/README.md`). No supersession, so no maintainer sign-off is needed.
+
+## Persist before apply (audit: ACK without persistence; Critical)
+- **Before:** `nft.Store.Apply` ran the kernel transaction first and saved the policy after. If the save failed it only logged the error and returned nil, so the daemon still acked `APPLIED` (`store.go:141–149`, `daemon.go:376–393` at `04e3209`).
+- **Now:** the store gives the rules their mark values, then writes the mark allocation and then the policy durably: temp file fsync'd, renamed into place, parent directory fsync'd (new `enforce.WriteDurable`). Only after that does the kernel transaction run.
+  - `APPLIED` means both steps succeeded.
+  - A persistence failure → `FAILED`, kernel untouched, store/file/last ACK still agree.
+  - A kernel failure after persist → `FAILED` with the file one version ahead. This is benign under the desired-state model, and ADR-0020 now records it.
+- The ACK enum is unchanged.
+- **Records:** ADR-0020 decision 6 and its contradicting consequence are amended. ADR-0018's durability note is corrected. The ARCHITECTURE reconcile sentence follows.
+
+## Stable mark allocation (audit: attribution corrupted across versions; Critical)
+- A persistent allocator (`marks.bin`, next to `policy.bin`) gives each resolved rule a value. Rendering never renumbers.
+- A freed value is not reused until all 65,534 have been handed out once. After that the value freed longest ago goes first, and a value the installed policy holds is never taken.
+- Classification looks the mark up in the allocator, so a connection names the rule that admitted it.
+- **Removed-rule attribution:** a connection whose rule has been removed is reported `ALLOWED` with the removed rule's own id, never another rule's id. The wire has no removed-rule enum value, and the ruling forbids proto changes for this, so the removed rule's id is the faithful representation. Ingest stores rule ids as given.
+- A state directory written before this change has no allocation. It is seeded in canonical order, which is exactly the numbering its kernel ruleset already carries.
+- The 65,534-rule cap is unchanged. **Records:** ADR-0020 decision 4 (and decision 3's wording) are amended.
+
+## Open-window bound (Major)
+- The aggregator now holds at most `--flow-window-keys` distinct keys. The default is 50,000, the same as the closed-window buffer.
+- A new key past the cap is dropped; keys already held still fold in. At close the window records one evidence gap: a new kind, `window_overflow`, from the first drop to the close, with the count of dropped observations.
+- No existing kind fit: `buffer_overflow` means closed windows lost while the control plane is unreachable.
+- The new kind is carried end to end:
+  - proto enum value 5, additive; buf reports no breaking change
+  - ingest
+  - **migration 00009**, which widens `flow_gaps`' kind check
+  - read model, OpenAPI and the console label
+- Sampling and disk buffering remain deferred. ADR-0011 is amended to say so in PR 3, as ruled.
+- **Records:** ADR-0019 decision 5 and ADR-0015 get dated additive notes.
+
+## Identity parser strictness (Minor)
+- `identity.ParseURI` now refuses percent-encoded paths, and any UUID whose canonical lowercase form differs from the text. Only the formatter's exact output parses.
+- The audit's two accepted cases are now permanent tests.
+
+## Tests added
+- **Persistence:**
+  - `TestApplyFailsWithoutPersistence`: the audit's `TestAuditApplyAcknowledgesWithoutPersistence` scenario, inverted into a regression test.
+  - `TestPersistFailureLeavesTheLastAcknowledgedState`: failure of either persistence step, on a store that already holds an acknowledged policy.
+  - `TestApplyPersistsBeforeTheKernel`: the runner checks the file is already on disk whenever a full or delta script arrives.
+  - `TestUnpersistedApplyAcksFailed`: the daemon over the real store acks `FAILED`.
+- **fsync path:** `TestWriteDurableSyncsFileThenDirectory`, `TestWriteDurableFailures`, `TestPolicyFileSaveIsDurable`.
+- **Marks:**
+  - `TestMarksStableAcrossVersions`: the audit's two-version reproduction, plus removal, restart, and a rule's return.
+  - `TestAllocatorReusesOnlyAtExhaustion`, `TestAllocatorPersists`, `TestLoadSeedsAMissingOrCorruptAllocation`.
+  - Network-namespace phase: real connections held open across a renumbering change and across their rule's removal, read from conntrack and classified.
+- **Window:** `TestAggregatorBoundsOpenWindow`, `TestAggregatorDefaultBound`, `TestWindowOverflowGapStored` (Postgres).
+- **Identity:** `TestParseURIAcceptsOnlyTheFormattersSpelling`, plus extended rejection cases.
+
+## Verified locally in this session
+- `go test -race ./...` with `INNERWALL_TEST_DATABASE_URL` set (PostgreSQL 16), all packages pass.
+- `make test-netns` as root with real nftables, both suites pass.
+- golangci-lint v2.5.0, `buf lint`, `make openapi`, `make drift` (after commit), `scripts/check-proto-breaking.sh origin/main`: all clean.
+- `npm run lint`, `npm run test` (173 tests), `make build`, `make build-noconsole`, `go build -tags dev`: all pass.
+
+## Reconciliation notes (from the session's first pass)
+- **`deploy/install.sh` conflict:** the first audit is correct. The file is tracked at `04e3209`; it validates `--token` and exits 1 with "enrollment is not available yet (milestone M2)". The second audit's `git ls-files '*install.sh'` claim does not reproduce: that command lists the file. PR 3 resolves it.
+- **Migration 00005 (first audit, M9):** this citation does not hold as a violation of the "applied" rule. Both the commit that added the file (`8585d38`) and the one that edited it (`bc1200c`) first reached main together in the PR #12 merge `52450ad`. The second audit reads this correctly. PR 2 adds the immutable-migration CI guard and the README wording.
+- Every other PR 1 citation was checked against the tree before the change and held.
+- The next migration number was 00009, as expected.
+
+## Authorship
+All three commits are authored, committed and signed off by Avi Papineni (re-authored at the maintainer's request; the tree is identical to the earlier head `5af599f`).
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)

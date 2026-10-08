@@ -1,0 +1,96 @@
+## What this is
+
+M3.5b: the small backend follow-up the maintainer ruled in on innerwall-dev/innerwall#14, closing three of its four items. The fourth was already implemented (see "Item 3" below). The spec and the regenerated console types change here, as the drift check requires. Hand-written console code changes only as far as the rulings sanctioned (see "Console fallout" below). No ADR change; every addition is a field.
+
+## 1. `peer.kind`: the mismatch, and the correction
+
+| Side | `peer.kind` |
+|---|---|
+| Server: `flowstore.PeerKind.String()`, sent from `internal/api/encode.go` | `workload`, `group`, `address`, and `unknown` for a stored kind outside 0–2 |
+| `api/openapi.yaml` before this PR, and so `generated.ts` | `unknown`, `workload`, `address_group` |
+
+The spec disagreed with the server on two of three names (`group` vs `address_group`, `address` vs `unknown`) and used `unknown` for the wrong case. It now lists `[workload, group, address, unknown]` and says which id field each kind sets (`workload_id`, `address_group_id`, `address`). Per the ruling (1b), it lists `unknown` because the server can send it for an out-of-range stored value, even though ingest never writes one. This PR adds no database constraint. `ui/src/api/generated.ts` is regenerated.
+
+## 2. Ack and apply-failure instants
+
+The store held the failure detail and the applied version but no time for either event. `last_seen_at` moves on every message, so it can't stand in. So:
+
+- **Migration `00007`:** adds `workloads.last_acked_at` and `workloads.last_apply_failed_at`, not backfilled.
+- **Where they're stamped:** where the sync path already records the ack.
+  - An APPLIED ack stamps `last_acked_at` through `RecordApplied`.
+  - A FAILED ack goes through the new `registry.Store.RecordApplyFailed`, which records the degraded state, the agent's detail, and `last_apply_failed_at` together (it replaces the `SetSyncState(DEGRADED, …)` call).
+  - The version a Hello claims is not an ack and stamps nothing.
+- **After recovery:** a later successful apply clears the detail and keeps the failure time. The sync state says whether the failure still stands.
+- **Where they're read:** the workload read's `sync` object gains `last_acked_at` and `last_apply_failed_at`. Both are always present and null when nothing is recorded, the same required-but-nullable pattern as `last_snapshot_sent_at`. `innerwall workload status` prints them.
+- **Seed:** the dev seed's degraded workload now goes through `RecordApplyFailed`, so it carries a failure time.
+
+## Item 3: dropped as already implemented
+
+innerwall-dev/innerwall#14's gap note ("the surface holds `expires_at` only") was wrong. A successful renewal already stamps `last_renewed_at` (`enroll.Service.Renew` → `Store.RecordRenewal` → `RecordWorkloadRenewal`). The workload read already returns it as `health.credential.last_renewed_at`, and it is in the spec and `generated.ts`.
+
+Per the ruling, the "renews in" display is presentation. The console derives it as issued time + two-thirds of the credential lifetime, the renewal rule recorded in ADR-0016 decision 4 and its 2026-09-13 amendment; the agent's jitter is acknowledged and not modelled. That is carried to the next console session. The declined options were a server-computed renewal time and an agent-reported one: the server does not model agent scheduling, and the agent contract does not change in M3.
+
+## 4. Advertised gateway address
+
+- **Setting:** `serve --gateway-advertise-address` (or `INNERWALL_GATEWAY_ADVERTISE_ADDRESS`) takes a `host:port`, the form the agent's `--server` takes. Any other value stops startup with an error.
+- **No guessing:** the address is never derived from `--listen` or the host's interfaces.
+- **On `/me`:** `GET /api/v1/me` carries it as `gateway_address` beside `site`, null when unconfigured, so the console keeps its placeholder. The login reply shares the `Me` shape and carries it too.
+- **Handler:** the handler stays a pass-through of configuration, the same as `site`.
+- **Not done:** `docker-compose.yml` is not configured with a value. Setting one there is a small follow-up if the dev stack should show a real address.
+
+## Console fallout (exhaustive, per the maintainer rulings)
+
+Regenerating from the corrected spec broke these references in hand-written test code. They are the only hand-written console lines changed, all in commit `b26b50a`:
+
+- `workload.test.tsx`: the two peer fixtures change from `address_group` to `group` and from `unknown` to `address`. The second one is the unresolved source, which the server sends as `address`.
+- `test/fixtures.ts`: the workload fixture's sync object adds `last_acked_at: null` and `last_apply_failed_at: null`.
+- `test/harness.tsx`: the mocked `/me` reply adds `gateway_address: null`.
+
+No screen changes. Showing the new fields on screens is carried to the next console session.
+
+## Escalations raised in session (maintainer rulings)
+
+1. **`peer.kind` correction breaks console fixtures.** Ruled: change exactly the two values (1a), and list `unknown` in the spec (1b).
+2. **Item 3 already present on main.** Ruled: drop it, correct the #14 note here, and treat "renews in" as console presentation.
+3. **The new required fields break two console test-support files.** Ruled: (A), keep the fields required and add `null` to the fixtures. Marking them optional would understate what the server sends and break the required-but-nullable convention.
+
+## Reconciliation
+
+Checked against `617dbf8` (main after #14's merge):
+- #14's gap list and the ruling on it.
+- Both sides of `peer.kind`, including a scratch regeneration and type-check to show the breakage before touching anything.
+- What the store recorded: the failure detail and applied version, but no time for either event.
+- The renewal path: already stamping and already returned.
+- `/me` and `--site`.
+- Migration numbering: 00001–00006, so this one is `00007`.
+
+## Tests
+
+- **Gateway** (`TestAckInstantsOnTheSyncPath`, live stream against Postgres):
+  - The version a Hello claims stamps nothing.
+  - APPLIED stamps the last ack.
+  - FAILED stamps the last failure beside the degraded state and the detail, and leaves the ack and the applied version unchanged.
+  - The ack of the recovery snapshot advances the ack and leaves the failure time.
+- **Store** (`TestAckAndApplyFailureInstants`): the same through the registry writes, including that a plain state change is not an ack. Read back through the registry, the detail read and the fleet page. An unknown workload is refused. The seed's degraded workload carries its failure time.
+- **API:** the list and detail carry both times, present and null when unrecorded. `/me` with the address configured (login reply and `GET`) and without it (present, null).
+- **Serve:** `TestCheckAdvertisedAddress` covers accepted and refused address forms.
+- **Spec and route test:** the contract test is green; no route changed.
+
+## Checks run
+
+All passed:
+- `go vet ./...` (with and without `noconsole`).
+- `go test -race ./...` with `INNERWALL_TEST_DATABASE_URL` against Postgres 16: all packages ok. The new gateway test also ran three times in a row beside the existing sync tests.
+- `go test -tags noconsole ./ui/`; builds with `noconsole` and `dev`.
+- `golangci-lint run ./...`: 0 issues. `buf lint`.
+- `scripts/check-drift.sh`, whole: buf, sqlc 1.31.1 and the console types; up to date on the committed head.
+- `scripts/check-openapi.sh`: passes. The same 11 informational notes as main; none added.
+- `npm run lint`, `npm run test` (46), `npm run build`.
+- `scripts/check-dco.sh` on the range.
+
+Commit `d90a46b` on its own does not type-check the console; `b26b50a`, which follows it, restores it. They are separate so the sanctioned fallout reads on its own.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+---
+_Generated by [Claude Code](https://claude.ai/code)_

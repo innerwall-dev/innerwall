@@ -1,0 +1,195 @@
+## What this is
+
+M3.6: the console's flow map (design 07 graph, 08 matrix, 18 fresh install), plus the carried M3.5b items. It uses the merged public surface only. No endpoint, schema, migration, or ADR changes. The only Go is a development-only seed (the review estate) and a store test that loads it.
+
+One PR, because this session may push to one branch only. The commits are in the order the brief's two PRs would take, and each builds and passes on its own:
+
+1. `chore(console)` **capture script** (carried 1). `ui/scripts/capture-composites.mjs` regenerates every composite in `docs/img/console/`.
+2. `feat(console)` **M3.5b fields on built screens** (carried 2):
+   - The degraded card reads "last ack 4m ago · FAILED".
+   - The fleet row reads "apply failed 2h ago".
+   - Credential reads "renews 9h" / "renews in 9h". The value is the issue time plus two thirds of the lifetime (ADR-0016 d.4). The agent's jitter is not modelled; a renewal time already passed reads "renewal due".
+   - The mint dialog's enroll command uses `/me`'s `gateway_address`, and keeps its placeholder when that is unset.
+3. `chore(dev)` **compose advertises `localhost:8443`** (carried 3).
+4. `feat(dev)` **review estate**: `innerwall dev seed --estate [--estate-extra N]`.
+5. `feat(console)` **map model**: rollups folded into label groups (tests included).
+6. `feat(console)` **graph and matrix takes, drawer, range, states** (screen tests included).
+7. `docs(console)` **composites and development notes**.
+
+## Task 0: screen-to-endpoint mapping
+
+Screens 07 and 08 (both themes) and the prototype source, against main at `66c2ead`. Rows marked **Gap** were escalated. Each was ruled in session (see "Escalations"), and nothing in them is fabricated.
+
+### Graph (screen 07)
+
+| Element | Supplied by |
+|---|---|
+| Breadcrumb "Flow map / env=prod" | The map's scope, i.e. its `label` requirements, held in the address |
+| "group by: app" | Client-side grouping over `keys.dst.labels` and `keys.src.labels` (rollup) and the listed workloads' `labels`. The options are the keys present. The default is `app` when any workload carries it; otherwise the most-carried key that splits the fleet. |
+| "env = prod", "+ filter" | `label` on the rollup (restricts to the destination workloads the selector matches) and on `GET /workloads` |
+| Graph / Matrix | Client, `take` in the address |
+| "1.94M connections" | Sum of `totals.connection_count` over the four per-verdict `group_by=src,dst` rollups. Totals count every group, whether or not it was returned. |
+| "512 workloads reporting" | Distinct `keys.dst.id` across the returned groups. Shown with "+" when any rollup is `truncated`, because it is then a lower bound. It means workloads that reported inbound flows in the range. |
+| "▲ 3 workloads dropped flow records — map may be incomplete" | `GET /workloads?label=…&limit=500`, walked to the end; counts `health.dropped_flow_records > 0`. The counter is the agent's last report, not scoped to the range. |
+| Node title | The label value; `peer.name` for an address group; "unknown peers" |
+| Node "42 workloads" | Distinct members: listed workloads with that value, plus `keys.src.workload_id` / `keys.dst.id` seen in the rollup |
+| Node "◐ simulation" | `mode` of the listed members. A group with more than one mode shows the spread ("●1 ◐1 ◌1 mixed"). A group seen only as sources outside the scope shows "outside scope". |
+| Unmanaged "office · 172.16.0.0/12 · unmanaged · address group" | `keys.src.kind = group`, `address_group_id`, `name`; CIDRs from `GET /address-groups` (first CIDR, then "(+N)") |
+| Unmanaged "unknown peers · 7 addresses · no address group" | `keys.src.kind = address` (distinct `address`). `kind = unknown` is counted separately ("N unrecognized") and listed by its stored key; it is never shown as an address. |
+| "unlabeled · 30 workloads · ▲ no labels — matches no scope" | Workloads whose `labels` is empty (the fleet's wording). Workloads with labels but not the key form a separate "no app label" group. |
+| Edge color, dash, and glyph | Decision = precedence (blocked > would block > allowed > observed) across the per-`verdict` rollups; token color and dash; glyph on the chip |
+| Edge chip count | That decision's summed `connection_count`, so the glyph and the number agree. The drawer lists every decision. |
+| Edge width | Total `connection_count`, log-scaled within the tokens' 1.5–2px band. Blocked edges stay at 2px; the selected edge is `--viz-edge-selected-width`. |
+| Dimming | While an edge is selected, other observed edges use `--viz-edge-dim-opacity`. While a node is selected, everything off its edges is dimmed. |
+| Legend | Static, drawn with the token geometry on `--surface-translucent` |
+| Drawer "Traffic between groups · metrics-collector → checkout" | The edge's groups |
+| "◆ would block 18,204" | Per-decision sums, one pill for each decision present |
+| "checkout is simulating. This traffic still flows…" | Prevailing decision plus the listed members' mode in the destination group (the prototype's sentences) |
+| **Draw a rule: ruleset "checkout-inbound"** | **Gap.** No read resolves which ruleset's scope covers a group (the matching-scopes gap from #14). Omitted. |
+| Draw a rule: peers | Derived: `key=value`, plus the scope requirements when every source workload carries them; `address group <name>`; `cidr <addr>/32 (+N)` |
+| Draw a rule: services | The opened pair's windows (`service`) |
+| **"Open in policy editor" · "Saving takes effect immediately for 42 workloads"** | **Gap.** The editor is not built, and the count depends on the ruleset. The button is present and inert, like the Policy stub; the count is omitted. |
+| **"Services on this edge" (service, decision, conns, last seen)** | **Gap for a group edge.** There is no `src,dst,service` grouping. As ruled: the drawer lists the edge's pairs exactly from the `src,dst` rows (`keys.src`, `keys.dst.hostname`, verdict, `connection_count`, `last_seen`). A pair opens `GET /flows?workload=&peer=&verdict=&from=&to=`, which gives `service`, `verdict`, `connection_count`, `last_seen`, and cursor paging. |
+| Sidebar fleet-sync block and counts | Unchanged shell (M3.5 ruling: exact counts only) |
+
+### Matrix (screen 08)
+
+| Element | Supplied by |
+|---|---|
+| Rows | Nodes that send, in the graph's reading order. Unmanaged sources have a dashed left border in `--viz-node-unmanaged-stroke`. |
+| Columns | Managed groups, in the same order |
+| Cell glyph and number | The edge's prevailing decision and that decision's connections, in the decision's tint |
+| Empty / selected cell | `--viz-matrix-empty` / `--viz-matrix-selected`; the grid is `--viz-matrix-grid` |
+| Footnote | Static, extended to say which decision the number counts |
+| Selection → drawer | Same drawer as the graph. A cell is an edge; a header is a node. |
+
+### Added where the design has no shot
+
+- **Time-range control** (1h / 6h / 24h / 7d / 30d). It states the windows the rollup actually counted ("windows 18:10 → 19:15 UTC", from `effective_from` / `effective_to`), not the range asked. Checked live: a range that cuts a window counts none of it.
+- **Node drawer**: members linked to workload detail, with mode and dropped counters; inbound and outbound edges; CIDRs, or addresses with unrecognized keys marked.
+- **Other states**: no flows in range (scoped wording), loading, error with retry, and a warning when a rollup was truncated.
+
+## Viz dependency: `@xyflow/react`, laid out by `@dagrejs/dagre`
+
+ADR-0008 already records the library (ReactFlow, of which `@xyflow/react` is the current package) and the label-group model. In session this was ruled to stand, so the choice was measured against the stated capabilities rather than reopened:
+
+- **Custom node rendering.** Nodes are console components: an SVG frame with the tokens' fill, stroke, and dash geometry, and HTML text in the design's type. Edges are custom SVG paths with token color and dash, arrowheads per decision, and HTML label chips.
+- **Programmatic layout.** Positions are supplied by the console; the library only renders them. The layout is layered left to right by `@dagrejs/dagre`, with unmanaged peers pinned to the first layer. A layer taller than the map is wide wraps into columns, so a group that reaches hundreds of others still fits at a legible zoom. Chips are placed where edges leave their source and pushed apart where they would overlap.
+- **Smooth pan, zoom, and selection at estate scale.** Measured on `--estate-extra 300` (314 groups, 328 edges), headless Chromium at 1440×900 in this container:
+  - First edge drawn 0.98 s after navigation, including the four rollups, the walk of 929 workloads, and the layout.
+  - Pan at fit: p95 frame 16.7 ms. Zoom: p95 16.7 ms, max 33 ms. Pan zoomed in: p95 16.8 ms.
+  - Only elements in view are mounted, and label chips give way below half zoom (unreadable there; the edges stay selectable). DOM nodes met the frame budget at this scale, so canvas-class rendering was not needed.
+- **Cost.** The map loads as its own chunk: 269 kB (88 kB gzip). The main bundle stays at 438 kB. The library's structural custom properties point at the tokens (`src/index.css`); nothing it draws has a color of its own. Attribution is hidden.
+
+## Escalations (maintainer rulings, this session)
+
+1. **Design package not in the session.** Attached by the maintainer. `tokens.css` matches the package's names and values exactly.
+2. **ADR-0008 vs. the brief.** ADR-0008 fixes the library and label-group aggregation; the brief left the library open and pointed at per-host `src,dst`. **Ruled:** ReactFlow with label groups, folded client-side; no ADR.
+3. **Node mode, member counts, reporting count, and the dropped warning** need the workload list, while M3.5 ruled "omit rather than walk". **Ruled:** walk `/workloads` scoped by the map's filters.
+4. **Draw a rule.** **Ruled:** show peers and services, keep the button inert, omit the ruleset and the count.
+5. **Services on a group edge.** **Ruled:** pairs, then flows. No client-side rollup across pairs.
+6. **Design disagrees with itself on geometry.** The legend draws observed dashes as `2 3`, would-block as `7 4`, and blocked at 2.5px; the edges and tokens use `2 4`, `8 4`, and 2px. **Ruled:** tokens everywhere, with volume scaled 1.5→2px as above.
+
+Decisions made in session, open to review:
+- The chip shows the prevailing decision's own count.
+- The scope filters destinations (the surface's `label` semantics). Sources outside the scope still appear. The suggested rule adds the scope's requirements only when every source carries them.
+- A "no ‹key› label" group sits alongside "unlabeled". The design shows only "unlabeled", which is true only of workloads with no labels at all.
+- The estate seed (commit 4) is outside the brief's list. The base review fleet has no `app` label, so without it the composites could not show label groups. It is development data built through the store's own writes and ingest's resolution.
+- The harness's `freshInstall` gains the address-group and empty-rollup routes the map now reads.
+
+## Reconciliation
+
+- **Main through M3.5b (#15).**
+  - `peer.kind` is `[workload, group, address, unknown]` in the spec and `generated.ts`.
+  - `sync.last_acked_at` and `sync.last_apply_failed_at` are on the workload read.
+  - `gateway_address` is on `/me`.
+  - The rollup's `group_by` includes `src,dst`.
+  - `GET /flows` takes `workload`, `peer`, `verdict`, `from`, and `to`.
+  - `health.dropped_flow_records` is on the workload read.
+  - All checked live against a seeded control plane, not only the spec.
+- **"Renews in" data.** `health.credential.last_renewed_at` was already on main (#15, item 3). Before any renewal, the issue time is `enrolled_at`.
+- **Reused.** The M3.4/M3.5 patterns carry over: `useResource`, `ProblemNotice` / `LoadingRow`, `EmptyState`, the verdict and mode vocabulary, `parseRequirement`, and the harness.
+- **Colors.** Every color is a token `var()`. Dash geometry and widths follow the tokens' notes.
+
+## Tests
+
+Vitest, 82 tests against the harness with no live backend (36 new for the map, plus the carried fields):
+
+- **Model** (`map/model.test.ts`):
+  - Grouping by key, including unlabeled vs. keyless.
+  - Members and modes, with unlisted sources.
+  - Address groups with CIDRs.
+  - Unknown addresses kept apart from unrecognized kinds, never drawn as an address node.
+  - One edge per group pair with its pairs.
+  - Decision precedence (would block over allowed; blocked over all).
+  - Totals, the reporting count, truncation, the dropped list, and the widest effective extent.
+  - Regrouping, and the key choice.
+  - Volume scaling bounds.
+  - Selection dimming for edges and nodes, and dropping a selection that has vanished.
+  - The derived rule peers.
+  - Non-overlapping chips.
+  - Wrapping a 300-group layer.
+- **Screens** (`map/map.test.tsx`):
+  - One rollup per decision over one range; the scoped walk across two pages; the scope in the breadcrumb.
+  - Nodes with modes, and unmanaged peers.
+  - Edge → drawer → the pair's `GET /flows` with workload, peer, verdict, and the map's `from`/`to`; services filled in; the link to workload detail; close.
+  - Node → members and edges → edge.
+  - Take switching that preserves an edge and a node, and matrix cell select/deselect.
+  - The incomplete-map warning when a counter is non-zero, and its absence when none is; the truncation warning.
+  - The extent text, and changing the range.
+  - Regrouping, and adding/removing a scope requirement (including a refused one).
+  - The scoped no-flows state, the fresh install, and an error with retry.
+- **Carried fields:**
+  - The ack instant with FAILED.
+  - "apply failed 2h ago".
+  - The renewal point from last renewal and from enrollment, and "renewal due".
+  - The enroll command with and without an advertised address.
+- **Go:** `TestSeedEstate`.
+
+## Review evidence
+
+Console (left) beside the design shot (right) at 1440×900 @2x. Captured by `ui/scripts/capture-composites.mjs` from a control plane serving `innerwall dev seed --estate`; screen 18 comes from one on an empty database. The estate is smaller than the shots' fleet, so the totals and group sizes differ by design.
+
+07, graph (metrics-collector → checkout selected, as in the shot):
+![07 dark](https://github.com/innerwall-dev/innerwall/blob/claude/epic-dijkstra-8rzx3a/docs/img/console/07-flow-map-graph-dark.jpg?raw=true)
+![07 light](https://github.com/innerwall-dev/innerwall/blob/claude/epic-dijkstra-8rzx3a/docs/img/console/07-flow-map-graph-light.jpg?raw=true)
+
+08, matrix:
+![08 dark](https://github.com/innerwall-dev/innerwall/blob/claude/epic-dijkstra-8rzx3a/docs/img/console/08-flow-map-matrix-dark.jpg?raw=true)
+![08 light](https://github.com/innerwall-dev/innerwall/blob/claude/epic-dijkstra-8rzx3a/docs/img/console/08-flow-map-matrix-light.jpg?raw=true)
+
+18, fresh install (the real screen on an empty control plane, replacing the M3.4 stub):
+![18 dark](https://github.com/innerwall-dev/innerwall/blob/claude/epic-dijkstra-8rzx3a/docs/img/console/18-fresh-install-flow-map-dark.jpg?raw=true)
+![18 light](https://github.com/innerwall-dev/innerwall/blob/claude/epic-dijkstra-8rzx3a/docs/img/console/18-fresh-install-flow-map-light.jpg?raw=true)
+
+Undesigned states, dark beside light:
+![node selected](https://github.com/innerwall-dev/innerwall/blob/claude/epic-dijkstra-8rzx3a/docs/img/console/flow-map-node-selected.jpg?raw=true)
+![pair flows](https://github.com/innerwall-dev/innerwall/blob/claude/epic-dijkstra-8rzx3a/docs/img/console/flow-map-pair-flows.jpg?raw=true)
+![no flows in range](https://github.com/innerwall-dev/innerwall/blob/claude/epic-dijkstra-8rzx3a/docs/img/console/flow-map-no-flows-in-range.jpg?raw=true)
+
+Recaptured for the carried fields:
+- 09: last ack · FAILED.
+- 13: renews 9h.
+- 16: the enroll command names `localhost:8443`. The secret belongs to a disposable development database.
+
+![09 dark](https://github.com/innerwall-dev/innerwall/blob/claude/epic-dijkstra-8rzx3a/docs/img/console/09-workload-detail-degraded-flows-dark.jpg?raw=true)
+![13 dark](https://github.com/innerwall-dev/innerwall/blob/claude/epic-dijkstra-8rzx3a/docs/img/console/13-fleet-workloads-dark.jpg?raw=true)
+![16 dark](https://github.com/innerwall-dev/innerwall/blob/claude/epic-dijkstra-8rzx3a/docs/img/console/16-fleet-mint-token-shown-once-dark.jpg?raw=true)
+
+## Checks run
+
+All passed:
+- `go vet ./...`, plus the `dev` and `noconsole` tags.
+- `go test -race ./...` with `INNERWALL_TEST_DATABASE_URL` against Postgres 16, and `go test -tags noconsole ./ui/`.
+- `golangci-lint run ./...` and with `--build-tags dev`: 0 issues.
+- `npm run lint`: clean except the existing `biome.json` schema-version note.
+- `npm run test` (82) and `npm run build`.
+- `generated.ts` is unchanged: no spec edit.
+- `scripts/check-dco.sh origin/main..HEAD`.
+
+`buf` and `sqlc` are not installed here; nothing they generate changed.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+---
+_Generated by [Claude Code](https://claude.ai/code)_

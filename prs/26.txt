@@ -1,0 +1,73 @@
+PR 4 of 4 in the v0.1.0 release train: the release itself. The maintainer tags `v0.1.0` after merge.
+
+## What this PR changes
+- **`fix(build)`**: the image's console stage now copies `api/openapi.yaml` beside `ui/`.
+  - `npm run build` regenerates the console's API types from that file, and the stage only copied `ui/`, so `make dev` failed with `ENOENT` while building the image.
+  - It has not built since the console scaffold (2026-09-13). Neither audit could run Docker, so neither caught it.
+  - Found while verifying this quickstart.
+- **README** rebuilt around the shipped console:
+  - review composites: each screen beside its design, or beside the other theme;
+  - v0.1.0 status with pointers to ROADMAP and CHANGELOG;
+  - a quickstart verified word for word on both paths (below);
+  - a license section that distinguishes the project's Apache-2.0 from the licenses of the bundled third-party code and fonts.
+- **ROADMAP**:
+  - M1–M5 rewritten as the v0.1.0 ledger.
+  - A backlog of every recorded not-yet-built item, with its citation, plus the audits' additions: deny-list and clone detection, server-side evidence guard, signing tripwire, netlink address watch, sampling and disk buffering, installer, outbound observation/enforcement, metadata pagination, response-validation harness, CLI-over-REST, notifications, saved views, definitions screens, findings collection, inverted label index, time partitioning, the ClickHouse path, relays/federation.
+  - The 1.0 gate is unchanged.
+- **CHANGELOG** for v0.1.0: every audit-driven fix named with its PR, the record corrections, what was removed, and known limitations.
+
+## Quickstart verification (this session, on head `fd6404a`'s tree)
+Run from a clean state (fresh database, no agent state) on Linux as root, using the exact README commands. A real agent enrolled and synced on both paths:
+
+| Step | Docker Compose | From source |
+|---|---|---|
+| Bring up | `make dev`: image built, migrations, signing authority, console embedded | `make console`, `make build`, `bin/innerwall migrate`, `serve --init-ca --ca-dir ./state/ca …` |
+| Operator | `docker compose exec innerwall /innerwall operator set-password` | `bin/innerwall operator set-password` |
+| Console | `https://localhost:8080/` → 200; fingerprint in `docker compose logs innerwall` | `https://localhost:8080/` → 200 |
+| Token + bundle | `token mint` via compose exec; `docker compose cp …/ca.crt` | `bin/innerwall token mint`; `cp ./state/ca/ca.crt` |
+| Agent | `innerwall-agent enroll` then `daemon` → workload listed **synced 1/1, visibility** | same → **synced 1/1, visibility** |
+
+- **No-console build:** `make build-noconsole` serves the API (login → 200) and the documented 404 at `/`.
+- **The one environment accommodation:** this sandbox's egress proxy re-terminates TLS, so the image build needed the proxy's CA. It was injected through an uncommitted copy of the Dockerfile plus a compose override (two `COPY`/`ENV` lines per build stage). The repo's Dockerfile and compose file are otherwise exactly as committed.
+- **Image tag confirmed:** `golang:1.25.14-alpine` (pinned in innerwall-dev/innerwall#24) was pulled and used. The full pull list was `postgres:17-alpine`, `node:22-alpine`, `golang:1.25.14-alpine` and `gcr.io/distroless/static-debian12:nonroot`.
+
+## Release notes (v0.1.0)
+
+**Innerwall v0.1.0** is the first release: one control-plane binary with the operator console embedded, one Postgres, and a Linux agent.
+
+- **Enrollment and identity:** token-gated enrollment with no trust-on-first-use window. Scoped, expiring, revocable provisioning tokens stored only as digests. One URI SAN per credential. 24-hour credentials renewed automatically.
+- **Policy sync:** one mutually authenticated stream per agent: a snapshot per stream, deltas within it, versions that advance only on a rendered change, full-jitter reconnects.
+- **Flows:** inbound connections aggregated at the agent, reported on their own RPC, peers resolved at ingest, with evidence gaps recorded wherever the agent knows evidence was lost.
+- **Policy, simulation, enforcement:**
+  - live authoring with conditional writes and dry-run renders;
+  - simulation as the exact enforced ruleset;
+  - enforcement into one owned nftables table in single kernel transactions, persisted before it is applied, with stable rule attribution and a local kill switch;
+  - inbound only.
+- **Operator surface and console:** one TLS-only listener, single-operator authentication, an origin guard on every write. The flow map, fleet, workload detail, policy editor, and simulation review with an acknowledgment-gated promotion.
+
+**Fixed before release:** two independent conformance audits drove these fixes (#23, #24, #25 and this PR):
+- persist-before-apply acknowledgement;
+- stable connection-mark attribution;
+- a bounded open flow window;
+- strict identity parsing;
+- a bounded login throttle;
+- a patched Go toolchain with a govulncheck gate;
+- bundled third-party licenses;
+- no real secrets in screenshots;
+- a migration immutability guard;
+- a decision record that states only what ships;
+- an image that builds.
+
+**Known limitations:**
+- The server-side evidence guard, the workload deny-list, and clone detection are not built.
+- `serve` has no flag for the aggregation window.
+- Linux only, inbound only, one operator.
+
+The full list is in [CHANGELOG.md](CHANGELOG.md).
+
+## Tagging after merge
+- Tag the merge commit `v0.1.0`.
+- `.goreleaser.yaml` builds static linux/amd64 and arm64 archives of both binaries, checksums them, and cosign-signs the checksum file.
+- There's no release workflow in CI, so the release runs wherever the maintainer runs goreleaser.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)

@@ -1,0 +1,233 @@
+## What this is
+
+M3.7's console: the simulation review (design 01–06) and its fresh install (17, replacing the stub). It builds on the `peer,service` grouping from #17, which landed first as the Task 0 backend gap. It uses the merged public surface only: no endpoint, schema, migration, or ADR changes. The only Go is the development estate seed (the brief's carve-out) and its test count.
+
+One PR (this session pushes to one branch). Each commit builds on its own:
+
+1. `test(console)`: fix the M3.6 flow-map flake reported on #17. `rule-services` updates one render after `pair-flows`; the assertion now awaits it. Test-only. Before: failed 1 in 3. After: 8/8 in isolation.
+2. `refactor(console)`: the range control, extent, and ranges move to `components/RangeControl.tsx`, shared by the map and the review. The map's behaviour and test ids are unchanged.
+3. `feat(dev)`: the estate's review states (see "Seed").
+4. `feat(console)`: the review's model and API layer, with its unit tests.
+5. `feat(console)`: the screens, with their tests.
+6. `docs(console)`: composites and development notes.
+
+## Rulings applied (Task 0, this session)
+
+- **E1**: `peer,service` with `workload_count`, landed as #17.
+- **E2**: promote submits `workload_ids`. Visibility workloads are never offered. The dialog text describes the one recorded intent. The 409 renderer and its test stay.
+- **E3**: the brief's safe condition governs. Shot 05 is an erratum, recaptured on a scope where every workload simulates and syncs, with its caveats that don't block.
+- **E4**: the acknowledgment checkbox, with the approved wording.
+- **E5**: the range control plus effective window; the KPI reads "connections in range".
+- **E6**: the drawer states that no enabled rule matched, and lists the ruleset's disabled rules as candidates without claiming coverage.
+- The five recorded mapping decisions (process column dropped, pairs then flows, source by name, composed explanation, inert editorial actions).
+
+## Screen-to-endpoint mapping
+
+Every read is scoped by the ruleset's own selector, passed as repeated `label` requirements. Those resolve through `policy.MatchWorkloads`, the renderer's scope match. The range is one fixed `from`/`to` for every read.
+
+### Header, tabs, scope (01–06)
+
+| Element | Supplied by |
+|---|---|
+| Ruleset tabs | `GET /rulesets`, enabled only. A disabled ruleset renders nothing, so there is nothing of it to review. |
+| Per-ruleset `◆ N` on tabs | `GET /flows/rollup?group_by=peer,service&verdict=would_block&label=…` for each enabled ruleset, folded into rows the way the table folds them. "+" when truncated. |
+| Default ruleset | The one with the most would-block pairs; ties go to listing order. Named into the address (`?ruleset=`), so the breadcrumb names it. It is not read twice. |
+| Scope line `app=checkout AND env=prod` | `ruleset.scope`; a key with several values is printed as `(k=a OR k=b)` |
+| "42 workloads in scope · 40 simulation · 2 visibility · 1 degraded" | `GET /workloads?label=…`, walked to the end; `mode`, `sync.state`, `applied_version` vs `latest_version` |
+| Edit ruleset | Inert, like "Open in policy editor" (M3.6 ruling): the editor is not built |
+| Promote to enforced… | Opens the dialog; primary style when the verdict is safe, secondary otherwise (design) |
+
+### Verdict banner (01 vs 05)
+
+This is composed in `review/model.ts` `composeVerdict`, never fetched.
+
+| Element | Supplied by |
+|---|---|
+| Safe to enforce | Zero would-block rows, **and** every workload in scope is simulating, synced, with `applied_version == latest_version`: none degraded, offline, pending, or in visibility |
+| Headline and sub | Composed. Not safe: "N peer/service pairs carrying M connections would be dropped. K of them were seen in the last hour" (`last_seen` of the rows). Safe: "Every observed inbound connection on the N simulating workloads matched an enabled rule." |
+| ◆ would block · peer/service | Count of would-block rows |
+| connections in range (E5) | `totals.connection_count` of the would-block `peer,service` rollup (the totals of the whole, even if truncated) |
+| "N of M simulating workloads affected" | Distinct `keys.dst.id` in the would-block `src,dst` rollup ("+" when truncated), over the simulating count |
+| ✓ allowed · matched a rule | Count of allowed rows |
+| Caveat lines, one per failing condition | Degraded (`applied vN, rendered vM` — "evaluated against stale policy"), offline (with last seen), pending, and "N workloads in scope are still in visibility mode and produced no verdict" |
+| Caveats that don't block | `health.dropped_flow_records` ("may be incomplete"), truncation, and on a safe verdict the observed span ("Observed for 1h 5m (windows … UTC); a peer that connects less often than that has not been seen", from `effective_from`/`effective_to`) |
+| Tint | `--status-{allowed,would-block}-bg-soft` with the matching `-border`: the tokens' one sanctioned use |
+
+### The three takes (01, 02, 03)
+
+| Element | Supplied by |
+|---|---|
+| Rows | `peer,service` rollups under `verdict=would_block` and `verdict=allowed` (the decisions a simulating workload records) |
+| Peer | `keys.peer`. **Workload peers fold by their whole stored label set**: no selector can tell two workloads with identical labels apart. The title leads with `app=` and the note carries the rest ("4 workloads, env=prod tier=infra"). Address groups keep identity plus their first CIDR (`GET /address-groups`); addresses read "not managed, in no address group"; `unknown` kinds stay apart. |
+| Kind tag | Solid for workloads, dashed for everything else (design) |
+| Service | `keys.service` |
+| Rule | "no rule matched" / "matched a rule". The rule itself is named in the drawer (see decision below). |
+| Workloads | For one peer, `workload_count` (exact). For a folded group on one service, the distinct destinations from the `src,dst` rollup of that decision (exact). Otherwise the largest member's count, shown "N+" (a lower bound, as M3.6 did for "reporting"); the drawer gives the exact count. |
+| Connections, bar | Summed `connection_count`; log-scaled bar in `--viz-bar-{would-block,allowed}` on `--viz-bar-track` |
+| Last seen | Latest `last_seen` |
+| Matrix (02) | Peers down in row order, services across (sorted by protocol, then port). A cell with both decisions shows what enforcing would drop; the title lists both. Uses `--viz-matrix-{grid,empty,selected}`. |
+| Recency (03) | Rows bucketed by `last_seen` (last minute, hour, day, older), newest first |
+| Chips all / would block / allowed | Filter over the same rows, with counts |
+| Range line (E5) | The shared range control: 1h … 30d, stating the windows actually counted |
+| Take, filter, range, selection | In the address (`take`, `verdict`, `range`, `sel`). Switching takes keeps the selection (M3.6 pattern). |
+
+### Drawer (01's right panel)
+
+| Element | Supplied by |
+|---|---|
+| Header, verdict, `peer → service` | The row |
+| Explanation | Composed from the row's facts, including the exact workload count from the pairs |
+| Rule: would block | "No enabled rule matched: nothing in the policy these workloads run admits this peer on tcp/9100." Then the ruleset's disabled rules (`rules[].enabled == false`) as candidates, each with its peers and services (`GET /services` names the referenced ones), **without claiming coverage** (E6). |
+| Enable ‹rule› | `PUT /rulesets/{id}/rules/{rule_id}` with `If-Match: "<version>"` (the version the review read), the rule as read, and `enabled: true`. Success re-reads the review and says stored windows keep their decision. **412** renders "‹rule› changed since this review read it · the rule is now at version X; nothing was changed", with a Reload. |
+| Rule: allowed | `GET /flows/rollup?group_by=rule,peer&verdict=allowed&service=…&label=…`, restricted to the row's peers, then `authored_rule_id` resolved against the ruleset listing: "Matched api-to-checkout in checkout-inbound" |
+| Flows · N pairs | `GET /flows/rollup?group_by=src,dst&verdict=…&service=…&label=…`, restricted to the row's peers: source by name, destination linked to workload detail, `:port`, connections, last seen |
+| A pair's windows | `GET /flows?workload=&peer=&verdict=&service=&from=&to=`, paged by cursor, with `process_name` (the accepted home of the design's Process column) |
+| Open in policy editor | Inert (M3.6 ruling); "Add to an address group" inert for unmanaged addresses |
+
+### Promote dialog (04, 06)
+
+| Element | Supplied by |
+|---|---|
+| "Switch scope to enforced", verdict box | The composed verdict |
+| "app=checkout AND env=prod matches 42 workloads now" and the list | `POST /selectors/preview {selector: ruleset.scope}`: `matched`, `count` |
+| Simulation → Enforced · N · included | Matched workloads (joined with a fresh scoped `GET /workloads` walk) that are simulating on their latest version |
+| Visibility → Enforced · never simulated · skipped | `mode == visibility`. Never offered (ADR-0001, E2). |
+| ☐ Degraded · checkout-prod-07 ▲ would enforce stale v41 | Opt-in per workload. The same opt-in covers a simulating workload that is pending or offline (see decisions). |
+| Already enforced · unchanged | `mode == enforced`; not submitted |
+| Text (E2) | "Mode is per workload. This records one mode change covering these workloads; each workload's sync state shows when its agent has applied the new version. Rollback is the same action in reverse." |
+| Acknowledgment (E4, 04 only) | "I understand N peer/service pairs (M connections) will be dropped" gates submit. The safe variant (06) has none. |
+| Enforce [anyway] on N workloads | `POST /mode-changes {workload_ids, target_mode: "enforced", expected_match_count: ids.length}` |
+| 409 `match-count-mismatch` | "The set no longer resolves as previewed · You submitted 3 workloads; the control plane resolved 2. Nothing was changed." Then Preview again (a fresh preview; submit waits for it). |
+| 400 on `workload_ids[i]` | "A workload in this set is no longer registered", with the finding, then Preview again (see below) |
+| Success | Closes and re-reads the review. No progress UI, no job state. |
+
+### Fresh install (17), and other states
+
+- **17**: no rulesets at all, so "Nothing to review yet" (M3.4's layout). The crumb is the section alone, as ruled in #11.
+- **Undesigned states:**
+  - "No enabled ruleset" (every ruleset disabled).
+  - No flows in the range (scoped wording, with the range control).
+  - Loading.
+  - An error with a retry.
+
+## Decisions made in session, open to review
+
+1. **The E2 premise, corrected.** With `workload_ids`, a workload deleted between preview and submit comes back as a **400 `validation`** finding on `workload_ids[i]` (`fleet.ErrUnknownWorkload`), not a 409. A relabel doesn't move an id set at all. As ruled, the 409 renderer and its test stay; it covers the documented contract, reachable, for example, by a resubmission that resolves differently. The realistic stale-preview case, the 400, is rendered with the same "Preview again" path, and is tested too.
+2. **Workload peers fold by their full label set**, with the workload count exact where it can be established and "N+" otherwise (see the Workloads row). This is the M3.6 folding precedent (ADR-0008 label groups), extended to the key that policy itself cannot split. The only extra reads are the `src,dst` rollup per decision, two fixed requests, not a per-service fan-out.
+3. **The rule for allowed rows is named in the drawer**, not in the table's Rule column: `peer,service` carries no rule, and a `rule,peer` read per row happens only when the row is opened.
+4. **Acknowledgment when not safe but nothing would be dropped** (sync or visibility conditions only): "I understand this scope is not safe to enforce yet". The approved wording counts pairs, and here there are none.
+5. **Opt-in for unsynced workloads** covers pending and offline simulating workloads as well as degraded ones, each with its own reason: "has applied only vN", or "takes the change when it reconnects".
+6. **Two banner states the design has no shot of:**
+   - An empty scope: "No workload in scope".
+   - An all-enforced scope: "Nothing is simulating in this scope".
+
+   Neither can read as safe.
+7. **Only the would-block and allowed decisions are shown.** Visibility workloads only observe (stated in the caveat), and enforced workloads already block.
+
+## Seed
+
+`innerwall dev seed --estate` gains the review's designed states. The safe state cannot come from the API, because it needs agent acknowledgements and allowed-verdict ingest.
+
+- **checkout-inbound**:
+  - checkout-prod-41 and -42 are left in visibility.
+  - checkout-prod-07 is degraded: applied v1, rendered v2. A first render before the rulesets puts the scope one version ahead.
+  - The ruleset has a disabled `metrics-scrape` rule.
+- **ledger-inbound**: 8 ledger workloads simulating, synced, reached only by admitted traffic (billing, bastion), and one agent dropping flow records.
+- A flow's decision now follows its destination workload's own mode.
+
+The estate change also affects the flow map (a new ledger group; checkout with mixed modes). **The 07/08 composites were not regenerated**; they remain M3.6's accepted evidence. Say if you want them recaptured.
+
+## Tests
+
+Vitest: 123 total, all against the harness with no live backend; 41 are new.
+
+**`review/model.test.ts`**:
+- Scope requirements and text.
+- Folding by label set.
+- Address, unknown, and unlabeled peers kept apart.
+- Exact versus lower-bound workload counts: single peer, single service, multi-service, saturated, truncated.
+- The three takes' transforms: chips and counts, the matrix layout and precedence, the recency buckets, selection resolution, and the bars.
+- **The safe composition**:
+  - Safe.
+  - Safe with no traffic.
+  - Would-block.
+  - **Each of degraded, offline, pending, and visibility failing on its own**, each with its own line, each blocking safety.
+  - All failing together.
+  - Empty and all-enforced scopes.
+  - The caveats that don't block.
+- The promotion partition and the ids submitted.
+
+**`review/review.test.tsx`**:
+- The default ruleset with no double read, and the crumb.
+- Correcting a name no enabled ruleset has.
+- Banner numbers and caveat lines.
+- The tab switch to a safe verdict.
+- Chip filtering.
+- Row drawing.
+- **Take switching keeps the selection** (grouped → matrix → recency, deselect, reselect).
+- Pairs, exact count, and a pair's windows with `service`.
+- The allowed row's rule.
+- **Enable-rule**: `If-Match: "3"` and the body.
+- **The 412 rendering**, with Reload.
+- **Promote**:
+  - the preview body;
+  - the partition rows;
+  - the acknowledgment gate;
+  - the degraded opt-in;
+  - the submit body;
+  - close and re-read.
+- **The 409 with both numbers**, then preview again and submit again.
+- The 400 unknown workload.
+- The safe variant, unobstructed.
+- Fresh install, no enabled ruleset, no flows in range, and an error with retry.
+
+`login.test.tsx` now mounts on the fresh-install surface, because the landing screen now reads.
+
+## Composites
+
+Console (left) beside the design shot (right), 1440×900 @2x. They were captured by `ui/scripts/capture-composites.mjs` (which gains these scenes) from `innerwall dev seed --estate`, and 17 from an empty database. The estate is smaller than the shots' fleet, and its windows are an hour old at capture, so counts and "last seen" differ by design. 05 and 06 are on `ledger-inbound`, per the E3 erratum.
+
+01 grouped, metrics-collector → tcp/9100 selected:
+![01 dark](https://github.com/innerwall-dev/innerwall/blob/claude/inspiring-johnson-2bruc7/docs/img/console/01-simulation-review-grouped-dark.jpg?raw=true)
+![01 light](https://github.com/innerwall-dev/innerwall/blob/claude/inspiring-johnson-2bruc7/docs/img/console/01-simulation-review-grouped-light.jpg?raw=true)
+
+02 matrix:
+![02 dark](https://github.com/innerwall-dev/innerwall/blob/claude/inspiring-johnson-2bruc7/docs/img/console/02-simulation-review-matrix-dark.jpg?raw=true)
+![02 light](https://github.com/innerwall-dev/innerwall/blob/claude/inspiring-johnson-2bruc7/docs/img/console/02-simulation-review-matrix-light.jpg?raw=true)
+
+03 by recency:
+![03 dark](https://github.com/innerwall-dev/innerwall/blob/claude/inspiring-johnson-2bruc7/docs/img/console/03-simulation-review-by-recency-dark.jpg?raw=true)
+![03 light](https://github.com/innerwall-dev/innerwall/blob/claude/inspiring-johnson-2bruc7/docs/img/console/03-simulation-review-by-recency-light.jpg?raw=true)
+
+04 promote, not safe:
+![04 dark](``https://github.com/innerwall-dev/innerwall/blob/claude/inspiring-johnson-2bruc7/docs/img/console/04-simulation-review-promote-dialog-dark.jpg?raw=true``)
+![04 light](``https://github.com/innerwall-dev/innerwall/blob/claude/inspiring-johnson-2bruc7/docs/img/console/04-simulation-review-promote-dialog-light.jpg?raw=true``)
+
+05 safe to enforce:
+![05 dark](``https://github.com/innerwall-dev/innerwall/blob/claude/inspiring-johnson-2bruc7/docs/img/console/05-simulation-review-safe-to-enforce-dark.jpg?raw=true``)
+![05 light](``https://github.com/innerwall-dev/innerwall/blob/claude/inspiring-johnson-2bruc7/docs/img/console/05-simulation-review-safe-to-enforce-light.jpg?raw=true``)
+
+06 promote, safe:
+![06 dark](``https://github.com/innerwall-dev/innerwall/blob/claude/inspiring-johnson-2bruc7/docs/img/console/06-simulation-review-safe-promote-dialog-dark.jpg?raw=true``)
+![06 light](``https://github.com/innerwall-dev/innerwall/blob/claude/inspiring-johnson-2bruc7/docs/img/console/06-simulation-review-safe-promote-dialog-light.jpg?raw=true``)
+
+17 fresh install (replacing the stub):
+![17 dark](https://github.com/innerwall-dev/innerwall/blob/claude/inspiring-johnson-2bruc7/docs/img/console/17-fresh-install-simulation-review-dark.jpg?raw=true)
+![17 light](``https://github.com/innerwall-dev/innerwall/blob/claude/inspiring-johnson-2bruc7/docs/img/console/17-fresh-install-simulation-review-light.jpg?raw=true``)
+
+## Checks run
+
+All run on this head (rebased on main after #17 merged); all passed:
+- `npm run lint`, `tsc --noEmit`, and `npm run test` (123; three consecutive clean runs before the rebase).
+- `npm run build`.
+- `sqlc generate` and `npm run generate:api`: no drift.
+- `golangci-lint run ./...`, with and without `--build-tags dev`: 0 issues.
+- `go vet -tags dev ./...`.
+- `go test -race -count=1 ./...` against Postgres 16, including `TestSeedEstate`.
+- `scripts/check-dco.sh origin/main..HEAD`.
+- Each commit typechecks on its own (checked in a worktree).
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+---
+_Generated by [Claude Code](https://claude.ai/code)_

@@ -1,0 +1,66 @@
+## What this is
+
+These are the three backend items M3.8's Task 0 found behind the policy editor. Each was ruled as part of this PR, which lands before the editor (the M3.7 pattern). There is no schema change, no new endpoint, no new grouping and no new ADR. `api/openapi.yaml` states each behaviour, and `ui/src/api/generated.ts` is regenerated from it.
+
+Commits, each building and passing its packages on its own:
+1. `fix(fleet)`: fresh ids for a dry run's id-less rules (item 2).
+2. `fix(api)`: one snapshot for the ruleset listing (item 1).
+3. `feat(api)`: `workload_count` on the rule grouping (item 3).
+4. `docs`: ADR-0019 amendment note and the references for item 3.
+
+### 1. `GET /rulesets`: the rulesets and `state_version` come from one snapshot (blocker 2)
+
+**Defect.** The handler listed rulesets with `Store.ListRulesets`, then derived `state_version` from a separate `LoadRenderState`. A write that landed between the two reads paired rulesets from before it with a version from after it. An editor that dry-ran what it read, at the version it read, then got `stale: false`, and its diff showed the concurrent write being undone as though it were the editor's own change.
+
+**Fix.** `fleet.Service.AuthoringState` returns both from the one repeatable-read snapshot the dry run already renders against. The handler calls it, and the response is otherwise unchanged.
+
+**Test.** `TestRulesetListingIsOneSnapshot` (`internal/api`). A one-shot `AfterRulesetsRead` hook on the in-memory store lands a rule write right after the listing first reads the rulesets. The test requires a dry run of the listed set, at the listed version, to report `stale: true`. On the old handler it fails with `200 {stale:false …}`.
+
+### 2. Dry-run gives id-less rules fresh ids, as a create does (blocker 3, option a)
+
+**Defect.** A rule without an id (unsaved, new) rendered under `00000000-…/<proto>`, and `rendered.Canonical` keeps the last rule with a given id. Two new rules on one workload rendered as one, so the dry run didn't match what saving the same set renders. This affects any consumer of the public surface.
+
+**Fix.**
+- `policy.AssignIDs` is now shared by `CreateRuleset` and `DryRun`.
+- The dry run applies it to a copy (rules and peers cloned), so the caller's request is never written into.
+- The contract says such ids are new on every call and name nothing persisted. A consumer may still supply temporary ids for delta correlation, which the contract already allows.
+
+**Test.** `TestDryRunAssignsIDsAsCreateWould` (`internal/fleet`):
+- Two id-less rules on one workload appear as two added rules, each with a distinct id.
+- The request is left untouched.
+- Creating the same ruleset renders the same rules, ids aside.
+
+On the old code only the second rule survives, under the empty id. `TestDryRunIsPure`'s byte-for-byte repeat check now gives its new rule an id, since an id-less rule gets a fresh one on every run.
+
+### 3. `workload_count` on the `rule` grouping (ruling C2(b))
+
+**Why.** The editor states each rule's hit counters with "matched on N workloads". The rule grouping's key names no workload, and no grouping could give the number without client-side assembly.
+
+**Change.**
+- `RollupFlowsByRule` gains `count(DISTINCT workload_id)`.
+- Each rule group carries `workload_count`, the shape `peer,service` (E1) already has.
+- Groupings whose keys name a workload still omit it.
+- The grouping set stays closed at five.
+- `innerwall flows rollup --group-by rule` prints a WORKLOADS column.
+
+**Note for the console.** Rule groups stay keyed by resolved rule (`<authored id>/<protocol>`), so the count is per protocol. For an authored rule whose entries span protocols, the editor will show the largest group's count as a lower bound ("N+"), the M3.7 precedent, rather than adding the counts together.
+
+**Tests.**
+- `TestRollupGroupsRuleWorkloadCount` (Postgres): the seeded rule also reported by cache-1 counts 2, the unmatched group counts 3, and scoped to one workload it counts 1.
+- The read model and the endpoint pass the count through; the response keys stay one.
+
+**Docs.**
+- ADR-0019 decision 4 names the count, with a dated amendment note (additive detail, the same form as #17's).
+- The architecture overview and the deploy guide say so too.
+
+## Checks run on this head
+
+- `go test -race -count=1 ./...` against Postgres 16 (the database tests ran, none skipped).
+- `golangci-lint run ./...`, with and without `--build-tags dev`: 0 issues.
+- `sqlc generate` (1.31.1) committed.
+- `npm run generate:api` committed, then `tsc --noEmit` over the console.
+- `scripts/check-openapi.sh`: passed, with 11 informs.
+- `scripts/check-dco.sh origin/main..HEAD`.
+- `buf` isn't installed here, so `check-drift.sh` stopped at `make proto`. Nothing under `proto/` changes, and CI's drift job was green on the first push.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)

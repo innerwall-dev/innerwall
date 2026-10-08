@@ -1,0 +1,68 @@
+## What this is
+
+The console's foundation and nothing past it: the build and embed story, the app shell, the login screen, and the four fresh-install states. No data screens (M3.5–M3.8). No endpoint is added; the only Go outside the serving path and build tags is the seed refactor that the dev command needs.
+
+Six commits, in review order:
+
+1. **Embed and serve.** `ui/embed.go` embeds `ui/dist/` behind `!noconsole`; `ui/embed_noconsole.go` is the stub. `internal/api/console.go` serves the tree at the M3.1 mount point: `/api/v1/*` stays with the handlers, a file in the tree is served as itself, files under `assets/` (content-addressed by the build) are `immutable` for a year, the entry point and plain public files carry a content `ETag` and `no-cache`, every other path is the entry point. A missing `assets/*` file is 404, not the entry point. Only `GET`/`HEAD`. A nil tree or one without `index.html` keeps answering the marked "not served by this build" problem. `make console`, `make build-noconsole`; CI gains a `console` job (Biome, Vitest, build on the pinned Node) that runs ahead of `build` and hands over its `dist/`; `build` also proves the `noconsole` and `dev` tags compile.
+2. **Dev seed.** `storetest.SeedFleet` now wraps an error-returning `storetest.Seed(ctx, store, now)`; `storetest.Reset` is the migrate-and-truncate fixture. `innerwall dev seed` (`-tags dev` only; `make seed`) resets the database and loads the fleet relative to the control plane's clock. The release build carries a stub that says how to get the command.
+3. **The console.** Vite + React + TypeScript, Tailwind v4 with `tokens.css` as the palette, its token names and values verbatim (`@theme inline` maps every token in the provided snippet as a plain `var()`; the built CSS contains zero `hsl(`), `.dark` class strategy with the preference in `localStorage` and a pre-paint script so it never flashes, IBM Plex Sans/Mono bundled from `@fontsource` (the console makes no external request; the screenshot harness asserts it). Sidebar, top bar, account popover (initials, generic `OP` fallback, identity line, theme toggle, sign out via `DELETE /api/v1/session`; no console-settings item). Login with wrong-password and throttle rendered inline (with the `Retry-After` countdown) and the no-password problem replacing the form with the `innerwall operator set-password` instruction. The four fresh-install states as the empty states of their routes. Hand-written client for the three endpoints; `openapi-typescript` wired into the build behind the presence of `api/openapi.yaml`.
+4. **The brand mark.** Drawn on the design's 22px grid (2px stroke, radius 4 outside and 2 inside, a square-cornered 4×10 bar at 12,6), matching the design shots pixel for pixel in both themes. Mark and wordmark are one `Lockup` used by the sidebar and the login card. The favicon carries the same geometry and follows the viewer's colour scheme.
+5. **Shell and fresh states from the prototype source.** The full design package includes the prototype's HTML, which states the values the screenshots only implied. The lockup, sidebar, top bar, popover, buttons, and the four fresh states now use those exact values; against the design shots each fresh state scores about one colour level of mean difference per pixel.
+6. **Vocabulary fix (adr-review finding).** The token stylesheet's comments named the component library whose naming convention the palette follows, against CLAUDE.md's first-principles rule. The comments now describe the convention itself and the tooling config's schema URL is dropped. Token names and values are unchanged; the docs and CLAUDE.md now say the names and values are verbatim rather than the whole file.
+
+## Review evidence
+
+Each image is the console (left) beside the design shot (right), captured at 1440×900 @2x, the design shots' size. The files live in `docs/img/console/` on this branch. Login has no shot in the package, so those images are dark beside light.
+
+Screen 17, simulation review, dark and light:
+
+![17 dark](``https://github.com/innerwall-dev/innerwall/blob/claude/innerwall-m3-4-console-cd65az/docs/img/console/17-fresh-install-simulation-review-dark.jpg?raw=true``)
+![17 light](``https://github.com/innerwall-dev/innerwall/blob/claude/innerwall-m3-4-console-cd65az/docs/img/console/17-fresh-install-simulation-review-light.jpg?raw=true``)
+
+Screen 18, flow map:
+
+![18 dark](https://github.com/innerwall-dev/innerwall/blob/claude/innerwall-m3-4-console-cd65az/docs/img/console/18-fresh-install-flow-map-dark.jpg?raw=true)
+![18 light](https://github.com/innerwall-dev/innerwall/blob/claude/innerwall-m3-4-console-cd65az/docs/img/console/18-fresh-install-flow-map-light.jpg?raw=true)
+
+Screen 19, policy:
+
+![19 dark](https://github.com/innerwall-dev/innerwall/blob/claude/innerwall-m3-4-console-cd65az/docs/img/console/19-fresh-install-policy-dark.jpg?raw=true)
+![19 light](https://github.com/innerwall-dev/innerwall/blob/claude/innerwall-m3-4-console-cd65az/docs/img/console/19-fresh-install-policy-light.jpg?raw=true)
+
+Screen 20, workloads:
+
+![20 dark](https://github.com/innerwall-dev/innerwall/blob/claude/innerwall-m3-4-console-cd65az/docs/img/console/20-fresh-install-workloads-dark.jpg?raw=true)
+![20 light](https://github.com/innerwall-dev/innerwall/blob/claude/innerwall-m3-4-console-cd65az/docs/img/console/20-fresh-install-workloads-light.jpg?raw=true)
+
+Screen 21, account popover and theme toggle:
+
+![21 dark](``https://github.com/innerwall-dev/innerwall/blob/claude/innerwall-m3-4-console-cd65az/docs/img/console/21-account-popover-theme-toggle-dark.jpg?raw=true``)
+![21 light](``https://github.com/innerwall-dev/innerwall/blob/claude/innerwall-m3-4-console-cd65az/docs/img/console/21-account-popover-theme-toggle-light.jpg?raw=true``)
+
+Login, empty, wrong password, throttled, and fresh install (no password):
+
+![login](https://github.com/innerwall-dev/innerwall/blob/claude/innerwall-m3-4-console-cd65az/docs/img/console/login.jpg?raw=true)
+![login wrong password](https://github.com/innerwall-dev/innerwall/blob/claude/innerwall-m3-4-console-cd65az/docs/img/console/login-wrong-password.jpg?raw=true)
+![login throttled](https://github.com/innerwall-dev/innerwall/blob/claude/innerwall-m3-4-console-cd65az/docs/img/console/login-throttled.jpg?raw=true)
+![login fresh install](https://github.com/innerwall-dev/innerwall/blob/claude/innerwall-m3-4-console-cd65az/docs/img/console/login-fresh-install.jpg?raw=true)
+
+## Reconciliation against main, and the calls made
+
+- **Mount point, endpoints, problem types, CI, `SeedFleet`:** all as described in the session brief. `POST/DELETE /api/v1/session`, `GET /api/v1/me` (`display_name` nullable, `site`), problem types `invalid-credentials` (401), `no-password` (403), `too-many-attempts` (429 + `Retry-After`), `unauthenticated` (401). The console branches on exactly these.
+- **Location: `ui/`, not `web/console/`.** The brief names `web/console/`; the repo already places the SPA at `ui/` and names it there in `CLAUDE.md`'s hard rules, ADR-0007/0008, the Makefile, CI, the Dockerfile, the development docs, and `serve.go`. The scaffold stays in `ui/` so no rule text or ADR has to move for a path. If `web/console/` is wanted, it is a directory move plus those references.
+- **Values come from the prototype source.** The design package's token names and values, and its Tailwind mapping, are exactly what this PR adopts; only the token file's comments were reworded (commit 6). The prototype's dark and light files differ only in colour, and every colour maps to a token. The one mapping worth naming: the first empty-state step and the active fleet tab use `--checkbox-accent`, not `--primary` (they differ in light).
+- **No login screen in the design package.** Neither the shots nor the prototype have one. The login was composed from the tokens and the screens' own vocabulary (card surface, dialog radius and border, gold primary, the lockup, mono for the command). Flagging for a design pass rather than treating it as locked.
+- **Fresh-install data the shots carry is left out.** Screens 17 and 19 show a `checkout-inbound` crumb, and screen 19 shows four rulesets and non-zero definition counts under "No rulesets yet."; the prototype does not gate those on its fresh scenario. A fresh install has no ruleset, so the crumb is the section alone and the rail is empty with counts at 0.
+- **Empty-state actions.** "Open enrollment" goes to the workloads tab and "Mint a provisioning token" to the tokens tab, as in the prototype; the tokens tab shows the design's intro, a "Mint token" action, and "No tokens yet." The terminal actions ("New ruleset", "+ new", "Mint token") are present and inert (`aria-disabled`, with a title saying which session brings them). Search is a disabled placeholder with the ⌘K hint.
+- **Console settings** stays out of the popover by the design ruling; sign out takes its row and its style.
+- **Tailwind landed on v4**, so the config is `@theme inline` in `src/index.css` rather than `tailwind.config.js`; every name and value from the snippet is kept. Two tokens (`--radius`, `--shadow-popover`) share their utility's name, so the theme layer restates each as a self-reference; that restatement is layered and `tokens.css` is not, so the token wins the cascade. `biome.json` excludes `tokens.css` from formatting so its layout stays as delivered.
+- **`components.json`** is present so component tooling can add components; the docs say not to let it regenerate the stylesheet.
+- **Tests run under `happy-dom`**: the popover took 27 s to mount under jsdom 26 (a synchronous stall in layout computation) and 40 ms under happy-dom.
+- **ADR-0017:** the embed story is the one ADR-0008/0017 already describe (one binary, the console as an asset of it); nothing here contradicts it and no new record is proposed.
+
+## Checks run
+
+`go test -race ./...`, `go test -tags noconsole ./ui/`, `go build` with `noconsole`, `dev`, and both; `golangci-lint run ./...` (0 issues); `npm run lint`, `npm run test` (19 tests), `npm run build`; the screenshot harness records zero requests leaving the origin. `buf lint` was not run locally (buf is not installed here); the proto tree is untouched.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)

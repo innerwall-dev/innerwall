@@ -1,0 +1,81 @@
+## Summary
+
+This PR adds the resend-snapshot endpoint that PR #12 deferred, built to the maintainer ruling on that PR. It adds no other endpoint and touches no console code.
+
+1. **ADR-0018, dated amendment** (`ee761a0`). Directed directives ride the existing notification bridge, keyed by workload. The replica holding that workload's stream sends the `Reconnect` directive; every other replica drops it.
+   - The amendment says delivery is best-effort by design. There is still no presence table, so no replica can know for certain that a stream exists. The directive is a request, and the way to see its outcome is the snapshot instant advancing.
+   - The consequence that said "a presence table becomes necessary only for directed operations on a specific stream" is corrected in place, and so is the matching sentence in ARCHITECTURE.md. The reconnect doesn't need to know a stream exists; only an operation that does would still need a presence table.
+   - The core decision and the title are unchanged. The title still states the decision.
+2. **Migration 00006** adds `workloads.last_snapshot_sent_at`. The `workloads` table is where the per-workload sync state lives (`last_seen_at`, `sync_state`, `applied_policy_version`). The column is nullable and not backfilled.
+3. **The sync path stamps the instant.** The gateway's stream writer is the only goroutine that calls `Send`. After it sends any snapshot it records the instant. That covers every cause:
+   - connect;
+   - reconnect;
+   - repair of a workload with no persisted policy;
+   - the recovery snapshot after a FAILED ack.
+
+   Nothing else writes the field. The endpoint doesn't write it either.
+4. **`fleet.RequestReconnect(workload)`**:
+   - It refuses an unknown workload.
+   - It refuses with the agent's last-seen instant when the read model says the agent is offline. The code and the spec both describe that check as an approximation, not a presence check.
+   - Otherwise it publishes `"<workload-id> reconnect"` on the existing `innerwall_policy` channel and returns the instant as it stood. It writes nothing.
+   - The CLI calls it too: `innerwall workload resend-snapshot <id>`, and `workload status` now prints the instant.
+5. **`POST /api/v1/workloads/{id}/resend-snapshot`** is a thin handler over that function:
+   - `200 {"last_snapshot_sent_at": …|null}` on success;
+   - `404 not-found` for an unknown workload;
+   - `409 agent-offline` for an offline agent, with a `last_seen_at` extension that is always present and `null` when the agent was never seen.
+
+   The path, the problem type, and the extension are in `api/openapi.yaml`. The route-checking test and the closed-set test cover them.
+
+## Reconciliation against main
+
+- **PR #12 artifacts.** `internal/fleet`, the integer object versions, `api/openapi.yaml`, and `contract_test.go` are as described in the brief. `resend-snapshot` had been removed from the spec per ruling (1).
+- **Bridge as implemented.** It is one channel, `innerwall_policy`, with payload `"<id> <version>"` and one dedicated listener per replica that reconnects with jittered backoff. A directive uses the same channel and the same listener.
+  - A replica that doesn't know the `reconnect` form fails to parse the version and skips the payload, so a rolling upgrade is safe.
+  - A directive published while a listener is down is lost and never reconciled. That fits "a request, not state".
+- **Paths that send a snapshot.** There are two send sites: the connect path (which includes repair through `currentPolicy`) and `sendRecoverySnapshot`. A directed reconnect ends up on the connect path. Stamping in the writer covers all of them in one place.
+- **Migration numbering.** 00006, as expected.
+- **Staleness judgment: please check this reading.** The read model has **no time-based staleness judgment**; nothing compares `last_seen_at` against a threshold. Its only judgment of "offline" is the persisted `sync_state`:
+  - the gateway writes `OFFLINE` when a stream closes;
+  - it is the default for a workload that never connected;
+  - the fleet screens show it and filter by it.
+
+  `RequestReconnect` uses exactly that and nothing new. I did not invent a threshold, because that would have been a design decision.
+
+  It is an approximation in both directions:
+  - A replica that dies without running its close path leaves the state non-offline. A directive sent then reaches nobody, and the instant simply doesn't advance.
+  - The reverse window, between a stream closing and the agent reconnecting, gets a refusal.
+
+  If "staleness judgment" was meant to be a heartbeat-age rule, that is a separate ruling.
+- **ADR-0018 consequence vs. the design.** The design adds a directed operation, which that consequence says needs a presence table. The ruling explicitly keeps the no-presence-table decision and makes delivery best-effort, so the amendment corrects that clause rather than contradicting the ADR. No superseding ADR is needed.
+
+## One call worth naming
+
+The workload read (`GET /workloads`, `GET /workloads/{id}`) now carries `sync.last_snapshot_sent_at`. The ruling says "the console observes the change on its next read", and without this field no read carries the instant. That makes it a new field on an existing read, not a new endpoint.
+
+## Tests
+
+- **Every snapshot-sending path stamps the instant**, against Postgres and a real TLS listener: connect, recovery after FAILED, reconnect, and repair (`workload_policies` row deleted by a fixture statement). A `Reconnect` directive alone moves nothing. With the stamp disabled, the test fails as it should.
+- **Full loop against a live stream.** The agent side is the real `internal/agent/sync` daemon, not a stub.
+  - `fleet.RequestReconnect` publishes on the bridge. The gateway sends `Reconnect`, the daemon dials again (dial count 1 → 2), the new stream re-sends the snapshot, and the instant advances past the one the request returned. The read model shows it.
+  - After the daemon stops, the same request is refused with the recorded last-seen instant.
+  - Ran 10× under `-race` with no flake.
+- **Store:** the instant round-trips through the registry, the detail read, and the fleet page. The directive reaches the directive handler and never the announcement handler. A listener without a directive handler skips it and still hears later announcements.
+- **Domain:** unknown, offline, and never-seen refusals fire nothing. Pending and degraded agents are not refused. A bridge failure surfaces as an error. The domain never writes to the store.
+- **Handler:** 200 with an instant and 200 with `null`, the instant on the workload read, 404 for unknown and malformed ids, 409 `agent-offline` with `last_seen_at` set and with `null`, 405 on GET. The route is in the credential matrix, so a request without credentials gets 401.
+- **Spec:** `contract_test.go` includes the new problem type, and the route test covers the path.
+
+## Verification (local)
+
+- `go build` with the default, `noconsole`, and `dev` tags.
+- `go vet ./...`; `golangci-lint run ./...` reports 0 issues.
+- `sqlc generate` produces no drift after commit.
+- `scripts/check-openapi.sh` passes with the same 11 informs as `main`.
+- Goose applies migration 00006 down, then up again, cleanly.
+- `go test -race -tags noconsole ./...` passes with `INNERWALL_TEST_DATABASE_URL` pointing at Postgres 16.
+- `scripts/check-dco.sh origin/main..HEAD` passes.
+- Not run: `buf lint`, since `proto/` is untouched, and the console's Node checks, since `ui/` is untouched.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+---
+_Generated by [Claude Code](https://claude.ai/code)_

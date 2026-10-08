@@ -1,0 +1,73 @@
+## What this is
+
+PR A of the flow-collection gaps work: Gap 1 (no table dump at subscribe) and Gap 2 (kernel-side loss uncounted, recovery waiting on backoff). It's agent only: no proto, schema, endpoint, console, or ADR changes. Evidence gaps are recorded and logged on the agent; PR B ships them (contract, storage, read, verdict) and stacks on this branch.
+
+Commits, each building on its own:
+1. `feat(agent)`: the evidence-gap recorder, and restart backoff that starts over after a healthy run.
+2. `feat(agent)`: listen-then-dump at every conntrack subscribe; ENOBUFS recovery for both sources; socket sizing.
+3. `test(agent)`: the conntrack source against a real kernel, in the namespace suite.
+4. `docs`: the architecture overview and the deploy guide.
+
+## Gap 1: dump at every subscribe
+
+- **Order.** Every subscribe runs `Listen` first, then `Dump` on a second `ct.Conn`, because the listening socket is in multicast mode. Nothing can open between the two unseen.
+- **Classification.** Dumped flows take the NEW path: the inbound filter, the protocol mapping, then `Classify(mark)`. Each counts `Connections = 1` with no bytes, first seen at the subscribe instant; the eventual DESTROY carries the whole byte total.
+- **Dedupe.** Keyed by `Flow.ID`, in both orders:
+  - a dumped flow already sighted by a NEW is skipped;
+  - a NEW for a flow the dump already counted is skipped;
+  - a flow that closes while the dump is in flight is never counted by the dump, whether it was sighted or not.
+- **DESTROY (ruling 4).**
+  - A connection already sighted (by a NEW or the dump): bytes only.
+  - A connection never sighted: `Connections = 1`, "found at close".
+  - After a truncated dump, an unsighted DESTROY also widens the open `dump_truncated` gap to that instant.
+- **Counting semantics.** `connection_count` is "connections opened, or found live at subscription, in the window". This is stated in the conntrack package doc and the architecture overview. The `FlowRecord.connection_count` field comment goes in PR B, which already changes `proto/`. PR A leaves the contract untouched.
+- **Bound (rulings 1 and 2).**
+  - `--flow-dump-max`, default `DefaultBufferRecords` (50,000), caps the dump entries processed. Entries past it are skipped and recorded as a `dump_truncated` gap with the count skipped.
+  - The flag's help text and a code comment say the cap bounds processing, not the dump's peak memory. A dump loop of the source's own is recorded as the backlog path. The library and its pinned version are unchanged.
+  - The same figure bounds the set of flow ids a subscription tracks. If a host exceeds it (logged once), a connection the set couldn't hold may be counted again at its close.
+
+### Edge case settled: live flows marked WOULD_BLOCK
+
+The rule holds. The would-block mark is written only by the terminal simulation rule, and that same rule logs the packet to nflog (`render.go`: `log … ct mark set … WouldBlockMark`). A connection older than the ruleset carries no mark in the agent's region, so `Classify` reads it as OBSERVED (`store.go`). A dumped flow marked WOULD_BLOCK was therefore logged when it was marked. The dump skips it, exactly as a NEW is skipped, and its DESTROY stays bytes-only. If nflog was down at the moment it was marked, that loss is nflog's own recorded gap.
+
+## Gap 2: overruns, restarts, backoff
+
+- **conntrack.** `ENOBUFS` (`errors.Is(err, unix.ENOBUFS)`, through the library's wrapping) ends the subscription, not `Run`. The source:
+  - counts the overrun;
+  - opens a `source_overrun` gap from the last event read;
+  - resubscribes and re-dumps at once, with no backoff;
+  - closes the gap at the new listen.
+- **nflog parity.**
+  - The library's receive loop keeps the socket bound after an error when the error func returns 0. So the log source counts the overrun, records the gap from the last event to the report, and reads on in place. Closing and reopening the socket would only widen the hole.
+  - Sizing, never setting `NETLINK_NO_ENOBUFS`, restart gaps, and the backoff reset are the same as conntrack's.
+- **Fatal errors.** These keep the backoff. A source that records gaps gets a `source_restart` gap opened at the failure and closed at its next successful subscribe, so a run of failed restarts is one interval.
+- **Backoff reset.** `attempt` starts over after a run that stayed up longer than the backoff cap.
+- **Socket sizing.** `--flow-netlink-buffer`, default 4 MiB, applied at every subscribe. In-session check of the FORCE variant: in the pinned `mdlayher/socket` v0.5.1, `SetReadBuffer` tries `SO_RCVBUFFORCE` and falls back to `SO_RCVBUF`. It is reached through `ct.Conn.SetReadBuffer` and `nflog.Con.SetReadBuffer`.
+- **`NETLINK_NO_ENOBUFS`** is never set. A comment at each socket says why: it would hide the loss, not prevent it.
+- **Bounds.** The gap recorder holds at most 1,024 gaps. Past that it merges gaps instead of dropping them, so the bound costs precision and never the fact that a loss happened (ADR-0011).
+
+## Tests
+
+**Unit**
+- `TestEachConnectionCountedOnce` covers every dedupe order, would-block, loopback, outbound, and found-at-close. Its close-during-dump case was checked by mutation: moving the closed-set insert back behind the sighting check makes it fail.
+- `TestDumpPastTheCapIsAGap` covers truncation, the gap widening, and a full sighting set.
+- `TestOverrunResubscribesAtOnce` uses a fake netlink connection. It checks an injected ENOBUFS is counted, the source resubscribes, sizes the new socket and re-dumps without returning, and the overrun gap is recorded. It also checks that any other error returns.
+- `TestOverrunIsRecoveredAndRecorded` covers nflog.
+- `TestNextAttemptResetsAfterHealthyRun` and `TestRestarterBacksOffResetsAndOpensGaps` run on a fake clock: backoff ceilings 2s, 4s, 8s, then 2s after a healthy run; one restart gap open from the first failure.
+- `TestGapsOpenCloseAndMerge` and `TestGapsStayBoundedByMerging` cover the recorder.
+
+**Namespace suite.** `scripts/test-netns.sh` now also runs `./internal/agent/collect/conntrack/ -run 'InNamespace$'`; the enforcement test is unchanged. Each test re-runs itself under `unshare --net`, with a veth pair carrying two local addresses and a throwaway ct rule to switch tracking on.
+- `TestDumpAtStartInNamespace`: a connection held open from before the source starts appears, counted once, in the first closed window.
+- `TestListenDumpRaceInNamespace`: a connection opened by a hook between `Listen` and `Dump` is counted once, and its close (entry deleted, so the DESTROY arrives now) adds bytes only.
+- `TestOverrunRecoveredInNamespace` is the rcvbuf overrun the doc asked for if practical, and it was. The socket is shrunk to the kernel minimum, the source is stalled under 500 connections of churn, and the kernel really overruns. The test checks the overrun is counted, an overrun gap is recorded, and the source keeps observing without `Run` returning. Eight consecutive clean runs here.
+
+## Checks run on this head
+
+- `go test -race -count=1 ./...`. The database tests skipped (no Postgres in this container), and none of them is touched.
+- `scripts/test-netns.sh`: the enforcement test and the three collection tests pass as root in this container.
+- `golangci-lint run ./...`, with and without `--build-tags netns`: 0 issues.
+- `GOOS=darwin go vet` over the agent's collect packages and command, for the non-Linux stubs.
+- `scripts/check-dco.sh origin/main..HEAD`; each commit builds on its own.
+- `buf` isn't installed here. Nothing under `proto/` changes.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)

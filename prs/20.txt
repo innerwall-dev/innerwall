@@ -1,0 +1,223 @@
+## What this is
+
+This is M3.8's console: the policy editor (design 12), its fresh state (19), and the carried items.
+
+**Base.** It is stacked on #19 (the Task 0 backend items) and targets #19's branch, so the diff shown is the editor alone. Once #19 merges I'll retarget it to `main`.
+
+**Scope.**
+- No endpoint, schema, migration, or ADR changes.
+- The only Go is the estate seed's designed state (see "Seed") and its test.
+- There is no draft and nothing staged. Every save is a conditioned write the control plane admits or refuses at once.
+
+One PR; each commit builds and type-checks on its own:
+1. `refactor(console)`: the shell's ruleset count goes through `listRulesets` (carried: the M3.7 adr-review side note).
+2. `feat(console)`: the inert editor actions become deep links (carried; see "Deep links").
+3. `feat(console)`: the editor's model and write wrappers, with their unit tests.
+4. `feat(dev)`: an `ssh` service definition the estate's bastion rules reference (see "Seed").
+5. `feat(console)`: the editor screens, with their tests.
+6. `docs(console)`: composites, capture scenes, and development notes.
+
+## Rulings applied
+
+- **C1.** Findings are errors only. The server decides; there is no warning class and no severity field. The footer counts errors. Shot 12's ▲ warning is a design erratum.
+- **C2(a).** The simulation column is the allowed traffic of the last 24h, named in the header: "Simulation · last 24h".
+- **C2(b).** "matched on N workloads" comes from `workload_count` on the `rule` grouping (#19, item 3).
+- **C2(c).** A disabled rule reads "disabled — admits nothing while off", with no number. Shot 12's "◆ 18,204 would block · enabling clears this" is a design erratum, governed by E6.
+- **C3.** The dry run is a third card, with "Dry run" beside Discard and Save. This is a design extension.
+- **"Edit ruleset"** in the review header is wired as well.
+- **Erratum: peer chips.** Shot 12 draws rule 1's peer as two LABELS chips, `app=storefront-api` and `env=prod`. In the contract, separate peers are ORed and keys inside one selector are ANDed, so two chips read as "either", which inverts the meaning in a policy editor. The console draws **one chip per peer selector**, with all of its requirements inside (`LABELS app=storefront-api env=prod`).
+- **The five smaller decisions:**
+  - one chip per peer;
+  - the banner names enforced workloads only when the scope holds some;
+  - the short id under the description;
+  - the struck REF chip comes from the server's `service-unknown` finding;
+  - definitions rows show counts only.
+
+## Screen-to-endpoint mapping (design 12)
+
+### Rail
+
+| Element | Supplied by |
+|---|---|
+| Ruleset rows: dot, name, count | `GET /rulesets`: `enabled` (green dot when on, separator-gray when off), `name`, `rules.length` |
+| Selected row; the crumb "Policy / ‹name›" | `?ruleset=<name>` in the address. With none, or with a name no ruleset has, the editor opens on the first ruleset and names it in the address. |
+| `+ new` | `?new=1`, which opens the new-ruleset form (no shot; see Extensions) |
+| Service definitions N / Address groups N | `GET /services` and `GET /address-groups`, counted. **These rows lead nowhere** (see Backlog). |
+
+### Header and banner
+
+| Element | Supplied by |
+|---|---|
+| Name, description | The ruleset as listed |
+| Enabled switch | `PUT /rulesets/{id}` with `If-Match: "<ruleset.version>"`. The body is the ruleset as read with `enabled` flipped. A 412 renders as a conflict with Reload. |
+| Review simulation | A link to `/simulation?ruleset=<name>` |
+| "There is no draft. Saving an enabled rule re-renders the 42 workloads in scope…" | The 42 is `POST /selectors/preview {selector: scope}` → `count`. Adds "N enforced workloads drop what no enabled rule admits" only when the scope holds enforced workloads (from the scoped walk), and says the ruleset is disabled when it is. |
+
+### Scope card
+
+| Element | Supplied by |
+|---|---|
+| `app = checkout ×` AND … `key = value \| value` | `ruleset.scope`, edited in place. Typed text becomes a key and values; what can't be read is kept as typed, so admission names the fault. |
+| "42 workloads match right now" | The preview's `count`. A scope edit re-previews after a 300 ms pause ("… match this scope"), never once per keystroke. |
+| ◐ 40 simulation · ◌ 2 visibility · ▲ 1 degraded | The preview's `matched` ids **joined** with the scoped walk `GET /workloads?label=…` (mode, sync), as ruled. Two reads joined; the console counts nothing the preview didn't resolve. |
+| Hostnames, attention first, "+37 more" | The preview's `matched`, ordered degraded/offline/pending first. Those link to workload detail. "+N more" expands in place (the fleet has no label filter in its address to link to). |
+| A refused scope | The preview's or `PUT`'s 400: `selector[k]` / `scope[k]` on the requirement, and the bare path on the scope |
+| Save scope — applies to N workloads now | `PUT /rulesets/{id}` with `If-Match`, the scope replaced. A 412 shows "Reload and reapply", which keeps the scope edit. |
+
+### Rules table
+
+| Element | Supplied by |
+|---|---|
+| ON switch | `PUT /rulesets/{id}/rules/{rule_id}` with `If-Match: "<rule.version>"`, the rule as read with `enabled` flipped. This is M3.7's drawer action; a 412 renders "‹rule› changed since this editor read it · it is now at version X; nothing was changed" with Reload. |
+| PEERS: `LABELS` / `GROUP` / `CIDR` chips | `rule.peers`: one chip per peer. A selector's requirements go in one chip. Address groups are named via `GET /address-groups` and drawn dashed (a reference); CIDRs are solid. |
+| SERVICES: `REF ssh` beside `TCP 8443` | The **union**: `rule.services` (ids, named via `GET /services`) as dashed REF chips, then `rule.entries` as solid inline chips, both in one cell |
+| DESCRIPTION + short id | `rule.description`, then the first group of `rule.id` (M3.5 ruling) |
+| Recently-changed cue | `created_at` / `updated_at` within the last day: "added 3h ago" or "changed 30m ago" |
+| SIMULATION · last 24h | `GET /flows/rollup?group_by=rule&verdict=allowed&label=<scope>&from=now-24h&to=now`, folded by `authored_rule_id`: summed `connection_count`, with `workload_count` as "matched on N workloads". A rule spanning protocols has one group per protocol, so it shows the largest count as "N+". A truncated rollup says so under the table. |
+
+### Edited row and footer
+
+| Element | Supplied by |
+|---|---|
+| Edit / + Add rule | One row at a time. A row's chips are removed and typed in: `app=x env=y` becomes a selector; an address or prefix becomes a CIDR; anything else names an address group. For services, `tcp/389` and the like become entries; anything else names a definition. |
+| Save — applies to 42 workloads now | Existing rule: `PUT …/rules/{id}` with `If-Match`. New rule: `POST /rulesets/{id}/rules`, with no id (the control plane assigns one). |
+| 400 at the field the path names | `errors[{path,rule,message}]`: `peers[i]…`, `services[i]`, `entries[i]…` on that chip (drawn refused, struck for an unknown definition); bare `peers` / `services` on the column; anything else on the row. Each element carries a key, so a finding stays on what it named while the operator edits. |
+| ✕ N errors block saving | Outstanding findings, errors only. Save is withheld only while the row is byte-identical to the refused one; the server stays the gate. |
+| 412 → Reload and reapply | Reloads the listing, keeps the row's edits on top of the rule as stored now, and **first shows what is stored now** ("As stored now, the rule admits … Save to replace it with your row, or discard the row to keep it"). The next save names the new version. |
+| Discard row | Drops the row; nothing is written |
+
+### Dry run (third card)
+
+| Element | Supplied by |
+|---|---|
+| Request | `POST /policies/render-dryrun {state_version, rulesets}`. `rulesets` is every ruleset as read (`GET /rulesets`, one snapshot per #19) converted to the authored form, with the unsaved edits in place: the scope edit, and the row replaced by id or appended under a **temporary id** (C3; the contract allows it) so its deltas name "this rule". `state_version` is the listing's. |
+| Per workload: hostname, "against vN", mode change, + / − / ~ lines | `workloads[]`: `workload`, `version`, `mode`, `added`, `removed`, `changed` (ports and peers gained or lost), each named by the authored rule its `<authored>/<proto>` id came from |
+| "The state moved before this ran" + Reload and re-run | `stale: true`. The re-run waits for the reload to land, then runs against the new state version. |
+| "The state has moved since this ran" + Re-run | The listing's `state_version` has since moved past the result's (for example, a save landed) |
+| A refused dry run | The 400's `rulesets[i].rules[j]…` findings are routed to the row's chips, and `rulesets[i].scope…` to the scope |
+| Pure read | It writes nothing. Saving never requires it: the save button doesn't look at it. |
+
+### Deep links (carried item 2)
+
+| Action | Target |
+|---|---|
+| Review header "Edit ruleset" | `/policy?ruleset=<ruleset under review>` |
+| Review drawer "Open in policy editor" | The same |
+| Map drawer "Open in policy editor" | The ruleset whose scope selects the edge's destination workloads, resolved per ruleset with `POST /selectors/preview` and joined by id (enabled rulesets first). This fills the drawer's **ruleset** row, which design 07 shows and M3.6 left waiting for the editor. Beside it: "Saving takes effect immediately for N workloads", from the same preview. With none selecting them, the link opens the editor. |
+
+"Add to an address group" stays inert, because address groups have no screen. Its stated reason now says that, instead of saying it waits for the editor.
+
+### Fresh install (19) and other states
+
+- **19:** no rulesets. "Create your first ruleset", whose New ruleset now opens the form. The crumb is the section alone, as ruled in #11. Shot 19's crumb and its rail list contradict its own "No rulesets yet."
+- **Loading:** "Loading the policy…".
+- **Error:** the surface's words, with Retry.
+- **A ruleset with no rules:** "nothing in this ruleset admits traffic to its workloads".
+
+## Design extensions (no shot)
+
+- **The dry-run card (C3).**
+- **New ruleset:** the editor's own header (name and description inputs, enabled switch) and scope card, empty. It writes `POST /rulesets` with `rules: []`. Findings go on name, scope, and the rest.
+- **Notices for each write:** success, conflict with its way back, failure.
+- **Edit affordance.** Shot 12 has none for existing rows, so each row gets an "Edit" link beside its short id.
+
+## Backlog (recorded, not built)
+
+**Definitions management.** Service definitions and address groups have no screens: the API exists, they were logged as a known non-hero gap at design lock, and no shot governs them. The rail counts them and leads nowhere. This is the standing backlog item.
+
+**Also not designed, not built:**
+- deleting a rule or a ruleset;
+- renaming a ruleset;
+- editing a ruleset's description.
+
+## Observed during review (backend, out of scope here)
+
+With shot 12's exact inputs (`10.40.0.0/33`, `tier=`, `svc_legacy_ldap`, `tcp/389`), the control plane returns **only** the `service-unknown` finding. Name resolution runs in document conversion (`policy.RuleFromDoc`), and that returns before admission (`ValidateRuleset`), so the CIDR and empty-values faults only appear once the unknown name is fixed.
+
+The console renders whatever it is given. The composite therefore uses an existing definition (`ssh`) and shows the two admission findings in the server's own words. The architecture says admission "collects every finding". Whether conversion faults and admission faults should be collected together is a maintainer call. If so, it is a backend PR of its own.
+
+## Seed
+
+The designed REF chip needs a service definition, which the estate lacked and the console can't create (no definitions screen). `dev seed --estate` now defines `ssh` (tcp/22), and the estate's bastion rules reference it instead of stating tcp/22 inline.
+
+The rendered rules, and so the recorded flows' rule ids, are unchanged. `TestSeedEstate` asserts the reference.
+
+## Tests
+
+Vitest: **158** in total, all against the harness with no live backend. 35 are new.
+
+**`policy/model.test.ts`:**
+- one chip per selector;
+- the services union;
+- the recency cue;
+- the rule fold with the "N+" lower bound;
+- requirement parsing;
+- the preview × walk join;
+- the banner variants;
+- scope findings;
+- peer and service parsing;
+- new rules without an id;
+- findings attached at named paths, and dropped with their element;
+- the dry-run plan (current set plus the row in place, a new rule appended under a temporary id, a scope edit, a new ruleset, the state version);
+- current / stale / overtaken;
+- delta lines named by rule.
+
+**`policy/policy.test.tsx`:**
+- deep links landing at the named ruleset;
+- the rail;
+- the union services cell, with dashed vs solid;
+- the recency cue;
+- the simulation column (including disabled, and the 24h query);
+- the live match count with its debounced preview, and the refusal at the requirement;
+- enable/disable a rule with `If-Match: "3"` and the body;
+- the toggle's 412;
+- the ruleset switch with `If-Match: "7"`;
+- **400 findings at `peers[0].cidr`, `peers[1].workloads[tier]`, `services[0]`**, the struck REF, the error count, the identical row withheld, and removal clearing a finding;
+- **412 → Reload and reapply** (`If-Match` `"4"` then `"5"`, the edits kept, the stored rule shown);
+- **dry-run assembly** (the request body);
+- **stale → Reload and re-run** (`sv-1` then `sv-2`, one fresh listing);
+- overtaken after a save;
+- a refused dry run routed to the row;
+- creating a ruleset from the fresh state;
+- fresh state;
+- error with retry.
+
+**Updated:**
+- the review and map tests assert the deep links (`href`), the map's ruleset row, and its previews;
+- the fresh-install harness serves `/services`;
+- the login test mounts the fresh-install surface, because `/policy` now reads.
+
+## Composites
+
+Captured by `ui/scripts/capture-composites.mjs` (scenes added, and a per-scene viewport height, because shot 12 is 1440×1060) from a fresh `dev seed --estate` built from this head, and from an empty database for 19.
+
+Every seeded composite is recaptured, because the map drawer (07, 08, pair flows), the review's links, and the estate all changed.
+
+**12** — the designed refusal, reproduced: a new row with `10.40.0.0/33` and `tier=`, saved:
+![12 dark](https://github.com/innerwall-dev/innerwall/blob/claude/m3-8-policy-editor/docs/img/console/12-policy-editor-validation-dark.jpg?raw=true)
+![12 light](https://github.com/innerwall-dev/innerwall/blob/claude/m3-8-policy-editor/docs/img/console/12-policy-editor-validation-light.jpg?raw=true)
+
+**19** — fresh install:
+![19 dark](https://github.com/innerwall-dev/innerwall/blob/claude/m3-8-policy-editor/docs/img/console/19-fresh-install-policy-dark.jpg?raw=true)
+![19 light](https://github.com/innerwall-dev/innerwall/blob/claude/m3-8-policy-editor/docs/img/console/19-fresh-install-policy-light.jpg?raw=true)
+
+**Undesigned states (dark beside light)** — the dry run (enabling metrics-scrape adds tcp/9100 on all 42), and the new-ruleset form:
+![dry run](https://github.com/innerwall-dev/innerwall/blob/claude/m3-8-policy-editor/docs/img/console/policy-editor-dry-run.jpg?raw=true)
+![new ruleset](https://github.com/innerwall-dev/innerwall/blob/claude/m3-8-policy-editor/docs/img/console/fresh-install-policy-new-ruleset.jpg?raw=true)
+
+**07** — the map drawer with its ruleset row and live link:
+![07 light](https://github.com/innerwall-dev/innerwall/blob/claude/m3-8-policy-editor/docs/img/console/07-flow-map-graph-light.jpg?raw=true)
+
+## Checks run on this head
+
+- `npm run lint` (Biome over `src` and `scripts`), `tsc --noEmit`, and `npm run test`: 158 passing, three consecutive clean runs.
+- `npm run build`.
+- `go test -race -count=1 ./...` against Postgres 16, including `TestSeedEstate`.
+- `golangci-lint run ./...`, with and without `--build-tags dev`: 0 issues.
+- `scripts/check-dco.sh`.
+- Each console commit type-checks on its own (checked in a worktree).
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+---
+_Generated by [Claude Code](https://claude.ai/code)_

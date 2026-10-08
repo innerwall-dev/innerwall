@@ -1,0 +1,62 @@
+PR 3 of 4 in the v0.1.0 release train: record conformance.
+- Every change is a dated in-place amendment citing this PR, under the maintainer's rulings.
+- **No core decision is superseded.** ADR-0001's change is ruled an amendment: "the platform-enforced-sequence wording overstated mechanism while the core discipline stands."
+- No ADR is added. Code changes are comments only, plus the removal of the installer stub.
+
+## Amendments
+| ADR | What it now says |
+|---|---|
+| **0001** | The shipped guarantee is visibility by default, evidence surfaced at every step, and promotion gated in the console behind explicit acknowledgment when the verdict is unsafe or evidence has gaps. The surface and CLI accept a mode change directly; a **server-side evidence guard** is backlog. Visibility installs the owned table empty (not "touches nothing"). Policy is edited live with no draft. |
+| **0002** | A reconnect receives a **snapshot** (ADR-0015), not "one delta". The no-polling rule is scoped to interaction with the control plane. The conntrack source's 30 s re-read of host addresses is the one recorded host-local exception, with a **netlink address watch** as backlog. The keepalive consequence now points at the deploy guide, which has the guidance. |
+| **0004 / 0016** | The v1 revocation story is short-lived credentials plus token revocation. The **deny-list** and **duplicate-identity detection** are named v2 controls, never built. The provisioning-token API shipped, so plaintext also appears once in the surface mint response. |
+| **0007** | Recorded exception: the configuration collections (rulesets, services, address groups, provisioning/operator tokens) return whole. **Pagination** for them is backlog. |
+| **0009** | The 1–10 min range is guidance around the 60 s default the control plane hands agents in `SyncConfig`. |
+| **0010** | v1 observes inbound only. Outbound observation arrives with outbound enforcement. |
+| **0011** | Bounded in-memory buffering (open window in keys, buffer in records), with drops recorded as evidence gaps. **Sampling, disk buffering and a whole-process budget** are deferred. The four-loop structure is corrected to the pieces the agent actually is. |
+| **0013** | The merge-commit DCO exemption is documented. The bundled third-party licenses (fonts under OFL-1.1) are distinguished from the repo's Apache-2.0. |
+| **0021** | The operator-token API shipped. The cookie wording is corrected to what `SameSite=Lax` actually provides, and the **origin guard** is named as the cross-site write defense. |
+
+## Rule text and docs
+- **CLAUDE.md:**
+  - **Vocabulary rule** rewritten: no comparisons to competing products and no origin-story references; the implementation stack may be named; required attribution is never removed to satisfy the rule. CONTRIBUTING follows. The review prompt took this wording in innerwall-dev/innerwall#24, so this PR leaves `claude.yml` alone and gets its own full-corpus review.
+  - **Polling hard rule** aligned with ADR-0002 as amended.
+- **SECURITY.md** states only implemented controls:
+  - no deny-list, no "audited" changes, no "reproducible" builds;
+  - adds the operator-surface controls;
+  - describes signing as the release config does it (cosign over the checksum file).
+- **ARCHITECTURE.md**, the stale-prose sweep:
+  - relays/federation are seams, not interfaces with implementations;
+  - agent structure and diagram corrected;
+  - §7 authoring model rewritten (live edits, dry run, simulation, promotion, per-workload versions by diff; no drafts, no estate-wide numbered versions);
+  - deny-list and clone detection moved to v2;
+  - bounded telemetry, the window default, the pagination exception, and the security posture as implemented.
+- **Deploy guide:** keepalive and middlebox guidance, deferred since the scaffold, is now written: layer-4 passthrough, idle timeouts above the 30 s heartbeat, what a cut stream costs.
+- **Development guide** tree map: ingest (no dedupe), agent packages, no installer.
+- **Code comments only:**
+  - `internal/api/auth.go`: the cookie comment.
+  - `internal/agent/doc.go`.
+  - `internal/agent/health/doc.go`: reserved, holds no code.
+  - `conntrack` `localRefresh`: cites the ADR-0002 exception.
+
+## `install.sh` resolution (factual-conflict check)
+- The first audit was correct: `deploy/install.sh` is tracked, validates `--token`, and **exits 1**.
+- Nothing serves it, and it has no binary to place before a release exists, so the README's `curl … | sh` quickstart could not succeed.
+- It is **removed**. The README quickstart now gives `innerwall-agent enroll` / `daemon`, the exchange the console's shown-once token dialog already prints.
+- An installer that wraps them goes on the roadmap in PR 4, which also rebuilds the README and verifies the quickstart end to end.
+
+## Sequenced to PR 4, as ruled
+- **ROADMAP.md still lists the installer under M2 and drafts under M4.** PR 4 refreshes it to the recorded ledger plus the audits' additions: deny-list and clone detection, server-side evidence guard, netlink address watch, sampling and disk buffering, metadata pagination, and the rest. No amendment here claims an item "is on the roadmap" before then; each says "recorded backlog" or "named v2 control".
+- **README:** only the lines that contradicted the amended record changed here (status, the ADR-0001 and polling lines, the quickstart). PR 4 rebuilds it.
+
+## For the maintainer
+- **ADR-0009 "configurable":** the window is configurable at the protocol level (`SyncConfig`; agents adopt any value), but `innerwall serve` exposes no flag for it in v0.1.0. The amendment says exactly that rather than claiming an operator knob. If you want a `--flow-window` flag, it's a small code change for PR 4 or later.
+
+## Verified locally
+- `go build ./...`, golangci-lint (0 issues), and `go test` for the packages whose comments changed (`internal/api`, `internal/agent/...`).
+- Migration guard and DCO.
+- No generated code changed.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+---
+_Generated by [Claude Code](https://claude.ai/code)_

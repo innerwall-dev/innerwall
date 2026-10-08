@@ -1,0 +1,83 @@
+## Summary
+
+The operator write paths and the API contract (ADR-0021 decision 5, ADR-0007 as amended). The first two commits would have been separate PRs: migration and domain, then handlers and spec. After them come a merge of `main` and one commit applying the maintainer rulings.
+
+**Migration and domain** (`8585d38`)
+- Migration 00005 adds `rules.created_at`/`updated_at`, backfilled from the owning ruleset per the M3.2 maintainer ruling. It also adds `mode_changes` and `mode_change_workloads`, which record each bulk mode change as the intent submitted and the set it resolved to (the recorded-intent rule).
+- `internal/policy`: every update and delete is conditioned on the version the caller last read. The check happens inside the write, and a moved object is refused with its current version. Rule-level create, update, and delete go through the ruleset write. A rule keeps its `created_at` across an edit of its ruleset, and its `updated_at` and version move only when the rule itself changed. Admission now collects **every** finding with a stable rule name and a path, which also improves the CLI's output. `MatchWorkloads` is the one scope resolution that the read model, the preview, and the mode change all call.
+- `internal/fleet`:
+  - Label edits are versioned by content.
+  - A bulk mode change resolves, records, flips by id, and renders in one transaction under the render lock. It refuses when the expected count does not match.
+  - Selector preview.
+  - A dry-run render over a read-only snapshot, diffed through the shared `internal/rendered` implementation, persisting nothing.
+  - A derived state version, so a stale author is detectable.
+- The CLI's `set-labels`, `set-mode`, `token list`, and `token revoke` now call these domain functions. Its authored writes pass the version they read.
+
+**Handlers and contract** (`a29307f`)
+- Authoring CRUD (rulesets, rules, services, address groups) in the CLI's document form, plus `GET/PUT /workloads/{id}/labels`.
+- Error handling on writes:
+  - If-Match is required on every update and delete: absent → 428, stale → 412 with `current_version`.
+  - Validation → 400 with `errors: [{path, rule, message}]`.
+  - Duplicate or in-use → 409.
+- `POST /mode-changes` → `{mode_change_id, matched, desired_updated}`, an acknowledgment only. A count mismatch → 409 with `expected` and `matched`. Also `POST /selectors/preview` and `POST /policies/render-dryrun`.
+- Token management for provisioning and operator tokens: mint (secret shown once), list, revoke.
+- The rendered-policy read gains per-rule `created_at`/`updated_at`.
+- `api/openapi.yaml` (OpenAPI 3.1) covers the entire surface. `make openapi` and `scripts/check-openapi.sh` lint it in a new CI job (`openapi`, Go-based, no Node step). `internal/api/contract_test.go` checks the document against the mounted routes and the closed sets (group_by, problem types).
+
+**Merge of `main`** (`fd968a9`) brings in the console scaffold. Every conflict was resolved by keeping both sides:
+- The console mount and the write domains are both wired into serve.
+- The router keeps its mount/`Routes` split and serves the console at every other path.
+- The test reset truncates the mode-change tables.
+- The CI header, Makefile, and development notes list both the console job and the contract job.
+- My entity-tag helper is renamed `versionTag` so it no longer collides with the console's content-hash `etag`.
+
+**Maintainer rulings** (`bc1200c`)
+1. Resend-snapshot is removed from `api/openapi.yaml`. The spec had no path for it, only a mention in "Deliberately absent", and that mention is gone. The endpoint follows in M3.3b.
+2. **Provisioning-token listing hint.**
+   - Migration 00005 adds a nullable `provisioning_tokens.token_prefix`, written at mint as `iw_` plus eight leading characters, the operator token's shape.
+   - Tokens minted before it list `prefix: null` (a `-` in the CLI), and nothing is made up for them.
+   - A dated ADR-0016 amendment records the additive hint and corrects decision 3 in place. This makes ADR-0021's mirroring claim true.
+3. **Versions: this PR implements the monotonic integer column.** The earlier scheme failed the ruling's test: the store parsed the client's token back into an instant before comparing. Now:
+   - `rulesets`, `rules`, `services`, and `address_groups` carry `version bigint`, starting at 1.
+   - Every write advances the version by one inside its own statement and returns the new value.
+   - The token is the integer's decimal form. It is compared byte-exact against `version::text` inside the conditional statement and never parsed, so `"01"`, `"+1"`, and `" 1"` do not match `"1"`. Tests cover this at the store, domain, and handler layers.
+   - A rule's version is carried across a ruleset edit and advances only when the rule changed.
+   - Label versions remain content digests compared as strings.
+4. The spec-vs-routes test is unchanged.
+
+## Assumptions (accepted by the maintainer)
+
+- The mode-change tables ride migration 00005.
+- Services and address groups get CRUD.
+- `POST /mode-changes` answers 200.
+
+## Known boundaries
+
+- The spec is linted only. Nothing checks responses against `api/openapi.yaml` at runtime. The route-coverage and closed-set test is the one point where document and implementation meet.
+- `scripts/check-openapi.sh` runs the linter through `go run pkg@version`. The pinned version needs a newer Go toolchain than `go.mod`'s, which `GOTOOLCHAIN=auto` fetches in CI.
+- Rule-level writes are conditioned on the rule's own version. Inside the control plane they are also conditioned on the ruleset version that was read, so a concurrent ruleset edit is refused rather than overwritten.
+- With `api/openapi.yaml` now on the branch, the console build's `scripts/generate-api.mjs` writes `ui/src/api/generated.ts`. The console job builds with it; I ran lint, test, and build locally, all passing. The file is not gitignored or committed. Adopting it belongs to the console work under `ui/`, which this PR does not touch.
+
+## Tests
+
+All of these pass locally on the merged branch:
+- `make build`, plus the `noconsole` and `dev` builds.
+- `go vet` and `golangci-lint` (0 issues).
+- `make openapi`.
+- `sqlc generate` (no drift).
+- The migration's down-then-up.
+- `go test -race ./...` with `INNERWALL_TEST_DATABASE_URL` set.
+- The console's lint, test, and build.
+
+Test coverage:
+- **Domain:** mode-change resolution recorded, count guard, atomicity under a concurrent label change, dry-run purity and stability, If-Match semantics, byte-exact version tokens, rule versions and timestamps, listing hint at mint.
+- **Store:** mode-change transaction, conditional writes, version increments including unconditional writes, label versions, tokens with and without a hint.
+- **Handler:** credential matrix on every write path, the 428/412/409/400 shapes, secret shown once, listed prefix, null prefix for a pre-hint token.
+- **End to end:** author → preview → dry run → mode change → convergence on the reads, against seeded storage.
+
+This PR touches nothing under `web/`, the SPA mount point, or CI's Node step.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+---
+_Generated by [Claude Code](https://claude.ai/code)_

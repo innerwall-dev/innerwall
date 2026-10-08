@@ -1,0 +1,159 @@
+## What this is
+
+M3.5: the console's fleet screens and workload detail, over the merged public surface only. No endpoint, schema, or ADR change; the only Go is the seed (two tokens) and a store test pinning it.
+
+One PR rather than two: this session may push to one branch only. The commits are in the order two PRs would have taken, and each stands on its own:
+
+1. **Generated types swap** (carried): `ui/src/api/generated.ts` is generated from `api/openapi.yaml` and committed; the hand-written `types.ts` is gone; `ui/src/api/schema.ts` is aliases into the generated file and restates no field. `make console-api` regenerates; `scripts/check-drift.sh` runs it beside `proto sqlc` and fails on a diff, and the CI drift job installs the console's pinned dependencies to do so. Verified: a spec edit without regeneration fails the check. Problem types the console branches on are checked against the spec's closed set at compile time.
+2. **Login composites** (carried): all four recaptured with both themes in the same interaction state (password typed; refusals after the same submit; clock held so the throttle countdown matches).
+3. **Fleet**: workloads tab, provisioning-tokens tab, mint dialog, revoke confirmation, change mode for selected.
+4. **Workload detail**: rail, status card (degraded is the hero), resend snapshot, inbound flows, listening services, rendered policy.
+5. **Seed**: a revoked and an expired provisioning token (the one designed state the stack cannot otherwise produce); the fleet the store tests assert on is unchanged.
+6. **Drift note fix**: the fleet row shows `vN rendered … ago` whenever latest is ahead of applied, whatever the stream last reported (found on the live stack: after a mode change a workload with no stream news stays `synced` while its latest version waits).
+7. **Composites** into `docs/img/console/`.
+
+## Task 0: screen-to-endpoint mapping
+
+Every element of the locked screens (design package shots 9–11 and 13–16, both themes, plus the prototype source), against the merged surface. "Gap" rows are the escalations below; nothing in them is fabricated.
+
+### Fleet: workloads tab (screen 13)
+
+| Element | Supplied by |
+|---|---|
+| Rows, fleet order (attention first, then last seen) | `GET /workloads` (server order), `next_cursor` → "Load more" |
+| State chips (all / synced / pending / degraded / offline) as filters | `sync_state` query parameter |
+| **State-chip counts, tab count "Workloads 512", mode summary "61 enforced · 42 simulation · 409 visibility", "Showing 12 of 512", sidebar badge and fleet-sync block** | **Gap: no fleet totals read.** Omitted per maintainer decision; exact zero on an empty fleet only |
+| Label filter | `label` query parameter, repeated, `key=value` (the domain's selector form) |
+| Hostname | `hostname` |
+| Labels / "▲ no labels — matches no scope" | `labels` (empty map) |
+| Mode pill | `mode` |
+| Sync state + note: degraded `v41 · v42 failed` | `sync.state`, `sync.applied_version`, `sync.latest_version` |
+| Sync note "apply failed 2h ago" | **Partial: no instant of the apply failure** (`sync.error` has no time). Rendered "apply failed" |
+| Sync note "v89 pushed 40s ago" | **Partial: the surface records when a version was rendered, not pushed.** Rendered "v89 rendered 40s ago" from `sync.latest_rendered_at` |
+| Sync note "no stream for 3d" | `health.last_seen_at` |
+| Applied | `sync.applied_version` (0 → "—") |
+| Credential "renews 9h" | **Partial: no renewal instant** (the agent renews at a third of lifetime remaining; the surface holds `expires_at` only). Rendered "renews · expires 9h" |
+| Credential "renewal failed · retrying" / "expired 2d ago" | `health.credential.state`, `expires_at` |
+| Last seen | `health.last_seen_at` |
+| Row selection → "Change mode for selected…" | `POST /mode-changes` `{workload_ids, target_mode, expected_match_count}`; 409 `match-count-mismatch` rendered with `expected` and `matched` |
+
+### Fleet: provisioning tokens (14), mint form (15), shown once (16)
+
+| Element | Supplied by |
+|---|---|
+| Tab count | `GET /provisioning-tokens` (complete listing) |
+| Name, prefix line (none when `prefix` is null) | `name`, `prefix` |
+| Assigns labels, status (active/revoked/expired), enrollments, last used, expires | `labels`, `state`, `use_count`, `last_used_at`, `expires_at` (revoked → "—") |
+| Revoke (valid tokens only), with confirmation | `DELETE /provisioning-tokens/{id}`; `already-revoked` treated as done |
+| Mint form: name, labels, expiry 24 h / 7 d / 30 d / custom | `POST /provisioning-tokens` `{name, labels, ttl_seconds}`; `validation` findings rendered |
+| **"Matching scopes: baseline-ssh · no app-specific ruleset yet"** | **Gap: no endpoint resolves which rulesets' scopes a label set falls in.** Left out (computing it in the console would duplicate the renderer's scope match) |
+| Secret, Copy, "only time the plaintext is shown" | 201 `token`; held in dialog state only, dropped on close |
+| **"Install on a host: curl …/install.sh … --bootstrap-ca"** | **Gap/conflict: the control plane does not serve `install.sh`, the script takes no `--bootstrap-ca`, and nothing on the surface gives the agent gateway's address.** Rendered as the real command, `innerwall-agent enroll --server <agent-gateway> --token … --bootstrap-ca ./innerwall-ca.crt`, labelled "Enroll a host" |
+| Footer "Expires in 30 d · assigns …" | 201 `created_at`, `expires_at`, `labels` |
+
+### Workload detail (9, 10, 11)
+
+| Element | Supplied by |
+|---|---|
+| Hostname, id | `GET /workloads/{id}` |
+| Status card: applied / rendered (not applied) | `sync.applied_version`, `sync.latest_version`, `sync.latest_rendered_at` |
+| **"last ack 4m ago · FAILED"** | **Gap: no instant of the last acknowledgement.** Replaced by the instants that exist: "rendered at" and "last snapshot" (`sync.last_snapshot_sent_at`) |
+| Apply error box | `sync.error` |
+| Resend snapshot (not in the shots; Backend asks #8, required by the brief) | `POST /workloads/{id}/resend-snapshot`; success = snapshot instant moving on a later read; 409 `agent-offline` rendered with `last_seen_at` (or "never heard from") |
+| Mode + "change…" | `mode`; the fleet's dialog with the one id |
+| Last seen, enrolled | `health.last_seen_at`, `enrolled_at` |
+| **"· token checkout-prod-image"** | **Gap: the workload object does not name its enrolling token.** Left out |
+| Credential, dropped flows | `health.credential`, `health.dropped_flow_records` (non-zero marked, with "the flows shown are incomplete") |
+| Labels | `labels`; **"edit" left inert** (label editing is not in this brief; `PUT /workloads/{id}/labels` exists for the session that brings it) |
+| Host facts: hostname, os, agent | `hostname`, `os.*`, `agent.version` |
+| **Interfaces "eth0 10.20.4.17/24 · lo 127.0.0.1/8"** | **Partial: `addresses` carries addresses without interface names or prefix lengths.** Rendered as an "addresses" list |
+| Inbound flows tab + count | `GET /flows?workload=…&from=…` (windowed rows, newest first, cursor); count = `GET /flows/rollup` `totals.flow_count` over the same range |
+| Decision chips with counts | rollup per `verdict`, `totals.flow_count`; filter = `verdict` parameter |
+| Source + note | `src_address`, `peer` (read by `workload_id` / `address_group_id`, not `kind`, see conflict 2) |
+| Port, process, conns, last seen | `service`, `process_name`, `connection_count`, `last_seen` |
+| Matched rule "api-to-checkout" | **Conflict 1: rules have no name.** `rule.id` joined to the rendered policy's `description`, with the short id |
+| "not evaluated (v40, visibility)" | **Partial: no policy version per flow.** "not evaluated (visibility)" |
+| Listening services tab: service, process, path | `listening_services` |
+| Inbound flows per service, "would block" | rollup `group_by=dst,service` over the range, and again with `verdict=would_block` |
+| Covered by rule | rendered rules whose protocol and port ranges admit the service |
+| **"metrics-scrape (disabled)"** | **Gap: disabled rules are not rendered.** Only rendered rules are listed |
+| Applied policy: version, "vN rendered 4m ago, not applied" | `GET /workloads/{id}/rendered-policy` `version`, `rendered_at`; `sync.applied_version` |
+| **"Rendered policy applied on host v41" (the applied version's rules) and "Show v41 → v42 diff"** | **Gap: the surface persists the latest render only; no read returns an earlier version or a diff.** The rules shown are the latest; the header says which version the host is on; no diff button |
+| Rule card: id, ruleset, description, protocol/ports, peers ("18 host routes (/32)") | `id`/`authored_rule_id`, `ruleset`, `description`, `protocol`, `ports`, `peer_cidrs` |
+| Per-rule instants (brief) | `created_at`, `updated_at` ("changed … · added …", or "authored rule no longer exists") |
+| Sidebar "▫ checkout-prod-07 ▲" | the workload the detail last showed (in memory) |
+
+## Escalations (maintainer calls)
+
+Decided in session (maintainer answers):
+- **Fleet counts**: omit rather than walk every page. A totals field on the list (or a count read) is the endpoint ask for a later session.
+- **Rule names** (conflict 1): the design names rules; authored rules have an id and a description only. Shown as description + short id until settled.
+- **Peer kind drift** (conflict 2): the server emits `peer.kind` as `workload | group | address`, `api/openapi.yaml` (and so `generated.ts`) says `unknown | workload | address_group`. Reported only; the console reads the id fields and does not depend on `kind`. A follow-up decides which side is right.
+
+Open, for a later endpoint session (the gaps above): fleet totals; the enrolling token on the workload; apply-failure and last-ack instants; per-flow policy version; interface names on addresses; a matching-scopes read for a label set; an earlier rendered version or its diff; the agent gateway address (and a served installer) for the enroll command.
+
+Design has no shot for, and the console composes from its vocabulary: the change-mode dialog (the prototype's button has no handler), the revocation confirmation, non-degraded status cards, resend-snapshot placement, and the loading, error, and filtered-empty states.
+
+## Review evidence
+
+Console (left) beside the design shot (right), 1440×900 @2x, captured from a control plane serving the seed fleet (`innerwall dev seed`) through the embedded console; screen 20 from one with an empty database. No request left the origin.
+
+13, fleet workloads:
+![13 dark](https://github.com/innerwall-dev/innerwall/blob/claude/confident-clarke-x2gps7/docs/img/console/13-fleet-workloads-dark.jpg?raw=true)
+![13 light](https://github.com/innerwall-dev/innerwall/blob/claude/confident-clarke-x2gps7/docs/img/console/13-fleet-workloads-light.jpg?raw=true)
+
+14, provisioning tokens:
+![14 dark](https://github.com/innerwall-dev/innerwall/blob/claude/confident-clarke-x2gps7/docs/img/console/14-fleet-provisioning-tokens-dark.jpg?raw=true)
+![14 light](https://github.com/innerwall-dev/innerwall/blob/claude/confident-clarke-x2gps7/docs/img/console/14-fleet-provisioning-tokens-light.jpg?raw=true)
+
+15, mint form:
+![15 dark](https://github.com/innerwall-dev/innerwall/blob/claude/confident-clarke-x2gps7/docs/img/console/15-fleet-mint-token-form-dark.jpg?raw=true)
+![15 light](https://github.com/innerwall-dev/innerwall/blob/claude/confident-clarke-x2gps7/docs/img/console/15-fleet-mint-token-form-light.jpg?raw=true)
+
+16, shown once (the secret belongs to a disposable development database):
+![16 dark](https://github.com/innerwall-dev/innerwall/blob/claude/confident-clarke-x2gps7/docs/img/console/16-fleet-mint-token-shown-once-dark.jpg?raw=true)
+![16 light](https://github.com/innerwall-dev/innerwall/blob/claude/confident-clarke-x2gps7/docs/img/console/16-fleet-mint-token-shown-once-light.jpg?raw=true)
+
+9, degraded workload, inbound flows:
+![9 dark](https://github.com/innerwall-dev/innerwall/blob/claude/confident-clarke-x2gps7/docs/img/console/09-workload-detail-degraded-flows-dark.jpg?raw=true)
+![9 light](https://github.com/innerwall-dev/innerwall/blob/claude/confident-clarke-x2gps7/docs/img/console/09-workload-detail-degraded-flows-light.jpg?raw=true)
+
+10, listening services:
+![10 dark](``https://github.com/innerwall-dev/innerwall/blob/claude/confident-clarke-x2gps7/docs/img/console/10-workload-detail-listening-services-dark.jpg?raw=true``)
+![10 light](``https://github.com/innerwall-dev/innerwall/blob/claude/confident-clarke-x2gps7/docs/img/console/10-workload-detail-listening-services-light.jpg?raw=true``)
+
+11, rendered policy:
+![11 dark](https://github.com/innerwall-dev/innerwall/blob/claude/confident-clarke-x2gps7/docs/img/console/11-workload-detail-applied-policy-dark.jpg?raw=true)
+![11 light](https://github.com/innerwall-dev/innerwall/blob/claude/confident-clarke-x2gps7/docs/img/console/11-workload-detail-applied-policy-light.jpg?raw=true)
+
+20, fresh install (recaptured):
+![20 dark](https://github.com/innerwall-dev/innerwall/blob/claude/confident-clarke-x2gps7/docs/img/console/20-fresh-install-workloads-dark.jpg?raw=true)
+![20 light](https://github.com/innerwall-dev/innerwall/blob/claude/confident-clarke-x2gps7/docs/img/console/20-fresh-install-workloads-light.jpg?raw=true)
+
+Undesigned states, dark beside light:
+![mode change](https://github.com/innerwall-dev/innerwall/blob/claude/confident-clarke-x2gps7/docs/img/console/fleet-change-mode-for-selected.jpg?raw=true)
+![revoke](https://github.com/innerwall-dev/innerwall/blob/claude/confident-clarke-x2gps7/docs/img/console/fleet-revoke-token-confirmation.jpg?raw=true)
+![offline resend](https://github.com/innerwall-dev/innerwall/blob/claude/confident-clarke-x2gps7/docs/img/console/workload-detail-offline-resend-refused.jpg?raw=true)
+
+Login (carried item 2):
+![login](https://github.com/innerwall-dev/innerwall/blob/claude/confident-clarke-x2gps7/docs/img/console/login.jpg?raw=true)
+
+## Reconciliation
+
+- Verified against main through M3.3b: the read endpoints' shapes (checked live against a seeded control plane, not only the spec), the write surface, `api/openapi.yaml`, resend-snapshot, M3.4's shell, router, client, and theming, and `storetest`'s seed.
+- `tokens.css` names and values match the design package's exactly; every color here is a `var()` reference to a token (dialog: `muted` on `input-strong` with the `overlay` scrim; degraded card: the would-block surface and border).
+- The sidebar now states only exact counts: the workloads badge and fresh fleet-sync block appear for an empty fleet, and the policy badge is the ruleset listing's length (it was a constant 0).
+- `@radix-ui/react-dialog` added beside the existing popover primitive, for focus handling in the four dialogs.
+
+## Tests
+
+Vitest, 46 tests against the harness (the harness now matches on path and hands replies the query): list rendering in the design's words, sync-state and label filtering through the query, the filtered-empty and fresh states, the error state and retry, cursor paging; selection → `POST /mode-changes` with ids and count, the list re-read after, and the 409 rendered with both numbers and nothing changed; token listing (null prefix renders none), revoke only after confirmation, mint body, secret shown exactly once and gone after close and on reopen, validation findings; the detail's degraded hero, flows by the required workload filter with per-decision counts and verdict filtering, cursor paging within one range, listening pairing and coverage, rendered policy with per-rule instants, unknown workload; resend-snapshot success observed as the instant moving on a later read, the offline refusal with its last-seen instant, never-seen; mode change from the detail. Go: `TestSeedTokens`.
+
+## Checks run
+
+`go vet ./...`, `go test -race ./...` with `INNERWALL_TEST_DATABASE_URL` against Postgres 16, `go test -tags noconsole ./ui/`, builds with `noconsole` and `dev`, `golangci-lint run ./...` (0 issues), `npm run lint`, `npm run test` (46), `npm run build`, and `make console-api` leaving `generated.ts` unchanged. `buf` and `sqlc` are not installed here, so `scripts/check-drift.sh` was exercised for its console step only; CI runs it whole.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+---
+_Generated by [Claude Code](https://claude.ai/code)_
