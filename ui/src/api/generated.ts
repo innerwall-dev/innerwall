@@ -1501,6 +1501,16 @@ export interface operations {
             query: {
                 /** @description Restrict to records in this direction (only inbound is produced in this version). */
                 direction?: components["parameters"]["direction"];
+                /**
+                 * @description Which end of a stored record `workload` and `label` select. `dst`
+                 *     selects the records the workloads in scope reported: the traffic
+                 *     that reached them. `either` also selects the records whose source
+                 *     resolved at ingest to a workload in scope, so a workload that only
+                 *     sends traffic is seen by its outbound records; a record with both
+                 *     ends in scope is counted once. Without `workload` or `label` there
+                 *     is no scope and it has no effect.
+                 */
+                endpoint?: "dst" | "either";
                 /** @description Start of the range (RFC 3339). Defaults to a day before `to`. */
                 from?: components["parameters"]["from"];
                 /** @description The grouping. The set is closed; nothing else is accepted. */

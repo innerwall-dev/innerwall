@@ -105,7 +105,10 @@ SELECT count(*) FROM flow_windows;
 -- amended, ADR-0019 decision 4). Each grouping the surface offers is one
 -- named statement over the same windows; the caller picks the statement
 -- and never assembles one. Every rollup shares one filter convention: an
--- empty workload id array means every workload, a zero decision or
+-- empty workload id array means every workload; a non-empty one selects
+-- the records those workloads reported, and with either_endpoint also the
+-- records whose source resolved at ingest to one of them (peer kind 1, a
+-- workload, keyed by its id), each record once; a zero decision or
 -- direction means any, and a zero protocol means every service (a service
 -- is one destination port and protocol). Ordering is by connection count
 -- unless order_by is 'recent', in which case the most recently seen group
@@ -132,7 +135,9 @@ SELECT matched_rule_id,
        CAST(sum(sum(connection_count)) OVER () AS bigint)   AS total_connection_count,
        CAST(sum(sum(byte_count)) OVER () AS bigint)         AS total_byte_count
 FROM flow_windows
-WHERE (cardinality(sqlc.arg(workload_ids)::uuid[]) = 0 OR workload_id = ANY(sqlc.arg(workload_ids)::uuid[]))
+WHERE (cardinality(sqlc.arg(workload_ids)::uuid[]) = 0
+       OR workload_id = ANY(sqlc.arg(workload_ids)::uuid[])
+       OR (sqlc.arg(either_endpoint)::boolean AND peer_kind = 1 AND peer_key = ANY(sqlc.arg(workload_ids)::uuid[]::text[])))
   AND window_start >= sqlc.arg(since)
   AND window_start < sqlc.arg(until)
   AND (sqlc.arg(decision)::integer = 0 OR decision = sqlc.arg(decision)::integer)
@@ -160,7 +165,9 @@ SELECT matched_rule_id, peer_kind, peer_key,
        CAST(sum(sum(connection_count)) OVER () AS bigint)   AS total_connection_count,
        CAST(sum(sum(byte_count)) OVER () AS bigint)         AS total_byte_count
 FROM flow_windows
-WHERE (cardinality(sqlc.arg(workload_ids)::uuid[]) = 0 OR workload_id = ANY(sqlc.arg(workload_ids)::uuid[]))
+WHERE (cardinality(sqlc.arg(workload_ids)::uuid[]) = 0
+       OR workload_id = ANY(sqlc.arg(workload_ids)::uuid[])
+       OR (sqlc.arg(either_endpoint)::boolean AND peer_kind = 1 AND peer_key = ANY(sqlc.arg(workload_ids)::uuid[]::text[])))
   AND window_start >= sqlc.arg(since)
   AND window_start < sqlc.arg(until)
   AND (sqlc.arg(decision)::integer = 0 OR decision = sqlc.arg(decision)::integer)
@@ -190,7 +197,9 @@ SELECT peer_kind, peer_key,
        CAST(sum(sum(connection_count)) OVER () AS bigint)   AS total_connection_count,
        CAST(sum(sum(byte_count)) OVER () AS bigint)         AS total_byte_count
 FROM flow_windows
-WHERE (cardinality(sqlc.arg(workload_ids)::uuid[]) = 0 OR workload_id = ANY(sqlc.arg(workload_ids)::uuid[]))
+WHERE (cardinality(sqlc.arg(workload_ids)::uuid[]) = 0
+       OR workload_id = ANY(sqlc.arg(workload_ids)::uuid[])
+       OR (sqlc.arg(either_endpoint)::boolean AND peer_kind = 1 AND peer_key = ANY(sqlc.arg(workload_ids)::uuid[]::text[])))
   AND window_start >= sqlc.arg(since)
   AND window_start < sqlc.arg(until)
   AND (sqlc.arg(decision)::integer = 0 OR decision = sqlc.arg(decision)::integer)
@@ -217,7 +226,9 @@ SELECT workload_id, dst_port, protocol,
        CAST(sum(sum(connection_count)) OVER () AS bigint)   AS total_connection_count,
        CAST(sum(sum(byte_count)) OVER () AS bigint)         AS total_byte_count
 FROM flow_windows
-WHERE (cardinality(sqlc.arg(workload_ids)::uuid[]) = 0 OR workload_id = ANY(sqlc.arg(workload_ids)::uuid[]))
+WHERE (cardinality(sqlc.arg(workload_ids)::uuid[]) = 0
+       OR workload_id = ANY(sqlc.arg(workload_ids)::uuid[])
+       OR (sqlc.arg(either_endpoint)::boolean AND peer_kind = 1 AND peer_key = ANY(sqlc.arg(workload_ids)::uuid[]::text[])))
   AND window_start >= sqlc.arg(since)
   AND window_start < sqlc.arg(until)
   AND (sqlc.arg(decision)::integer = 0 OR decision = sqlc.arg(decision)::integer)
@@ -250,7 +261,9 @@ SELECT peer_kind, peer_key,
        CAST(sum(sum(connection_count)) OVER () AS bigint)   AS total_connection_count,
        CAST(sum(sum(byte_count)) OVER () AS bigint)         AS total_byte_count
 FROM flow_windows
-WHERE (cardinality(sqlc.arg(workload_ids)::uuid[]) = 0 OR workload_id = ANY(sqlc.arg(workload_ids)::uuid[]))
+WHERE (cardinality(sqlc.arg(workload_ids)::uuid[]) = 0
+       OR workload_id = ANY(sqlc.arg(workload_ids)::uuid[])
+       OR (sqlc.arg(either_endpoint)::boolean AND peer_kind = 1 AND peer_key = ANY(sqlc.arg(workload_ids)::uuid[]::text[])))
   AND window_start >= sqlc.arg(since)
   AND window_start < sqlc.arg(until)
   AND (sqlc.arg(decision)::integer = 0 OR decision = sqlc.arg(decision)::integer)

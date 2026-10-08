@@ -214,7 +214,10 @@ type Querier interface {
 	// amended, ADR-0019 decision 4). Each grouping the surface offers is one
 	// named statement over the same windows; the caller picks the statement
 	// and never assembles one. Every rollup shares one filter convention: an
-	// empty workload id array means every workload, a zero decision or
+	// empty workload id array means every workload; a non-empty one selects
+	// the records those workloads reported, and with either_endpoint also the
+	// records whose source resolved at ingest to one of them (peer kind 1, a
+	// workload, keyed by its id), each record once; a zero decision or
 	// direction means any, and a zero protocol means every service (a service
 	// is one destination port and protocol). Ordering is by connection count
 	// unless order_by is 'recent', in which case the most recently seen group

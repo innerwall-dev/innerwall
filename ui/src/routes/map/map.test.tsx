@@ -175,7 +175,7 @@ async function openMap(path = "/map") {
 }
 
 describe("flow map", () => {
-	it("reads the rollup once per decision over one range, and walks the workloads in scope", async () => {
+	it("reads the rollup once per decision over one range, matching either end, and walks the workloads in scope", async () => {
 		const { calls } = surface();
 		await openMap("/map?label=env%3Dprod");
 		const rollups = calls
@@ -190,6 +190,8 @@ describe("flow map", () => {
 		for (const q of rollups) {
 			expect(q.get("group_by")).toBe("src,dst");
 			expect(q.getAll("label")).toEqual(["env=prod"]);
+			// A workload that only sends traffic draws its edges too.
+			expect(q.get("endpoint")).toBe("either");
 			expect(q.get("from")).toBe(rollups[0].get("from"));
 			expect(q.get("to")).toBe(rollups[0].get("to"));
 			expect(q.get("limit")).toBe("1000");

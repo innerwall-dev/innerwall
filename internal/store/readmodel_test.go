@@ -7,11 +7,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/innerwall-dev/innerwall/internal/enroll"
 	"github.com/innerwall-dev/innerwall/internal/flowstore"
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 	"github.com/innerwall-dev/innerwall/internal/identity"
+	"github.com/innerwall-dev/innerwall/internal/ingest"
 	"github.com/innerwall-dev/innerwall/internal/policy"
 	"github.com/innerwall-dev/innerwall/internal/readmodel"
 	"github.com/innerwall-dev/innerwall/internal/registry"
@@ -246,5 +248,129 @@ func TestSeedEstate(t *testing.T) {
 	}
 	if err := storetest.SeedEstate(ctx, s, f, 701); err == nil {
 		t.Fatal("701 extra groups accepted")
+	}
+}
+
+// TestLabelScopedRollup checks the read model's label scope against the
+// seeded fleet in Postgres: a selector matching reporting workloads, one
+// that matches every workload, one that matches none, and either-endpoint
+// matching, under which a workload that only sends traffic (ops-1, which
+// reaches web-1 and reports nothing) is seen by its outbound records.
+func TestLabelScopedRollup(t *testing.T) {
+	ctx := context.Background()
+	s := storetest.Open(t)
+	f := storetest.SeedFleet(t, s)
+	reads := &readmodel.Reader{Store: s, Flows: s.Flows(), Now: func() time.Time { return f.Now }}
+
+	// ops-1 enrolls with an address and reaches web-1 over ssh; web-1
+	// reports it, and ingestion resolves the source to ops-1.
+	ops, err := identity.NewWorkloadID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	enrolled := f.Now.Add(-6 * time.Hour)
+	if err := s.CreateWorkload(ctx, enroll.Workload{ID: ops, TokenID: f.Token.ID, Hostname: "ops-1", Labels: []enroll.Label{{Key: "env", Value: "prod"}, {Key: "role", Value: "ops"}}, EnrolledAt: enrolled, CredentialSerial: "ops-1-1", CredentialExpiresAt: f.Now.Add(time.Hour)}, enrolled); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordFacts(ctx, ops, &innerwallv1.HostFacts{Hostname: "ops-1", Interfaces: []*innerwallv1.NetworkInterface{{Name: "eth0", Addresses: []string{"10.0.0.40/24"}}}}, enrolled); err != nil {
+		t.Fatal(err)
+	}
+	start := f.Window2.Add(10 * time.Minute)
+	ing := &ingest.Service{Directory: s, Flows: s.Flows()}
+	if _, err := ing.Ingest(ctx, f.Web, &innerwallv1.ReportFlowsRequest{
+		WindowStart: timestamppb.New(start), WindowEnd: timestamppb.New(start.Add(f.WindowLength)),
+		Records: []*innerwallv1.FlowRecord{{
+			SrcAddress: "10.0.0.40", DstAddress: f.WebAddr.String(), DstPort: 22, Protocol: innerwallv1.Protocol_PROTOCOL_TCP,
+			Direction: innerwallv1.Direction_DIRECTION_INBOUND, Decision: innerwallv1.PolicyDecision_POLICY_DECISION_BLOCKED, ConnectionCount: 7,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	type edge struct{ src, dst string }
+	rollup := func(endpoint flowstore.Endpoint, sel policy.Selector) (*readmodel.Rollup, map[edge]bool) {
+		t.Helper()
+		res, err := reads.Rollup(ctx, readmodel.RollupRequest{GroupBy: flowstore.GroupBySrcDst, Selector: sel, Endpoint: endpoint})
+		if err != nil {
+			t.Fatal(err)
+		}
+		edges := map[edge]bool{}
+		for _, g := range res.Groups {
+			src := g.Keys.Src.Name
+			if src == "" {
+				src = g.Keys.Src.Key
+			}
+			edges[edge{src, g.Keys.Dst.Hostname}] = true
+		}
+		if int64(len(res.Groups)) != res.GroupCount {
+			t.Fatalf("%s %v: %d groups returned, %d counted", endpoint, sel, len(res.Groups), res.GroupCount)
+		}
+		return res, edges
+	}
+	all, allEdges := rollup("", nil)
+	if len(allEdges) != 7 || !allEdges[edge{"ops-1", "web-1"}] {
+		t.Fatalf("unscoped edges = %v, want the seed's six and ops-1 to web-1", allEdges)
+	}
+
+	// A selector matching the reporting workloads: the traffic they saw.
+	_, dbEdges := rollup(flowstore.EndpointDst, policy.Selector{"role": {"db"}})
+	if len(dbEdges) != 3 || !dbEdges[edge{"web-1", "db-1"}] || !dbEdges[edge{"office", "db-1"}] || !dbEdges[edge{"198.51.100.7", "db-1"}] {
+		t.Fatalf("role=db edges = %v", dbEdges)
+	}
+	// A selector matching every workload is the whole rollup, under
+	// either endpoint, and a record with both ends in scope counts once.
+	for _, e := range []flowstore.Endpoint{flowstore.EndpointDst, flowstore.EndpointEither} {
+		res, _ := rollup(e, policy.Selector{"env": {"prod"}})
+		if res.GroupCount != all.GroupCount || res.Totals != all.Totals {
+			t.Fatalf("env=prod %s = %d groups %+v, want the unscoped %d groups %+v", e, res.GroupCount, res.Totals, all.GroupCount, all.Totals)
+		}
+	}
+	// A selector matching nothing is empty, never every workload.
+	for _, e := range []flowstore.Endpoint{flowstore.EndpointDst, flowstore.EndpointEither} {
+		res, _ := rollup(e, policy.Selector{"role": {"nothing"}})
+		if res.GroupCount != 0 || len(res.Groups) != 0 || res.Totals.FlowCount != 0 || res.EffectiveFrom != nil {
+			t.Fatalf("role=nothing %s = %+v", e, res)
+		}
+	}
+
+	// Either endpoint: web-1 is the destination of three edges and the
+	// source of two; destination matching sees only the first three.
+	_, webDst := rollup(flowstore.EndpointDst, policy.Selector{"role": {"web"}})
+	if len(webDst) != 3 || webDst[edge{"web-1", "db-1"}] {
+		t.Fatalf("role=web dst edges = %v", webDst)
+	}
+	_, webEither := rollup(flowstore.EndpointEither, policy.Selector{"role": {"web"}})
+	if len(webEither) != 5 || !webEither[edge{"web-1", "db-1"}] || !webEither[edge{"web-1", "cache-1"}] || !webEither[edge{"ops-1", "web-1"}] {
+		t.Fatalf("role=web either edges = %v", webEither)
+	}
+	// The source-only workload: honestly empty by destination, its
+	// outbound edge under either endpoint.
+	opsDst, _ := rollup(flowstore.EndpointDst, policy.Selector{"role": {"ops"}})
+	if opsDst.GroupCount != 0 {
+		t.Fatalf("role=ops dst = %d groups, want none: ops-1 reports nothing", opsDst.GroupCount)
+	}
+	opsEither, opsEdges := rollup(flowstore.EndpointEither, policy.Selector{"role": {"ops"}})
+	if len(opsEdges) != 1 || !opsEdges[edge{"ops-1", "web-1"}] || opsEither.Totals.ConnectionCount != 7 {
+		t.Fatalf("role=ops either = %v, %+v", opsEdges, opsEither.Totals)
+	}
+	// The workload scope intersects the selector under either endpoint
+	// too: web-1 and role=ops share no workload.
+	res, err := reads.Rollup(ctx, readmodel.RollupRequest{GroupBy: flowstore.GroupBySrcDst, Workload: &f.Web, Selector: policy.Selector{"role": {"ops"}}, Endpoint: flowstore.EndpointEither})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.GroupCount != 0 {
+		t.Fatalf("web-1 and role=ops = %d groups", res.GroupCount)
+	}
+	// Every grouping takes the endpoint: ops-1's one service, by peer.
+	ps, err := reads.Rollup(ctx, readmodel.RollupRequest{GroupBy: flowstore.GroupByPeerService, Selector: policy.Selector{"role": {"ops"}}, Endpoint: flowstore.EndpointEither})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ps.Groups) != 1 || ps.Groups[0].Keys.Peer.Name != "ops-1" || ps.Groups[0].Keys.Service.Port != 22 {
+		t.Fatalf("role=ops peer,service = %+v", ps.Groups)
+	}
+	if _, err := reads.Rollup(ctx, readmodel.RollupRequest{GroupBy: flowstore.GroupBySrcDst, Endpoint: "src"}); !errors.Is(err, flowstore.ErrUnknownEndpoint) {
+		t.Fatalf("endpoint src: err = %v", err)
 	}
 }

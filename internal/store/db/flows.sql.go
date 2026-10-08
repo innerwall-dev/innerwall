@@ -440,28 +440,31 @@ SELECT workload_id, dst_port, protocol,
        CAST(sum(sum(connection_count)) OVER () AS bigint)   AS total_connection_count,
        CAST(sum(sum(byte_count)) OVER () AS bigint)         AS total_byte_count
 FROM flow_windows
-WHERE (cardinality($1::uuid[]) = 0 OR workload_id = ANY($1::uuid[]))
-  AND window_start >= $2
-  AND window_start < $3
-  AND ($4::integer = 0 OR decision = $4::integer)
-  AND ($5::integer = 0 OR direction = $5::integer)
-  AND ($6::integer = 0 OR (protocol = $6::integer AND dst_port = $7::integer))
+WHERE (cardinality($1::uuid[]) = 0
+       OR workload_id = ANY($1::uuid[])
+       OR ($2::boolean AND peer_kind = 1 AND peer_key = ANY($1::uuid[]::text[])))
+  AND window_start >= $3
+  AND window_start < $4
+  AND ($5::integer = 0 OR decision = $5::integer)
+  AND ($6::integer = 0 OR direction = $6::integer)
+  AND ($7::integer = 0 OR (protocol = $7::integer AND dst_port = $8::integer))
 GROUP BY workload_id, dst_port, protocol
-ORDER BY CASE WHEN $8::text = 'recent' THEN max(last_seen) END DESC NULLS LAST,
+ORDER BY CASE WHEN $9::text = 'recent' THEN max(last_seen) END DESC NULLS LAST,
          sum(connection_count) DESC, workload_id, dst_port, protocol
-LIMIT $9
+LIMIT $10
 `
 
 type RollupFlowsByDstServiceParams struct {
-	WorkloadIds []uuid.UUID
-	Since       time.Time
-	Until       time.Time
-	Decision    int32
-	Direction   int32
-	Protocol    int32
-	DstPort     int32
-	OrderBy     string
-	GroupLimit  int32
+	WorkloadIds    []uuid.UUID
+	EitherEndpoint bool
+	Since          time.Time
+	Until          time.Time
+	Decision       int32
+	Direction      int32
+	Protocol       int32
+	DstPort        int32
+	OrderBy        string
+	GroupLimit     int32
 }
 
 type RollupFlowsByDstServiceRow struct {
@@ -486,6 +489,7 @@ type RollupFlowsByDstServiceRow struct {
 func (q *Queries) RollupFlowsByDstService(ctx context.Context, arg RollupFlowsByDstServiceParams) ([]RollupFlowsByDstServiceRow, error) {
 	rows, err := q.db.Query(ctx, rollupFlowsByDstService,
 		arg.WorkloadIds,
+		arg.EitherEndpoint,
 		arg.Since,
 		arg.Until,
 		arg.Decision,
@@ -545,28 +549,31 @@ SELECT peer_kind, peer_key,
        CAST(sum(sum(connection_count)) OVER () AS bigint)   AS total_connection_count,
        CAST(sum(sum(byte_count)) OVER () AS bigint)         AS total_byte_count
 FROM flow_windows
-WHERE (cardinality($1::uuid[]) = 0 OR workload_id = ANY($1::uuid[]))
-  AND window_start >= $2
-  AND window_start < $3
-  AND ($4::integer = 0 OR decision = $4::integer)
-  AND ($5::integer = 0 OR direction = $5::integer)
-  AND ($6::integer = 0 OR (protocol = $6::integer AND dst_port = $7::integer))
+WHERE (cardinality($1::uuid[]) = 0
+       OR workload_id = ANY($1::uuid[])
+       OR ($2::boolean AND peer_kind = 1 AND peer_key = ANY($1::uuid[]::text[])))
+  AND window_start >= $3
+  AND window_start < $4
+  AND ($5::integer = 0 OR decision = $5::integer)
+  AND ($6::integer = 0 OR direction = $6::integer)
+  AND ($7::integer = 0 OR (protocol = $7::integer AND dst_port = $8::integer))
 GROUP BY peer_kind, peer_key, dst_port, protocol
-ORDER BY CASE WHEN $8::text = 'recent' THEN max(last_seen) END DESC NULLS LAST,
+ORDER BY CASE WHEN $9::text = 'recent' THEN max(last_seen) END DESC NULLS LAST,
          sum(connection_count) DESC, peer_kind, peer_key, dst_port, protocol
-LIMIT $9
+LIMIT $10
 `
 
 type RollupFlowsByPeerServiceParams struct {
-	WorkloadIds []uuid.UUID
-	Since       time.Time
-	Until       time.Time
-	Decision    int32
-	Direction   int32
-	Protocol    int32
-	DstPort     int32
-	OrderBy     string
-	GroupLimit  int32
+	WorkloadIds    []uuid.UUID
+	EitherEndpoint bool
+	Since          time.Time
+	Until          time.Time
+	Decision       int32
+	Direction      int32
+	Protocol       int32
+	DstPort        int32
+	OrderBy        string
+	GroupLimit     int32
 }
 
 type RollupFlowsByPeerServiceRow struct {
@@ -597,6 +604,7 @@ type RollupFlowsByPeerServiceRow struct {
 func (q *Queries) RollupFlowsByPeerService(ctx context.Context, arg RollupFlowsByPeerServiceParams) ([]RollupFlowsByPeerServiceRow, error) {
 	rows, err := q.db.Query(ctx, rollupFlowsByPeerService,
 		arg.WorkloadIds,
+		arg.EitherEndpoint,
 		arg.Since,
 		arg.Until,
 		arg.Decision,
@@ -658,28 +666,31 @@ SELECT matched_rule_id,
        CAST(sum(sum(connection_count)) OVER () AS bigint)   AS total_connection_count,
        CAST(sum(sum(byte_count)) OVER () AS bigint)         AS total_byte_count
 FROM flow_windows
-WHERE (cardinality($1::uuid[]) = 0 OR workload_id = ANY($1::uuid[]))
-  AND window_start >= $2
-  AND window_start < $3
-  AND ($4::integer = 0 OR decision = $4::integer)
-  AND ($5::integer = 0 OR direction = $5::integer)
-  AND ($6::integer = 0 OR (protocol = $6::integer AND dst_port = $7::integer))
+WHERE (cardinality($1::uuid[]) = 0
+       OR workload_id = ANY($1::uuid[])
+       OR ($2::boolean AND peer_kind = 1 AND peer_key = ANY($1::uuid[]::text[])))
+  AND window_start >= $3
+  AND window_start < $4
+  AND ($5::integer = 0 OR decision = $5::integer)
+  AND ($6::integer = 0 OR direction = $6::integer)
+  AND ($7::integer = 0 OR (protocol = $7::integer AND dst_port = $8::integer))
 GROUP BY matched_rule_id
-ORDER BY CASE WHEN $8::text = 'recent' THEN max(last_seen) END DESC NULLS LAST,
+ORDER BY CASE WHEN $9::text = 'recent' THEN max(last_seen) END DESC NULLS LAST,
          sum(connection_count) DESC, matched_rule_id
-LIMIT $9
+LIMIT $10
 `
 
 type RollupFlowsByRuleParams struct {
-	WorkloadIds []uuid.UUID
-	Since       time.Time
-	Until       time.Time
-	Decision    int32
-	Direction   int32
-	Protocol    int32
-	DstPort     int32
-	OrderBy     string
-	GroupLimit  int32
+	WorkloadIds    []uuid.UUID
+	EitherEndpoint bool
+	Since          time.Time
+	Until          time.Time
+	Decision       int32
+	Direction      int32
+	Protocol       int32
+	DstPort        int32
+	OrderBy        string
+	GroupLimit     int32
 }
 
 type RollupFlowsByRuleRow struct {
@@ -704,7 +715,10 @@ type RollupFlowsByRuleRow struct {
 // amended, ADR-0019 decision 4). Each grouping the surface offers is one
 // named statement over the same windows; the caller picks the statement
 // and never assembles one. Every rollup shares one filter convention: an
-// empty workload id array means every workload, a zero decision or
+// empty workload id array means every workload; a non-empty one selects
+// the records those workloads reported, and with either_endpoint also the
+// records whose source resolved at ingest to one of them (peer kind 1, a
+// workload, keyed by its id), each record once; a zero decision or
 // direction means any, and a zero protocol means every service (a service
 // is one destination port and protocol). Ordering is by connection count
 // unless order_by is 'recent', in which case the most recently seen group
@@ -718,6 +732,7 @@ type RollupFlowsByRuleRow struct {
 func (q *Queries) RollupFlowsByRule(ctx context.Context, arg RollupFlowsByRuleParams) ([]RollupFlowsByRuleRow, error) {
 	rows, err := q.db.Query(ctx, rollupFlowsByRule,
 		arg.WorkloadIds,
+		arg.EitherEndpoint,
 		arg.Since,
 		arg.Until,
 		arg.Decision,
@@ -774,28 +789,31 @@ SELECT matched_rule_id, peer_kind, peer_key,
        CAST(sum(sum(connection_count)) OVER () AS bigint)   AS total_connection_count,
        CAST(sum(sum(byte_count)) OVER () AS bigint)         AS total_byte_count
 FROM flow_windows
-WHERE (cardinality($1::uuid[]) = 0 OR workload_id = ANY($1::uuid[]))
-  AND window_start >= $2
-  AND window_start < $3
-  AND ($4::integer = 0 OR decision = $4::integer)
-  AND ($5::integer = 0 OR direction = $5::integer)
-  AND ($6::integer = 0 OR (protocol = $6::integer AND dst_port = $7::integer))
+WHERE (cardinality($1::uuid[]) = 0
+       OR workload_id = ANY($1::uuid[])
+       OR ($2::boolean AND peer_kind = 1 AND peer_key = ANY($1::uuid[]::text[])))
+  AND window_start >= $3
+  AND window_start < $4
+  AND ($5::integer = 0 OR decision = $5::integer)
+  AND ($6::integer = 0 OR direction = $6::integer)
+  AND ($7::integer = 0 OR (protocol = $7::integer AND dst_port = $8::integer))
 GROUP BY matched_rule_id, peer_kind, peer_key
-ORDER BY CASE WHEN $8::text = 'recent' THEN max(last_seen) END DESC NULLS LAST,
+ORDER BY CASE WHEN $9::text = 'recent' THEN max(last_seen) END DESC NULLS LAST,
          sum(connection_count) DESC, matched_rule_id, peer_kind, peer_key
-LIMIT $9
+LIMIT $10
 `
 
 type RollupFlowsByRulePeerParams struct {
-	WorkloadIds []uuid.UUID
-	Since       time.Time
-	Until       time.Time
-	Decision    int32
-	Direction   int32
-	Protocol    int32
-	DstPort     int32
-	OrderBy     string
-	GroupLimit  int32
+	WorkloadIds    []uuid.UUID
+	EitherEndpoint bool
+	Since          time.Time
+	Until          time.Time
+	Decision       int32
+	Direction      int32
+	Protocol       int32
+	DstPort        int32
+	OrderBy        string
+	GroupLimit     int32
 }
 
 type RollupFlowsByRulePeerRow struct {
@@ -821,6 +839,7 @@ type RollupFlowsByRulePeerRow struct {
 func (q *Queries) RollupFlowsByRulePeer(ctx context.Context, arg RollupFlowsByRulePeerParams) ([]RollupFlowsByRulePeerRow, error) {
 	rows, err := q.db.Query(ctx, rollupFlowsByRulePeer,
 		arg.WorkloadIds,
+		arg.EitherEndpoint,
 		arg.Since,
 		arg.Until,
 		arg.Decision,
@@ -880,28 +899,31 @@ SELECT peer_kind, peer_key,
        CAST(sum(sum(connection_count)) OVER () AS bigint)   AS total_connection_count,
        CAST(sum(sum(byte_count)) OVER () AS bigint)         AS total_byte_count
 FROM flow_windows
-WHERE (cardinality($1::uuid[]) = 0 OR workload_id = ANY($1::uuid[]))
-  AND window_start >= $2
-  AND window_start < $3
-  AND ($4::integer = 0 OR decision = $4::integer)
-  AND ($5::integer = 0 OR direction = $5::integer)
-  AND ($6::integer = 0 OR (protocol = $6::integer AND dst_port = $7::integer))
+WHERE (cardinality($1::uuid[]) = 0
+       OR workload_id = ANY($1::uuid[])
+       OR ($2::boolean AND peer_kind = 1 AND peer_key = ANY($1::uuid[]::text[])))
+  AND window_start >= $3
+  AND window_start < $4
+  AND ($5::integer = 0 OR decision = $5::integer)
+  AND ($6::integer = 0 OR direction = $6::integer)
+  AND ($7::integer = 0 OR (protocol = $7::integer AND dst_port = $8::integer))
 GROUP BY peer_kind, peer_key, workload_id
-ORDER BY CASE WHEN $8::text = 'recent' THEN max(last_seen) END DESC NULLS LAST,
+ORDER BY CASE WHEN $9::text = 'recent' THEN max(last_seen) END DESC NULLS LAST,
          sum(connection_count) DESC, peer_kind, peer_key, workload_id
-LIMIT $9
+LIMIT $10
 `
 
 type RollupFlowsBySrcDstParams struct {
-	WorkloadIds []uuid.UUID
-	Since       time.Time
-	Until       time.Time
-	Decision    int32
-	Direction   int32
-	Protocol    int32
-	DstPort     int32
-	OrderBy     string
-	GroupLimit  int32
+	WorkloadIds    []uuid.UUID
+	EitherEndpoint bool
+	Since          time.Time
+	Until          time.Time
+	Decision       int32
+	Direction      int32
+	Protocol       int32
+	DstPort        int32
+	OrderBy        string
+	GroupLimit     int32
 }
 
 type RollupFlowsBySrcDstRow struct {
@@ -928,6 +950,7 @@ type RollupFlowsBySrcDstRow struct {
 func (q *Queries) RollupFlowsBySrcDst(ctx context.Context, arg RollupFlowsBySrcDstParams) ([]RollupFlowsBySrcDstRow, error) {
 	rows, err := q.db.Query(ctx, rollupFlowsBySrcDst,
 		arg.WorkloadIds,
+		arg.EitherEndpoint,
 		arg.Since,
 		arg.Until,
 		arg.Decision,

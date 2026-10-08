@@ -88,6 +88,39 @@ const (
 	OrderByRecency GroupOrder = "recent"
 )
 
+// Endpoint says which end of a stored record a grouped rollup's workload
+// set selects. A record is reported by its destination workload and
+// names its source as the peer ingestion resolved (ADR-0019 decision 2),
+// so a workload set can select either end without resolving anything at
+// read time but the set itself.
+type Endpoint string
+
+// Endpoints of a grouped rollup's workload set.
+const (
+	// EndpointDst selects the records the workloads in the set reported:
+	// the traffic that reached them. The default.
+	EndpointDst Endpoint = "dst"
+	// EndpointEither also selects the records whose source resolved to a
+	// workload in the set: the traffic they sent as well as received. A
+	// record with both ends in the set is selected once.
+	EndpointEither Endpoint = "either"
+)
+
+// ErrUnknownEndpoint is returned for an endpoint other than dst or either.
+var ErrUnknownEndpoint = errors.New("flowstore: unknown endpoint")
+
+// ParseEndpoint resolves an endpoint name; empty is the default, dst.
+func ParseEndpoint(s string) (Endpoint, error) {
+	switch e := Endpoint(strings.ToLower(strings.TrimSpace(s))); e {
+	case "":
+		return EndpointDst, nil
+	case EndpointDst, EndpointEither:
+		return e, nil
+	default:
+		return "", fmt.Errorf("%w %q; one of dst | either", ErrUnknownEndpoint, s)
+	}
+}
+
 // DefaultGroupLimit is the number of groups a grouped rollup returns when
 // the query sets none; MaxGroupLimit is the most it ever returns. A rollup
 // with more groups than its limit returns the top groups in its order and
@@ -99,12 +132,15 @@ const (
 )
 
 // GroupQuery is a grouped rollup over the windows in [Since, Until). An
-// empty WorkloadIDs means every workload; a zero Decision or Direction
+// empty WorkloadIDs means every workload; Endpoint says which end of a
+// record a non-empty WorkloadIDs selects, the destination when zero; a
+// zero Decision or Direction
 // means any; a zero Protocol means every service, otherwise exactly the
 // service (Protocol, DstPort).
 type GroupQuery struct {
 	GroupBy     GroupBy
 	WorkloadIDs []identity.WorkloadID
+	Endpoint    Endpoint
 	Since       time.Time
 	Until       time.Time
 	Decision    innerwallv1.PolicyDecision
