@@ -5,6 +5,7 @@ import { createModeChange } from "@/api/fleet";
 import { previewSelector } from "@/api/policy";
 import { ProblemType, type Ruleset } from "@/api/schema";
 import { LoadingRow, ProblemNotice } from "@/components/Problem";
+import { SeverityNote, StatusGlyph } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -147,36 +148,37 @@ export function PromoteDialog({
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent width={600}>
 				<DialogHeader title="Switch scope to enforced">
-					<p className="text-[12px] text-foreground-tertiary">
+					<p className="type-body text-secondary">
 						Denied inbound traffic on these workloads will be dropped, starting
 						with the next policy version each agent applies.
 					</p>
 				</DialogHeader>
-				<DialogBody className="gap-2.5">
+				<DialogBody className="gap-4">
 					<div
 						className={cn(
-							"flex items-center gap-3 rounded border px-3 py-2.5",
+							"flex items-start gap-2.5 rounded-lg border px-4 py-3",
 							verdict.safe
-								? "border-status-allowed-border bg-status-allowed-bg-soft"
-								: "border-status-would-block-border bg-status-would-block-bg-soft",
+								? "border-status-ok-border bg-status-ok-bg"
+								: "border-status-critical-border bg-status-critical-bg",
 						)}
 					>
-						<span
-							aria-hidden="true"
-							className={cn(
-								"font-mono text-[18px]",
-								verdict.safe
-									? "text-status-allowed"
-									: "text-status-would-block",
-							)}
-						>
-							{verdict.safe ? "✓" : k.pairs > 0 ? "◆" : "▲"}
-						</span>
-						<div>
-							<div className="text-[13px] font-semibold">
+						<StatusGlyph
+							status={verdict.safe ? "allowed" : "error"}
+							size="lg"
+							className="mt-0.5"
+						/>
+						<div className="flex min-w-0 flex-col gap-0.5">
+							<div
+								className={cn(
+									"type-body-strong",
+									verdict.safe
+										? "text-status-ok-fg"
+										: "text-status-critical-fg",
+								)}
+							>
 								{verdict.headline}
 							</div>
-							<div className="text-[12px] text-foreground-tertiary">
+							<div className="type-ui text-secondary">
 								{verdict.safe
 									? "No observed traffic would be dropped."
 									: k.pairs > 0
@@ -215,18 +217,18 @@ export function PromoteDialog({
 							/>
 						</>
 					) : null}
-					<p className="text-[11px] text-muted-foreground">
+					<p className="type-caption text-tertiary">
 						Mode is per workload. This records one mode change covering these
 						workloads; each workload's sync state shows when its agent has
 						applied the new version. Rollback is the same action in reverse.
 					</p>
 					{!verdict.safe ? (
-						<label className="flex items-start gap-2 text-[12px]">
+						<label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-default bg-subtle px-3 py-2.5 type-ui text-primary">
 							<input
 								type="checkbox"
 								checked={acknowledged}
 								onChange={(ev) => setAcknowledged(ev.target.checked)}
-								className="mt-0.5"
+								className="mt-[3px] size-3.5 shrink-0"
 							/>
 							<span>
 								{k.pairs > 0
@@ -241,10 +243,10 @@ export function PromoteDialog({
 							onPreview={preview}
 						>
 							You submitted{" "}
-							<span className="font-mono">{mismatch.expected}</span> workloads;
-							the control plane resolved{" "}
-							<span className="font-mono">{mismatch.matched}</span>. Nothing was
-							changed.
+							<span className="type-mono-ui">{mismatch.expected}</span>{" "}
+							workloads; the control plane resolved{" "}
+							<span className="type-mono-ui">{mismatch.matched}</span>. Nothing
+							was changed.
 						</StaleSet>
 					) : gone ? (
 						<StaleSet
@@ -255,34 +257,18 @@ export function PromoteDialog({
 							changed.
 						</StaleSet>
 					) : problem ? (
-						<p
-							role="alert"
-							className="flex items-start gap-2 text-[12px] text-destructive"
-						>
-							<span className="font-mono" aria-hidden="true">
-								✕
-							</span>
-							<span>
-								{problem.problem.errors?.map((f) => f.message).join(" ") ||
-									problem.problem.detail ||
-									problem.problem.title}
-							</span>
-						</p>
+						<SeverityNote level="error" role="alert" className="type-ui">
+							{problem.problem.errors?.map((f) => f.message).join(" ") ||
+								problem.problem.detail ||
+								problem.problem.title}
+						</SeverityNote>
 					) : null}
 				</DialogBody>
 				<DialogFooter>
 					<DialogClose asChild>
 						<Button variant="secondary">Cancel</Button>
 					</DialogClose>
-					<Button
-						disabled={!canSubmit}
-						onClick={submit}
-						className={
-							verdict.safe
-								? undefined
-								: "border-status-would-block bg-transparent text-status-would-block hover:bg-status-would-block-bg-soft"
-						}
-					>
+					<Button variant="primary" disabled={!canSubmit} onClick={submit}>
 						{submitting
 							? "Enforcing…"
 							: `${verdict.safe ? "Enforce" : "Enforce anyway"} on ${count(ids.length)} ${ids.length === 1 ? "workload" : "workloads"}`}
@@ -305,13 +291,13 @@ function Matched({
 	hostnames: string[];
 }) {
 	return (
-		<div className="flex flex-col gap-1 text-[12px]" data-testid="preview">
-			<span className="text-foreground-tertiary">
-				<span className="font-mono text-foreground-secondary">{scope}</span>{" "}
-				matches <span className="font-mono text-foreground">{count(n)}</span>{" "}
+		<div className="flex flex-col gap-1 type-ui" data-testid="preview">
+			<span className="text-secondary">
+				<span className="type-mono-sm text-secondary">{scope}</span> matches{" "}
+				<span className="type-mono-ui text-primary">{count(n)}</span>{" "}
 				{n === 1 ? "workload" : "workloads"} now
 			</span>
-			<span className="font-mono text-[11px] text-muted-foreground">
+			<span className="type-mono-sm text-tertiary">
 				{hostnames.slice(0, shown).join(" ")}
 				{hostnames.length > shown ? ` +${hostnames.length - shown} more` : ""}
 			</span>
@@ -331,61 +317,59 @@ function PartitionTable({
 	onPreview: () => void;
 }) {
 	const row =
-		"grid grid-cols-[1fr_auto_auto] items-center gap-x-4 border-t border-input px-3 py-[9px] first:border-t-0";
+		"grid min-h-row-dense grid-cols-[1fr_auto_auto] items-center gap-x-4 border-t border-subtle px-3 py-2 first:border-t-0";
 	const n = (x: number) => `${count(x)} ${x === 1 ? "workload" : "workloads"}`;
+	const num = "type-mono-sm text-secondary";
+	const included = "type-ui-strong text-primary";
+	const skipped = "text-tertiary";
 	return (
 		<div
-			className="overflow-hidden rounded border border-input text-[12.5px]"
+			className="overflow-hidden rounded-lg border border-default bg-app type-ui"
 			data-testid="partition"
 		>
 			<div className={row}>
 				<span>Simulation → Enforced</span>
-				<span className="text-foreground-tertiary">
-					{n(parts.included.length)}
-				</span>
-				<span className="text-status-allowed">included</span>
+				<span className={num}>{n(parts.included.length)}</span>
+				<span className={included}>included</span>
 			</div>
 			{parts.visibility.length > 0 ? (
 				<div className={row}>
 					<span>
 						Visibility → Enforced{" "}
-						<span className="text-[11px] text-muted-foreground">
-							never simulated
-						</span>
+						<span className="type-caption text-tertiary">never simulated</span>
 					</span>
-					<span className="text-foreground-tertiary">
-						{n(parts.visibility.length)}
-					</span>
-					<span className="text-muted-foreground">skipped</span>
+					<span className={num}>{n(parts.visibility.length)}</span>
+					<span className={skipped}>skipped</span>
 				</div>
 			) : null}
 			{parts.unsynced.map(({ workload: w, issue }) => {
 				const on = optedIn.has(w.id);
 				return (
 					<div key={w.id} className={row}>
-						<label className="flex items-center gap-2">
+						<label className="flex cursor-pointer items-start gap-2">
 							<input
 								type="checkbox"
 								checked={on}
 								onChange={() => onToggle(w.id)}
+								className="mt-[3px] size-3.5 shrink-0"
 							/>
-							<span>
-								{issueLabel[issue]} ·{" "}
-								<Link
-									to={`/workloads/${w.id}`}
-									className="font-mono text-link hover:text-link-hover"
-								>
-									{w.hostname}
-								</Link>{" "}
-								<span className="text-[11px] text-status-degraded">
-									▲ {issueText[issue](w.sync.applied_version)}
-								</span>
+							<span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+								<span>
+									{issueLabel[issue]} ·{" "}
+									<Link
+										to={`/workloads/${w.id}`}
+										className="type-mono-ui text-link hover:underline"
+									>
+										{w.hostname}
+									</Link>
+								</span>{" "}
+								<SeverityNote level="alert" className="type-caption">
+									{issueText[issue](w.sync.applied_version)}
+								</SeverityNote>
 							</span>
 						</label>
-						<span className="text-foreground-tertiary">{n(1)}</span>
-						<span
-							className={on ? "text-status-allowed" : "text-muted-foreground"}
-						>
+						<span className={num}>{n(1)}</span>
+						<span className={on ? included : skipped}>
 							{on ? "included" : "skipped"}
 						</span>
 					</div>
@@ -394,24 +378,20 @@ function PartitionTable({
 			{parts.enforced.length > 0 ? (
 				<div className={row}>
 					<span>Already enforced</span>
-					<span className="text-foreground-tertiary">
-						{n(parts.enforced.length)}
-					</span>
-					<span className="text-muted-foreground">unchanged</span>
+					<span className={num}>{n(parts.enforced.length)}</span>
+					<span className={skipped}>unchanged</span>
 				</div>
 			) : null}
 			{parts.unlisted.length > 0 ? (
 				<div className={row}>
-					<span className="text-status-degraded">
-						▲ Matched but not listed: the fleet moved between reads
-					</span>
-					<span className="text-foreground-tertiary">
-						{n(parts.unlisted.length)}
-					</span>
+					<SeverityNote level="alert">
+						Matched but not listed: the fleet moved between reads
+					</SeverityNote>
+					<span className={num}>{n(parts.unlisted.length)}</span>
 					<button
 						type="button"
 						onClick={onPreview}
-						className="cursor-pointer text-link hover:text-link-hover"
+						className="cursor-pointer text-link hover:underline"
 					>
 						Preview again
 					</button>
@@ -433,14 +413,16 @@ function StaleSet({
 	return (
 		<div
 			role="alert"
-			className="flex flex-col gap-1 rounded border border-status-would-block-border bg-status-would-block-surface px-3 py-2.5 text-[12px]"
+			className="flex flex-col gap-1.5 rounded-lg border border-status-warn-border bg-status-warn-bg px-3 py-2.5 type-ui"
 		>
-			<span className="font-semibold text-status-degraded">▲ {title}</span>
-			<span className="text-foreground-secondary">{children}</span>
+			<SeverityNote level="alert" className="font-medium">
+				{title}
+			</SeverityNote>
+			<span className="text-secondary">{children}</span>
 			<Button
 				variant="secondary"
 				size="sm"
-				className="mt-1 self-start rounded-chip"
+				className="mt-1 self-start"
 				onClick={onPreview}
 			>
 				Preview again

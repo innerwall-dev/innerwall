@@ -1,6 +1,7 @@
 import { getRollup } from "@/api/fleet";
 import type { RenderedPolicy, Rollup, Workload } from "@/api/schema";
 import { ProblemNotice } from "@/components/Problem";
+import { type FlowStatus, StatusGlyph, tone } from "@/components/StatusGlyph";
 import { compact } from "@/lib/format";
 import { useResource } from "@/lib/resource";
 import { cn } from "@/lib/utils";
@@ -48,7 +49,7 @@ export function ListeningTab({
 
 	return (
 		<div>
-			<p className="mb-3 text-[12px] text-foreground-tertiary">
+			<p className="mb-4 max-w-[720px] type-ui text-secondary">
 				What is listening on this host, paired with whether anything actually
 				connects to it. Exposed-but-unused ports are candidates to leave out of
 				policy.
@@ -57,32 +58,34 @@ export function ListeningTab({
 				<ProblemNotice what="flow totals" error={use.error} onRetry={reload} />
 			) : null}
 			{w.listening_services.length === 0 ? (
-				<p className="py-6 text-[12px] text-muted-foreground">
+				<p className="py-6 type-ui text-tertiary">
 					The agent has reported no listening services.
 				</p>
 			) : (
-				<table className="w-full border-collapse text-[12.5px]">
-					<thead>
-						<tr className="text-left text-[11px] uppercase tracking-[0.05em] text-muted-foreground">
-							<th className="py-1.5 pr-2 font-medium">Service</th>
-							<th className="px-2 py-1.5 font-medium">Process</th>
-							<th className="px-2 py-1.5 font-medium">Path</th>
-							<th className="px-2 py-1.5 font-medium">Inbound flows</th>
-							<th className="py-1.5 pl-2 font-medium">Covered by rule</th>
-						</tr>
-					</thead>
-					<tbody>
-						{w.listening_services.map((s) => (
-							<Row
-								key={`${s.protocol}/${s.port}`}
-								s={s}
-								use={use.status === "ready" ? use.data : null}
-								rangeDays={rangeDays}
-								policy={policy}
-							/>
-						))}
-					</tbody>
-				</table>
+				<div className="overflow-hidden rounded-lg border border-default">
+					<table className="w-full border-separate border-spacing-0">
+						<thead>
+							<tr className="h-row-header bg-subtle">
+								<th className={th}>Service</th>
+								<th className={th}>Process</th>
+								<th className={th}>Path</th>
+								<th className={th}>Inbound flows</th>
+								<th className={th}>Covered by rule</th>
+							</tr>
+						</thead>
+						<tbody>
+							{w.listening_services.map((s) => (
+								<Row
+									key={`${s.protocol}/${s.port}`}
+									s={s}
+									use={use.status === "ready" ? use.data : null}
+									rangeDays={rangeDays}
+									policy={policy}
+								/>
+							))}
+						</tbody>
+					</table>
+				</div>
 			)}
 		</div>
 	);
@@ -103,42 +106,54 @@ function Row({
 	const conns = use?.all.get(key) ?? 0;
 	const blocked = use?.wb.get(key) ?? 0;
 	const rules = coveringRules(policy, s);
-	const cell = "border-t border-border p-2";
-	let usage: { text: string; cls: string };
-	if (!use) usage = { text: "…", cls: "text-muted-foreground" };
+	let usage: { text: string; status?: FlowStatus };
+	if (!use) usage = { text: "…" };
 	else if (blocked > 0)
 		usage = {
 			text:
 				blocked < conns
 					? `${compact(conns)} conns · ${compact(blocked)} would block`
 					: `${compact(conns)} conns · would block`,
-			cls: "text-status-would-block",
+			status: "would-block",
 		};
 	else if (conns > 0)
-		usage = { text: `${compact(conns)} conns`, cls: "text-status-allowed" };
+		usage = { text: `${compact(conns)} conns`, status: "allowed" };
 	else
 		usage = {
 			text: `no inbound flows in ${rangeDays}d`,
-			cls: "text-muted-foreground",
 		};
 	return (
-		<tr>
-			<td className={cn(cell, "pl-0 font-mono")}>{key}</td>
-			<td className={cn(cell, "font-mono")}>{s.process_name || "—"}</td>
-			<td className={cn(cell, "font-mono text-muted-foreground")}>
+		<tr className="h-row-dense hover:bg-hover [&:last-child>td]:border-b-0">
+			<td className={cn(td, "type-mono-ui text-primary")}>{key}</td>
+			<td className={cn(td, "type-mono-ui text-primary")}>
+				{s.process_name || "—"}
+			</td>
+			<td className={cn(td, "type-mono-sm text-tertiary")}>
 				{s.process_path || "—"}
 			</td>
-			<td className={cell}>
-				<span className={cn("text-[12px]", usage.cls)}>{usage.text}</span>
+			<td className={cn(td, "type-ui")}>
+				{usage.status ? (
+					<span
+						className={cn(
+							"inline-flex items-center gap-1.5",
+							tone[usage.status],
+						)}
+					>
+						<StatusGlyph status={usage.status} size="md" />
+						<span>{usage.text}</span>
+					</span>
+				) : (
+					<span className="text-tertiary">{usage.text}</span>
+				)}
 			</td>
-			<td className={cn(cell, "pr-0 text-foreground-tertiary")}>
+			<td className={cn(td, "type-ui text-secondary")}>
 				{rules.length === 0
 					? "—"
 					: rules.map((r, i) => (
 							<span key={r.id}>
 								{i > 0 ? ", " : null}
 								{r.description || (
-									<span className="font-mono text-[11px]">{ruleId(r)}</span>
+									<span className="type-mono-xs">{ruleId(r)}</span>
 								)}
 							</span>
 						))}
@@ -146,3 +161,8 @@ function Row({
 		</tr>
 	);
 }
+
+// The table's header and body cells.
+const th =
+	"border-b border-default px-3 text-left type-label whitespace-nowrap text-tertiary";
+const td = "border-b border-subtle px-3 py-2";

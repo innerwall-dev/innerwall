@@ -1,8 +1,10 @@
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { Centered, EmptyState } from "@/components/EmptyState";
+import { Icon } from "@/components/Icon";
 import { LoadingRow, ProblemNotice } from "@/components/Problem";
 import { RangeControl } from "@/components/RangeControl";
+import { SeverityNote } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
 import { count, headline } from "@/lib/format";
 import { between, kindText } from "@/lib/gaps";
@@ -196,8 +198,13 @@ function MapView({
 	);
 }
 
-const chip =
-	"rounded-chip border border-input px-[9px] py-1 font-mono text-[12px] text-foreground-secondary";
+// The toolbar's controls, control-sm tall: the grouping picker and the
+// scope's requirements on the default hairline, the draft requirement
+// on an input's stronger one.
+const control =
+	"relative flex h-control-sm items-center gap-1.5 rounded-md border border-default bg-app px-2 type-caption text-secondary hover:bg-hover has-[:focus-visible]:focus-ring";
+const requirement =
+	"flex h-control-sm items-center gap-1 rounded-md border border-default bg-subtle pr-1 pl-2 type-mono-sm text-primary";
 
 function Toolbar({
 	model,
@@ -234,9 +241,9 @@ function Toolbar({
 	}
 
 	return (
-		<div className="flex shrink-0 flex-wrap items-center gap-2.5 border-b border-border px-6 pt-3.5 pb-3">
-			<div className="flex flex-wrap items-center gap-1.5">
-				<label className={cn(chip, "flex items-center gap-1")}>
+		<div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-default px-6 py-3">
+			<div className="flex flex-wrap items-center gap-2">
+				<label className={control}>
 					<span>group by:</span>
 					<select
 						aria-label="Group by"
@@ -247,7 +254,7 @@ function Toolbar({
 								p.delete("sel");
 							})
 						}
-						className="cursor-pointer appearance-none bg-transparent font-mono text-[12px] text-foreground-secondary focus:outline-none"
+						className="cursor-pointer appearance-none bg-transparent pr-5 type-mono-sm text-primary focus:outline-none"
 					>
 						{options.map((k) => (
 							<option key={k} value={k}>
@@ -255,12 +262,17 @@ function Toolbar({
 							</option>
 						))}
 					</select>
+					<Icon
+						name="chevron-down"
+						className="pointer-events-none absolute right-2"
+					/>
 				</label>
 				{scope.map((req) => {
 					const i = req.indexOf("=");
 					return (
-						<span key={req} className={cn(chip, "flex items-center gap-1.5")}>
-							{req.slice(0, i)} = {req.slice(i + 1)}
+						<span key={req} className={requirement}>
+							<span className="text-tertiary">{req.slice(0, i)} =</span>{" "}
+							{req.slice(i + 1)}
 							<button
 								type="button"
 								aria-label={`Remove ${req}`}
@@ -271,9 +283,9 @@ function Toolbar({
 										for (const l of rest) p.append("label", l);
 									})
 								}
-								className="cursor-pointer text-muted-foreground hover:text-foreground"
+								className="flex size-5 cursor-pointer items-center justify-center rounded-sm hover:bg-hover"
 							>
-								×
+								<Icon name="x" className="size-3.5" />
 							</button>
 						</span>
 					);
@@ -284,7 +296,7 @@ function Toolbar({
 							ev.preventDefault();
 							addRequirement();
 						}}
-						className="flex items-center gap-1.5"
+						className="flex items-center gap-2"
 					>
 						<input
 							aria-label="Label requirement"
@@ -299,28 +311,24 @@ function Toolbar({
 								if (ev.key === "Escape") setAdding(false);
 							}}
 							className={cn(
-								chip,
-								"w-[140px] bg-transparent focus:border-ring focus:outline-none",
-								invalid && "border-destructive",
+								"h-control-sm w-[160px] rounded-md border bg-app px-2 type-mono-sm text-primary placeholder:text-tertiary",
+								invalid ? "border-status-critical-fg" : "border-strong",
 							)}
 						/>
 						{invalid ? (
-							<span className="text-[11px] text-destructive">
+							<SeverityNote level="error" className="type-caption">
 								A label is written key=value.
-							</span>
+							</SeverityNote>
 						) : null}
 					</form>
 				) : (
-					<button
-						type="button"
-						onClick={() => setAdding(true)}
-						className="cursor-pointer rounded-chip border border-dashed border-input-strong px-[9px] py-1 text-[12px] text-muted-foreground hover:text-foreground"
-					>
-						+ filter
-					</button>
+					<Button variant="ghost" size="sm" onClick={() => setAdding(true)}>
+						<Icon name="plus" />
+						filter
+					</Button>
 				)}
 			</div>
-			<fieldset className="m-0 ml-2 flex overflow-hidden rounded border border-input p-0">
+			<fieldset className="m-0 ml-2 flex h-control-sm items-center gap-0.5 rounded-md border border-default bg-subtle p-0.5">
 				<legend className="sr-only">Take</legend>
 				{(["graph", "matrix"] as const).map((t) => (
 					<button
@@ -334,10 +342,10 @@ function Toolbar({
 							})
 						}
 						className={cn(
-							"cursor-pointer px-3.5 py-[5px] text-[12.5px]",
+							"flex h-full cursor-pointer items-center rounded-sm px-2.5 type-caption",
 							take === t
-								? "bg-secondary text-foreground"
-								: "text-foreground-tertiary hover:text-foreground",
+								? "bg-active font-medium text-primary"
+								: "text-secondary hover:bg-hover hover:text-primary",
 						)}
 					>
 						{t === "graph" ? "Graph" : "Matrix"}
@@ -380,50 +388,48 @@ function Totals({ model }: { model: MapModel }) {
 	const dropped = model.dropped.length;
 	const gapped = model.gapped.length;
 	return (
-		<div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-foreground-tertiary">
+		<div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 type-caption text-secondary">
 			<span>
-				<span className="font-mono text-foreground">
+				<span className="type-mono-sm text-primary">
 					{headline(model.connections)}
 				</span>{" "}
 				connections
 			</span>
 			<span>
-				<span className="font-mono text-foreground">
+				<span className="type-mono-sm text-primary">
 					{count(model.reporting)}
 					{model.truncated ? "+" : ""}
 				</span>{" "}
 				{model.reporting === 1 ? "workload" : "workloads"} reporting
 			</span>
 			{gapped > 0 ? (
-				<span
-					role="status"
-					className="text-status-degraded"
-					title={model.gaps
-						.map(
-							(g) =>
-								`${g.workload.hostname}: ${kindText(g.kind)} between ${between(g.from, g.to)}`,
-						)
-						.join("\n")}
-				>
-					▲ {count(gapped)} {gapped === 1 ? "workload" : "workloads"} lost
-					evidence in this range — map is incomplete
-				</span>
+				<SeverityNote level="alert" role="status">
+					<span
+						title={model.gaps
+							.map(
+								(g) =>
+									`${g.workload.hostname}: ${kindText(g.kind)} between ${between(g.from, g.to)}`,
+							)
+							.join("\n")}
+					>
+						{count(gapped)} {gapped === 1 ? "workload" : "workloads"} lost
+						evidence in this range — map is incomplete
+					</span>
+				</SeverityNote>
 			) : null}
 			{dropped > 0 ? (
-				<span
-					role="status"
-					className="text-status-degraded"
-					title={model.dropped.map((w) => w.hostname).join(", ")}
-				>
-					▲ {count(dropped)} {dropped === 1 ? "workload" : "workloads"} dropped
-					flow records — map may be incomplete
-				</span>
+				<SeverityNote level="alert" role="status">
+					<span title={model.dropped.map((w) => w.hostname).join(", ")}>
+						{count(dropped)} {dropped === 1 ? "workload" : "workloads"} dropped
+						flow records — map may be incomplete
+					</span>
+				</SeverityNote>
 			) : null}
 			{model.truncated ? (
-				<span role="status" className="text-status-degraded">
-					▲ showing the busiest {count(rollupLimit)} pairs per decision — map is
+				<SeverityNote level="alert" role="status">
+					showing the busiest {count(rollupLimit)} pairs per decision — map is
 					incomplete
-				</span>
+				</SeverityNote>
 			) : null}
 		</div>
 	);

@@ -3,6 +3,7 @@ import type { ProblemError } from "@/api/client";
 import { createModeChange } from "@/api/fleet";
 import { type Mode, ProblemType, type Workload } from "@/api/schema";
 import { ChoiceChips, modes } from "@/components/fleet/status";
+import { SeverityNote, StatusGlyph } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -13,7 +14,6 @@ import {
 	DialogHeader,
 } from "@/components/ui/dialog";
 import { useWrite } from "@/lib/resource";
-import { cn } from "@/lib/utils";
 
 const order: Mode[] = ["visibility", "simulation", "enforced"];
 const shown = 8;
@@ -83,7 +83,7 @@ export function ModeChangeDialog({
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent width={560}>
 				<DialogHeader title={title}>
-					<p className="text-[12px] text-foreground-tertiary">
+					<p className="type-body text-secondary">
 						Sets the enforcement mode of{" "}
 						{workloads.length === 1
 							? "this workload"
@@ -93,53 +93,43 @@ export function ModeChangeDialog({
 					</p>
 				</DialogHeader>
 				<DialogBody>
-					<div className="flex flex-col gap-[5px]">
-						<span className="text-[12px] text-foreground-tertiary">
-							Workloads
-						</span>
-						<ul className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[12px]">
+					<div className="flex flex-col gap-1.5">
+						<span className="type-label text-secondary">Workloads</span>
+						<ul className="flex flex-wrap gap-x-3 gap-y-1 type-mono-sm text-primary">
 							{workloads.slice(0, shown).map((w) => (
 								<li key={w.id} className="flex items-center gap-1.5">
 									<span>{w.hostname}</span>
-									<span
-										className={cn("text-[11px]", modes[w.mode].cls)}
-										title={modes[w.mode].label}
-									>
+									<span className="inline-flex" title={modes[w.mode].label}>
 										{modes[w.mode].glyph}
 									</span>
 								</li>
 							))}
 							{workloads.length > shown ? (
-								<li className="text-muted-foreground">
+								<li className="text-tertiary">
 									+{workloads.length - shown} more
 								</li>
 							) : null}
 						</ul>
 					</div>
-					<div className="flex flex-col gap-[5px]">
-						<span className="text-[12px] text-foreground-tertiary">
-							Target mode
-						</span>
+					<div className="flex flex-col gap-1.5">
+						<span className="type-label text-secondary">Target mode</span>
 						<ChoiceChips
 							legend="Target mode"
 							name="target-mode"
 							value={target}
 							onChange={setTarget}
-							className="text-[12.5px]"
 							options={order.map((m) => ({
 								value: m,
 								label: (
 									<>
-										<span aria-hidden="true" className={modes[m].cls}>
-											{modes[m].glyph}
-										</span>
+										{modes[m].glyph}
 										{modes[m].label}
 									</>
 								),
 							}))}
 						/>
 						{target && already > 0 ? (
-							<span className="text-[11px] text-muted-foreground">
+							<span className="type-caption text-tertiary">
 								{already === workloads.length
 									? `All ${already} are already in ${target}; nothing changes.`
 									: `${already} already in ${target}; the other ${workloads.length - already} change.`}
@@ -149,12 +139,13 @@ export function ModeChangeDialog({
 					{mismatch ? (
 						<div
 							role="alert"
-							className="flex flex-col gap-1 rounded border border-status-would-block-border bg-status-would-block-surface px-3 py-2.5 text-[12px]"
+							className="flex flex-col gap-1 rounded-lg border border-status-warn-border bg-status-warn-bg px-4 py-3"
 						>
-							<span className="font-semibold text-status-degraded">
-								▲ The selection no longer matches
+							<span className="flex items-center gap-2 type-body-strong text-status-warn-fg">
+								<StatusGlyph status="alert" size="lg" />
+								The selection no longer matches
 							</span>
-							<span className="text-foreground-secondary">
+							<span className="type-ui text-secondary">
 								You selected{" "}
 								<span className="font-mono">{mismatch.expected}</span>{" "}
 								workloads; the control plane resolved{" "}
@@ -165,26 +156,18 @@ export function ModeChangeDialog({
 							<Button
 								variant="secondary"
 								size="sm"
-								className="mt-1 self-start rounded-chip"
+								className="mt-1 self-start"
 								onClick={onReload}
 							>
 								Reload the list
 							</Button>
 						</div>
 					) : problem ? (
-						<p
-							role="alert"
-							className="flex items-start gap-2 text-[12px] text-destructive"
-						>
-							<span className="font-mono" aria-hidden="true">
-								✕
-							</span>
-							<span>
-								{problem.problem.errors?.map((f) => f.message).join(" ") ||
-									problem.problem.detail ||
-									problem.problem.title}
-							</span>
-						</p>
+						<SeverityNote level="error" role="alert" className="type-ui">
+							{problem.problem.errors?.map((f) => f.message).join(" ") ||
+								problem.problem.detail ||
+								problem.problem.title}
+						</SeverityNote>
 					) : null}
 				</DialogBody>
 				<DialogFooter>

@@ -48,7 +48,7 @@ export function Policy() {
 				services={data?.services.length ?? null}
 				groups={data?.groups.length ?? null}
 			/>
-			<div className="flex min-w-0 flex-1 flex-col gap-[18px] overflow-auto px-6 pt-5 pb-8">
+			<div className="flex min-w-0 flex-1 flex-col gap-5 overflow-auto px-6 pt-5 pb-8">
 				{resource.status === "loading" ? (
 					<LoadingRow what="the policy" />
 				) : resource.status === "error" ? (

@@ -10,9 +10,10 @@ import { listWorkloads } from "@/api/fleet";
 import { listRulesets } from "@/api/policy";
 import type { SyncState } from "@/api/schema";
 import { useSession } from "@/auth/SessionProvider";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import { useResource } from "@/lib/resource";
+import { type Crumb, PageHeader } from "./PageHeader";
 import { Sidebar } from "./Sidebar";
-import { type Crumb, TopBar } from "./TopBar";
 
 // OpenWorkload is the workload a detail screen last showed: the sidebar
 // keeps it one click away, and the breadcrumb names it.
@@ -35,7 +36,7 @@ export function useShell(): ShellContext {
 	return useOutletContext<ShellContext>();
 }
 
-// crumbsFor names the screen for the top bar.
+// crumbsFor names the screen for the page header.
 function crumbsFor(
 	pathname: string,
 	search: string,
@@ -77,7 +78,7 @@ function crumbsFor(
 	return [{ label: "Innerwall" }];
 }
 
-// Shell is the authenticated frame: sidebar, top bar, and the screen.
+// Shell is the authenticated frame: sidebar, page header, and the screen.
 // An anonymous session is sent to the login screen, remembering where
 // it was headed.
 export function Shell() {
@@ -137,25 +138,27 @@ function Frame() {
 	if (rulesets.status === "ready") counts["/policy"] = rulesets.data;
 
 	return (
-		<div className="flex h-dvh w-full overflow-hidden bg-background text-foreground">
+		<SidebarProvider className="h-dvh overflow-hidden bg-app text-primary">
 			<Sidebar counts={counts} fleetEmpty={fleetEmpty} open={open} />
 			<div className="flex min-w-0 flex-1 flex-col">
-				<TopBar crumbs={crumbsFor(location.pathname, location.search, open)} />
+				<PageHeader
+					crumbs={crumbsFor(location.pathname, location.search, open)}
+				/>
 				<main className="relative flex min-h-0 flex-1 flex-col overflow-auto">
 					<Outlet context={context} />
 				</main>
 			</div>
-		</div>
+		</SidebarProvider>
 	);
 }
 
 function Loading() {
 	return (
 		<div
-			className="flex h-dvh items-center justify-center bg-background text-muted-foreground"
+			className="flex h-dvh items-center justify-center bg-app text-tertiary"
 			aria-busy="true"
 		>
-			<span className="font-mono text-[12px]">…</span>
+			<span className="type-mono-sm">…</span>
 		</div>
 	);
 }

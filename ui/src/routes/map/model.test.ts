@@ -5,8 +5,6 @@ import { peerSelector } from "./Drawer";
 import { shapeEdges } from "./geometry";
 import { layoutModel } from "./layout";
 import {
-	baseWidth,
-	blockedWidth,
 	buildModel,
 	defaultKey,
 	edgeEmphasis,
@@ -15,6 +13,7 @@ import {
 	nodeDimmed,
 	resolveSelection,
 	strokeWidth,
+	volumeScale,
 } from "./model";
 
 const checkout1 = wref("w-checkout-1", "checkout-prod-01", {
@@ -241,26 +240,20 @@ describe("rollup to graph model", () => {
 });
 
 describe("volume scaling", () => {
-	it("widens by volume within the tokens' band, blocked fixed at its width", () => {
-		expect(
-			strokeWidth({ decision: "allowed", connections: 10 }, 10, 100_000),
-		).toBe(baseWidth);
-		expect(
-			strokeWidth({ decision: "observed", connections: 100_000 }, 10, 100_000),
-		).toBe(blockedWidth);
-		const mid = strokeWidth(
-			{ decision: "would_block", connections: 1000 },
-			10,
-			100_000,
+	it("log-scales width by volume between the tokens' bounds, whatever the decision", () => {
+		expect(volumeScale(0, 100_000)).toBe(0);
+		expect(volumeScale(100_000, 100_000)).toBe(1);
+		const mid = volumeScale(1000, 100_000);
+		expect(mid).toBeGreaterThan(0);
+		expect(mid).toBeLessThan(1);
+		expect(mid).toBeCloseTo(Math.log1p(1000) / Math.log1p(100_000), 6);
+		// Nothing on the map: the minimum width.
+		expect(volumeScale(0, 0)).toBe(0);
+		expect(strokeWidth({ connections: 100_000 }, 100_000)).toBe(
+			"calc(var(--edge-width-min) + (var(--edge-width-max) - var(--edge-width-min)) * 1.0000)",
 		);
-		expect(mid).toBeGreaterThan(baseWidth);
-		expect(mid).toBeLessThan(blockedWidth);
-		expect(strokeWidth({ decision: "blocked", connections: 1 }, 1, 1e6)).toBe(
-			blockedWidth,
-		);
-		// One edge, or all of one volume: the base width.
-		expect(strokeWidth({ decision: "allowed", connections: 5 }, 5, 5)).toBe(
-			baseWidth,
+		expect(strokeWidth({ connections: 0 }, 100_000)).toBe(
+			"calc(var(--edge-width-min) + (var(--edge-width-max) - var(--edge-width-min)) * 0.0000)",
 		);
 	});
 });
@@ -283,15 +276,19 @@ describe("selection", () => {
 		"app",
 	);
 
-	it("dims the other observed edges around a selected edge", () => {
+	it("dims everything outside a selected edge", () => {
 		const s = { kind: "edge", id: "g:a>g:b" } as const;
 		expect(edgeEmphasis(edge(m, "g:a>g:b"), s)).toEqual({
 			selected: true,
 			dimmed: false,
 		});
 		expect(edgeEmphasis(edge(m, "g:b>g:c"), s).dimmed).toBe(true);
-		// Only observed edges dim; a blocked one keeps its weight.
-		expect(edgeEmphasis(edge(m, "unknown>g:c"), s).dimmed).toBe(false);
+		// Every edge outside the selection fades, whatever its decision.
+		expect(edgeEmphasis(edge(m, "unknown>g:c"), s).dimmed).toBe(true);
+		// The edge's two ends stay; every other node fades.
+		expect(nodeDimmed(m, "g:a", s)).toBe(false);
+		expect(nodeDimmed(m, "g:b", s)).toBe(false);
+		expect(nodeDimmed(m, "g:c", s)).toBe(true);
 		expect(edgeEmphasis(edge(m, "g:b>g:c"), null)).toEqual({
 			selected: false,
 			dimmed: false,

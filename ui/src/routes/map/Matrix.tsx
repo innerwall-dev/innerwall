@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useRef } from "react";
 import { verdicts } from "@/components/fleet/status";
+import { StatusGlyph } from "@/components/StatusGlyph";
 import { short } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Layout } from "./layout";
@@ -12,19 +13,21 @@ import type { MapEdge, MapModel, MapNode, Selection } from "./model";
 
 const unmanaged = new Set(["address-group", "unknown"]);
 
+// A filled cell takes its decision's tint; the glyph carries the tone,
+// and the count, which is clickable, stays in the text color.
 const cellTone = {
-	observed: "bg-status-observed-bg text-status-observed",
-	allowed: "bg-status-allowed-bg text-status-allowed",
-	would_block: "bg-status-would-block-bg text-status-would-block",
-	blocked: "bg-status-blocked-bg text-status-blocked",
+	observed: "bg-status-neutral-bg",
+	allowed: "bg-status-ok-bg",
+	would_block: "bg-status-warn-bg",
+	blocked: "bg-status-critical-bg",
 } as const;
 
 function rowEdge(n: MapNode): string {
 	if (unmanaged.has(n.kind))
-		return "border-l-2 border-dashed border-l-[var(--viz-node-unmanaged-stroke)]";
+		return "border-l-2 border-dashed border-l-(--border-strong)";
 	if (n.kind === "unlabeled")
-		return "border-l-2 border-dotted border-l-[var(--viz-node-unlabeled-stroke)]";
-	return "border-l-2 border-solid border-l-[var(--viz-node-managed-stroke)]";
+		return "border-l-2 border-dotted border-l-(--status-warn-border)";
+	return "border-l-2 border-solid border-l-(--border-default)";
 }
 
 export function Matrix({
@@ -72,7 +75,7 @@ export function Matrix({
 			    each 1px gap is a grid line; a filled cell's tint sits on that
 			    color, as the design draws it, and an empty cell is opaque. */}
 				<table
-					className="w-full border-separate border-spacing-px border border-[var(--viz-matrix-grid)] bg-[var(--viz-matrix-grid)]"
+					className="w-full border-separate border-spacing-px rounded-lg border border-subtle bg-(--border-subtle)"
 					style={{ minWidth: 150 + cols.length * 84 }}
 				>
 					<caption className="sr-only">
@@ -88,24 +91,29 @@ export function Matrix({
 						<tr>
 							<th
 								scope="col"
-								className="sticky left-0 bg-[var(--viz-matrix-empty)] px-2.5 py-2 text-left align-top text-[11px] font-normal uppercase tracking-[0.05em] text-muted-foreground"
+								className="sticky left-0 bg-subtle px-3 py-2 text-left align-top type-label text-tertiary"
 							>
-								source ↓ · destination →
+								Source ↓ · destination →
 							</th>
 							{cols.map((c) => (
 								<th
 									key={c.id}
 									scope="col"
 									className={cn(
-										"bg-[var(--viz-matrix-empty)] p-0 align-top font-normal",
-										nodeSelected(c.id) && "bg-[var(--viz-matrix-selected)]",
+										"p-0 align-top font-normal",
+										nodeSelected(c.id) ? "bg-selection-bg" : "bg-subtle",
 									)}
 								>
 									<button
 										type="button"
 										aria-pressed={nodeSelected(c.id)}
 										onClick={() => pickNode(c.id)}
-										className="w-full cursor-pointer px-1.5 py-2 text-center text-[11px] leading-[1.2] break-words text-foreground-secondary"
+										className={cn(
+											"w-full cursor-pointer px-1.5 py-2 text-center type-mono-xs break-words",
+											nodeSelected(c.id)
+												? "text-primary"
+												: "text-secondary hover:bg-hover hover:text-primary",
+										)}
 									>
 										{c.title}
 									</button>
@@ -119,16 +127,21 @@ export function Matrix({
 								<th
 									scope="row"
 									className={cn(
-										"sticky left-0 bg-surface-sidebar p-0 text-left font-normal",
+										"sticky left-0 p-0 text-left font-normal",
 										rowEdge(r),
-										nodeSelected(r.id) && "bg-[var(--viz-matrix-selected)]",
+										nodeSelected(r.id) ? "bg-selection-bg" : "bg-subtle",
 									)}
 								>
 									<button
 										type="button"
 										aria-pressed={nodeSelected(r.id)}
 										onClick={() => pickNode(r.id)}
-										className="w-full cursor-pointer truncate px-2.5 py-1.5 text-left font-mono text-[11.5px] whitespace-nowrap text-foreground-secondary"
+										className={cn(
+											"w-full cursor-pointer truncate px-2.5 py-1.5 text-left type-mono-sm whitespace-nowrap",
+											nodeSelected(r.id)
+												? "text-primary"
+												: "text-secondary hover:bg-hover hover:text-primary",
+										)}
 									>
 										{r.title}
 									</button>
@@ -136,9 +149,7 @@ export function Matrix({
 								{cols.map((c) => {
 									const e = edges.get(`${r.id}>${c.id}`);
 									if (!e) {
-										return (
-											<td key={c.id} className="bg-[var(--viz-matrix-empty)]" />
-										);
+										return <td key={c.id} className="bg-app" />;
 									}
 									const selected =
 										selection?.kind === "edge" && selection.id === e.id;
@@ -156,12 +167,14 @@ export function Matrix({
 													onSelect(selected ? null : { kind: "edge", id: e.id })
 												}
 												className={cn(
-													"size-full cursor-pointer px-1.5 py-1.5 text-center font-mono text-[11.5px] whitespace-nowrap",
-													cellTone[e.decision],
-													selected && "bg-[var(--viz-matrix-selected)]",
+													"inline-flex size-full cursor-pointer items-center justify-center gap-1.5 px-1.5 py-1.5 type-mono-sm whitespace-nowrap text-primary",
+													selected
+														? "bg-selection-bg"
+														: cn(cellTone[e.decision], "hover:bg-hover"),
 												)}
 											>
-												<span aria-hidden="true">{v.glyph}</span> {short(shown)}
+												<StatusGlyph status={v.status} size="md" />
+												{short(shown)}
 											</button>
 										</td>
 									);
@@ -171,12 +184,32 @@ export function Matrix({
 					</tbody>
 				</table>
 			</div>
-			<p className="mt-2.5 text-[11px] text-muted-foreground">
-				Glyph encodes decision (○ observed · ✓ allowed · ◆ would block · ✕
-				blocked); number is connections under that decision, the one that takes
+			<p className="mt-3 type-caption text-tertiary">
+				Glyph encodes decision (
+				<Key status="observed" word="observed" /> ·{" "}
+				<Key status="allowed" word="allowed" /> ·{" "}
+				<Key status="would-block" word="would block" /> ·{" "}
+				<Key status="blocked" word="blocked" />
+				); number is connections under that decision, the one that takes
 				precedence among the cell's pairs. Row headers with dashed border are
 				unmanaged sources.
 			</p>
 		</div>
+	);
+}
+
+// Key is one decision in the legend line: its glyph, then its word.
+function Key({
+	status,
+	word,
+}: {
+	status: "observed" | "allowed" | "would-block" | "blocked";
+	word: string;
+}) {
+	return (
+		<span className="inline-flex items-center gap-1 whitespace-nowrap align-[-3px]">
+			<StatusGlyph status={status} size="lg" />
+			{word}
+		</span>
 	);
 }

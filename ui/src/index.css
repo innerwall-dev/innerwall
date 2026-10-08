@@ -1,162 +1,224 @@
 /* The console's stylesheet. tokens.css is the palette, its token names
-   and values adopted verbatim from the design package and never
+   and values adopted verbatim from the design package (v2) and never
    restyled here; this file maps its custom properties onto utility names
-   and sets the base typography. The tokens are raw hex/rgba, so every
-   mapping is a plain var() reference: the theme block below is inline
-   so that the utilities read the token at runtime (the .dark class
-   switches every color) and no token is converted. */
+   and sets the base typography. Every color mapping is a plain var()
+   reference: the theme block below is inline so that the utilities read
+   the token at runtime (the data-theme attribute switches every color)
+   and no token is converted. */
 
 @import "tailwindcss";
 @import "./tokens.css";
 
-/* Self-hosted type, bundled from the packages: no request leaves the
-   origin for a font. Latin subsets in the weights the screens use. */
-@import "@fontsource/ibm-plex-sans/latin-400.css";
-@import "@fontsource/ibm-plex-sans/latin-500.css";
-@import "@fontsource/ibm-plex-sans/latin-600.css";
-@import "@fontsource/ibm-plex-sans/latin-700.css";
-@import "@fontsource/ibm-plex-mono/latin-400.css";
-@import "@fontsource/ibm-plex-mono/latin-500.css";
-
-/* Dark theme is the .dark class on the root element; preference lives in
-   localStorage (see theme/ThemeProvider.tsx). */
+/* The theme is the data-theme attribute on the root element, which
+   tokens.css keys on; the .dark class mirrors it for the dark variant.
+   The preference lives in localStorage (see theme/ThemeProvider.tsx). */
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
-	--font-sans: "IBM Plex Sans", system-ui, sans-serif;
-	--font-mono: "IBM Plex Mono", ui-monospace, monospace;
+	/* No palette but the tokens: Tailwind's default colors are cleared,
+	   so a color utility resolves only to a name mapped below. */
+	--color-*: initial;
 
-	/* `rounded` is the control radius and shadow-popover the popover
-	   shadow; both tokens share their utility's name, so the theme layer
-	   restates each as a reference to itself. That restatement is layered
-	   and the tokens are not, so the token always wins the cascade. */
-	--radius: var(--radius);
-	--shadow-popover: var(--shadow-popover);
+	/* Tokens that share their utility's name: the theme layer restates
+	   each as a reference to itself. That restatement is layered and the
+	   tokens are not, so the token always wins the cascade. */
+	--font-sans: var(--font-sans);
+	--font-mono: var(--font-mono);
+	--radius-sm: var(--radius-sm);
+	--radius-md: var(--radius-md);
+	--radius-lg: var(--radius-lg);
+	--radius-xl: var(--radius-xl);
+	--radius-full: var(--radius-full);
+	--opacity-dimmed: var(--opacity-dimmed);
+	--opacity-disabled: var(--opacity-disabled);
 
-	/* the design's pill, chip, popover, and dialog radii */
-	--radius-pill: 4px;
-	--radius-chip: 5px;
-	--radius-popover: 8px;
-	--radius-dialog: 10px;
+	/* Canvas and surfaces: bg-app, bg-subtle, bg-raised, bg-hover,
+	   bg-active, bg-scrim. */
+	--background-color-app: var(--bg-app);
+	--background-color-subtle: var(--bg-subtle);
+	--background-color-raised: var(--bg-raised);
+	--background-color-hover: var(--bg-hover);
+	--background-color-active: var(--bg-active);
+	--background-color-scrim: var(--scrim);
 
-	--color-background: var(--background);
-	--color-foreground: var(--foreground);
-	--color-foreground-secondary: var(--foreground-secondary);
-	--color-foreground-tertiary: var(--foreground-tertiary);
-	--color-foreground-glyph: var(--foreground-glyph);
-	--color-foreground-separator: var(--foreground-separator);
-	--color-card: var(--card);
-	--color-card-foreground: var(--card-foreground);
-	--color-popover: var(--popover);
-	--color-popover-foreground: var(--popover-foreground);
-	--color-primary: var(--primary);
-	--color-primary-foreground: var(--primary-foreground);
-	--color-primary-border: var(--primary-border);
-	--color-secondary: var(--secondary);
-	--color-secondary-foreground: var(--secondary-foreground);
-	--color-muted: var(--muted);
-	--color-muted-foreground: var(--muted-foreground);
-	--color-accent: var(--accent);
-	--color-accent-foreground: var(--accent-foreground);
-	--color-accent-border: var(--accent-border);
-	--color-destructive: var(--destructive);
-	--color-destructive-foreground: var(--destructive-foreground);
-	--color-border: var(--border);
-	--color-input: var(--input);
-	--color-input-strong: var(--input-strong);
-	--color-ring: var(--ring);
+	/* Separators: border-subtle (rows), border-default (cards, panels,
+	   controls), border-strong (inputs, external nodes). */
+	--border-color-subtle: var(--border-subtle);
+	--border-color-default: var(--border-default);
+	--border-color-strong: var(--border-strong);
+	--divide-color-subtle: var(--border-subtle);
+	--divide-color-default: var(--border-default);
+
+	/* Text: text-primary, text-secondary, text-tertiary, text-disabled. */
+	--text-color-primary: var(--text-primary);
+	--text-color-secondary: var(--text-secondary);
+	--text-color-tertiary: var(--text-tertiary);
+	--text-color-disabled: var(--text-disabled);
+
+	/* Every other role, under its token's own name. */
+	--color-action-primary-bg: var(--action-primary-bg);
+	--color-action-primary-fg: var(--action-primary-fg);
+	--color-action-primary-hover: var(--action-primary-hover);
 	--color-link: var(--link);
-	--color-link-hover: var(--link-hover);
-	--color-surface-sidebar: var(--surface-sidebar);
-	--color-surface-nav-active: var(--surface-nav-active);
-	--color-surface-row-selected: var(--surface-row-selected);
-	--color-surface-row-editing: var(--surface-row-editing);
-	--color-surface-cell-selected: var(--surface-cell-selected);
-	--color-surface-translucent: var(--surface-translucent);
-	--color-status-observed: var(--status-observed);
-	--color-status-observed-bg: var(--status-observed-bg);
-	--color-status-observed-border: var(--status-observed-border);
-	--color-status-allowed: var(--status-allowed);
-	--color-status-allowed-bg: var(--status-allowed-bg);
-	--color-status-allowed-bg-soft: var(--status-allowed-bg-soft);
-	--color-status-allowed-border: var(--status-allowed-border);
-	--color-status-would-block: var(--status-would-block);
-	--color-status-would-block-bg: var(--status-would-block-bg);
-	--color-status-would-block-bg-soft: var(--status-would-block-bg-soft);
-	--color-status-would-block-border: var(--status-would-block-border);
-	--color-status-would-block-surface: var(--status-would-block-surface);
-	--color-status-blocked: var(--status-blocked);
-	--color-status-blocked-bg: var(--status-blocked-bg);
-	--color-status-blocked-border: var(--status-blocked-border);
-	--color-status-synced: var(--status-synced);
-	--color-status-pending: var(--status-pending);
-	--color-status-degraded: var(--status-degraded);
-	--color-status-offline: var(--status-offline);
-	--color-status-offline-bar: var(--status-offline-bar);
-	--color-mode-visibility: var(--mode-visibility);
-	--color-mode-visibility-border: var(--mode-visibility-border);
-	--color-mode-simulation: var(--mode-simulation);
-	--color-mode-simulation-border: var(--mode-simulation-border);
-	--color-mode-enforced: var(--mode-enforced);
-	--color-mode-enforced-border: var(--mode-enforced-border);
-	--color-cred-ok: var(--cred-ok);
-	--color-cred-renewal-failed: var(--cred-renewal-failed);
-	--color-cred-expired: var(--cred-expired);
-	--color-token-active: var(--token-active);
-	--color-token-revoked: var(--token-revoked);
-	--color-token-expired: var(--token-expired);
-	--color-viz-node-managed-fill: var(--viz-node-managed-fill);
-	--color-viz-node-managed-stroke: var(--viz-node-managed-stroke);
-	--color-viz-node-unmanaged-fill: var(--viz-node-unmanaged-fill);
-	--color-viz-node-unmanaged-stroke: var(--viz-node-unmanaged-stroke);
-	--color-viz-node-unmanaged-text: var(--viz-node-unmanaged-text);
-	--color-viz-node-unlabeled-stroke: var(--viz-node-unlabeled-stroke);
-	--color-viz-node-unlabeled-text: var(--viz-node-unlabeled-text);
-	--color-viz-node-title: var(--viz-node-title);
-	--color-viz-node-subtitle: var(--viz-node-subtitle);
-	--color-viz-edge-observed: var(--viz-edge-observed);
-	--color-viz-edge-allowed: var(--viz-edge-allowed);
-	--color-viz-edge-would-block: var(--viz-edge-would-block);
-	--color-viz-edge-blocked: var(--viz-edge-blocked);
-	--color-viz-edge-label-bg: var(--viz-edge-label-bg);
-	--color-viz-matrix-grid: var(--viz-matrix-grid);
-	--color-viz-matrix-empty: var(--viz-matrix-empty);
-	--color-viz-matrix-selected: var(--viz-matrix-selected);
-	--color-viz-bar-track: var(--viz-bar-track);
-	--color-viz-bar-observed: var(--viz-bar-observed);
-	--color-viz-bar-allowed: var(--viz-bar-allowed);
-	--color-viz-bar-would-block: var(--viz-bar-would-block);
-	--color-viz-bar-blocked: var(--viz-bar-blocked);
-	--color-viz-sync-synced: var(--viz-sync-synced);
-	--color-viz-sync-pending: var(--viz-sync-pending);
-	--color-viz-sync-degraded: var(--viz-sync-degraded);
-	--color-viz-sync-offline: var(--viz-sync-offline);
-	--color-viz-sync-track: var(--viz-sync-track);
+	--color-selection-bg: var(--selection-bg);
+	--color-selection-border: var(--selection-border);
+	--color-selection-fg: var(--selection-fg);
+	--color-icon-default: var(--icon-default);
+	--color-icon-active: var(--icon-active);
 	--color-logo-outline: var(--logo-outline);
 	--color-logo-fill: var(--logo-fill);
+	--color-status-ok-fg: var(--status-ok-fg);
+	--color-status-ok-bg: var(--status-ok-bg);
+	--color-status-ok-border: var(--status-ok-border);
+	--color-status-warn-fg: var(--status-warn-fg);
+	--color-status-warn-bg: var(--status-warn-bg);
+	--color-status-warn-border: var(--status-warn-border);
+	--color-status-critical-fg: var(--status-critical-fg);
+	--color-status-critical-bg: var(--status-critical-bg);
+	--color-status-critical-border: var(--status-critical-border);
+	--color-status-neutral-fg: var(--status-neutral-fg);
+	--color-status-neutral-bg: var(--status-neutral-bg);
+	--color-status-neutral-border: var(--status-neutral-border);
+	--color-flow-observed: var(--flow-observed);
+	--color-flow-allowed: var(--flow-allowed);
+	--color-flow-would-block: var(--flow-would-block);
+	--color-flow-blocked: var(--flow-blocked);
+	--color-health-synced: var(--health-synced);
+	--color-health-pending: var(--health-pending);
+	--color-health-degraded: var(--health-degraded);
+	--color-health-offline: var(--health-offline);
+
+	/* The sidebar component's color names, each a package token: the
+	   rail on sidebar-bg behind a sidebar-border hairline, entries in
+	   text-secondary, hover on sidebar-item-hover. */
+	--color-sidebar: var(--sidebar-bg);
+	--color-sidebar-foreground: var(--text-secondary);
+	--color-sidebar-accent: var(--sidebar-item-hover);
+	--color-sidebar-accent-foreground: var(--text-primary);
+	--color-sidebar-border: var(--sidebar-border);
+	--color-sidebar-item-hover: var(--sidebar-item-hover);
+	--color-sidebar-item-active: var(--sidebar-item-active);
+
+	/* Fixed heights and sizes: h-control-md, h-row-dense, size-avatar… */
+	--spacing-control-sm: var(--control-sm);
+	--spacing-control-md: var(--control-md);
+	--spacing-control-lg: var(--control-lg);
+	--spacing-row-dense: var(--row-dense);
+	--spacing-row-header: var(--row-header);
+	--spacing-topbar: var(--topbar);
+	--spacing-sidebar-item: var(--sidebar-item);
+	--spacing-avatar: var(--avatar);
+	--spacing-icon: var(--icon-size);
+	--spacing-logo: var(--logo-size);
+	--spacing-popover: var(--popover-width);
+	--spacing-glyph-sm: var(--glyph-sm);
+	--spacing-glyph-md: var(--glyph-md);
+	--spacing-glyph-lg: var(--glyph-lg);
+}
+
+/* The type scale, one utility per named style (tokens.json, type). */
+@utility type-title-page {
+	font-family: var(--font-sans);
+	font-size: 20px;
+	line-height: 28px;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+}
+@utility type-title-section {
+	font-family: var(--font-sans);
+	font-size: 16px;
+	line-height: 24px;
+	font-weight: 600;
+}
+@utility type-body {
+	font-family: var(--font-sans);
+	font-size: 14px;
+	line-height: 20px;
+	font-weight: 400;
+}
+@utility type-body-strong {
+	font-family: var(--font-sans);
+	font-size: 14px;
+	line-height: 20px;
+	font-weight: 500;
+}
+@utility type-ui {
+	font-family: var(--font-sans);
+	font-size: 13px;
+	line-height: 20px;
+	font-weight: 400;
+}
+@utility type-ui-strong {
+	font-family: var(--font-sans);
+	font-size: 13px;
+	line-height: 20px;
+	font-weight: 500;
+}
+@utility type-label {
+	font-family: var(--font-sans);
+	font-size: 12px;
+	line-height: 16px;
+	font-weight: 500;
+}
+@utility type-caption {
+	font-family: var(--font-sans);
+	font-size: 12px;
+	line-height: 16px;
+	font-weight: 400;
+}
+@utility type-mono-kpi {
+	font-family: var(--font-mono);
+	font-size: 32px;
+	line-height: 36px;
+	font-weight: 500;
+	letter-spacing: -0.02em;
+	font-variant-numeric: tabular-nums;
+}
+@utility type-mono-ui {
+	font-family: var(--font-mono);
+	font-size: 13px;
+	line-height: 20px;
+	font-weight: 400;
+	font-variant-numeric: tabular-nums;
+}
+@utility type-mono-sm {
+	font-family: var(--font-mono);
+	font-size: 12px;
+	line-height: 16px;
+	font-weight: 400;
+	font-variant-numeric: tabular-nums;
+}
+@utility type-mono-xs {
+	font-family: var(--font-mono);
+	font-size: 11px;
+	line-height: 16px;
+	font-weight: 400;
+	font-variant-numeric: tabular-nums;
+}
+
+/* The one shadow: keyboard focus on every interactive element. */
+@utility focus-ring {
+	outline: none;
+	box-shadow: var(--focus-ring);
 }
 
 @layer base {
-	html {
-		color-scheme: light;
-	}
-	html.dark {
-		color-scheme: dark;
-	}
 	body {
-		@apply bg-background text-foreground font-sans antialiased;
-		font-size: 13px;
-		line-height: 1.45;
+		@apply bg-app text-primary type-ui antialiased;
 	}
 	* {
-		scrollbar-color: var(--scrollbar-thumb) transparent;
+		scrollbar-color: var(--border-strong) transparent;
 	}
 	:focus-visible {
-		outline: 2px solid var(--ring);
-		outline-offset: 2px;
+		outline: none;
+		box-shadow: var(--focus-ring);
 	}
-	input[type="checkbox"] {
-		accent-color: var(--checkbox-accent);
+	input[type="checkbox"],
+	input[type="radio"] {
+		accent-color: var(--selection-fg);
+	}
+	a {
+		color: inherit;
 	}
 }
 
@@ -166,9 +228,9 @@
    labels are the console's components and color themselves. */
 .react-flow {
 	--xy-background-color: transparent;
-	--xy-edge-stroke: var(--viz-edge-observed);
-	--xy-edge-stroke-selected: var(--viz-edge-observed);
+	--xy-edge-stroke: var(--flow-observed);
+	--xy-edge-stroke-selected: var(--flow-observed);
 	--xy-node-border: 0;
 	--xy-node-background-color: transparent;
-	--xy-node-color: var(--viz-node-title);
+	--xy-node-color: var(--text-primary);
 }

@@ -293,7 +293,7 @@ describe("workload detail", () => {
 		const items = within(cell).getAllByRole("listitem");
 		expect(items).toHaveLength(3);
 		expect(items[0]).toHaveTextContent(
-			/▲ the kernel dropped events between (?:\d\d-\d\d )?\d\d:\d\d and (?:\d\d-\d\d )?\d\d:\d\d UTC$/,
+			/^the kernel dropped events between (?:\d\d-\d\d )?\d\d:\d\d and (?:\d\d-\d\d )?\d\d:\d\d UTC$/,
 		);
 		expect(items[1]).toHaveTextContent(
 			/the agent dropped buffered windows between .* UTC · 1,200 lost$/,
@@ -351,9 +351,11 @@ describe("workload detail", () => {
 			screen.getByRole("navigation", { name: "Breadcrumb" }),
 		).toHaveTextContent("Workloads/db-1");
 		const nav = screen.getByRole("navigation", { name: "Sections" });
-		expect(within(nav).getByRole("link", { name: /db-1/ })).toHaveTextContent(
-			"▲",
-		);
+		expect(
+			within(within(nav).getByRole("link", { name: /db-1/ })).getByRole("img", {
+				name: "Degraded",
+			}),
+		).toHaveAttribute("data-status", "degraded");
 	});
 
 	it("lists flow windows by the required workload filter, with counts per decision", async () => {
@@ -465,9 +467,7 @@ describe("workload detail", () => {
 		surface();
 		renderApp(`/workloads/${db.id}/policy`);
 		expect(
-			await screen.findByText(
-				"▲ rendered 4m ago, not applied — host is on v41",
-			),
+			await screen.findByText("rendered 4m ago, not applied — host is on v41"),
 		).toBeInTheDocument();
 		const card = screen.getByRole("article", { name: "postgres from web" });
 		expect(within(card).getByText("aa5b70e7/tcp")).toBeInTheDocument();

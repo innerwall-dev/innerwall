@@ -358,13 +358,13 @@ describe("policy editor", () => {
 		const api = await row("Production API may reach checkout.");
 		await waitFor(() =>
 			expect(within(api).getByTestId("simulation")).toHaveTextContent(
-				"✓ 412,880 allowedmatched on 40 workloads",
+				"412,880 allowedmatched on 40 workloads",
 			),
 		);
 		// Two protocols: the larger count, as a lower bound.
 		expect(
 			within(await row("Operator SSH via bastion.")).getByTestId("simulation"),
-		).toHaveTextContent("✓ 88 allowedmatched on 12+ workloads");
+		).toHaveTextContent("88 allowedmatched on 12+ workloads");
 		expect(
 			within(await row("Scrapes from the metrics collectors.")).getByTestId(
 				"simulation",
@@ -397,7 +397,7 @@ describe("policy editor", () => {
 			),
 		);
 		expect(screen.getByTestId("match-mix")).toHaveTextContent(
-			"◐ 4 simulation◌ 1 visibility▲ 1 degraded",
+			"4 simulation 1 visibility 1 degraded",
 		);
 		expect(screen.getByTestId("banner")).toHaveTextContent(
 			"There is no draft. Saving an enabled rule re-renders the 5 workloads in scope and pushes the change to their agents immediately. Workloads in simulation still drop nothing.",
@@ -450,7 +450,7 @@ describe("policy editor", () => {
 			screen
 				.getAllByTestId("requirement")
 				.find((r) => r.textContent?.startsWith("tier")),
-		).toHaveClass("border-destructive");
+		).toHaveClass("border-status-critical-fg");
 	});
 
 	it("enables a disabled rule from the table, conditioned on the version it read", async () => {
@@ -610,7 +610,7 @@ describe("policy editor", () => {
 		const user = userEvent.setup();
 		renderApp("/policy?ruleset=checkout-inbound");
 		await rulesTable();
-		await user.click(screen.getByRole("button", { name: "+ Add rule" }));
+		await user.click(screen.getByRole("button", { name: "Add rule" }));
 		const editing = await row("New rule");
 		const peer = within(editing).getByRole("textbox", { name: "Add a peer" });
 		await user.type(peer, "10.40.0.0/33{Enter}");
@@ -658,7 +658,7 @@ describe("policy editor", () => {
 		).toHaveClass("line-through");
 		// Errors only, counted; the identical row is not offered again.
 		expect(screen.getByTestId("row-errors")).toHaveTextContent(
-			"✕ 3 errors block saving",
+			"3 errors block saving",
 		);
 		expect(
 			screen.getByRole("button", { name: /Save — applies to 5 workloads now/ }),
@@ -669,7 +669,7 @@ describe("policy editor", () => {
 			within(editing).getByRole("button", { name: "Remove cidr 10.40.0.0/33" }),
 		);
 		expect(screen.getByTestId("row-errors")).toHaveTextContent(
-			"✕ 2 errors block saving",
+			"2 errors block saving",
 		);
 		expect(
 			screen.getByRole("button", { name: /Save — applies to 5 workloads now/ }),
@@ -809,7 +809,7 @@ describe("policy editor", () => {
 		const user = userEvent.setup();
 		renderApp("/policy?ruleset=checkout-inbound");
 		await rulesTable();
-		await user.click(screen.getByRole("button", { name: "+ Add rule" }));
+		await user.click(screen.getByRole("button", { name: "Add rule" }));
 		const editing = await row("New rule");
 		await user.type(
 			within(editing).getByRole("textbox", { name: "Add a peer" }),
@@ -972,7 +972,7 @@ describe("policy editor", () => {
 		const user = userEvent.setup();
 		renderApp("/policy?ruleset=checkout-inbound");
 		await rulesTable();
-		await user.click(screen.getByRole("button", { name: "+ Add rule" }));
+		await user.click(screen.getByRole("button", { name: "Add rule" }));
 		const editing = await row("New rule");
 		await user.type(
 			within(editing).getByRole("textbox", { name: "Add a peer" }),

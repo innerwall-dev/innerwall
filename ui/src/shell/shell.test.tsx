@@ -3,7 +3,6 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { freshInstall, mockSurface, operator, renderApp } from "@/test/harness";
 import { storageKey } from "@/theme/ThemeProvider";
-import { initials } from "./AccountPopover";
 
 const signedIn = () => mockSurface(freshInstall);
 
@@ -76,13 +75,45 @@ describe("shell", () => {
 	});
 });
 
+describe("sidebar", () => {
+	it("collapses to the icon rail and back, keeping every entry's name", async () => {
+		signedIn();
+		const user = userEvent.setup();
+		renderApp("/simulation");
+		const collapse = await screen.findByRole("button", {
+			name: "Collapse sidebar",
+		});
+		const rail = document.querySelector('[data-slot="sidebar"]');
+		expect(rail).toHaveAttribute("data-state", "expanded");
+		await user.click(collapse);
+		expect(rail).toHaveAttribute("data-state", "collapsed");
+		expect(rail).toHaveAttribute("data-collapsible", "icon");
+		expect(document.cookie).toContain("sidebar_state=false");
+		const nav = screen.getByRole("navigation", { name: "Sections" });
+		for (const label of [
+			"Simulation review",
+			"Flow map",
+			"Workloads",
+			"Policy",
+		]) {
+			expect(
+				within(nav).getByRole("link", { name: new RegExp(label) }),
+			).toBeInTheDocument();
+		}
+		await user.click(screen.getByRole("button", { name: "Expand sidebar" }));
+		expect(rail).toHaveAttribute("data-state", "expanded");
+		expect(document.cookie).toContain("sidebar_state=true");
+	});
+});
+
 describe("account popover", () => {
-	it("opens with the operator's initials, identity line, and theme control", async () => {
+	it("opens with the operator's name, identity line, and theme control", async () => {
 		signedIn();
 		const user = userEvent.setup();
 		renderApp("/simulation");
 		const trigger = await screen.findByRole("button", { name: "Account" });
-		expect(trigger).toHaveTextContent("AR");
+		expect(trigger).toHaveTextContent("A. Rao");
+		expect(trigger).toHaveTextContent("iad1");
 		await user.click(trigger);
 		const popover = await screen.findByRole("dialog", { name: "Account" });
 		expect(within(popover).getByText("A. Rao")).toBeInTheDocument();
@@ -103,7 +134,7 @@ describe("account popover", () => {
 		).not.toBeInTheDocument();
 	});
 
-	it("falls back to a generic mark when the display name is null", async () => {
+	it("falls back to a generic name when the display name is null", async () => {
 		mockSurface([
 			{
 				method: "GET",
@@ -114,7 +145,7 @@ describe("account popover", () => {
 		const user = userEvent.setup();
 		renderApp("/simulation");
 		const trigger = await screen.findByRole("button", { name: "Account" });
-		expect(trigger).toHaveTextContent("OP");
+		expect(trigger).toHaveTextContent("Operator");
 		await user.click(trigger);
 		const popover = await screen.findByRole("dialog", { name: "Account" });
 		expect(within(popover).getByText("Operator")).toBeInTheDocument();
@@ -153,18 +184,20 @@ describe("account popover", () => {
 });
 
 describe("theme", () => {
-	it("persists the choice and toggles the root class", async () => {
+	it("persists the choice and sets the root's theme", async () => {
 		signedIn();
 		const user = userEvent.setup();
 		renderApp("/simulation");
 		await user.click(await screen.findByRole("button", { name: "Account" }));
 		await user.click(await screen.findByRole("radio", { name: "Dark" }));
 		await waitFor(() => expect(document.documentElement).toHaveClass("dark"));
+		expect(document.documentElement.dataset.theme).toBe("dark");
 		expect(localStorage.getItem(storageKey)).toBe("dark");
 		await user.click(screen.getByRole("radio", { name: "Light" }));
 		await waitFor(() =>
 			expect(document.documentElement).not.toHaveClass("dark"),
 		);
+		expect(document.documentElement.dataset.theme).toBe("light");
 		expect(localStorage.getItem(storageKey)).toBe("light");
 	});
 
@@ -174,15 +207,5 @@ describe("theme", () => {
 		renderApp("/simulation");
 		await screen.findByRole("button", { name: "Account" });
 		expect(document.documentElement).toHaveClass("dark");
-	});
-});
-
-describe("initials", () => {
-	it("takes the first and last parts of a name and falls back generically", () => {
-		expect(initials("A. Rao")).toBe("AR");
-		expect(initials("Avinash Papineni")).toBe("AP");
-		expect(initials("ops")).toBe("OP");
-		expect(initials("  ")).toBe("OP");
-		expect(initials(null)).toBe("OP");
 	});
 });

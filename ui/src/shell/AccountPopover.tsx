@@ -1,54 +1,39 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { useMe, useSession } from "@/auth/SessionProvider";
+import { Icon } from "@/components/Icon";
 import {
 	Popover,
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
+import { useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { type Theme, useTheme } from "@/theme/ThemeProvider";
 
-// initials reduces a display name to the two letters the avatar shows;
-// a control plane whose operator has no display name gets the generic
-// operator mark.
-export function initials(name: string | null): string {
-	if (!name) return "OP";
-	const parts = name
-		.trim()
-		.split(/[\s.\-_]+/)
-		.filter(Boolean);
-	if (parts.length === 0) return "OP";
-	if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-	return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
-
-// Avatar is the initials disc. The trigger's is 28px with a hairline
-// that turns gold on hover; the popover's own is 30px.
-function Avatar({
-	name,
-	className,
-}: {
-	name: string | null;
-	className?: string;
-}) {
+// Avatar is the operator's disc: the user icon in an avatar-sized
+// circle on bg-active behind the default hairline.
+function Avatar() {
 	return (
 		<span
-			className={cn(
-				"inline-flex shrink-0 items-center justify-center rounded-full border border-input-strong bg-muted font-sans text-[11px] font-semibold text-foreground",
-				className,
-			)}
+			className="flex size-avatar shrink-0 items-center justify-center rounded-full border border-default bg-active"
 			aria-hidden="true"
 		>
-			{initials(name)}
+			<Icon name="user" />
 		</span>
 	);
 }
 
+// AccountPopover is the sidebar footer's operator entry: the avatar,
+// the display name and site label, and the popover with the identity,
+// the theme toggle, and sign out. It opens upward from the expanded
+// rail and to the right of the collapsed one.
 export function AccountPopover() {
 	const me = useMe();
 	const { logout } = useSession();
 	const { theme, setTheme } = useTheme();
+	const { state, isMobile } = useSidebar();
+	const collapsed = state === "collapsed" && !isMobile;
 	const navigate = useNavigate();
 	const [open, setOpen] = useState(false);
 	const [signingOut, setSigningOut] = useState(false);
@@ -77,51 +62,67 @@ export function AccountPopover() {
 				<button
 					type="button"
 					aria-label="Account"
-					className="group shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+					className={cn(
+						"flex h-11 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-left hover:bg-sidebar-item-hover aria-expanded:bg-sidebar-item-hover",
+						"group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:px-1.5",
+					)}
 				>
-					<Avatar
-						name={me.display_name}
-						className="size-7 tracking-[0.02em] transition-colors group-hover:border-ring"
+					<Avatar />
+					<span className="flex min-w-0 flex-1 flex-col group-data-[collapsible=icon]:hidden">
+						<span className="truncate text-[13px] leading-4 font-medium text-primary">
+							{name}
+						</span>
+						{me.site ? (
+							<span
+								className="truncate type-caption text-tertiary"
+								data-testid="site-label"
+							>
+								{me.site}
+							</span>
+						) : null}
+					</span>
+					<Icon
+						name="chevrons-up-down"
+						className="group-data-[collapsible=icon]:hidden"
 					/>
 				</button>
 			</PopoverTrigger>
 			<PopoverContent
-				className="flex w-[236px] flex-col gap-0.5 p-1.5"
-				sideOffset={8}
+				className="flex w-popover flex-col p-1"
+				side={collapsed ? "right" : "top"}
+				align={collapsed ? "end" : "start"}
+				sideOffset={collapsed ? 12 : 4}
 				aria-label="Account"
 			>
-				<div className="mb-1 flex items-center gap-2.5 border-b border-input px-2.5 pt-2 pb-2.5">
-					<Avatar name={me.display_name} className="size-[30px]" />
-					<div className="flex min-w-0 flex-col">
-						<div className="truncate text-[13px] font-semibold">{name}</div>
-						<div
-							className="truncate font-mono text-[11px] text-muted-foreground"
-							data-testid="identity-line"
-						>
-							{identity}
-						</div>
+				<div className="mb-1 flex flex-col border-b border-subtle p-2">
+					<div className="truncate text-[13px] leading-4 font-medium">
+						{name}
+					</div>
+					<div
+						className="truncate type-caption text-tertiary"
+						data-testid="identity-line"
+					>
+						{identity}
 					</div>
 				</div>
-				<div className="flex items-center justify-between px-2.5 py-[7px] text-[12.5px]">
+				<div className="flex min-h-control-md items-center justify-between gap-2 px-2 type-ui text-secondary">
 					<span>Theme</span>
 					<ThemeToggle theme={theme} onChange={setTheme} />
 				</div>
 				<button
 					type="button"
-					className="flex cursor-pointer items-center gap-2.5 rounded px-2.5 py-[7px] text-left text-[12.5px] hover:bg-muted disabled:cursor-default disabled:opacity-50"
+					className="mt-1 flex h-control-md cursor-pointer items-center gap-2 rounded-b-md border-t border-subtle px-2 text-left type-ui text-primary hover:bg-hover disabled:cursor-default disabled:opacity-disabled"
 					onClick={signOut}
 					disabled={signingOut}
 				>
-					<span
-						className="w-3.5 font-mono text-foreground-glyph"
-						aria-hidden="true"
-					>
-						→
-					</span>
+					<Icon name="log-out" />
 					Sign out
 				</button>
 				{failure ? (
-					<p className="px-2.5 pb-1 text-[12px] text-destructive" role="alert">
+					<p
+						className="px-2 pb-1 type-caption text-status-critical-fg"
+						role="alert"
+					>
 						{failure}
 					</p>
 				) : null}
@@ -130,8 +131,9 @@ export function AccountPopover() {
 	);
 }
 
-// The segmented control: native radio inputs, visually two segments in
-// one bordered group, the checked one the gold fill.
+// The segmented control: native radio inputs, two segments in one
+// hairline group on bg-subtle, the checked one the pressed fill with its
+// icon at icon-active.
 function ThemeToggle({
 	theme,
 	onChange,
@@ -139,22 +141,21 @@ function ThemeToggle({
 	theme: Theme;
 	onChange: (t: Theme) => void;
 }) {
-	const options: { value: Theme; label: string }[] = [
-		{ value: "dark", label: "Dark" },
-		{ value: "light", label: "Light" },
+	const options: { value: Theme; label: string; icon: "sun" | "moon" }[] = [
+		{ value: "light", label: "Light", icon: "sun" },
+		{ value: "dark", label: "Dark", icon: "moon" },
 	];
 	return (
-		<fieldset className="flex overflow-hidden rounded border border-input-strong text-[11.5px]">
+		<fieldset className="flex gap-0.5 rounded-md border border-default bg-subtle p-0.5">
 			<legend className="sr-only">Theme</legend>
-			{options.map((o, i) => (
+			{options.map((o) => (
 				<label
 					key={o.value}
 					className={cn(
-						"cursor-pointer px-2.5 py-[3px] transition-colors",
-						i > 0 && "border-l border-input-strong",
+						"inline-flex h-6 cursor-pointer items-center gap-1 rounded-sm px-2 type-caption has-[:focus-visible]:focus-ring",
 						theme === o.value
-							? "bg-primary font-semibold text-primary-foreground"
-							: "text-foreground-tertiary hover:text-foreground",
+							? "bg-active font-medium text-primary [&_[data-slot=icon]]:text-icon-active"
+							: "text-secondary hover:text-primary",
 					)}
 				>
 					<input
@@ -165,6 +166,7 @@ function ThemeToggle({
 						onChange={() => onChange(o.value)}
 						className="sr-only"
 					/>
+					<Icon name={o.icon} className="size-3.5" />
 					{o.label}
 				</label>
 			))}

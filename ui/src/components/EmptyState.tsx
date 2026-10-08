@@ -31,26 +31,26 @@ export function EmptyState({
 			)}
 			style={{ maxWidth: width }}
 		>
-			<h1 className="text-[18px] font-semibold">{title}</h1>
-			<p className="text-foreground-tertiary">{children}</p>
+			<h1 className="type-title-section">{title}</h1>
+			<p className="type-body text-secondary">{children}</p>
 			{steps ? (
-				<ol className="mt-1.5 grid grid-cols-[24px_1fr] gap-2.5 text-[12px]">
+				<ol className="mt-1.5 grid grid-cols-[24px_1fr] gap-2.5 type-ui">
 					{steps.map((s, i) => (
 						<li key={s.lead} className="contents">
 							<span
 								className={cn(
-									"flex size-[22px] items-center justify-center rounded-full border font-mono text-[11px]",
+									"flex size-[22px] items-center justify-center rounded-full border type-mono-xs",
 									i === 0
-										? "border-[var(--checkbox-accent)] text-[var(--checkbox-accent)]"
-										: "border-input-strong text-muted-foreground",
+										? "border-strong bg-active text-primary"
+										: "border-default text-tertiary",
 								)}
 								aria-hidden="true"
 							>
 								{i + 1}
 							</span>
 							<span>
-								<span className="text-foreground">{s.lead}</span>{" "}
-								<span className="text-muted-foreground">— {s.rest}</span>
+								<span className="text-primary">{s.lead}</span>{" "}
+								<span className="text-tertiary">— {s.rest}</span>
 							</span>
 						</li>
 					))}

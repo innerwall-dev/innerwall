@@ -1,10 +1,13 @@
+import { cn } from "@/lib/utils";
+
 // The brand mark, drawn to the design's geometry on a 22-unit grid: an
-// outlined square (2 stroke, outer radius 4, inner radius 2) holding a
-// square-cornered bar that stands right of centre, a wall inside the
-// room. Colors are the logo tokens; the light theme's fill is a darker
-// amber than the primary so the mark holds on the off-white sidebar.
-// At its native 22px every edge lands on a whole pixel, so the mark is
-// never drawn at other sizes.
+// outlined square (the frame rect at x 1, y 1, 20 by 20, rx 3, with a 2
+// stroke) holding a square-cornered bar (x 12, y 6, 4 by 10) that stands
+// right of centre, a wall inside the room. The frame is
+// logo-outline and the bar logo-fill, aliases of text-secondary and
+// text-primary in both themes: the mark is gray, never a status or
+// accent color. At its native 22px (logo-size) every edge lands on a
+// whole pixel, so the mark is never drawn at other sizes.
 export function LogoMark() {
 	return (
 		<svg
@@ -33,11 +36,23 @@ export function LogoMark() {
 // shows its name in.
 export function Lockup() {
 	return (
-		<span className="flex items-center gap-2.5">
+		<span className="flex items-center gap-2">
 			<LogoMark />
-			<span className="text-[14px] font-semibold tracking-[0.01em]">
-				Innerwall
-			</span>
+			<Wordmark />
+		</span>
+	);
+}
+
+// Wordmark is the console's name as the lockup sets it.
+export function Wordmark({ className }: { className?: string }) {
+	return (
+		<span
+			className={cn(
+				"font-sans text-[14px] leading-5 font-semibold tracking-[-0.01em] text-primary",
+				className,
+			)}
+		>
+			Innerwall
 		</span>
 	);
 }

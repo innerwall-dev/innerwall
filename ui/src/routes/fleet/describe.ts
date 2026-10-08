@@ -44,9 +44,9 @@ export function syncNote(w: Workload, now = Date.now()): string {
 export type CredentialTone = "ok" | "warn" | "bad";
 
 export const credentialTone: Record<CredentialTone, string> = {
-	ok: "text-cred-ok",
-	warn: "text-cred-renewal-failed",
-	bad: "text-cred-expired",
+	ok: "text-secondary",
+	warn: "text-status-warn-fg",
+	bad: "text-status-critical-fg",
 };
 
 // renewsAt is when the agent is due to renew its credential, by the

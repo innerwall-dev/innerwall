@@ -1,118 +1,129 @@
 import type { ReactNode } from "react";
 import type { Mode, SyncState, Verdict } from "@/api/schema";
+import { Icon, type IconName } from "@/components/Icon";
+import {
+	type FlowStatus,
+	type HealthStatus,
+	StatusBadge,
+	StatusGlyph,
+	tint,
+	tone,
+} from "@/components/StatusGlyph";
 import { cn } from "@/lib/utils";
 
 // The design's status vocabulary. Color is never the only encoding:
-// every mode, sync state, and verdict carries its glyph in text.
+// every sync state and verdict carries its status glyph, and every mode
+// its Lucide icon. Modes are not status, so they stay gray.
 
 export const modes: Record<
 	Mode,
-	{ glyph: string; label: string; cls: string }
+	{ icon: IconName; glyph: ReactNode; label: string; cls: string }
 > = {
 	visibility: {
-		glyph: "◌",
+		icon: "eye",
+		glyph: <Icon name="eye" className="size-3.5" />,
 		label: "Visibility",
-		cls: "text-mode-visibility border-mode-visibility-border",
+		cls: "text-secondary border-default",
 	},
 	simulation: {
-		glyph: "◐",
+		icon: "flask-conical",
+		glyph: <Icon name="flask-conical" className="size-3.5" />,
 		label: "Simulation",
-		cls: "text-mode-simulation border-mode-simulation-border",
+		cls: "text-primary border-strong",
 	},
 	enforced: {
-		glyph: "●",
+		icon: "shield",
+		glyph: <Icon name="shield" className="size-3.5" />,
 		label: "Enforced",
-		cls: "text-mode-enforced border-mode-enforced-border",
+		cls: "text-primary border-strong",
 	},
 };
+
+const health = (status: HealthStatus, label: string) => ({
+	status,
+	glyph: <StatusGlyph status={status} size="sm" />,
+	label,
+	cls: tone[status],
+});
 
 export const syncStates: Record<
 	SyncState,
-	{ glyph: string; label: string; cls: string }
+	{ status: HealthStatus; glyph: ReactNode; label: string; cls: string }
 > = {
-	synced: { glyph: "●", label: "Synced", cls: "text-status-synced" },
-	pending: { glyph: "◔", label: "Pending", cls: "text-status-pending" },
-	degraded: { glyph: "▲", label: "Degraded", cls: "text-status-degraded" },
-	offline: { glyph: "○", label: "Offline", cls: "text-status-offline" },
+	synced: health("synced", "Synced"),
+	pending: health("pending", "Pending"),
+	degraded: health("degraded", "Degraded"),
+	offline: health("offline", "Offline"),
 };
+
+const flow = (status: FlowStatus, label: string) => ({
+	status,
+	glyph: <StatusGlyph status={status} size="sm" />,
+	label,
+	cls: cn(tone[status], tint[status]),
+	text: tone[status],
+});
 
 export const verdicts: Record<
 	Verdict,
-	{ glyph: string; label: string; cls: string; text: string }
+	{
+		status: FlowStatus;
+		glyph: ReactNode;
+		label: string;
+		cls: string;
+		text: string;
+	}
 > = {
-	observed: {
-		glyph: "○",
-		label: "observed",
-		cls: "text-status-observed bg-status-observed-bg border-status-observed-border",
-		text: "text-status-observed",
-	},
-	allowed: {
-		glyph: "✓",
-		label: "allowed",
-		cls: "text-status-allowed bg-status-allowed-bg border-status-allowed-border",
-		text: "text-status-allowed",
-	},
-	would_block: {
-		glyph: "◆",
-		label: "would block",
-		cls: "text-status-would-block bg-status-would-block-bg border-status-would-block-border",
-		text: "text-status-would-block",
-	},
-	blocked: {
-		glyph: "✕",
-		label: "blocked",
-		cls: "text-status-blocked bg-status-blocked-bg border-status-blocked-border",
-		text: "text-status-blocked",
-	},
+	observed: flow("observed", "observed"),
+	allowed: flow("allowed", "allowed"),
+	would_block: flow("would-block", "would block"),
+	blocked: flow("blocked", "blocked"),
 };
 
+// ModePill is a workload's mode: its icon and word in a hairline pill,
+// gray in every mode.
 export function ModePill({ mode }: { mode: Mode }) {
 	const m = modes[mode];
 	return (
 		<span
 			className={cn(
-				"inline-flex items-center gap-[5px] whitespace-nowrap rounded-pill border px-2 py-0.5 text-[11.5px]",
+				"inline-flex h-[22px] items-center gap-1.5 whitespace-nowrap rounded-sm border px-2 type-label",
 				m.cls,
 			)}
 		>
-			<span aria-hidden="true">{m.glyph}</span>
+			{m.glyph}
 			<span>{m.label}</span>
 		</span>
 	);
 }
 
+// SyncLabel is a workload's health in a table cell.
 export function SyncLabel({ state }: { state: SyncState }) {
 	const s = syncStates[state];
-	return (
-		<span
-			className={cn(
-				"inline-flex items-center gap-[5px] whitespace-nowrap text-[12px]",
-				s.cls,
-			)}
-		>
-			<span aria-hidden="true">{s.glyph}</span>
-			<span>{s.label}</span>
-		</span>
-	);
+	return <StatusBadge status={s.status}>{s.label}</StatusBadge>;
 }
 
-export function VerdictPill({ verdict }: { verdict: Verdict }) {
+// VerdictPill is a flow decision: plain in a table cell, tinted in a
+// drawer or a dialog.
+export function VerdictPill({
+	verdict,
+	variant = "plain",
+}: {
+	verdict: Verdict;
+	variant?: "plain" | "tinted";
+}) {
 	const v = verdicts[verdict];
 	return (
-		<span
-			className={cn(
-				"inline-flex items-center gap-[5px] whitespace-nowrap rounded-pill border px-2 py-0.5 text-[11.5px]",
-				v.cls,
-			)}
-		>
-			<span aria-hidden="true">{v.glyph}</span>
-			<span>{v.label}</span>
-		</span>
+		<StatusBadge status={v.status} variant={variant}>
+			{v.label}
+		</StatusBadge>
 	);
 }
 
-// LabelChip is one `key=value` label. The table form is the compact one;
-// the detail rail's is larger and dims the separator.
+// LabelChip is one `key=value` label, always mono and never truncated
+// mid-key: the key in text-tertiary, the value in text-primary, on
+// bg-subtle behind a hairline. The input form sits inside an editable
+// field, on its stronger border.
 export function LabelChip({
 	k,
 	v,
@@ -124,42 +135,29 @@ export function LabelChip({
 }) {
 	return (
 		<span
+			data-slot="label-chip"
 			className={cn(
-				"whitespace-nowrap border bg-card font-mono",
-				size === "table" &&
-					"rounded-[3px] border-input px-1.5 py-px text-[11px] text-foreground-secondary",
-				size === "rail" &&
-					"rounded-pill border-input px-2 py-[3px] text-[11.5px]",
-				size === "input" &&
-					"rounded-pill border-input-strong px-[7px] py-0.5 text-[12px]",
+				"inline-flex h-5 items-center whitespace-nowrap rounded-sm border bg-subtle px-1.5 type-mono-sm text-primary",
+				size === "input" ? "border-strong" : "border-default",
 			)}
 		>
-			{size === "rail" ? (
-				<>
-					{k}
-					<span className="text-muted-foreground">=</span>
-					{v}
-				</>
-			) : (
-				`${k}=${v}`
-			)}
+			<span className="text-tertiary">{k}=</span>
+			{v}
 		</span>
 	);
 }
 
 // FilterChip is a toggle in a chip row: the fleet's sync states, the
-// flow tab's verdicts.
+// flow tab's verdicts. Pressed, it takes the pressed-segment fill.
 export function FilterChip({
 	on,
 	glyph,
-	glyphClass,
 	label,
 	count,
 	onClick,
 }: {
 	on: boolean;
-	glyph?: string;
-	glyphClass?: string;
+	glyph?: ReactNode;
 	label: string;
 	count?: number;
 	onClick: () => void;
@@ -170,26 +168,22 @@ export function FilterChip({
 			aria-pressed={on}
 			onClick={onClick}
 			className={cn(
-				"inline-flex cursor-pointer items-center gap-1.5 rounded-chip border px-[9px] py-[3px] text-[12px]",
+				"inline-flex h-control-sm cursor-pointer items-center gap-1.5 rounded-md border px-2.5 type-caption",
 				on
-					? "border-accent-border bg-accent text-foreground"
-					: "border-input text-foreground-tertiary hover:text-foreground",
+					? "border-strong bg-active font-medium text-primary"
+					: "border-default text-secondary hover:bg-hover hover:text-primary",
 			)}
 		>
-			{glyph ? (
-				<span aria-hidden="true" className={glyphClass}>
-					{glyph}
-				</span>
-			) : null}
+			{glyph}
 			<span>{label}</span>
 			{count !== undefined ? (
-				<span className="font-mono text-muted-foreground">{count}</span>
+				<span className="type-mono-xs text-tertiary">{count}</span>
 			) : null}
 		</button>
 	);
 }
 
-// Eyebrow is a section's small uppercase heading.
+// Eyebrow is a section's small heading: label type, sentence case.
 export function Eyebrow({
 	children,
 	className,
@@ -198,14 +192,7 @@ export function Eyebrow({
 	className?: string;
 }) {
 	return (
-		<div
-			className={cn(
-				"text-[11px] uppercase tracking-[0.05em] text-muted-foreground",
-				className,
-			)}
-		>
-			{children}
-		</div>
+		<div className={cn("type-label text-tertiary", className)}>{children}</div>
 	);
 }
 
@@ -235,10 +222,10 @@ export function ChoiceChips<T extends string>({
 				<label
 					key={o.value}
 					className={cn(
-						"inline-flex cursor-pointer items-center gap-[5px] rounded-chip border px-2.5 py-[5px] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-ring",
+						"inline-flex h-control-sm cursor-pointer items-center gap-1.5 rounded-md border px-2.5 type-caption has-[:focus-visible]:focus-ring",
 						value === o.value
-							? "border-primary bg-accent text-foreground"
-							: "border-input-strong text-foreground-tertiary hover:text-foreground",
+							? "border-strong bg-active font-medium text-primary"
+							: "border-default text-secondary hover:bg-hover hover:text-primary",
 					)}
 				>
 					<input

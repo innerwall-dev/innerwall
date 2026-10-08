@@ -15,6 +15,8 @@ import {
 	type Ruleset,
 	type Selector,
 } from "@/api/schema";
+import { Icon } from "@/components/Icon";
+import { SeverityNote, StatusGlyph } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useResource, useWrite } from "@/lib/resource";
@@ -396,10 +398,8 @@ export function RulesetEditor({
 		<>
 			<header className="flex flex-col gap-1.5">
 				<div className="flex flex-wrap items-center gap-x-8 gap-y-2">
-					<h1 className="font-mono text-[20px] font-semibold">
-						{ruleset.name}
-					</h1>
-					<span className="flex items-center gap-2 text-[13px] text-foreground-secondary">
+					<h1 className="type-title-page font-mono">{ruleset.name}</h1>
+					<span className="flex items-center gap-2 type-ui text-secondary">
 						<Switch
 							size="header"
 							on={enabled}
@@ -418,20 +418,16 @@ export function RulesetEditor({
 					</Button>
 				</div>
 				{ruleset.description ? (
-					<p className="text-[13px] text-foreground-tertiary">
-						{ruleset.description}
-					</p>
+					<p className="type-ui text-secondary">{ruleset.description}</p>
 				) : null}
 			</header>
 			{headNotice ? <NoticeLine notice={headNotice} /> : null}
 			<div
 				role="note"
-				className="flex gap-3 rounded border border-input-strong bg-surface-sidebar px-4 py-3 text-[13px] text-foreground-secondary"
+				className="flex gap-2.5 rounded-lg border border-default bg-subtle px-4 py-3 type-body text-secondary"
 				data-testid="banner"
 			>
-				<span aria-hidden="true" className="font-mono text-primary">
-					i
-				</span>
+				<Icon name="info" className="mt-0.5" />
 				<span>{bannerText({ enabled, count: inScope, mix })}</span>
 			</div>
 			<ScopeCard
@@ -445,8 +441,8 @@ export function RulesetEditor({
 				}}
 				footer={
 					edited ? (
-						<div className="flex items-center gap-2 border-t border-border pt-3">
-							<span className="text-[12px] text-muted-foreground">
+						<div className="flex items-center gap-2 border-t border-subtle pt-3">
+							<span className="type-caption text-tertiary">
 								The scope is not saved; the rules still apply to the{" "}
 								{inScope ?? "…"} workloads it matches now.
 							</span>
@@ -502,7 +498,9 @@ export function RulesetEditor({
 	);
 }
 
-// NoticeLine is one write's outcome, in its tone, with its way back.
+// NoticeLine is one write's outcome, in its tone, with its way back: a
+// success under the allowed glyph, a conflict as a warning on the warn
+// tint, a refusal as an error.
 export function NoticeLine({
 	notice,
 	inset = false,
@@ -515,25 +513,25 @@ export function NoticeLine({
 			role={notice.tone === "ok" ? "status" : "alert"}
 			data-testid="notice"
 			className={cn(
-				"flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12px]",
+				"flex flex-wrap items-center gap-x-3 gap-y-1.5 type-ui",
 				inset ? "mx-4 mb-3" : "",
-				notice.tone === "ok"
-					? "text-status-allowed"
-					: notice.tone === "conflict"
-						? "rounded border border-status-would-block-border bg-status-would-block-surface px-3 py-2.5 text-foreground-secondary"
-						: "text-destructive",
+				notice.tone === "conflict" &&
+					"rounded-lg border border-status-critical-border bg-status-critical-bg px-3 py-2.5 text-primary",
 			)}
 		>
-			<span>
-				<span aria-hidden="true">
-					{notice.tone === "ok"
-						? "✓ "
-						: notice.tone === "conflict"
-							? "▲ "
-							: "✕ "}
+			{notice.tone === "failed" ? (
+				<SeverityNote level="error">{notice.text}</SeverityNote>
+			) : (
+				<span className="inline-flex min-w-0 items-start gap-1.5">
+					<StatusGlyph
+						status={notice.tone === "ok" ? "allowed" : "error"}
+						className="mt-[3px]"
+					/>
+					<span className={notice.tone === "ok" ? "text-secondary" : undefined}>
+						{notice.text}
+					</span>
 				</span>
-				{notice.text}
-			</span>
+			)}
 			{notice.action ? (
 				<Button variant="secondary" size="sm" onClick={notice.action.run}>
 					{notice.action.label}

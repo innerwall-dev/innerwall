@@ -9,9 +9,9 @@ import { thirdPartyNotices } from "./scripts/notices";
 // (see embed.go and ADR-0008) and served by the operator listener at the
 // root of its origin, so assets use absolute paths and a deep link into
 // the console resolves them the same way the entry point does. Fonts are
-// bundled from their packages; the console makes no external request.
-// The bundled packages' licenses are written into the build beside them
-// (scripts/notices.ts).
+// vendored in src/fonts and bundled; the console makes no external
+// request. The bundled packages' and fonts' licenses are written into the
+// build beside them (scripts/notices.ts).
 export default defineConfig({
 	plugins: [
 		react(),

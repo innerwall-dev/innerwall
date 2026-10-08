@@ -7,7 +7,9 @@ import {
 	type TokenState,
 } from "@/api/schema";
 import { LabelChip } from "@/components/fleet/status";
+import { Icon, type IconName } from "@/components/Icon";
 import { LoadingRow, ProblemNotice } from "@/components/Problem";
+import { SeverityNote } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -22,12 +24,28 @@ import { type Resource, useWrite } from "@/lib/resource";
 import { cn } from "@/lib/utils";
 import { MintDialog } from "./MintDialog";
 
-const status: Record<TokenState, { label: string; cls: string }> = {
-	valid: { label: "active", cls: "text-token-active" },
-	revoked: { label: "revoked", cls: "text-token-revoked" },
-	expired: { label: "expired", cls: "text-token-expired" },
-	invalid: { label: "invalid", cls: "text-token-expired" },
+// A token's status is its icon, gray like every chrome icon, and its
+// word in the status tone.
+const status: Record<
+	TokenState,
+	{ label: string; icon: IconName; cls: string }
+> = {
+	valid: { label: "active", icon: "key-round", cls: "text-status-ok-fg" },
+	revoked: {
+		label: "revoked",
+		icon: "circle-minus",
+		cls: "text-status-critical-fg",
+	},
+	expired: { label: "expired", icon: "clock", cls: "text-status-neutral-fg" },
+	invalid: {
+		label: "invalid",
+		icon: "circle-minus",
+		cls: "text-status-neutral-fg",
+	},
 };
+
+const th =
+	"h-row-header whitespace-nowrap border-b border-default bg-subtle px-3 text-left type-label text-tertiary";
 
 // Tokens is the provisioning-tokens tab: every token by its listing
 // prefix and metadata (the secret is never stored, so never listed),
@@ -44,9 +62,9 @@ export function Tokens({
 	const [revoking, setRevoking] = useState<ProvisioningToken | null>(null);
 
 	return (
-		<div className="flex flex-1 flex-col gap-[18px] overflow-auto px-6 pt-5 pb-8">
+		<div className="flex flex-1 flex-col gap-5 overflow-auto px-6 pt-5 pb-8">
 			<div className="flex items-center gap-3">
-				<p className="max-w-[620px] text-[12px] text-foreground-tertiary">
+				<p className="max-w-[620px] type-ui text-secondary">
 					A token enrolls any number of workloads within its label scope until
 					it expires or is revoked. The plaintext is shown exactly once, at
 					mint; only its hash is stored.
@@ -60,33 +78,35 @@ export function Tokens({
 				<ProblemNotice what="tokens" error={tokens.error} onRetry={reload} />
 			) : null}
 			{tokens.status === "ready" && tokens.data.tokens.length === 0 ? (
-				<p className="py-5 text-[12px] text-muted-foreground">
+				<p className="rounded-lg border border-default bg-subtle px-4 py-5 type-ui text-secondary">
 					No tokens yet. Mint one to enroll your first workload.
 				</p>
 			) : null}
 			{tokens.status === "ready" && tokens.data.tokens.length > 0 ? (
 				<>
-					<table className="w-full border-collapse text-[12.5px]">
-						<thead>
-							<tr className="text-left text-[11px] uppercase tracking-[0.05em] text-muted-foreground">
-								<th className="py-2 pr-2 font-medium">Name</th>
-								<th className="p-2 font-medium">Assigns labels</th>
-								<th className="p-2 font-medium">Status</th>
-								<th className="p-2 text-right font-medium">Enrollments</th>
-								<th className="p-2 text-right font-medium">Last used</th>
-								<th className="p-2 text-right font-medium">Expires</th>
-								<th className="py-2 pl-2 font-medium">
-									<span className="sr-only">Actions</span>
-								</th>
-							</tr>
-						</thead>
-						<tbody>
-							{tokens.data.tokens.map((t) => (
-								<TokenRow key={t.id} t={t} onRevoke={() => setRevoking(t)} />
-							))}
-						</tbody>
-					</table>
-					<p className="text-[11px] text-muted-foreground">
+					<div className="overflow-hidden rounded-lg border border-default">
+						<table className="w-full border-separate border-spacing-0">
+							<thead>
+								<tr>
+									<th className={th}>Name</th>
+									<th className={th}>Assigns labels</th>
+									<th className={th}>Status</th>
+									<th className={cn(th, "text-right")}>Enrollments</th>
+									<th className={cn(th, "text-right")}>Last used</th>
+									<th className={cn(th, "text-right")}>Expires</th>
+									<th className={th}>
+										<span className="sr-only">Actions</span>
+									</th>
+								</tr>
+							</thead>
+							<tbody>
+								{tokens.data.tokens.map((t) => (
+									<TokenRow key={t.id} t={t} onRevoke={() => setRevoking(t)} />
+								))}
+							</tbody>
+						</table>
+					</div>
+					<p className="-mt-2 type-caption text-tertiary">
 						Revoking stops future enrollments only — workloads already enrolled
 						keep their credentials and identity.
 					</p>
@@ -112,14 +132,15 @@ function TokenRow({
 	t: ProvisioningToken;
 	onRevoke: () => void;
 }) {
-	const cell = "border-t border-border px-2 py-[9px]";
+	const cell =
+		"h-row-dense border-b border-subtle px-3 py-2 type-ui group-last:border-b-0";
 	const s = status[t.state];
 	return (
-		<tr>
-			<td className={cn(cell, "pl-0 font-mono")}>
-				{t.name}
+		<tr className="group hover:bg-hover">
+			<td className={cell}>
+				<span className="type-mono-ui font-medium text-primary">{t.name}</span>
 				{t.prefix ? (
-					<div className="text-[11px] text-muted-foreground">{t.prefix}…</div>
+					<div className="type-mono-sm text-tertiary">{t.prefix}…</div>
 				) : null}
 			</td>
 			<td className={cell}>
@@ -130,25 +151,40 @@ function TokenRow({
 				</div>
 			</td>
 			<td className={cell}>
-				<span className={cn("text-[12px]", s.cls)}>{s.label}</span>
+				<span className="flex items-center gap-1.5 whitespace-nowrap type-label">
+					<Icon name={s.icon} className="size-3.5" />
+					<span className={s.cls}>{s.label}</span>
+				</span>
 			</td>
-			<td className={cn(cell, "text-right font-mono")}>{count(t.use_count)}</td>
-			<td className={cn(cell, "text-right font-mono text-foreground-tertiary")}>
+			<td className={cn(cell, "text-right type-mono-ui")}>
+				{count(t.use_count)}
+			</td>
+			<td
+				className={cn(
+					cell,
+					"whitespace-nowrap text-right type-mono-ui text-secondary",
+				)}
+			>
 				{t.last_used_at ? ago(t.last_used_at) : "never"}
 			</td>
-			<td className={cn(cell, "text-right font-mono text-foreground-tertiary")}>
+			<td
+				className={cn(
+					cell,
+					"whitespace-nowrap text-right type-mono-ui text-secondary",
+				)}
+			>
 				{t.state === "revoked" ? "—" : relative(t.expires_at)}
 			</td>
-			<td className={cn(cell, "pr-0 text-right")}>
+			<td className={cn(cell, "text-right")}>
 				{t.state === "valid" ? (
-					<button
-						type="button"
+					<Button
+						variant="secondary"
+						size="sm"
 						onClick={onRevoke}
 						aria-label={`Revoke ${t.name}`}
-						className="cursor-pointer rounded-chip border border-status-blocked-border px-[9px] py-1 text-[11.5px] text-destructive hover:bg-status-blocked-bg"
 					>
 						Revoke
-					</button>
+					</Button>
 				) : null}
 			</td>
 		</tr>
@@ -199,37 +235,26 @@ function RevokeDialog({
 		>
 			<DialogContent width={480}>
 				<DialogHeader title="Revoke this token?">
-					<p className="text-[12px] text-foreground-tertiary">
-						<span className="font-mono text-foreground">{token?.name}</span>{" "}
-						will refuse every future enrollment. Workloads it already enrolled
-						keep their credentials and identity. Revocation cannot be undone.
+					<p className="type-body text-secondary">
+						<span className="font-mono text-primary">{token?.name}</span> will
+						refuse every future enrollment. Workloads it already enrolled keep
+						their credentials and identity. Revocation cannot be undone.
 					</p>
 				</DialogHeader>
 				{problem ? (
 					<DialogBody>
-						<p
-							role="alert"
-							className="flex items-start gap-2 text-[12px] text-destructive"
-						>
-							<span className="font-mono" aria-hidden="true">
-								✕
-							</span>
-							<span>{problem.problem.detail ?? problem.problem.title}</span>
-						</p>
+						<SeverityNote level="error" role="alert" className="type-ui">
+							{problem.problem.detail ?? problem.problem.title}
+						</SeverityNote>
 					</DialogBody>
 				) : null}
 				<DialogFooter>
 					<DialogClose asChild>
 						<Button variant="secondary">Cancel</Button>
 					</DialogClose>
-					<button
-						type="button"
-						disabled={submitting}
-						onClick={revoke}
-						className="cursor-pointer rounded border border-status-blocked-border bg-status-blocked-bg px-3 py-[7px] text-[13px] font-semibold text-destructive disabled:opacity-50"
-					>
+					<Button disabled={submitting} onClick={revoke}>
 						{submitting ? "Revoking…" : "Revoke token"}
-					</button>
+					</Button>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>

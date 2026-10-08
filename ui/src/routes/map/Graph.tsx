@@ -15,11 +15,14 @@ import {
 } from "@xyflow/react";
 import { memo, type ReactNode, useEffect, useMemo } from "react";
 import { modes, verdicts } from "@/components/fleet/status";
+import { Icon } from "@/components/Icon";
+import { SeverityNote, StatusGlyph } from "@/components/StatusGlyph";
 import { short } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { type EdgeShape, shapeEdges } from "./geometry";
 import { type Layout, nodeHeight, nodeWidth } from "./layout";
 import {
+	edgeCap,
 	edgeColor,
 	edgeDash,
 	edgeEmphasis,
@@ -51,7 +54,8 @@ type FlowData = {
 	from: string;
 	to: string;
 	shape: EdgeShape;
-	width: number;
+	// The stroke width, a calc() over the edge-width tokens.
+	width: string;
 	selected: boolean;
 	dimmed: boolean;
 	onSelect: (s: Selection) => void;
@@ -118,9 +122,7 @@ export function Graph({
 		[model, layout, selection, onSelect],
 	);
 	const edges = useMemo<FlowEdge[]>(() => {
-		const volumes = model.edges.map((e) => e.connections);
-		const min = Math.min(...volumes);
-		const max = Math.max(...volumes);
+		const max = Math.max(0, ...model.edges.map((e) => e.connections));
 		const shapes = shapeEdges(model, layout);
 		const titles = new Map(model.nodes.map((n) => [n.id, n.title]));
 		return model.edges.map((e) => {
@@ -137,7 +139,7 @@ export function Graph({
 					from: titles.get(e.source) ?? e.source,
 					to: titles.get(e.target) ?? e.target,
 					shape: shapes.get(e.id) as EdgeShape,
-					width: strokeWidth(e, min, max),
+					width: strokeWidth(e, max),
 					selected,
 					dimmed,
 					onSelect,
@@ -167,7 +169,7 @@ export function Graph({
 			>
 				<Refit layout={layout} />
 			</ReactFlow>
-			<div className="absolute top-3 left-4 rounded border border-input bg-surface-translucent px-2 py-1.5">
+			<div className="absolute top-3 left-4 rounded-lg border border-default bg-raised p-1.5 pr-2.5">
 				{range}
 			</div>
 			<Legend />
@@ -223,7 +225,8 @@ function Refit({ layout }: { layout: Layout }) {
 }
 
 // Markers are the arrowheads, one per decision, filled with the edge's
-// own token.
+// own token. They are sized in the canvas's units, not the stroke's, so
+// an arrowhead stays the same size whatever volume widens its edge.
 function Markers() {
 	return (
 		<svg aria-hidden="true" className="absolute size-0">
@@ -235,8 +238,9 @@ function Markers() {
 						viewBox="0 0 10 10"
 						refX="9"
 						refY="5"
-						markerWidth="7"
-						markerHeight="7"
+						markerUnits="userSpaceOnUse"
+						markerWidth="9"
+						markerHeight="9"
 						orient="auto-start-reverse"
 					>
 						<path d="M0 0L10 5L0 10z" style={{ fill: edgeColor[d] }} />
@@ -249,25 +253,15 @@ function Markers() {
 
 const unmanagedKinds = new Set(["address-group", "unknown"]);
 
-function frame(n: MapNode): { fill: string; stroke: string; dash?: string } {
-	if (unmanagedKinds.has(n.kind)) {
-		return {
-			fill: "var(--viz-node-unmanaged-fill)",
-			stroke: "var(--viz-node-unmanaged-stroke)",
-			dash: "5 4",
-		};
-	}
-	if (n.kind === "unlabeled") {
-		return {
-			fill: "var(--viz-node-managed-fill)",
-			stroke: "var(--viz-node-unlabeled-stroke)",
-			dash: "2 3",
-		};
-	}
-	return {
-		fill: "var(--viz-node-managed-fill)",
-		stroke: "var(--viz-node-managed-stroke)",
-	};
+// frame is a node's fill and outline: a managed group on the raised
+// surface, an unmanaged peer on the canvas behind the strong hairline,
+// the unlabeled workloads outlined in the warning tone; selection is
+// blue in every kind.
+function frame(n: MapNode, selected: boolean): string {
+	if (selected) return "bg-selection-bg border-selection-fg";
+	if (unmanagedKinds.has(n.kind)) return "bg-app border-strong";
+	if (n.kind === "unlabeled") return "bg-raised border-status-warn-border";
+	return "bg-raised border-default";
 }
 
 // subtitle is a node's second line: how many workloads, or what the
@@ -301,46 +295,43 @@ export function subtitle(n: MapNode): string {
 export function ModeLine({ n }: { n: MapNode }) {
 	if (n.kind === "unlabeled") {
 		return (
-			<span className="text-[var(--viz-node-unlabeled-text)]">
-				▲ no labels — matches no scope
-			</span>
+			<SeverityNote
+				level="alert"
+				size="sm"
+				className="max-w-full [&>span]:truncate"
+			>
+				no labels — matches no scope
+			</SeverityNote>
 		);
 	}
 	if (n.kind === "address-group") {
-		return (
-			<span className="text-[var(--viz-node-unmanaged-text)]">
-				unmanaged · address group
-			</span>
-		);
+		return <span className="text-tertiary">unmanaged · address group</span>;
 	}
 	if (n.kind === "unknown") {
-		return (
-			<span className="text-[var(--viz-node-unmanaged-text)]">
-				unmanaged · no address group
-			</span>
-		);
+		return <span className="text-tertiary">unmanaged · no address group</span>;
 	}
 	const m = modeSummary(n);
 	if (!m) {
-		return (
-			<span className="text-[var(--viz-node-subtitle)]">outside scope</span>
-		);
+		return <span className="text-tertiary">outside scope</span>;
 	}
 	if ("mode" in m) {
 		const d = modes[m.mode];
 		return (
-			<span className={d.cls.split(" ")[0]}>
-				<span aria-hidden="true">{d.glyph}</span> {d.label.toLowerCase()}
+			<span className="inline-flex items-center gap-1 text-secondary">
+				<span aria-hidden="true" className="inline-flex text-icon-default">
+					{d.glyph}
+				</span>{" "}
+				{d.label.toLowerCase()}
 			</span>
 		);
 	}
 	return (
-		<span className="text-[var(--viz-node-subtitle)]">
+		<span className="inline-flex items-center gap-1 text-tertiary">
 			{m.mixed.map(([mode, c], i) => (
-				<span key={mode}>
+				<span key={mode} className="inline-flex items-center gap-0.5">
 					{i > 0 ? " " : ""}
-					<span className={modes[mode].cls.split(" ")[0]}>
-						<span aria-hidden="true">{modes[mode].glyph}</span>
+					<span aria-hidden="true" className="inline-flex text-icon-default">
+						{modes[mode].glyph}
 					</span>
 					{c}
 				</span>
@@ -352,7 +343,6 @@ export function ModeLine({ n }: { n: MapNode }) {
 
 function GroupNodeView({ data }: NodeProps<GroupNode>) {
 	const { node: n, dimmed, selected, onSelect } = data;
-	const f = frame(n);
 	return (
 		<button
 			type="button"
@@ -362,43 +352,26 @@ function GroupNodeView({ data }: NodeProps<GroupNode>) {
 				ev.stopPropagation();
 				onSelect(selected ? null : { kind: "node", id: n.id });
 			}}
-			className="nodrag nopan relative block cursor-pointer text-left"
+			className={cn(
+				"nodrag nopan relative flex cursor-pointer flex-col justify-center rounded-md border px-2.5 text-left",
+				frame(n, selected),
+			)}
 			style={{
 				width: nodeWidth,
 				height: nodeHeight,
-				opacity: dimmed ? "var(--viz-edge-dim-opacity)" : 1,
+				opacity: dimmed ? "var(--opacity-dimmed)" : 1,
 			}}
 		>
-			<svg
-				aria-hidden="true"
-				className="absolute inset-0"
-				width={nodeWidth}
-				height={nodeHeight}
-			>
-				<rect
-					x={0.5}
-					y={0.5}
-					width={nodeWidth - 1}
-					height={nodeHeight - 1}
-					rx={6}
-					style={{
-						fill: f.fill,
-						stroke: selected ? "var(--ring)" : f.stroke,
-						strokeWidth: selected ? 1.5 : 1,
-						strokeDasharray: f.dash,
-					}}
+			<span className="flex min-w-0 items-center gap-1.5">
+				<Icon
+					name={unmanagedKinds.has(n.kind) ? "globe" : "boxes"}
+					className="size-3.5"
 				/>
-			</svg>
-			<span className="relative flex flex-col gap-[2px] px-2.5 pt-[7px] leading-[14px]">
-				<span className="truncate text-[12.5px] font-semibold text-[var(--viz-node-title)]">
-					{n.title}
-				</span>
-				<span className="truncate font-mono text-[10px] text-[var(--viz-node-subtitle)]">
-					{subtitle(n)}
-				</span>
-				<span className="truncate font-mono text-[10px]">
-					<ModeLine n={n} />
-				</span>
+				<span className="truncate type-ui-strong text-primary">{n.title}</span>
+			</span>
+			<span className="truncate type-mono-xs text-tertiary">{subtitle(n)}</span>
+			<span className="flex min-w-0 truncate type-mono-xs">
+				<ModeLine n={n} />
 			</span>
 			<Handle
 				type="target"
@@ -429,20 +402,35 @@ function FlowEdgeView({ data }: EdgeProps<FlowEdge>) {
 	const { edge: e, width, selected, dimmed, onSelect } = data;
 	const { path, lx, ly } = data.shape;
 	const color = edgeColor[e.decision];
-	const opacity = dimmed ? "var(--viz-edge-dim-opacity)" : 1;
+	const opacity = dimmed ? "var(--opacity-dimmed)" : 1;
 	const v = verdicts[e.decision];
 	const shown = e.byDecision[e.decision]?.connections ?? e.connections;
 	const select = () => onSelect(selected ? null : { kind: "edge", id: e.id });
 	return (
 		<>
+			{selected ? (
+				// The selected edge's halo, in the selection hue, under the
+				// edge itself.
+				<path
+					d={path}
+					style={{
+						pointerEvents: "none",
+						fill: "none",
+						stroke: "var(--selection-border)",
+						strokeWidth: `calc(${width} + 5px)`,
+						strokeLinecap: "round",
+					}}
+				/>
+			) : null}
 			<BaseEdge
 				path={path}
 				markerEnd={`url(#iw-arrow-${e.decision})`}
 				interactionWidth={14}
 				style={{
 					stroke: color,
-					strokeWidth: selected ? "var(--viz-edge-selected-width)" : width,
+					strokeWidth: width,
 					strokeDasharray: edgeDash[e.decision],
+					strokeLinecap: edgeCap[e.decision],
 					opacity,
 					cursor: "pointer",
 				}}
@@ -457,18 +445,17 @@ function FlowEdgeView({ data }: EdgeProps<FlowEdge>) {
 						data-edge={e.id}
 						onClick={select}
 						className={cn(
-							"nodrag nopan pointer-events-auto absolute flex h-4 cursor-pointer items-center gap-1 rounded-[3px] border px-1 font-mono text-[10px] leading-none",
+							"nodrag nopan pointer-events-auto absolute flex h-[18px] cursor-pointer items-center gap-1 rounded-sm border px-1 type-mono-xs text-primary",
+							selected ? "border-selection-fg bg-selection-bg" : "bg-app",
 						)}
 						style={{
 							transform: `translate(-50%, -50%) translate(${lx}px, ${ly}px)`,
-							color,
-							borderColor: color,
-							background: "var(--viz-edge-label-bg)",
+							borderColor: selected ? undefined : color,
 							opacity,
 							zIndex: selected ? 1 : 0,
 						}}
 					>
-						<span aria-hidden="true">{v.glyph}</span>
+						<StatusGlyph status={v.status} size="sm" />
 						{short(shown)}
 					</button>
 				</EdgeLabelRenderer>
@@ -477,65 +464,51 @@ function FlowEdgeView({ data }: EdgeProps<FlowEdge>) {
 	);
 }
 
-// Legend is the floating key on the translucent surface: each decision
-// with its line sample in the tokens' own geometry, and the node frames.
+// Legend is the floating key on the raised surface: each decision with
+// its glyph and a line sample in the tokens' own color and dash, and the
+// node kinds by their icons.
 function Legend() {
-	const sample = (d: keyof typeof edgeDash, w: number) => (
-		<svg width="26" height="8" aria-hidden="true">
+	const sample = (d: keyof typeof edgeDash) => (
+		<svg width="32" height="8" aria-hidden="true" className="shrink-0">
 			<line
-				x1="0"
+				x1="2"
 				y1="4"
-				x2="26"
+				x2="30"
 				y2="4"
-				style={{ stroke: edgeColor[d], strokeWidth: w }}
-				strokeDasharray={edgeDash[d]}
+				style={{
+					stroke: edgeColor[d],
+					strokeWidth: 2,
+					strokeDasharray: edgeDash[d],
+					strokeLinecap: edgeCap[d],
+				}}
 			/>
 		</svg>
 	);
+	const entry = (d: keyof typeof edgeDash, words: string) => (
+		<span className="flex items-center gap-1.5">
+			{sample(d)}
+			<StatusGlyph status={verdicts[d].status} size="lg" />
+			{words}
+		</span>
+	);
 	return (
 		<div
-			className="pointer-events-none absolute bottom-3.5 left-4 flex flex-col gap-1.5 rounded border border-input bg-surface-translucent px-3 py-2.5 text-[11px]"
+			className="pointer-events-none absolute bottom-3.5 left-4 flex flex-col gap-2 rounded-lg border border-default bg-raised px-3 py-2.5 type-caption"
 			data-testid="map-legend"
 		>
-			<div className="flex flex-wrap gap-x-3.5 gap-y-1 text-foreground-tertiary">
-				<span className="flex items-center gap-1.5">
-					{sample("observed", 1.5)}○ observed · no policy evaluated
-				</span>
-				<span className="flex items-center gap-1.5">
-					{sample("allowed", 1.5)}✓ allowed
-				</span>
-				<span className="flex items-center gap-1.5">
-					{sample("would_block", 1.5)}◆ would block · simulation
-				</span>
-				<span className="flex items-center gap-1.5">
-					{sample("blocked", 2)}✕ blocked · dropped
-				</span>
+			<div className="flex flex-wrap gap-x-4 gap-y-1.5 text-secondary">
+				{entry("observed", "observed · no policy evaluated")}
+				{entry("allowed", "allowed")}
+				{entry("would_block", "would block · simulation")}
+				{entry("blocked", "blocked · dropped")}
 			</div>
-			<div className="flex flex-wrap gap-x-3.5 gap-y-1 text-muted-foreground">
-				<span className="flex items-center gap-[5px]">
-					<svg width="12" height="8" aria-hidden="true">
-						<rect
-							x="0.5"
-							y="0.5"
-							width="11"
-							height="7"
-							rx="2"
-							style={{ fill: "none", stroke: "var(--foreground-tertiary)" }}
-						/>
-					</svg>
+			<div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-tertiary">
+				<span className="flex items-center gap-1.5">
+					<Icon name="boxes" className="size-3.5" />
 					managed label group
 				</span>
-				<span className="flex items-center gap-[5px]">
-					<svg width="12" height="8" aria-hidden="true">
-						<rect
-							x="0.5"
-							y="0.5"
-							width="11"
-							height="7"
-							style={{ fill: "none", stroke: "var(--foreground-tertiary)" }}
-							strokeDasharray="5 4"
-						/>
-					</svg>
+				<span className="flex items-center gap-1.5">
+					<Icon name="globe" className="size-3.5" />
 					unmanaged peer (address group / unknown) — appears only as a source;
 					no agent observes traffic into it
 				</span>

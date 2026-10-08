@@ -5,7 +5,7 @@ export function Kbd({ className, ...props }: React.ComponentProps<"kbd">) {
 	return (
 		<kbd
 			className={cn(
-				"rounded-pill border border-input-strong px-[5px] font-mono text-[10px]",
+				"rounded-sm border border-default px-1 type-mono-xs text-tertiary",
 				className,
 			)}
 			{...props}

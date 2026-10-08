@@ -1,6 +1,6 @@
-// Third-party notices for the built console. The console bundles code and
-// font files from its production dependency tree, and each of those
-// packages is under its own license: Innerwall's Apache-2.0 covers
+// Third-party notices for the built console. The console bundles code
+// from its production dependency tree and the font files vendored under
+// src/fonts, and each of those is under its own license: Innerwall's Apache-2.0 covers
 // Innerwall's code, not theirs. Most of those licenses require their text
 // to travel with every copy, and the embedded console is a copy, so the
 // build writes the texts into dist/ beside what they cover, read from the
@@ -103,20 +103,58 @@ export function productionTree(root: string): Dependency[] {
 	);
 }
 
-// fontLicenseName is where a font package's license goes: beside the
+// VendoredFont is a font family committed to the repository rather than
+// installed: its files and its license live under src/fonts.
+export type VendoredFont = {
+	name: string;
+	version: string;
+	license: string;
+	licenseFile: string;
+};
+
+// vendoredFonts are the font families the console carries in src/fonts,
+// from the design package; Geist and Geist Mono share one license file.
+export const vendoredFonts: VendoredFont[] = [
+	{
+		name: "Geist",
+		version: "1.7.2",
+		license: "OFL-1.1",
+		licenseFile: "src/fonts/OFL.txt",
+	},
+	{
+		name: "Geist Mono",
+		version: "1.7.2",
+		license: "OFL-1.1",
+		licenseFile: "src/fonts/OFL.txt",
+	},
+];
+
+// fontLicenseName is where a font family's license goes: beside the
 // font files, which Vite writes to dist/assets/.
 export function fontLicenseName(pkg: string): string {
-	return `assets/${pkg.replace(/^@[^/]+\//, "")}-LICENSE.txt`;
+	return `assets/${pkg.replace(/^@[^/]+\//, "").replace(/ /g, "")}-LICENSE.txt`;
 }
 
 const rule = "=".repeat(72);
 
 // noticeFiles is every file the build writes: the notices file at the
-// console's root, naming each package with its license and that license's
-// text, and, for every package under the SIL Open Font License, its
-// license again beside the font files it covers.
+// console's root, naming each package and vendored font family with its
+// license and that license's text, and, for every font family under the
+// SIL Open Font License, its license again beside the font files it
+// covers.
 export function noticeFiles(root: string): NoticeFile[] {
-	const tree = productionTree(root);
+	const vendored: Dependency[] = vendoredFonts.map((f) => ({
+		name: f.name,
+		version: f.version,
+		license: f.license,
+		texts: [
+			{
+				file: f.licenseFile,
+				text: readFileSync(join(root, f.licenseFile), "utf8").trimEnd(),
+			},
+		],
+	}));
+	const tree = [...productionTree(root), ...vendored];
 	const fonts = tree.filter((d) => d.license === "OFL-1.1");
 	const head = [
 		"Third-party software in the Innerwall console",
@@ -124,8 +162,8 @@ export function noticeFiles(root: string): NoticeFile[] {
 		"Innerwall's own code is licensed under Apache-2.0 (LICENSE in the",
 		"source repository). The built console also contains code and font",
 		"files from the packages below, the production dependency tree of",
-		"the console, each under its own license, reproduced here as the",
-		"package ships it.",
+		"the console, and the font families vendored in its source, each",
+		"under its own license, reproduced here as the package ships it.",
 		"",
 		"The font files in assets/ are licensed under the SIL Open Font",
 		"License 1.1, not Apache-2.0. Each font family's license is also",

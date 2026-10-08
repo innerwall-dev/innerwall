@@ -3,6 +3,7 @@ import type { ProblemError } from "@/api/client";
 import { resendSnapshot } from "@/api/fleet";
 import { ProblemType, type Workload } from "@/api/schema";
 import { syncStates } from "@/components/fleet/status";
+import { SeverityNote, StatusGlyph } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
 import { ago, since } from "@/lib/format";
 import { useWrite } from "@/lib/resource";
@@ -29,68 +30,66 @@ export function StatusCard({
 	const s = w.sync;
 	const lag = s.latest_version > s.applied_version;
 	const tone = {
-		degraded: "border-status-would-block-border bg-status-would-block-surface",
-		pending: "border-accent-border",
-		synced: "border-border",
-		offline: "border-border",
+		degraded: "border-status-warn-border bg-status-warn-bg",
+		pending: "border-strong bg-app",
+		synced: "border-default bg-app",
+		offline: "border-default bg-app",
 	}[s.state];
 
 	return (
 		<div
-			className={cn("flex flex-col gap-1.5 rounded border px-3 py-2.5", tone)}
+			className={cn("flex flex-col gap-2.5 rounded-lg border px-3 py-3", tone)}
 			data-testid="status-card"
 		>
 			<div
 				className={cn(
-					"flex items-center gap-2 font-semibold",
+					"flex items-center gap-2 type-ui-strong",
 					syncStates[s.state].cls,
 				)}
 			>
-				<span aria-hidden="true">{syncStates[s.state].glyph}</span>
+				<StatusGlyph status={syncStates[s.state].status} size="md" />
 				<span>{headline(w)}</span>
 			</div>
-			<dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-[3px] text-[12px] text-foreground-secondary">
-				<dt className="text-muted-foreground">applied</dt>
-				<dd className="font-mono">{version(s.applied_version)}</dd>
-				<dt className="text-muted-foreground">rendered</dt>
-				<dd className="font-mono">
+			<dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-4 gap-y-1">
+				<dt className={field}>applied</dt>
+				<dd className={value}>{version(s.applied_version)}</dd>
+				<dt className={field}>rendered</dt>
+				<dd className={value}>
 					{version(s.latest_version)}
-					{lag ? (
-						<span className="text-muted-foreground"> (not applied)</span>
-					) : null}
+					{lag ? <span className="text-tertiary"> (not applied)</span> : null}
 				</dd>
-				<dt className="text-muted-foreground">last ack</dt>
-				<dd className="font-mono" data-testid="ack-instant">
+				<dt className={field}>last ack</dt>
+				<dd className={value} data-testid="ack-instant">
 					<LastAck s={s} />
 				</dd>
 				{s.latest_rendered_at ? (
 					<>
-						<dt className="text-muted-foreground">rendered at</dt>
-						<dd className="font-mono">
+						<dt className={field}>rendered at</dt>
+						<dd className={value}>
 							<time dateTime={s.latest_rendered_at}>
 								{ago(s.latest_rendered_at)}
 							</time>
 						</dd>
 					</>
 				) : null}
-				<dt className="text-muted-foreground">last snapshot</dt>
-				<dd className="font-mono" data-testid="snapshot-instant">
+				<dt className={field}>last snapshot</dt>
+				<dd className={value} data-testid="snapshot-instant">
 					{s.last_snapshot_sent_at ? (
 						<time dateTime={s.last_snapshot_sent_at}>
 							{ago(s.last_snapshot_sent_at)}
 						</time>
 					) : (
-						<span className="text-muted-foreground">none recorded</span>
+						<span className="text-tertiary">none recorded</span>
 					)}
 				</dd>
 			</dl>
 			{s.error ? (
-				<div className="rounded-pill bg-background p-2 font-mono text-[11px] break-words whitespace-pre-wrap text-status-degraded">
+				<div className="rounded-md border border-default bg-app px-2.5 py-2 type-mono-xs break-words whitespace-pre-wrap text-status-warn-fg">
 					{s.error}
 				</div>
 			) : null}
 			{s.state === "degraded" ? (
-				<p className="text-[11px] text-foreground-tertiary">
+				<p className="type-caption text-secondary">
 					{s.applied_version > 0
 						? `Host stays on ${version(s.applied_version)} (its last good policy).`
 						: "Host keeps the policy it had before; it has applied none from this control plane."}{" "}
@@ -112,7 +111,7 @@ function LastAck({ s }: { s: Workload["sync"] }) {
 		? Date.parse(s.last_apply_failed_at)
 		: null;
 	if (acked === null && failed === null) {
-		return <span className="text-muted-foreground">none recorded</span>;
+		return <span className="text-tertiary">none recorded</span>;
 	}
 	const lastFailed = failed !== null && (acked === null || failed > acked);
 	const at = (lastFailed ? s.last_apply_failed_at : s.last_acked_at) as string;
@@ -120,13 +119,17 @@ function LastAck({ s }: { s: Workload["sync"] }) {
 		<>
 			<time dateTime={at}>{ago(at)}</time>
 			{lastFailed ? (
-				<span className="text-status-degraded"> · FAILED</span>
+				<span className="text-status-warn-fg"> · FAILED</span>
 			) : (
-				<span className="text-muted-foreground"> · applied</span>
+				<span className="text-tertiary"> · applied</span>
 			)}
 		</>
 	);
 }
+
+// The card's field rows: a sentence-case label beside a mono value.
+const field = "type-label text-tertiary";
+const value = "min-w-0 type-mono-sm text-primary";
 
 function headline(w: Workload): string {
 	const s = w.sync;
@@ -185,41 +188,40 @@ function Resend({ w, onReread }: { w: Workload; onReread: () => void }) {
 	}
 
 	return (
-		<div className="mt-1 flex flex-col gap-1.5 border-t border-[var(--hairline-soft)] pt-2">
+		<div className="flex flex-col gap-2 border-t border-subtle pt-3">
 			<div className="flex items-center gap-2">
-				<Button
-					variant="secondary"
-					size="sm"
-					className="rounded-chip bg-card"
-					disabled={sending}
-					onClick={send}
-				>
+				<Button variant="secondary" size="sm" disabled={sending} onClick={send}>
 					{sending ? "Sending…" : "Resend snapshot"}
 				</Button>
 				{outcome.kind === "sent" && !moved ? (
 					<button
 						type="button"
 						onClick={onReread}
-						className="cursor-pointer text-[11px] text-link hover:text-link-hover"
+						className="cursor-pointer type-caption text-link hover:underline"
 					>
 						Read again
 					</button>
 				) : null}
 			</div>
 			{outcome.kind === "sent" ? (
-				<p role="status" className="text-[11px] text-foreground-tertiary">
+				<p role="status" className="type-caption text-secondary">
 					{moved
 						? "The agent reconnected and was sent a fresh snapshot."
 						: "Reconnect requested. The snapshot instant above moves once the agent has reconnected."}
 				</p>
 			) : null}
 			{outcome.kind === "offline" ? (
-				<p role="alert" className="text-[11px] text-status-degraded">
-					▲ The agent is offline, so nothing was sent.{" "}
+				<SeverityNote
+					level="alert"
+					role="alert"
+					size="sm"
+					className="type-caption"
+				>
+					The agent is offline, so nothing was sent.{" "}
 					{outcome.lastSeen ? (
 						<>
 							Last heard from{" "}
-							<time dateTime={outcome.lastSeen} className="font-mono">
+							<time dateTime={outcome.lastSeen} className="type-mono-sm">
 								{ago(outcome.lastSeen)}
 							</time>{" "}
 							({new Date(outcome.lastSeen).toISOString().replace(".000Z", "Z")}
@@ -228,12 +230,17 @@ function Resend({ w, onReread }: { w: Workload; onReread: () => void }) {
 					) : (
 						"It has never been heard from."
 					)}
-				</p>
+				</SeverityNote>
 			) : null}
 			{outcome.kind === "failed" ? (
-				<p role="alert" className="text-[11px] text-destructive">
-					✕ {outcome.message}
-				</p>
+				<SeverityNote
+					level="error"
+					role="alert"
+					size="sm"
+					className="type-caption"
+				>
+					{outcome.message}
+				</SeverityNote>
 			) : null}
 		</div>
 	);
