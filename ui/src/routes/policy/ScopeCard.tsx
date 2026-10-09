@@ -69,6 +69,9 @@ export function ScopeCard({
 						<AddInput
 							label="Add a scope requirement"
 							placeholder="key = value | value"
+							// A requirement typed and left pending is committed
+							// before Create or Save reads the scope.
+							commitOnBlur
 							onAdd={(text) => {
 								// A paste of several requirements adds each; text
 								// outside the label grammar adds nothing.

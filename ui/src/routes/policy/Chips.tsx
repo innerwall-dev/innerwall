@@ -117,25 +117,27 @@ export function FindingLines({ findings }: { findings?: readonly Finding[] }) {
 }
 
 // AddInput is the field at the end of a chip list: what is typed becomes
-// one or more elements on Enter, read as the placeholder describes. When
+// one or more elements on Enter, read as the placeholder describes, and
+// with commitOnBlur also when the field loses focus, so text typed and
+// left pending is committed before a button beside it submits. When
 // onAdd refuses the text with a reason, the text stays, marked, with the
 // reason under it, and nothing is added.
 export function AddInput({
 	label,
 	placeholder,
 	onAdd,
+	commitOnBlur = false,
 	className,
 }: {
 	label: string;
 	placeholder: string;
 	onAdd: (text: string) => string | undefined;
+	commitOnBlur?: boolean;
 	className?: string;
 }) {
 	const [text, setText] = useState("");
 	const [refusal, setRefusal] = useState<string | null>(null);
-	const onKeyDown = (ev: KeyboardEvent<HTMLInputElement>) => {
-		if (ev.key !== "Enter") return;
-		ev.preventDefault();
+	const commit = () => {
 		if (text.trim() === "") return;
 		const refused = onAdd(text);
 		if (refused) {
@@ -144,6 +146,11 @@ export function AddInput({
 		}
 		setText("");
 		setRefusal(null);
+	};
+	const onKeyDown = (ev: KeyboardEvent<HTMLInputElement>) => {
+		if (ev.key !== "Enter") return;
+		ev.preventDefault();
+		commit();
 	};
 	return (
 		<span className={cn("inline-flex flex-col gap-1", className)}>
@@ -157,6 +164,7 @@ export function AddInput({
 					setRefusal(null);
 				}}
 				onKeyDown={onKeyDown}
+				onBlur={commitOnBlur ? commit : undefined}
 				className="h-control-sm min-w-[150px] rounded-md border border-strong bg-app px-2.5 type-mono-sm text-primary placeholder:text-tertiary aria-invalid:border-status-critical-fg"
 			/>
 			{refusal ? (

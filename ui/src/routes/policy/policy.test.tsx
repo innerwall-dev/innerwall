@@ -1086,6 +1086,57 @@ describe("policy editor", () => {
 		).toBeInTheDocument();
 	});
 
+	it("commits a scope requirement left pending when Create is clicked", async () => {
+		// Typed, not entered, then Create: the requirement is committed as
+		// the field loses focus, so the scope sent is the one on screen.
+		const posted: unknown[] = [];
+		const created = ruleset("ledger-inbound", {
+			app: ["ledger"],
+			env: ["lab"],
+		});
+		const s = surface({
+			rulesets: [],
+			extra: [
+				{
+					method: "POST",
+					path: "/api/v1/rulesets",
+					reply: (body) => {
+						posted.push(body);
+						s.setRulesets([created]);
+						return { status: 201, json: created };
+					},
+				},
+			],
+		});
+		const user = userEvent.setup();
+		renderApp("/policy?new=1");
+		await user.type(
+			await screen.findByRole("textbox", { name: "Ruleset name" }),
+			"ledger-inbound",
+		);
+		const add = screen.getByRole("textbox", {
+			name: "Add a scope requirement",
+		});
+		// Invalid pending text is refused as the field loses focus, and
+		// stays with its reason rather than vanishing.
+		await user.type(add, "app=");
+		await user.click(screen.getByRole("textbox", { name: "Ruleset name" }));
+		expect(add).toHaveValue("app=");
+		expect(screen.getByText("app has no value.")).toBeInTheDocument();
+		await user.clear(add);
+		await user.type(add, "app = ledger env=lab");
+		await user.click(screen.getByRole("button", { name: /^Create ruleset/ }));
+		await waitFor(() =>
+			expect(posted[0]).toEqual({
+				name: "ledger-inbound",
+				description: "",
+				enabled: true,
+				scope: { app: ["ledger"], env: ["lab"] },
+				rules: [],
+			}),
+		);
+	});
+
 	it("shows the fresh state, a failed read with a retry, and loading", async () => {
 		mockSurface(freshInstall);
 		renderApp("/policy");
