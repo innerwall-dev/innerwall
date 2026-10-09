@@ -102,30 +102,18 @@ type WorkloadRef struct {
 
 // --- labels ------------------------------------------------------------------
 
-// ValidateLabels admits a label set: every key named, no key twice.
+// ValidateLabels admits a label set: every key and value in the label
+// grammar, no key twice (ADR-0022).
 func ValidateLabels(labels []registry.Label) error {
-	f := &policy.Findings{}
-	seen := map[string]int{}
-	for i, l := range labels {
-		path := fmt.Sprintf("labels[%d]", i)
-		if l.Key == "" {
-			f.Errors = append(f.Errors, &policy.ValidationError{Path: path, Err: policy.ErrEmptyLabelKey})
-			continue
-		}
-		if first, dup := seen[l.Key]; dup {
-			f.Errors = append(f.Errors, &policy.ValidationError{Path: path, Err: ErrDuplicateLabelKey, Detail: fmt.Sprintf("%q also at labels[%d]", l.Key, first)})
-			continue
-		}
-		seen[l.Key] = i
+	pairs := make([]policy.LabelPair, 0, len(labels))
+	for _, l := range labels {
+		pairs = append(pairs, policy.LabelPair{Key: l.Key, Value: l.Value})
 	}
-	if len(f.Errors) == 0 {
-		return nil
-	}
-	return f
+	return policy.ValidateLabelSet(pairs)
 }
 
 // ErrDuplicateLabelKey is a label key given twice in one set.
-var ErrDuplicateLabelKey = errors.New("fleet: label key appears more than once")
+var ErrDuplicateLabelKey = policy.ErrDuplicateLabelKey
 
 // SetLabels replaces a workload's labels and renders, since a label change
 // moves the workload in and out of selectors (ADR-0018). expect is the

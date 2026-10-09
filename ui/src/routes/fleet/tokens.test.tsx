@@ -311,4 +311,96 @@ describe("mint dialog", () => {
 			"label key Env is not a valid key",
 		);
 	});
+
+	// The path that once stored one label `app` = "web env=lab": a paste
+	// of two labels into the label field. The form reads it through the
+	// console's one label parser, as two labels (ADR-0022).
+	it("reads a pasted label set as separate labels, and refuses what it cannot read", async () => {
+		const { calls } = surface(
+			() => [],
+			[
+				{
+					method: "POST",
+					path: "/api/v1/provisioning-tokens",
+					reply: (body) => {
+						const b = body as { labels: Record<string, string> };
+						return {
+							status: 201,
+							json: {
+								...token({ name: "lab", labels: b.labels }),
+								token: secret,
+							},
+						};
+					},
+				},
+			],
+		);
+		const user = userEvent.setup();
+		renderApp("/workloads/tokens");
+		await user.click(await screen.findByRole("button", { name: "Mint token" }));
+		const form = await screen.findByRole("dialog");
+		await user.type(within(form).getByLabelText("Name"), "lab");
+		const label = within(form).getByLabelText("Label");
+
+		// Text that is not wholly labels in the grammar adds nothing and
+		// says why; the mint is not sent.
+		await user.click(label);
+		await user.paste("app=web env");
+		await user.click(within(form).getByRole("button", { name: "Mint token" }));
+		expect(
+			within(form).getByText("A label is written key=value."),
+		).toBeInTheDocument();
+		expect(label).toHaveValue("app=web env");
+		await user.clear(label);
+		await user.paste("app=web/api");
+		await user.keyboard("{Enter}");
+		expect(
+			within(form).getByText(/^"web\/api" is not a label value/),
+		).toBeInTheDocument();
+		expect(calls.some((c) => c.method === "POST")).toBe(false);
+
+		// The paste that corrupted a token is two labels.
+		await user.clear(label);
+		await user.paste("app=web env=lab");
+		await user.keyboard("{Enter}");
+		expect(label).toHaveValue("");
+		expect(
+			within(form).getByRole("button", { name: "Remove app=web" }),
+		).toBeInTheDocument();
+		expect(
+			within(form).getByRole("button", { name: "Remove env=lab" }),
+		).toBeInTheDocument();
+		// Typed with spaces around "=", a label still commits whole.
+		await user.type(label, "tier = api ");
+		await user.click(within(form).getByRole("button", { name: "Mint token" }));
+		await screen.findByRole("dialog", { name: "Token minted — copy it now" });
+		expect(calls.find((c) => c.method === "POST")?.body).toEqual({
+			name: "lab",
+			labels: { app: "web", env: "lab", tier: "api" },
+			ttl_seconds: 30 * 24 * 3600,
+		});
+	});
+
+	it("draws a stored label outside the grammar quoted and marked, never as two labels", async () => {
+		surface(() => [
+			token({ name: "legacy", labels: { app: "web env=lab" } }),
+			token({ name: "clean", labels: { app: "web", env: "lab" } }),
+		]);
+		renderApp("/workloads/tokens");
+		await screen.findByText("legacy");
+		const legacy = rowOf("legacy").querySelectorAll('[data-slot="label-chip"]');
+		expect(legacy).toHaveLength(1);
+		expect(legacy[0]).toHaveTextContent('app="web env=lab"');
+		expect(legacy[0]).toHaveAttribute("data-outside-grammar", "true");
+		expect(legacy[0]).toHaveAttribute(
+			"title",
+			expect.stringContaining("outside the label grammar"),
+		);
+		const clean = rowOf("clean").querySelectorAll('[data-slot="label-chip"]');
+		expect([...clean].map((c) => c.textContent)).toEqual([
+			"app=web",
+			"env=lab",
+		]);
+		expect(clean[0]).not.toHaveAttribute("data-outside-grammar");
+	});
 });

@@ -18,7 +18,7 @@ import {
 import { labelPairs, span } from "@/lib/format";
 import { useWrite } from "@/lib/resource";
 import { cn } from "@/lib/utils";
-import { parseRequirement } from "./WorkloadList";
+import { labelRequirements } from "./WorkloadList";
 
 const hour = 3600;
 const lifetimes = [
@@ -80,29 +80,43 @@ function MintForm({ onMinted }: { onMinted: (m: MintedToken) => void }) {
 	const [name, setName] = useState("");
 	const [labels, setLabels] = useState<string[]>([]);
 	const [draft, setDraft] = useState("");
-	const [draftInvalid, setDraftInvalid] = useState(false);
+	const [draftInvalid, setDraftInvalid] = useState<string | null>(null);
 	const [lifetime, setLifetime] = useState<Lifetime>("30d");
 	const [customDays, setCustomDays] = useState("90");
 	const [submitting, setSubmitting] = useState(false);
 	const [problem, setProblem] = useState<ProblemError | null>(null);
 
+	// commitDraft reads the draft through the console's one label parser
+	// (ADR-0022): typed or pasted, `app=web env=lab` is two labels, and
+	// text it cannot read wholly as labels in the grammar stays in the
+	// field with the reason, adding nothing.
 	function commitDraft(): string[] | null {
 		if (draft.trim() === "") return labels;
-		const req = parseRequirement(draft);
-		if (!req) {
-			setDraftInvalid(true);
+		const parsed = labelRequirements(draft);
+		if (!parsed.ok) {
+			setDraftInvalid(parsed.error);
 			return null;
 		}
-		const key = req.slice(0, req.indexOf("="));
-		// A token assigns one value per key; a new value replaces the old.
-		const next = [...labels.filter((l) => !l.startsWith(`${key}=`)), req];
+		let next = labels;
+		for (const req of parsed.requirements) {
+			const key = req.slice(0, req.indexOf("="));
+			// A token assigns one value per key; a new value replaces the old.
+			next = [...next.filter((l) => !l.startsWith(`${key}=`)), req];
+		}
 		setLabels(next);
 		setDraft("");
+		setDraftInvalid(null);
 		return next;
 	}
 
 	function onKey(e: KeyboardEvent<HTMLInputElement>) {
-		if (e.key === "Enter" || e.key === "," || e.key === " ") {
+		// A space ends a label only once the draft reads as one, so
+		// `app = web` can be typed with spaces around the "=".
+		const ends =
+			e.key === "Enter" ||
+			e.key === "," ||
+			(e.key === " " && labelRequirements(draft).ok && draft.trim() !== "");
+		if (ends) {
 			e.preventDefault();
 			commitDraft();
 		} else if (e.key === "Backspace" && draft === "" && labels.length > 0) {
@@ -193,12 +207,12 @@ function MintForm({ onMinted }: { onMinted: (m: MintedToken) => void }) {
 						))}
 						<input
 							aria-label="Label"
-							aria-invalid={draftInvalid || undefined}
+							aria-invalid={draftInvalid !== null || undefined}
 							placeholder="key=value"
 							value={draft}
 							onChange={(e) => {
 								setDraft(e.target.value);
-								setDraftInvalid(false);
+								setDraftInvalid(null);
 							}}
 							onKeyDown={onKey}
 							onBlur={() => commitDraft()}
@@ -207,7 +221,7 @@ function MintForm({ onMinted }: { onMinted: (m: MintedToken) => void }) {
 					</div>
 					{draftInvalid ? (
 						<SeverityNote level="error" className="type-caption">
-							A label is written key=value.
+							{draftInvalid}
 						</SeverityNote>
 					) : null}
 				</div>

@@ -11,6 +11,7 @@ import type {
 	WorkloadRef,
 } from "@/api/schema";
 import { workloadsWith } from "@/lib/gaps";
+import { shownLabelText } from "@/lib/labels";
 
 // The flow map's model: the rollup of stored windows grouped by source
 // peer and destination workload, folded into label groups. A workload
@@ -205,7 +206,9 @@ export function buildModel(
 			return {
 				...blank,
 				kind: "managed",
-				title: value,
+				// A value stored before the label grammar is quoted, so it
+				// never reads as a group of two labels (ADR-0022).
+				title: shownLabelText(value, "value"),
 				selector: `${key}=${value}`,
 			};
 		});

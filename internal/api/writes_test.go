@@ -392,6 +392,14 @@ func TestWorkloadLabelEndpoints(t *testing.T) {
 	}
 	resp, body = s.call(t, http.MethodPut, path, jsonBody(map[string]any{"labels": map[string]string{"": "x"}}), ifMatch(tag))
 	expectFindings(t, resp, body, "labels[0]")
+	// The label grammar: what a paste of two labels into one value
+	// produced is refused, the offending value quoted so its whitespace
+	// shows (ADR-0022).
+	resp, body = s.call(t, http.MethodPut, path, jsonBody(map[string]any{"labels": map[string]string{"app": "web env=lab"}}), ifMatch(tag))
+	expectFindings(t, resp, body, "labels[0]")
+	if field(body, "errors.0.rule") != "label-value" || !strings.Contains(field(body, "errors.0.message").(string), `"web env=lab"`) {
+		t.Fatalf("grammar finding = %v", field(body, "errors"))
+	}
 	resp, body = s.call(t, http.MethodPut, path, update, ifMatch(tag))
 	if resp.status != http.StatusOK || field(body, "labels.role") != "db" || resp.header.Get("ETag") == tag {
 		t.Fatalf("labels update: %d %v", resp.status, body)
@@ -466,6 +474,11 @@ func TestPreviewAndDryRunEndpoints(t *testing.T) {
 	expectFindings(t, resp, body, "selector")
 	resp, body = s.call(t, http.MethodPost, "/api/v1/selectors/preview", jsonBody(map[string]any{"selector": map[string][]string{"role": {}}}), nil)
 	expectFindings(t, resp, body, "selector[role]")
+	resp, body = s.call(t, http.MethodPost, "/api/v1/selectors/preview", jsonBody(map[string]any{"selector": map[string][]string{"app": {"web env=lab"}}}), nil)
+	expectFindings(t, resp, body, "selector[app]")
+	if field(body, "errors.0.rule") != "label-value" {
+		t.Fatalf("preview grammar finding = %v", field(body, "errors"))
+	}
 
 	_, body = s.call(t, http.MethodGet, "/api/v1/rulesets", "", nil)
 	stateVersion := body["state_version"].(string)
@@ -552,7 +565,14 @@ func TestTokenEndpoints(t *testing.T) {
 		t.Fatal("token not persisted")
 	}
 	resp, body = s.call(t, http.MethodPost, "/api/v1/provisioning-tokens", jsonBody(map[string]any{"name": "bad", "labels": map[string]string{"": "x"}}), nil)
-	expectFindings(t, resp, body, "labels")
+	expectFindings(t, resp, body, "labels[0]")
+	// A token's labels are held to the label grammar; findings locate
+	// each label by its place in key order.
+	resp, body = s.call(t, http.MethodPost, "/api/v1/provisioning-tokens", jsonBody(map[string]any{"name": "bad", "labels": map[string]string{"app": "web env=lab", "env": "lab", "-tier": "api"}}), nil)
+	expectFindings(t, resp, body, "labels[0]", "labels[1]")
+	if field(body, "errors.0.rule") != "label-key" || field(body, "errors.1.rule") != "label-value" || len(field(body, "errors").([]any)) != 2 {
+		t.Fatalf("grammar findings = %v", field(body, "errors"))
+	}
 	resp, body = s.call(t, http.MethodGet, "/api/v1/provisioning-tokens", "", nil)
 	if resp.status != http.StatusOK || len(field(body, "tokens").([]any)) != 1 || field(body, "tokens.0.id") != tokenID || field(body, "tokens.0.use_count") != float64(0) {
 		t.Fatalf("list: %d %v", resp.status, body)

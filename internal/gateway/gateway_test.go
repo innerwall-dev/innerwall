@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/tls"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -244,6 +246,23 @@ func TestEnrollRequiresValidToken(t *testing.T) {
 		_, err = client.Enroll(ctx, &innerwallv1.EnrollRequest{ProvisioningToken: plain, CsrPem: csr})
 		wantCode(t, err, codes.Unauthenticated)
 		if st, _ := status.FromError(err); st.Message() != enroll.ErrTokenRevoked.Error() {
+			t.Fatalf("message = %q", st.Message())
+		}
+	})
+
+	t.Run("labels outside the grammar", func(t *testing.T) {
+		// A token stored before the grammar was admitted: it
+		// authenticates, but what it would assign is refused.
+		plain, hash, err := enroll.NewToken()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := st.CreateToken(ctx, enroll.Token{ID: uuid.New(), Hash: hash, Name: "legacy", Labels: []enroll.Label{{Key: "app", Value: "web env=lab"}}, CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+			t.Fatal(err)
+		}
+		_, err = client.Enroll(ctx, &innerwallv1.EnrollRequest{ProvisioningToken: plain, CsrPem: csr})
+		wantCode(t, err, codes.FailedPrecondition)
+		if st, _ := status.FromError(err); !strings.HasPrefix(st.Message(), enroll.ErrTokenLabelsInvalid.Error()) || !strings.Contains(st.Message(), `"web env=lab"`) {
 			t.Fatalf("message = %q", st.Message())
 		}
 	})

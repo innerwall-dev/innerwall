@@ -186,6 +186,16 @@ describe("fleet workloads", () => {
 			"aria-invalid",
 			"true",
 		);
+		// A value outside the label grammar is refused with the reason.
+		await user.clear(screen.getByLabelText("Label requirement"));
+		await user.type(
+			screen.getByLabelText("Label requirement"),
+			"tier=a=b{Enter}",
+		);
+		expect(screen.getByLabelText("Label requirement")).toHaveAttribute(
+			"title",
+			expect.stringMatching(/^"a=b" is not a label value/),
+		);
 		await user.keyboard("{Escape}");
 
 		await waitFor(() => {

@@ -196,6 +196,9 @@ func toStatus(err error) error {
 		errors.Is(err, enroll.ErrTokenExpired),
 		errors.Is(err, enroll.ErrTokenRevoked):
 		return status.Error(codes.Unauthenticated, err.Error())
+	case errors.Is(err, enroll.ErrTokenLabelsInvalid):
+		// The token authenticated; what it would assign cannot be.
+		return status.Error(codes.FailedPrecondition, err.Error())
 	case errors.Is(err, enroll.ErrWorkloadUnknown), errors.Is(err, registry.ErrWorkloadUnknown):
 		return status.Error(codes.PermissionDenied, err.Error())
 	case errors.Is(err, ca.ErrBadCSR):

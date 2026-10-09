@@ -12,10 +12,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/innerwall-dev/innerwall/internal/ca/fileca"
 	"github.com/innerwall-dev/innerwall/internal/enroll"
 	"github.com/innerwall-dev/innerwall/internal/enroll/enrolltest"
 	"github.com/innerwall-dev/innerwall/internal/identity"
+	"github.com/innerwall-dev/innerwall/internal/policy"
 )
 
 func newCSR(t *testing.T) []byte {
@@ -153,8 +156,42 @@ func TestMintTokenValidatesLabels(t *testing.T) {
 	if _, _, err := svc.MintToken(context.Background(), "x", []enroll.Label{{"", "v"}}, 0); err == nil {
 		t.Fatal("empty key accepted")
 	}
-	if _, _, err := svc.MintToken(context.Background(), "x", []enroll.Label{{"k", "1"}, {"k", "2"}}, 0); err == nil {
-		t.Fatal("duplicate key accepted")
+	if _, _, err := svc.MintToken(context.Background(), "x", []enroll.Label{{"k", "1"}, {"k", "2"}}, 0); !errors.Is(err, policy.ErrDuplicateLabelKey) {
+		t.Fatalf("duplicate key: err = %v", err)
+	}
+	// What a paste of two labels into one field produced: one value
+	// holding a space and a second key=value (ADR-0022).
+	if _, _, err := svc.MintToken(context.Background(), "x", []enroll.Label{{"app", "web env=lab"}}, 0); !errors.Is(err, policy.ErrBadLabelValue) || policy.AsFindings(err) == nil {
+		t.Fatalf("value with whitespace and '=': err = %v", err)
+	}
+	if _, _, err := svc.MintToken(context.Background(), "x", []enroll.Label{{"app web", "x"}}, 0); !errors.Is(err, policy.ErrBadLabelKey) {
+		t.Fatalf("key with whitespace: err = %v", err)
+	}
+	if _, _, err := svc.MintToken(context.Background(), "x", []enroll.Label{{"app", "web"}, {"env", "lab"}}, 0); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestEnrollRefusesTokenWithLabelsOutsideGrammar holds a token minted
+// before the grammar was admitted: enrolling with it would hand the
+// workload a label no selector can match, so it is refused before a
+// credential is issued, and nothing is persisted.
+func TestEnrollRefusesTokenWithLabelsOutsideGrammar(t *testing.T) {
+	ctx := context.Background()
+	svc, st := newService(t)
+	plain, hash, err := enroll.NewToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok := enroll.Token{ID: uuid.New(), Hash: hash, Name: "legacy", Labels: []enroll.Label{{"app", "web env=lab"}}, CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}
+	if err := st.CreateToken(ctx, tok); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Enroll(ctx, plain, newCSR(t), "web-1"); !errors.Is(err, enroll.ErrTokenLabelsInvalid) || !errors.Is(err, policy.ErrBadLabelValue) {
+		t.Fatalf("err = %v", err)
+	}
+	if st.WorkloadCount() != 0 || st.Token(tok.ID).UseCount != 0 {
+		t.Fatal("refused enrollment persisted a workload or counted a use")
 	}
 }
 
