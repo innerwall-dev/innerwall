@@ -8,7 +8,7 @@ set -eu
 BUF_VERSION="v1.72.0"
 SQLC_VERSION="v1.31.1"
 GOOSE_VERSION="v3.28.0"
-GOLANGCI_LINT_VERSION="v2.5.0"
+GOLANGCI_LINT_VERSION="v2.9.0"
 
 echo "installing buf ${BUF_VERSION}"
 go install "github.com/bufbuild/buf/cmd/buf@${BUF_VERSION}"
