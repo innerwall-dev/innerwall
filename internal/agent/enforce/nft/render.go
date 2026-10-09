@@ -13,8 +13,20 @@
 // mode it logs the packet, marks the connection as one enforcement would
 // have dropped, and accepts it. Everything else is identical between the
 // two modes, so a simulation verdict is evidence about exactly the
-// ruleset enforcement would install. Visibility mode installs the table
-// with no chain at all.
+// ruleset enforcement would install.
+//
+// Visibility mode installs no sets and no verdict: the table holds one
+// base chain on the input hook, ObserveChainName, whose one rule counts
+// and accepts each new inbound connection. The kernel registers its
+// connection tracking hooks in a network namespace only once a loaded
+// ruleset references connection tracking, so without that rule a host on
+// which nothing else does would track nothing, and the agent, which
+// observes through connection tracking, would observe nothing. The chain
+// accepts under a policy of accept, and an accept in one base chain never
+// skips another, so it decides nothing: traffic is observed, never
+// blocked (ADR-0001, ADR-0020). Nothing in it logs, so the log source has
+// nothing to report in visibility; it observes what enforcement drops and
+// what simulation would have, and nothing else.
 package nft
 
 import (
@@ -33,10 +45,13 @@ const DefaultTable = "innerwall"
 // DefaultNflogGroup is the netlink log group the terminal rule logs to.
 const DefaultNflogGroup uint16 = 200
 
-// ChainName is the one base chain in the owned table.
+// ChainName is the one base chain in an enforced or simulated table.
 const ChainName = "inbound"
 
-// Priority is the input-hook priority of the chain, as nft spells it: ten
+// ObserveChainName is the one base chain in a visibility table.
+const ObserveChainName = "observe"
+
+// Priority is the input-hook priority of either chain, as nft spells it: ten
 // after the conventional filter priority, so that a host's own filter
 // chains run first and their verdict on traffic they reject stands. An
 // accept in one base chain never skips another, so both this chain and
@@ -152,9 +167,14 @@ func Render(policy *innerwallv1.WorkloadPolicy, marks map[string]uint32, opts Op
 	fmt.Fprintf(&b, "delete table inet %s\n", table)
 	fmt.Fprintf(&b, "table inet %s {\n", table)
 	if policy.GetMode() == innerwallv1.EnforcementMode_ENFORCEMENT_MODE_VISIBILITY || policy.GetMode() == innerwallv1.EnforcementMode_ENFORCEMENT_MODE_UNSPECIFIED {
-		// Visibility installs no verdict chain: nothing is evaluated,
-		// nothing is dropped, and collection continues from conntrack.
-		b.WriteString("}\n")
+		// Visibility decides nothing. The one rule exists to reference
+		// connection tracking, which is what makes the kernel track
+		// connections in this namespace at all; it accepts, and the chain's
+		// policy is accept, so no packet is dropped or altered.
+		fmt.Fprintf(&b, "\tchain %s {\n", ObserveChainName)
+		fmt.Fprintf(&b, "\t\ttype filter hook input priority %s; policy accept;\n", Priority)
+		b.WriteString("\t\tct state new counter accept comment \"innerwall observation visibility\"\n")
+		b.WriteString("\t}\n}\n")
 		return b.String(), nil
 	}
 	rules := policy.GetInboundRules()

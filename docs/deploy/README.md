@@ -40,7 +40,7 @@ docker compose exec innerwall /innerwall workload set-mode <workload-id> simulat
 docker compose exec innerwall /innerwall policy show <workload-id>
 ```
 
-Only inbound rules are admitted (ADR-0010). A workload in `visibility` mode has no verdict chain installed; `simulation` installs the enforced ruleset with the terminal rule accepting and reporting what enforcement would drop as `would_block`; `enforced` drops it and reports `blocked` (ADR-0020). The agent re-applies its last acknowledged policy from disk on every start, before it dials the control plane, and leaves the kernel rules in place when it exits. Root on the host removes them with the local kill switch:
+Only inbound rules are admitted (ADR-0010). A workload in `visibility` mode has no verdict installed: its table holds one chain, `observe`, whose one rule engages the kernel's connection tracking and accepts, so connections are observed on a host where nothing else engages it, and nothing is dropped; `simulation` installs the enforced ruleset with the terminal rule accepting and reporting what enforcement would drop as `would_block`; `enforced` drops it and reports `blocked` (ADR-0020). The agent re-applies its last acknowledged policy from disk on every start, before it dials the control plane, and leaves the kernel rules in place when it exits. Root on the host removes them with the local kill switch:
 
 ```sh
 innerwall-agent down --state-dir ./agent-state

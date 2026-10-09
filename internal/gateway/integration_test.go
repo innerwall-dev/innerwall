@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -90,7 +91,7 @@ func TestEnrollmentEndToEnd(t *testing.T) {
 	if w.TokenID != tok.ID || w.Hostname != "db-1" || w.CredentialSerial != cert.SerialNumber.Text(16) {
 		t.Fatalf("workload = %+v", w)
 	}
-	if len(w.Labels) != 2 || w.Labels[0] != labels[0] || w.Labels[1] != labels[1] {
+	if !slices.Equal(w.Labels, labels) {
 		t.Fatalf("stored labels = %v, want %v", w.Labels, labels)
 	}
 
