@@ -112,6 +112,37 @@ func TestSimulationDiffersOnlyInTerminalRule(t *testing.T) {
 	}
 }
 
+// TestVisibilityObservesOnly is the structural statement of the
+// visibility contract: the table holds one base chain on the input hook
+// with a policy of accept and one rule, which references connection
+// tracking, so the kernel tracks connections for the agent to observe,
+// and accepts. Nothing in it drops, rejects, logs, marks, or reads a set,
+// whatever rules the policy carries, and an unspecified mode renders the
+// same table.
+func TestVisibilityObservesOnly(t *testing.T) {
+	script := render(t, multiRule(innerwallv1.EnforcementMode_ENFORCEMENT_MODE_VISIBILITY), Options{Table: "iwtest", NflogGroup: 7})
+	want := "table inet iwtest {}\n" +
+		"delete table inet iwtest\n" +
+		"table inet iwtest {\n" +
+		"\tchain " + ObserveChainName + " {\n" +
+		"\t\ttype filter hook input priority " + Priority + "; policy accept;\n" +
+		"\t\tct state new counter accept comment \"innerwall observation visibility\"\n" +
+		"\t}\n" +
+		"}\n"
+	if script != want {
+		t.Fatalf("visibility rendering:\n%s\nwant:\n%s", script, want)
+	}
+	for _, never := range []string{"drop", "reject", "log", "mark", "set ", "@", "policy drop"} {
+		if strings.Contains(script, never) {
+			t.Fatalf("visibility rendering contains %q:\n%s", never, script)
+		}
+	}
+	unspecified := multiRule(innerwallv1.EnforcementMode_ENFORCEMENT_MODE_UNSPECIFIED)
+	if got := render(t, unspecified, Options{Table: "iwtest", NflogGroup: 7}); got != script {
+		t.Fatalf("unspecified mode renders differently from visibility:\n%s", got)
+	}
+}
+
 // TestRenderStructure checks the invariants every enforced rendering has:
 // one transaction (declare, delete, recreate), loopback and established
 // accepted before any rule, one set per rule and family, rules in
