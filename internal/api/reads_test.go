@@ -285,9 +285,17 @@ func TestRollupEndpoint(t *testing.T) {
 	if keys := field(body, "groups.1.keys").(map[string]any); len(keys) != 2 {
 		t.Fatalf("peer,service keys = %v", keys)
 	}
-	if sq := s.fx.flows.LastGroup; sq.GroupBy != flowstore.GroupByPeerService || len(sq.WorkloadIDs) != 1 || sq.WorkloadIDs[0] != s.fx.db {
+	if sq := s.fx.flows.LastGroup; sq.GroupBy != flowstore.GroupByPeerService || len(sq.WorkloadIDs) != 1 || sq.WorkloadIDs[0] != s.fx.db || sq.Endpoint != flowstore.EndpointDst {
 		t.Fatalf("store query = %+v", sq)
 	}
+	// A label scope selects the destination by default; endpoint=either
+	// also selects the records its workloads sent.
+	resp, body = s.get(t, "/api/v1/flows/rollup?group_by=src,dst&label=role%3Dweb&endpoint=either")
+	if sq := s.fx.flows.LastGroup; resp.status != http.StatusOK || sq.Endpoint != flowstore.EndpointEither || len(sq.WorkloadIDs) != 1 || sq.WorkloadIDs[0] != s.fx.web {
+		t.Fatalf("endpoint=either: %d %v, store query = %+v", resp.status, body, sq)
+	}
+	resp, body = s.get(t, "/api/v1/flows/rollup?group_by=src,dst&endpoint=src")
+	expectInvalidParameter(t, resp, body, "endpoint")
 	// A requirement outside the label grammar matches no label, so it is
 	// refused, not answered with an empty rollup (ADR-0022).
 	resp, body = s.get(t, "/api/v1/flows/rollup?group_by=src,dst&label=app%3Dweb%20env%3Dlab")

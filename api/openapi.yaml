@@ -235,6 +235,20 @@ paths:
           schema:
             $ref: "#/components/schemas/WorkloadID"
         - $ref: "#/components/parameters/label"
+        - name: endpoint
+          in: query
+          description: |
+            Which end of a stored record `workload` and `label` select. `dst`
+            selects the records the workloads in scope reported: the traffic
+            that reached them. `either` also selects the records whose source
+            resolved at ingest to a workload in scope, so a workload that only
+            sends traffic is seen by its outbound records; a record with both
+            ends in scope is counted once. Without `workload` or `label` there
+            is no scope and it has no effect.
+          schema:
+            type: string
+            enum: [dst, either]
+            default: dst
         - $ref: "#/components/parameters/service"
         - name: order
           in: query

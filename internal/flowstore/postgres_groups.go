@@ -26,15 +26,16 @@ func (p *Postgres) RollupGroups(ctx context.Context, q GroupQuery) (*GroupResult
 	}
 	limit := int32(boundedGroupLimit(q.Limit)) //nolint:gosec // bounded above
 	f := struct {
+		either              bool
 		since, until        time.Time
 		decision, direction int32
 		protocol, port      int32
-	}{q.Since, q.Until, int32(q.Decision), int32(q.Direction), int32(q.Protocol), int32(q.DstPort)}
+	}{q.Endpoint == EndpointEither, q.Since, q.Until, int32(q.Decision), int32(q.Direction), int32(q.Protocol), int32(q.DstPort)}
 
 	out := &GroupResult{Groups: []Group{}}
 	switch q.GroupBy {
 	case GroupByRule:
-		rows, err := p.q.RollupFlowsByRule(ctx, db.RollupFlowsByRuleParams{WorkloadIds: ids, Since: f.since, Until: f.until, Decision: f.decision, Direction: f.direction, Protocol: f.protocol, DstPort: f.port, OrderBy: order, GroupLimit: limit})
+		rows, err := p.q.RollupFlowsByRule(ctx, db.RollupFlowsByRuleParams{WorkloadIds: ids, EitherEndpoint: f.either, Since: f.since, Until: f.until, Decision: f.decision, Direction: f.direction, Protocol: f.protocol, DstPort: f.port, OrderBy: order, GroupLimit: limit})
 		if err != nil {
 			return nil, fmt.Errorf("flowstore: rolling up by rule: %w", err)
 		}
@@ -46,7 +47,7 @@ func (p *Postgres) RollupGroups(ctx context.Context, q GroupQuery) (*GroupResult
 			}
 		}
 	case GroupByRulePeer:
-		rows, err := p.q.RollupFlowsByRulePeer(ctx, db.RollupFlowsByRulePeerParams{WorkloadIds: ids, Since: f.since, Until: f.until, Decision: f.decision, Direction: f.direction, Protocol: f.protocol, DstPort: f.port, OrderBy: order, GroupLimit: limit})
+		rows, err := p.q.RollupFlowsByRulePeer(ctx, db.RollupFlowsByRulePeerParams{WorkloadIds: ids, EitherEndpoint: f.either, Since: f.since, Until: f.until, Decision: f.decision, Direction: f.direction, Protocol: f.protocol, DstPort: f.port, OrderBy: order, GroupLimit: limit})
 		if err != nil {
 			return nil, fmt.Errorf("flowstore: rolling up by rule and peer: %w", err)
 		}
@@ -58,7 +59,7 @@ func (p *Postgres) RollupGroups(ctx context.Context, q GroupQuery) (*GroupResult
 			}
 		}
 	case GroupBySrcDst:
-		rows, err := p.q.RollupFlowsBySrcDst(ctx, db.RollupFlowsBySrcDstParams{WorkloadIds: ids, Since: f.since, Until: f.until, Decision: f.decision, Direction: f.direction, Protocol: f.protocol, DstPort: f.port, OrderBy: order, GroupLimit: limit})
+		rows, err := p.q.RollupFlowsBySrcDst(ctx, db.RollupFlowsBySrcDstParams{WorkloadIds: ids, EitherEndpoint: f.either, Since: f.since, Until: f.until, Decision: f.decision, Direction: f.direction, Protocol: f.protocol, DstPort: f.port, OrderBy: order, GroupLimit: limit})
 		if err != nil {
 			return nil, fmt.Errorf("flowstore: rolling up by source and destination: %w", err)
 		}
@@ -70,7 +71,7 @@ func (p *Postgres) RollupGroups(ctx context.Context, q GroupQuery) (*GroupResult
 			}
 		}
 	case GroupByDstService:
-		rows, err := p.q.RollupFlowsByDstService(ctx, db.RollupFlowsByDstServiceParams{WorkloadIds: ids, Since: f.since, Until: f.until, Decision: f.decision, Direction: f.direction, Protocol: f.protocol, DstPort: f.port, OrderBy: order, GroupLimit: limit})
+		rows, err := p.q.RollupFlowsByDstService(ctx, db.RollupFlowsByDstServiceParams{WorkloadIds: ids, EitherEndpoint: f.either, Since: f.since, Until: f.until, Decision: f.decision, Direction: f.direction, Protocol: f.protocol, DstPort: f.port, OrderBy: order, GroupLimit: limit})
 		if err != nil {
 			return nil, fmt.Errorf("flowstore: rolling up by destination and service: %w", err)
 		}
@@ -82,7 +83,7 @@ func (p *Postgres) RollupGroups(ctx context.Context, q GroupQuery) (*GroupResult
 			}
 		}
 	case GroupByPeerService:
-		rows, err := p.q.RollupFlowsByPeerService(ctx, db.RollupFlowsByPeerServiceParams{WorkloadIds: ids, Since: f.since, Until: f.until, Decision: f.decision, Direction: f.direction, Protocol: f.protocol, DstPort: f.port, OrderBy: order, GroupLimit: limit})
+		rows, err := p.q.RollupFlowsByPeerService(ctx, db.RollupFlowsByPeerServiceParams{WorkloadIds: ids, EitherEndpoint: f.either, Since: f.since, Until: f.until, Decision: f.decision, Direction: f.direction, Protocol: f.protocol, DstPort: f.port, OrderBy: order, GroupLimit: limit})
 		if err != nil {
 			return nil, fmt.Errorf("flowstore: rolling up by peer and service: %w", err)
 		}

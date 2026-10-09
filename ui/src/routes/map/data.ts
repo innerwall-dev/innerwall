@@ -39,7 +39,9 @@ export interface MapData {
 
 // loadMap reads what the map draws, over one fixed range so every read
 // agrees: the source-by-destination rollup once per decision (the
-// grouping carries no decision of its own), every workload in scope
+// grouping carries no decision of its own), with the scope selecting
+// either end of a flow so a workload that only sends traffic still
+// draws its edges, every workload in scope
 // (their modes, their members, and their dropped-record counters, which
 // only the workload carries), the address groups (their CIDRs), and the
 // evidence gaps the workloads in scope reported in the range.
@@ -60,6 +62,7 @@ export async function loadMap(
 					to,
 					verdict,
 					label,
+					endpoint: "either",
 					limit: rollupLimit,
 				}).then((r) => [verdict, r] as const),
 			),

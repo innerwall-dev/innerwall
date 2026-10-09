@@ -17,8 +17,8 @@ import (
 // getFlowsRollup is GET /api/v1/flows/rollup: a grouped rollup over the
 // windows in a range. group_by is required and must be one of the named
 // groupings; from and to default to the last day; verdict, direction,
-// workload, label (repeatable), service, order, and limit filter, order,
-// and bound it.
+// workload, label (repeatable), endpoint, service, order, and limit
+// filter, order, and bound it.
 func (s *Server) getFlowsRollup(w http.ResponseWriter, r *http.Request) {
 	q := queryOf(r)
 	var req readmodel.RollupRequest
@@ -48,6 +48,10 @@ func (s *Server) getFlowsRollup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Selector, err = q.selector("label"); err != nil {
+		s.readProblem(w, err)
+		return
+	}
+	if req.Endpoint, err = q.endpoint("endpoint"); err != nil {
 		s.readProblem(w, err)
 		return
 	}

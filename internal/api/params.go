@@ -119,6 +119,14 @@ func (q query) groupBy(name string) (flowstore.GroupBy, error) {
 	return g, nil
 }
 
+func (q query) endpoint(name string) (flowstore.Endpoint, error) {
+	e, err := flowstore.ParseEndpoint(q.text(name))
+	if err != nil {
+		return "", &paramError{name, "one of dst, either"}
+	}
+	return e, nil
+}
+
 func (q query) order(name string) (flowstore.GroupOrder, error) {
 	switch s := q.text(name); s {
 	case "":
@@ -182,7 +190,7 @@ func (s *Server) readProblem(w http.ResponseWriter, err error) {
 		writeProblem(w, Problem{Type: ProblemInvalidParameter, Title: "Invalid parameter", Status: http.StatusBadRequest, Detail: "parameter to: must be after from"})
 	case errors.Is(err, readmodel.ErrWorkloadRequired):
 		writeProblem(w, Problem{Type: ProblemInvalidParameter, Title: "Invalid parameter", Status: http.StatusBadRequest, Detail: "parameter workload: required; this endpoint has no unbounded form"})
-	case errors.Is(err, readmodel.ErrInvalidService), errors.Is(err, flowstore.ErrUnknownGroupBy):
+	case errors.Is(err, readmodel.ErrInvalidService), errors.Is(err, flowstore.ErrUnknownGroupBy), errors.Is(err, flowstore.ErrUnknownEndpoint):
 		writeProblem(w, Problem{Type: ProblemInvalidParameter, Title: "Invalid parameter", Status: http.StatusBadRequest, Detail: err.Error()})
 	default:
 		s.log.Error("read failed", "error", err)

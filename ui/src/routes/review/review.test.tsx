@@ -315,6 +315,9 @@ describe("simulation review", () => {
 		expect(rollupCalls(calls, "peer,service", "allowed")).toHaveLength(1);
 		const [allowed] = rollupCalls(calls, "peer,service", "allowed");
 		expect(allowed.getAll("label")).toEqual(["app=checkout", "env=prod"]);
+		// The review is of the traffic into the scope: the scope selects
+		// the reporting destination, the surface's default.
+		expect(allowed.get("endpoint")).toBeNull();
 		expect(allowed.get("from")).not.toBeNull();
 		expect(rollupCalls(calls, "src,dst")).toHaveLength(2);
 

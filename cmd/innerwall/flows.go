@@ -226,6 +226,7 @@ func runFlowsRollup(ctx context.Context, args []string) error {
 	fs.Var(&labels, "label", "label key=value selecting the workloads in scope (repeatable, ANDed; none selects every workload)")
 	groupBy := fs.String("group-by", "", "the operator surface's grouped rollup instead of the peer-and-service one: "+flowstore.GroupByNames())
 	workload := fs.String("workload", "", "with --group-by: only this workload's flows")
+	endpoint := fs.String("endpoint", string(flowstore.EndpointDst), "with --group-by: which end of a flow the scope selects: dst (the flows its workloads received) | either (also the flows they sent)")
 	service := fs.String("service", "", "with --group-by: only this service, <protocol>/<port> or icmp")
 	order := fs.String("order", "connections", "with --group-by: connections | recent")
 	limit := fs.Int("limit", flowstore.DefaultGroupLimit, "with --group-by: the most groups shown; the rest are counted in the totals")
@@ -249,7 +250,7 @@ func runFlowsRollup(ctx context.Context, args []string) error {
 	}
 	defer st.Close()
 	if *groupBy != "" {
-		return runFlowsGroupedRollup(ctx, st, groupedRollupArgs{groupBy: *groupBy, labels: labels, decision: dec, from: from, to: to, workload: *workload, service: *service, order: *order, limit: *limit})
+		return runFlowsGroupedRollup(ctx, st, groupedRollupArgs{groupBy: *groupBy, labels: labels, decision: dec, from: from, to: to, workload: *workload, endpoint: *endpoint, service: *service, order: *order, limit: *limit})
 	}
 	names, err := loadPeerNames(ctx, st)
 	if err != nil {
@@ -334,6 +335,7 @@ type groupedRollupArgs struct {
 	decision innerwallv1.PolicyDecision
 	from, to time.Time
 	workload string
+	endpoint string
 	service  string
 	order    string
 	limit    int
@@ -345,6 +347,9 @@ func runFlowsGroupedRollup(ctx context.Context, st *store.Store, a groupedRollup
 	req := readmodel.RollupRequest{From: a.from, To: a.to, Verdict: a.decision, Selector: policy.Selector{}, Order: flowstore.GroupOrder(a.order), Limit: a.limit}
 	var err error
 	if req.GroupBy, err = flowstore.ParseGroupBy(a.groupBy); err != nil {
+		return err
+	}
+	if req.Endpoint, err = flowstore.ParseEndpoint(a.endpoint); err != nil {
 		return err
 	}
 	for _, l := range a.labels {

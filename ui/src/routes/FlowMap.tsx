@@ -457,7 +457,7 @@ function NoFlows({
 				actions={<div className="self-start">{control}</div>}
 			>
 				{scope.length > 0
-					? `No inbound flows into workloads matching ${scope.join(" and ")} were stored in the last ${range}. `
+					? `No flows to or from workloads matching ${scope.join(" and ")} were stored in the last ${range}. `
 					: `No inbound flows were stored in the last ${range}. `}
 				Widen the range, or remove a filter.
 			</EmptyState>

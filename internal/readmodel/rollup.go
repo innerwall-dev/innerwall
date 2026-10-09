@@ -15,7 +15,10 @@ import (
 // and empty Selector cover every workload, a Workload restricts to that
 // one, a Selector to the workloads it currently matches (ADR-0019
 // resolves a scope at read time, deliberately), and both to their
-// intersection; a nil Service means every service.
+// intersection; Endpoint says which end of a record the scope selects,
+// the reporting destination when zero, or either end, so a workload that
+// only sends traffic is seen by its outbound records; a nil Service means
+// every service.
 type RollupRequest struct {
 	From      time.Time
 	To        time.Time
@@ -24,6 +27,7 @@ type RollupRequest struct {
 	Direction innerwallv1.Direction
 	Workload  *identity.WorkloadID
 	Selector  policy.Selector
+	Endpoint  flowstore.Endpoint
 	Service   *Service
 	Order     flowstore.GroupOrder
 	// Limit bounds the groups; the store's default and maximum apply.
@@ -86,6 +90,10 @@ func (s *Reader) Rollup(ctx context.Context, req RollupRequest) (*Rollup, error)
 	if _, err := flowstore.ParseGroupBy(string(req.GroupBy)); err != nil {
 		return nil, err
 	}
+	endpoint, err := flowstore.ParseEndpoint(string(req.Endpoint))
+	if err != nil {
+		return nil, err
+	}
 	r, err := s.resolveRange(req.From, req.To)
 	if err != nil {
 		return nil, err
@@ -101,7 +109,7 @@ func (s *Reader) Rollup(ctx context.Context, req RollupRequest) (*Rollup, error)
 		return out, nil
 	}
 	q := flowstore.GroupQuery{
-		GroupBy: req.GroupBy, WorkloadIDs: ids, Since: r.From, Until: r.To,
+		GroupBy: req.GroupBy, WorkloadIDs: ids, Endpoint: endpoint, Since: r.From, Until: r.To,
 		Decision: req.Verdict, Direction: req.Direction, Order: req.Order, Limit: req.Limit,
 	}
 	if req.Service != nil {
