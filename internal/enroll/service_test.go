@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -59,7 +60,7 @@ func TestEnrollHappyPath(t *testing.T) {
 	if res.Workload.ID.IsZero() {
 		t.Fatal("no workload id")
 	}
-	if len(res.Workload.Labels) != 2 || res.Workload.Labels[0] != labels[0] || res.Workload.Labels[1] != labels[1] {
+	if !slices.Equal(res.Workload.Labels, labels) {
 		t.Fatalf("labels = %v, want %v", res.Workload.Labels, labels)
 	}
 	if res.Workload.Hostname != "db-1" || res.Workload.TokenID != tok.ID {
