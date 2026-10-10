@@ -24,6 +24,10 @@ import (
 // needs a provisioning token delivered out of band (ADR-0016).
 var ErrReenrollRequired = errors.New("sync: control plane directed re-enrollment; enroll again with a new provisioning token")
 
+// ErrReconnectDirected is returned when the control plane directs the
+// agent to reconnect immediately.
+var ErrReconnectDirected = errors.New("sync: reconnect directed")
+
 // Dialer opens a connection to the control plane. The default dials gRPC
 // over the holder's TLS configuration; tests substitute a loopback.
 type Dialer func(ctx context.Context, server string, holder *credential.Holder) (innerwallv1.AgentServiceClient, io.Closer, error)
@@ -67,6 +71,9 @@ type Config struct {
 	// OnSyncConfig is called with the configuration in every HelloAck, so
 	// the other loops adopt the control plane's parameters.
 	OnSyncConfig func(*innerwallv1.SyncConfig)
+	// OnReconnect reports reconnect attempts and their scheduled wait; nil
+	// when unused.
+	OnReconnect func(attempt int, wait time.Duration)
 }
 
 // Daemon is the agent's sync loop.
@@ -122,7 +129,7 @@ func DialGRPC(_ context.Context, server string, holder *credential.Holder) (inne
 // so that a control-plane restart produces a smooth trickle of handshakes
 // rather than a synchronized wave (ADR-0002).
 func Backoff(attempt int, base, limit time.Duration, rng *rand.Rand) time.Duration {
-	ceiling := base << uint(min(attempt, 20)) //nolint:gosec // bounded
+	ceiling := base << uint(min(attempt, 20))
 	if ceiling > limit || ceiling <= 0 {
 		ceiling = limit
 	}
@@ -130,21 +137,37 @@ func Backoff(attempt int, base, limit time.Duration, rng *rand.Rand) time.Durati
 }
 
 // Run maintains the stream until ctx ends, reconnecting with backoff after
-// every failure. Every reconnect is a fresh Hello and snapshot. It returns
-// ErrReenrollRequired when the control plane says so; every other stream
-// error is a reason to reconnect, not to stop.
+// failures, and immediately upon directed reconnects. Every reconnect is a
+// fresh Hello and snapshot. It returns ErrReenrollRequired when the control
+// plane says so; every other stream error is a reason to reconnect, not to stop.
 func (d *Daemon) Run(ctx context.Context) error {
 	attempt := 0
 	for {
-		err := d.runSession(ctx)
+		if ctx.Err() != nil {
+			return nil
+		}
+		err := d.runSession(ctx, func() {
+			attempt = 0
+		})
 		if ctx.Err() != nil {
 			return nil
 		}
 		if errors.Is(err, ErrReenrollRequired) {
 			return err
 		}
+		if errors.Is(err, ErrReconnectDirected) {
+			attempt = 0
+			d.log.Info("sync: reconnect directed; redialing immediately")
+			if d.cfg.OnReconnect != nil {
+				d.cfg.OnReconnect(0, 0)
+			}
+			continue
+		}
 		attempt++
 		wait := Backoff(attempt, d.cfg.BackoffBase, d.cfg.BackoffCap, d.rng)
+		if d.cfg.OnReconnect != nil {
+			d.cfg.OnReconnect(attempt, wait)
+		}
 		if err != nil {
 			d.log.Warn("sync stream ended; reconnecting", "error", err, "attempt", attempt, "wait", wait)
 		} else {
@@ -172,7 +195,7 @@ func (s *sender) send(msg *innerwallv1.SyncRequest) error {
 }
 
 // runSession runs one stream from dial to close.
-func (d *Daemon) runSession(ctx context.Context) error {
+func (d *Daemon) runSession(ctx context.Context, onEstablished func()) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	client, closer, err := d.cfg.Dial(ctx, d.cfg.Server, d.cfg.Holder)
@@ -238,6 +261,9 @@ func (d *Daemon) runSession(ctx context.Context) error {
 		cfg = ack.GetConfig()
 	}
 	d.log.Info("sync stream established", "server", d.cfg.Server, "heartbeat_interval", cfg.GetHeartbeatIntervalSeconds(), "inventory_interval", cfg.GetInventoryReportIntervalSeconds(), "flow_window", cfg.GetFlowAggregationWindowSeconds(), "flow_batch_max", cfg.GetFlowBatchMaxRecords())
+	if onEstablished != nil {
+		onEstablished()
+	}
 	if d.cfg.OnSyncConfig != nil {
 		d.cfg.OnSyncConfig(cfg)
 	}
@@ -330,7 +356,7 @@ func (d *Daemon) handle(ctx context.Context, out *sender, msg *innerwallv1.SyncR
 		switch m.Directive.GetDirective().(type) {
 		case *innerwallv1.Directive_Reconnect:
 			d.log.Info("control plane directed a reconnect")
-			return errors.New("sync: reconnect directed")
+			return ErrReconnectDirected
 		case *innerwallv1.Directive_Reenroll:
 			d.log.Error("control plane directed re-enrollment; this daemon cannot enroll itself")
 			return ErrReenrollRequired

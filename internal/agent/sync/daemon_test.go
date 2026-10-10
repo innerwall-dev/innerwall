@@ -317,7 +317,7 @@ func TestBackoffIsBoundedWithFullJitter(t *testing.T) {
 	rng := rand.New(rand.NewPCG(3, 4)) //nolint:gosec // test
 	base, limit := time.Second, time.Minute
 	for attempt := 1; attempt <= 12; attempt++ {
-		ceiling := min(base<<uint(attempt), limit) //nolint:gosec // small
+		ceiling := min(base<<uint(attempt), limit)
 		sawSpread := false
 		var first time.Duration
 		for i := range 200 {
@@ -392,4 +392,167 @@ func TestReenrollDirectiveStopsTheDaemon(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("daemon kept running after a re-enroll directive")
 	}
+}
+
+func TestDirectedReconnectRedialsImmediatelyWithoutBackoff(t *testing.T) {
+	srv, dial := startServer(t)
+	type reconnectEvent struct {
+		attempt int
+		wait    time.Duration
+	}
+	reconnects := make(chan reconnectEvent, 8)
+	cfg := agentsync.Config{
+		Dial:        dial,
+		BackoffBase: 10 * time.Second,
+		BackoffCap:  time.Minute,
+		OnReconnect: func(attempt int, wait time.Duration) {
+			reconnects <- reconnectEvent{attempt: attempt, wait: wait}
+		},
+	}
+	_, _ = startDaemon(t, cfg)
+
+	c1 := <-srv.conns
+	c1.expect(t)
+	c1.send(t, helloAck(0, 0))
+
+	// Control plane directs a reconnect.
+	c1.send(t, &innerwallv1.SyncResponse{
+		Msg: &innerwallv1.SyncResponse_Directive{
+			Directive: &innerwallv1.Directive{
+				Directive: &innerwallv1.Directive_Reconnect{
+					Reconnect: &innerwallv1.Reconnect{},
+				},
+			},
+		},
+	})
+
+	// Must redial immediately despite a 10-second BackoffBase.
+	select {
+	case c2 := <-srv.conns:
+		hello := c2.expect(t).GetHello()
+		if hello == nil {
+			t.Fatal("expected Hello on reconnected stream")
+		}
+		c2.send(t, helloAck(0, 0))
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("directed reconnect did not redial immediately; waited on backoff")
+	}
+
+	select {
+	case ev := <-reconnects:
+		if ev.attempt != 0 || ev.wait != 0 {
+			t.Fatalf("expected directed reconnect event (attempt=0, wait=0), got %+v", ev)
+		}
+	default:
+		t.Fatal("expected OnReconnect event for directed reconnect")
+	}
+}
+
+func TestStreamEstablishmentResetsReconnectAttemptCounter(t *testing.T) {
+	srv, realDial := startServer(t)
+	var dialAttempts atomic.Int32
+	failures := int32(3)
+
+	type reconnectEvent struct {
+		attempt int
+		wait    time.Duration
+	}
+	reconnects := make(chan reconnectEvent, 8)
+
+	dial := func(ctx context.Context, server string, h *credential.Holder) (innerwallv1.AgentServiceClient, io.Closer, error) {
+		if dialAttempts.Add(1) <= failures {
+			return nil, nil, errors.New("connection refused")
+		}
+		return realDial(ctx, server, h)
+	}
+
+	cfg := agentsync.Config{
+		Dial:        dial,
+		BackoffBase: time.Millisecond,
+		BackoffCap:  20 * time.Millisecond,
+		OnReconnect: func(attempt int, wait time.Duration) {
+			reconnects <- reconnectEvent{attempt: attempt, wait: wait}
+		},
+	}
+	_, _ = startDaemon(t, cfg)
+
+	// Consume the 3 initial failure backoff events.
+	for i := 1; i <= 3; i++ {
+		select {
+		case ev := <-reconnects:
+			if ev.attempt != i {
+				t.Fatalf("initial failure event = %d, want %d", ev.attempt, i)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("timed out waiting for failure event %d", i)
+		}
+	}
+
+	c1 := <-srv.conns
+	c1.expect(t)
+	// HelloAck establishes the sync stream, which must reset attempt to 0.
+	c1.send(t, helloAck(0, 0))
+
+	// Close stream to simulate an authentic connection drop.
+	c1.close()
+
+	// Next reconnect attempt must be 1, because attempt was reset upon stream establishment.
+	select {
+	case ev := <-reconnects:
+		if ev.attempt != 1 {
+			t.Fatalf("attempt after stream established and dropped = %d, want 1", ev.attempt)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for drop reconnect event")
+	}
+
+	c2 := <-srv.conns
+	c2.expect(t)
+	c2.send(t, helloAck(0, 0))
+}
+
+func TestAuthenticConnectionDropUsesBackoffWithJitter(t *testing.T) {
+	srv, dial := startServer(t)
+	type reconnectEvent struct {
+		attempt int
+		wait    time.Duration
+	}
+	reconnects := make(chan reconnectEvent, 8)
+
+	base := 20 * time.Millisecond
+	capLimit := 200 * time.Millisecond
+	cfg := agentsync.Config{
+		Dial:        dial,
+		BackoffBase: base,
+		BackoffCap:  capLimit,
+		OnReconnect: func(attempt int, wait time.Duration) {
+			reconnects <- reconnectEvent{attempt: attempt, wait: wait}
+		},
+	}
+	_, _ = startDaemon(t, cfg)
+
+	c1 := <-srv.conns
+	c1.expect(t)
+	c1.send(t, helloAck(0, 0))
+
+	// Authentic connection drop.
+	c1.close()
+
+	select {
+	case ev := <-reconnects:
+		if ev.attempt != 1 {
+			t.Fatalf("reconnect attempt = %d, want 1", ev.attempt)
+		}
+		// Attempt 1 ceiling is min(cap, base << 1) = 40ms.
+		ceiling := base << 1
+		if ev.wait < 0 || ev.wait >= ceiling {
+			t.Fatalf("wait %v outside [0, %v)", ev.wait, ceiling)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for drop reconnect event")
+	}
+
+	c2 := <-srv.conns
+	c2.expect(t)
+	c2.send(t, helloAck(0, 0))
 }
