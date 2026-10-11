@@ -8,6 +8,10 @@
 #                 review is anchored to the diff; it re-reads the whole ADR
 #                 record only when the record itself (docs/adr/, CLAUDE.md)
 #                 changes. Advisory only; findings never fail the build.
+#                 It runs on pull_request_target so a fork's pull request
+#                 gets the same token and OIDC identity as a branch's; the
+#                 checkout is the base ref, the source of truth, and nothing
+#                 from the pull request's head is checked out or executed.
 #
 # Both jobs authenticate through workload identity federation using the job's
 # OIDC token. No static credential is configured anywhere in this workflow: a
@@ -24,7 +28,7 @@ on:
     types: [submitted]
   issues:
     types: [opened, assigned]
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
     # Only adr-review runs on this event. A pull request whose every changed
     # file is generated output or a lockfile carries no decision to review, so
@@ -64,7 +68,7 @@ jobs:
             --allowedTools "Bash(make build),Bash(make test),Bash(make lint),Bash(go build:*),Bash(go test:*),Bash(go vet:*),Bash(npm --prefix ui run:*)"
 
   adr-review:
-    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    if: github.event_name == 'pull_request_target' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     # A new push makes the in-flight review stale; cancel it rather than pay
     # for both. Keyed per pull request and scoped to this job only.
@@ -77,10 +81,14 @@ jobs:
       pull-requests: write
       issues: write
     steps:
+      # The base ref, never the pull request's head: the review reads the
+      # diff through `gh pr diff` and the record from the base.
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.base.ref }}
           fetch-depth: 0
-      - uses: anthropics/claude-code-action@v1
+      - id: review
+        uses: anthropics/claude-code-action@v1
         # Advisory: a finding is a review comment, not a failed check.
         continue-on-error: true
         with:
@@ -119,3 +127,9 @@ jobs:
             --model claude-sonnet-5
             --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(gh api:*),Read,Glob,Grep"
             --max-turns 40
+      # continue-on-error keeps the check green when the review fails to
+      # run or post; say so in the job summary so it is never silent.
+      - if: steps.review.outcome == 'failure'
+        run: |
+          echo "### ADR review did not post" >> "$GITHUB_STEP_SUMMARY"
+          echo "The review step failed, so no ADR review comment was posted on this pull request. The job log above has the cause." >> "$GITHUB_STEP_SUMMARY"
