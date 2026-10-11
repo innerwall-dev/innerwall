@@ -107,7 +107,7 @@ On another host, use the control plane's address in place of `localhost`; the ga
 
 ## Contributing
 
-Read [ARCHITECTURE.md](ARCHITECTURE.md), then [docs/adr/](docs/adr/), then [CONTRIBUTING.md](CONTRIBUTING.md). Every authored commit is DCO signed off. Every PR is reviewed against the ADRs, including by an automated pass once it is ready for review. Security reports go to the address in [SECURITY.md](SECURITY.md).
+Read [ARCHITECTURE.md](ARCHITECTURE.md), then [docs/adr/](docs/adr/), then [CONTRIBUTING.md](CONTRIBUTING.md). Every authored commit is DCO signed off. Every PR is reviewed against the ADRs, including by an automated pass once it is ready for review (by an `@claude` mention instead when its author lacks write access). Security reports go to the address in [SECURITY.md](SECURITY.md).
 
 ## License
 

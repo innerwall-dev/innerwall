@@ -4,7 +4,10 @@
 #                 ADRs in docs/adr/ and posts findings as a PR comment. It
 #                 runs on every PR that is ready for review (a draft is
 #                 reviewed when it is marked ready), except one whose every
-#                 changed file is generated output or a lockfile. The
+#                 changed file is generated output or a lockfile, and
+#                 only when the triggering actor holds write access; any
+#                 other author's PR gets a "did not post" job-summary note
+#                 and is reviewed by an @claude mention instead. The
 #                 review is anchored to the diff; it re-reads the whole ADR
 #                 record only when the record itself (docs/adr/, CLAUDE.md)
 #                 changes. Advisory only; findings never fail the build.
