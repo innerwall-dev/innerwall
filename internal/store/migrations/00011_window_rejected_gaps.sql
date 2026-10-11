@@ -1,5 +1,5 @@
 -- The window-rejected evidence gap (ADR-0015 and ADR-0019 as amended
--- 2026-10-11, PR #87). A closed window the control plane refuses as
+-- 2026-10-11, PR #90). A closed window the control plane refuses as
 -- malformed can never be accepted, so the agent drops it rather than retry it
 -- ahead of every window behind it, and reports one gap over the dropped
 -- window's bounds, counting its records. On the wire that is EvidenceGapKind
