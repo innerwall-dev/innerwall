@@ -104,6 +104,8 @@ func GapKindName(k innerwallv1.EvidenceGapKind) string {
 		return "dump_truncated"
 	case innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_WINDOW_OVERFLOW:
 		return "window_overflow"
+	case innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_WINDOW_REJECTED:
+		return "window_rejected"
 	case innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_UNSPECIFIED:
 		return "unknown"
 	default:

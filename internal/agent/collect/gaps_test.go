@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 )
@@ -519,4 +521,138 @@ func TestReporterStampsTheClockAtEachSend(t *testing.T) {
 	}
 	cancel()
 	<-done
+}
+
+// verdictFlows is an AgentServiceClient whose ReportFlows streams end as
+// verdict decides from the window's bounds, and which keeps every
+// request sent.
+type verdictFlows struct {
+	innerwallv1.AgentServiceClient
+	mu      sync.Mutex
+	verdict func(start, end time.Time) error
+	sent    []*innerwallv1.ReportFlowsRequest
+}
+
+type verdictStream struct {
+	grpc.ClientStream
+	f     *verdictFlows
+	first *innerwallv1.ReportFlowsRequest
+}
+
+func (f *verdictFlows) ReportFlows(context.Context, ...grpc.CallOption) (innerwallv1.AgentService_ReportFlowsClient, error) {
+	return &verdictStream{f: f}, nil
+}
+
+// Send ends the stream, as the control plane does, after a first request
+// it refuses: a later Send sees the end of the stream, not the refusal.
+func (s *verdictStream) Send(req *innerwallv1.ReportFlowsRequest) error {
+	s.f.mu.Lock()
+	defer s.f.mu.Unlock()
+	if s.first == nil {
+		s.first = req
+	} else if status.Code(s.f.verdict(s.first.GetWindowStart().AsTime(), s.first.GetWindowEnd().AsTime())) == codes.InvalidArgument {
+		return io.EOF
+	}
+	s.f.sent = append(s.f.sent, req)
+	return nil
+}
+
+func (s *verdictStream) CloseAndRecv() (*innerwallv1.ReportFlowsResponse, error) {
+	s.f.mu.Lock()
+	defer s.f.mu.Unlock()
+	if err := s.f.verdict(s.first.GetWindowStart().AsTime(), s.first.GetWindowEnd().AsTime()); err != nil {
+		return nil, err
+	}
+	return &innerwallv1.ReportFlowsResponse{}, nil
+}
+
+func (f *verdictFlows) sentFor(start time.Time) []*innerwallv1.ReportFlowsRequest {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []*innerwallv1.ReportFlowsRequest
+	for _, req := range f.sent {
+		if req.GetWindowStart().AsTime().Equal(start) {
+			out = append(out, req)
+		}
+	}
+	return out
+}
+
+// TestReporterDropsARejectedWindow is the regression for a window the
+// control plane refused as malformed: requeued as the oldest window, it
+// was resent and refused indefinitely and every window behind it waited.
+// A refusal (InvalidArgument) now drops the window after one attempt,
+// records its records as a window_rejected gap over its bounds, in order,
+// and puts back the gaps it carried; the windows behind it are delivered,
+// the first of them carrying both gaps. The refused window spans two
+// requests, so the refusal reaches the reporter as the end of the stream
+// on its second send, and the stream's status is what decides. A
+// transient failure (Unavailable) is still requeued and retried.
+func TestReporterDropsARejectedWindow(t *testing.T) {
+	gaps := &Gaps{}
+	at := func(s int) time.Time { return t0.Add(time.Duration(s) * time.Second) }
+	gaps.Record(Gap{Kind: GapSourceRestart, Source: GapNflog, From: at(0), To: at(5)})
+	buf := NewBuffer(0)
+	poison := window(t0, 4)
+	poison.End = t0.Add(-30 * time.Minute) // a clock stepped back while it was open
+	next := window(t0.Add(time.Minute), 2)
+	buf.Push(poison)
+	buf.Push(next)
+	var mu sync.Mutex
+	unavailable := 1
+	flows := &verdictFlows{verdict: func(start, end time.Time) error {
+		if end.Before(start) {
+			return status.Error(codes.InvalidArgument, "ingest: window bounds are missing or inverted")
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if unavailable > 0 {
+			unavailable--
+			return status.Error(codes.Unavailable, "connection refused")
+		}
+		return nil
+	}}
+	r := &Reporter{
+		Buffer: buf, Gaps: gaps, BackoffBase: time.Millisecond, BackoffCap: time.Millisecond,
+		Dial: func(context.Context) (innerwallv1.AgentServiceClient, io.Closer, error) {
+			return flows, io.NopCloser(nil), nil
+		},
+		Log: slog.New(slog.DiscardHandler),
+	}
+	r.SetConfig(&innerwallv1.SyncConfig{FlowBatchMaxRecords: 2})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() { _ = r.Run(ctx); close(done) }()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for len(flows.sentFor(next.Start)) < 2 || buf.Len() != 0 || gaps.Held() != 0 {
+		if time.Now().After(deadline) {
+			t.Fatalf("not delivered: %d windows queued, %d gaps held, %d requests for the next window", buf.Len(), gaps.Held(), len(flows.sentFor(next.Start)))
+		}
+		time.Sleep(time.Millisecond)
+	}
+	cancel()
+	<-done
+
+	if n := len(flows.sentFor(poison.Start)); n != 1 {
+		t.Fatalf("the refused window was sent %d times, want once", n)
+	}
+	sent := flows.sentFor(next.Start)
+	if len(sent) != 2 {
+		t.Fatalf("the window behind it was sent %d times, want twice: once refused as unavailable, once delivered", len(sent))
+	}
+	delivered := sent[1].GetGaps()
+	if len(delivered) != 2 {
+		t.Fatalf("gaps delivered = %v, want the carried restart gap and the rejection", delivered)
+	}
+	restart, rejected := delivered[0], delivered[1]
+	if restart.GetKind() != innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_RESTART || !restart.GetTo().AsTime().Equal(at(5)) {
+		t.Fatalf("carried gap = %v", restart)
+	}
+	if rejected.GetKind() != innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_WINDOW_REJECTED || rejected.GetCount() != 4 ||
+		rejected.GetSource() != innerwallv1.EvidenceSource_EVIDENCE_SOURCE_UNSPECIFIED ||
+		!rejected.GetFrom().AsTime().Equal(poison.End) || !rejected.GetTo().AsTime().Equal(poison.Start) {
+		t.Fatalf("rejection gap = %v, want 4 records over %v..%v", rejected, poison.End, poison.Start)
+	}
 }

@@ -2,6 +2,7 @@ package collect
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -9,6 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
@@ -31,7 +34,11 @@ type Dialer func(ctx context.Context) (innerwallv1.AgentServiceClient, io.Closer
 // request. A window whose stream fails is requeued, its gaps
 // put back, and both retried after a jittered backoff; the buffer's bound
 // decides what is dropped if the control plane stays away, and what it
-// drops becomes a gap of its own.
+// drops becomes a gap of its own. A window the control plane refuses as
+// malformed is the exception: resending it can only be refused again,
+// and as the oldest window it would hold every later one behind it, so it
+// is dropped, its loss recorded as a window_rejected gap, and its gaps
+// put back to ride the next window.
 type Reporter struct {
 	Buffer *Buffer
 	// Gaps are taken and shipped with each window, and put back when its
@@ -108,6 +115,13 @@ func (r *Reporter) Run(ctx context.Context) error {
 			r.Buffer.Requeue(w)
 			return nil
 		}
+		if status.Code(err) == codes.InvalidArgument {
+			// The control plane answered, so it is reachable: the next
+			// window goes at once.
+			attempt = 0
+			r.reject(w, err)
+			continue
+		}
 		attempt++
 		wait := backoff(attempt, base, limit, rng)
 		r.log().Warn("flow report failed; will retry", "error", err, "records", w.Len(), "attempt", attempt, "wait", wait, "buffered_windows", r.Buffer.Len())
@@ -118,6 +132,24 @@ func (r *Reporter) Run(ctx context.Context) error {
 		case <-time.After(wait):
 		}
 	}
+}
+
+// reject drops a window the control plane refused as malformed and
+// records its records as lost over its bounds. Every request of a window
+// carries the window's bounds, so a refusal of the bounds comes on the
+// first request, before any record of the window is stored.
+func (r *Reporter) reject(w *Window, err error) {
+	// Ordered on the wall clock: the bounds of a malformed window may be
+	// inverted there and in order on the monotonic clock.
+	from, to := w.Start.Round(0), w.End.Round(0)
+	if to.Before(from) {
+		from, to = to, from
+	}
+	if w.Len() > 0 {
+		r.Gaps.Record(Gap{Kind: GapWindowRejected, Source: GapNoSource, From: from, To: to, Count: uint64(w.Len()), HasCount: true}) //nolint:gosec // a length, non-negative
+	}
+	r.log().Warn("flow window refused by the control plane as malformed; dropped, not retried",
+		"error", err, "start", w.Start, "end", w.End, "records", w.Len(), "buffered_windows", r.Buffer.Len())
 }
 
 // report ships one window and gaps, and returns the control plane's
@@ -148,6 +180,13 @@ func (r *Reporter) report(ctx context.Context, w *Window, gaps []Gap) (uint64, e
 		// control plane must be able to tell lateness from skew.
 		req.SentAt = timestamppb.New(r.now())
 		if err := stream.Send(req); err != nil {
+			// The control plane ended the stream; its status, not the
+			// end of the stream, says why, and a refusal is final.
+			if errors.Is(err, io.EOF) {
+				if _, closed := stream.CloseAndRecv(); closed != nil {
+					err = closed
+				}
+			}
 			return 0, fmt.Errorf("collect: sending window: %w", err)
 		}
 	}

@@ -121,3 +121,25 @@ func TestWindowOverflowGapStored(t *testing.T) {
 		t.Fatalf("stored window-overflow gap = %+v", rows)
 	}
 }
+
+// TestWindowRejectedGapStored checks that the window-rejected kind the
+// agent reports when it drops a window the control plane refused is
+// admitted and read back with its count (migration 00011).
+func TestWindowRejectedGapStored(t *testing.T) {
+	ctx := context.Background()
+	s := storetest.Open(t)
+	f := storetest.SeedFleet(t, s)
+	flows := s.Flows()
+	dropped := uint64(17)
+	gap := flowstore.Gap{Kind: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_WINDOW_REJECTED, From: f.Now.Add(-2 * time.Minute), To: f.Now.Add(-time.Minute), Count: &dropped}
+	if _, err := flows.WriteWindow(ctx, flowstore.Window{WorkloadID: f.DB, Start: f.Now.Add(-time.Minute), End: f.Now, Gaps: []flowstore.Gap{gap}}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := flows.ListGaps(ctx, flowstore.GapQuery{WorkloadIDs: []identity.WorkloadID{f.DB}, Since: f.Now.Add(-time.Hour), Until: f.Now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Kind != gap.Kind || rows[0].Source != innerwallv1.EvidenceSource_EVIDENCE_SOURCE_UNSPECIFIED || rows[0].Count == nil || *rows[0].Count != dropped {
+		t.Fatalf("stored window-rejected gap = %+v", rows)
+	}
+}
