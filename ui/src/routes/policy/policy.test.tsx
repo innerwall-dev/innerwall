@@ -405,6 +405,17 @@ describe("deep link from a pair of traffic", () => {
 		expect(
 			within(editing).getByRole("button", { name: "Remove tcp 5432" }),
 		).toBeInTheDocument();
+		// The pair stays with the created ruleset once the address moves to
+		// it: the note says where it came from, and the address still
+		// carries it.
+		await waitFor(() =>
+			expect(
+				screen.getByRole("navigation", { name: "Breadcrumb" }),
+			).toHaveTextContent("Policy/ledger-inbound"),
+		);
+		expect(screen.getByTestId("pair-context")).toHaveTextContent(
+			"From the flow map: traffic from",
+		);
 	});
 });
 

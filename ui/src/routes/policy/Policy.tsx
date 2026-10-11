@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useResource } from "@/lib/resource";
 import { useShell } from "@/shell/Shell";
 import { type EditorData, loadEditor } from "./data";
-import { pairSuggestion, suggestedScope } from "./link";
+import { carried, pairSuggestion, suggestedScope } from "./link";
 import { NewRuleset } from "./NewRuleset";
 import { Rail } from "./Rail";
 import { RulesetEditor } from "./RulesetEditor";
@@ -54,17 +54,25 @@ export function Policy() {
 		: null;
 
 	// The address names what is shown: the first ruleset when none was
-	// named, or when the one named no longer exists.
+	// named, or when the one named no longer exists. A followed ruleset
+	// (created or renamed here) keeps the rest of the address, so a pair a
+	// link carried into the new-ruleset form goes on to the created
+	// ruleset.
 	useEffect(() => {
 		if (current && current.name !== name) {
-			setParams({ ruleset: current.name }, { replace: true });
+			setParams(
+				following?.id === current.id
+					? carried(params, current.name)
+					: { ruleset: current.name },
+				{ replace: true },
+			);
 		} else if (
 			following &&
 			(name !== following.from || data !== following.listing)
 		) {
 			setFollowing(null);
 		}
-	}, [current, name, setParams, following, data]);
+	}, [current, name, params, setParams, following, data]);
 
 	return (
 		<div className="flex min-h-0 flex-1">
