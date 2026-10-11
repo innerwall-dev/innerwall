@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import type { Ruleset } from "@/api/schema";
 import { EmptyState } from "@/components/EmptyState";
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useResource } from "@/lib/resource";
 import { useShell } from "@/shell/Shell";
 import { type EditorData, loadEditor } from "./data";
+import { pairSuggestion, suggestedScope } from "./link";
 import { NewRuleset } from "./NewRuleset";
 import { Rail } from "./Rail";
 import { RulesetEditor } from "./RulesetEditor";
@@ -21,6 +22,9 @@ export function Policy() {
 	const [params, setParams] = useSearchParams();
 	const name = params.get("ruleset");
 	const creating = params.has("new");
+	// A pair of observed traffic a drawer linked here with: the rule it
+	// suggests, and for a new ruleset the scope it starts from.
+	const suggestion = useMemo(() => pairSuggestion(params), [params]);
 	const shell = useShell();
 	const { resource, reload } = useResource(loadEditor, []);
 	const data = resource.status === "ready" ? resource.data : null;
@@ -87,6 +91,10 @@ export function Policy() {
 						ruleset={current}
 						reload={reload}
 						onChanged={shell.policyChanged}
+						suggestion={suggestion}
+						onSuggestionDone={() =>
+							setParams({ ruleset: current.name }, { replace: true })
+						}
 						onRenamed={(saved) => {
 							if (data && saved.id) {
 								setFollowing({ id: saved.id, from: name, listing: data });
@@ -98,6 +106,8 @@ export function Policy() {
 				) : creating && data ? (
 					<NewRuleset
 						data={data}
+						scope={suggestedScope(params)}
+						suggestion={suggestion}
 						onCreated={(rs) => {
 							shell.policyChanged();
 							reload();

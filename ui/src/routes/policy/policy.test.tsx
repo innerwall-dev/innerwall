@@ -272,6 +272,142 @@ const rulesTable = () => screen.findByRole("table", { name: "Rules" });
 const row = async (name: string) =>
 	within(await rulesTable()).getByRole("row", { name });
 
+describe("deep link from a pair of traffic", () => {
+	it("opens a new rule from the pair, unsaved, and says where it came from", async () => {
+		const { calls } = surface();
+		renderApp(
+			"/policy?ruleset=checkout-inbound&via=map&peer=app%3Dmetrics-collector+env%3Dprod&service=tcp%2F9100",
+		);
+		expect(
+			await screen.findByRole("heading", { name: "checkout-inbound" }),
+		).toBeInTheDocument();
+		const note = screen.getByTestId("pair-context");
+		expect(note).toHaveTextContent("From the flow map: traffic from");
+		expect(note).toHaveTextContent(
+			"A new rule below starts from it. Nothing is written until you save it",
+		);
+		const editing = await row("New rule");
+		expect(
+			within(editing).getByRole("button", {
+				name: "Remove labels app=metrics-collector env=prod",
+			}),
+		).toBeInTheDocument();
+		expect(
+			within(editing).getByRole("button", { name: "Remove tcp 9100" }),
+		).toBeInTheDocument();
+		// Nothing is written by landing.
+		const writes = calls.filter(
+			(c) =>
+				c.method === "PUT" ||
+				c.method === "DELETE" ||
+				(c.method === "POST" && c.path.includes("/rulesets")),
+		);
+		expect(writes).toEqual([]);
+		expect(
+			screen.getByRole("navigation", { name: "Breadcrumb" }),
+		).toHaveTextContent("Policy/checkout-inbound");
+		// Discarding the row drops the pair: the note goes, and the
+		// address no longer carries it to reopen the row.
+		await userEvent.click(screen.getByRole("button", { name: "Discard row" }));
+		await waitFor(() =>
+			expect(screen.queryByTestId("pair-context")).not.toBeInTheDocument(),
+		);
+		expect(
+			within(await rulesTable()).queryByRole("row", { name: "New rule" }),
+		).not.toBeInTheDocument();
+	});
+
+	it("points at the rule the windows attribute the traffic to, and opens no row", async () => {
+		surface();
+		renderApp(
+			`/policy?ruleset=checkout-inbound&via=review&peer=app%3Dstorefront-api+env%3Dprod&service=tcp%2F8443&rule=${apiRule.id}`,
+		);
+		const pointed = await row("Production API may reach checkout.");
+		expect(pointed).toHaveAttribute("aria-current", "true");
+		expect(screen.getByTestId("pair-context")).toHaveTextContent(
+			"From the simulation review: traffic from",
+		);
+		expect(screen.getByTestId("pair-context")).toHaveTextContent(
+			"The stored windows attribute it to the rule highlighted below.",
+		);
+		expect(
+			within(await rulesTable()).queryByRole("row", { name: "New rule" }),
+		).not.toBeInTheDocument();
+	});
+
+	it("says what it could not carry over", async () => {
+		surface();
+		renderApp(
+			"/policy?ruleset=checkout-inbound&via=map&peer=app%3Dweb+x&service=tcp%2F80",
+		);
+		expect(await screen.findByTestId("pair-context")).toHaveTextContent(
+			"Not carried over: app=web x: A label is written key=value.",
+		);
+		expect(
+			within(await row("New rule")).getByRole("button", {
+				name: "Remove tcp 80",
+			}),
+		).toBeInTheDocument();
+	});
+
+	it("starts a new ruleset at the destination and opens the rule once it is created", async () => {
+		const created = ruleset("ledger-inbound", { app: ["ledger"] });
+		const posted: unknown[] = [];
+		const s = surface({
+			extra: [
+				{
+					method: "POST",
+					path: "/api/v1/rulesets",
+					reply: (body) => {
+						posted.push(body);
+						s.setRulesets([checkout, auth, billing, created]);
+						return { status: 201, json: created };
+					},
+				},
+			],
+		});
+		const user = userEvent.setup();
+		renderApp(
+			"/policy?new=1&scope=app%3Dledger&via=map&peer=app%3Dbilling&service=tcp%2F5432",
+		);
+		expect(await screen.findByTestId("pair-context")).toHaveTextContent(
+			"no ruleset's scope selects this traffic's destination yet",
+		);
+		// The scope starts from the destination's labels.
+		expect(
+			await screen.findByRole("button", {
+				name: /Create ruleset — applies to 0 workloads now/,
+			}),
+		).toBeInTheDocument();
+		await user.type(
+			screen.getByRole("textbox", { name: "Ruleset name" }),
+			"ledger-inbound",
+		);
+		await user.click(screen.getByRole("button", { name: /^Create ruleset/ }));
+		expect(
+			await screen.findByRole("heading", { name: "ledger-inbound" }),
+		).toBeInTheDocument();
+		// The ruleset is created with no rules; the pair's rule is a row,
+		// unsaved until the operator saves it.
+		expect(posted[0]).toEqual({
+			name: "ledger-inbound",
+			description: "",
+			enabled: true,
+			scope: { app: ["ledger"] },
+			rules: [],
+		});
+		const editing = await row("New rule");
+		expect(
+			within(editing).getByRole("button", {
+				name: "Remove labels app=billing",
+			}),
+		).toBeInTheDocument();
+		expect(
+			within(editing).getByRole("button", { name: "Remove tcp 5432" }),
+		).toBeInTheDocument();
+	});
+});
+
 describe("policy editor", () => {
 	it("opens on the first ruleset and names it in the address and the crumb", async () => {
 		surface();
