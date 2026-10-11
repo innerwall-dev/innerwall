@@ -194,6 +194,9 @@ describe("account popover", () => {
 		expect(within(popover).getByTestId("identity-line")).toHaveTextContent(
 			"operator · iad1",
 		);
+		expect(within(popover).getByTestId("version-line")).toHaveTextContent(
+			"control plane v0.1.0+6007581f652b",
+		);
 		expect(
 			within(popover).getByRole("radio", { name: "Dark" }),
 		).toBeInTheDocument();
@@ -227,6 +230,7 @@ describe("account popover", () => {
 			/^operator$/,
 		);
 		expect(screen.queryByTestId("site-label")).not.toBeInTheDocument();
+		expect(screen.queryByTestId("version-line")).not.toBeInTheDocument();
 	});
 
 	it("signs out through the session endpoint and lands on login", async () => {

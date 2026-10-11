@@ -126,7 +126,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The authenticated operator, the site label, and the advertised agent gateway address. */
+        /** The authenticated operator, the site label, the advertised agent gateway address, and the control plane's version. */
         get: operations["getMe"];
         put?: never;
         post?: never;
@@ -747,12 +747,14 @@ export interface components {
             labels: components["schemas"]["LabelMap"];
             version: components["schemas"]["Version"];
         };
-        /** @description The operator as the console shows it, and the site label configured on the control plane. */
+        /** @description The operator as the console shows it, the site label configured on the control plane, and the build of the control plane answering. */
         Me: {
             display_name: string | null;
             /** @description The host:port agents reach the agent gateway at, as the operator configured it for the enroll command; null when none is configured. It is never derived from the bind address or the host's interfaces. */
             gateway_address: string | null;
             site: string;
+            /** @description The version of the control plane answering, the same string its version subcommand and startup log line report (e.g. `v0.1.0+6007581f652b`, or `dev+f347cd966f58` for an untagged build). It is returned only to an authenticated caller. */
+            version: string;
         };
         /**
          * @description An enforcement mode: observe only, evaluate without dropping, or enforce.

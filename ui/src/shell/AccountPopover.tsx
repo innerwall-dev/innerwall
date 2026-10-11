@@ -26,8 +26,8 @@ function Avatar() {
 
 // AccountPopover is the sidebar footer's operator entry: the avatar,
 // the display name and site label, and the popover with the identity,
-// the theme toggle, and sign out. It opens upward from the expanded
-// rail and to the right of the collapsed one.
+// the control plane's version, the theme toggle, and sign out. It opens
+// upward from the expanded rail and to the right of the collapsed one.
 export function AccountPopover() {
 	const me = useMe();
 	const { logout } = useSession();
@@ -104,6 +104,15 @@ export function AccountPopover() {
 					>
 						{identity}
 					</div>
+					{me.version ? (
+						<div
+							className="truncate type-caption text-tertiary"
+							data-testid="version-line"
+							title={me.version}
+						>
+							control plane <span className="type-mono-xs">{me.version}</span>
+						</div>
+					) : null}
 				</div>
 				<div className="flex min-h-control-md items-center justify-between gap-2 px-2 type-ui text-secondary">
 					<span>Theme</span>
