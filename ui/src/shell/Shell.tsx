@@ -75,7 +75,8 @@ function crumbsFor(
 			? [{ label: "Policy" }, { label: ruleset }]
 			: [{ label: "Policy" }];
 	}
-	return [{ label: "Innerwall" }];
+	// Every address with a screen is named above; the rest have none.
+	return [{ label: "Not found" }];
 }
 
 // Shell is the authenticated frame: sidebar, page header, and the screen.

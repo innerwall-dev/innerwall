@@ -29,13 +29,31 @@ describe("shell", () => {
 		expect(crumbs).toHaveTextContent("Workloads/Fleet");
 	});
 
-	it("routes the root to simulation review and unknown paths with it", async () => {
+	it("routes the root to simulation review", async () => {
 		signedIn();
-		renderApp("/no/such/screen");
+		renderApp("/");
 		expect(
 			await screen.findByRole("heading", { name: "Nothing to review yet" }),
 		).toBeInTheDocument();
 	});
+
+	it.each(["/no/such/screen", "/flows"])(
+		"says %s is not found, with the way back to the fleet",
+		async (path) => {
+			signedIn();
+			renderApp(path);
+			expect(
+				await screen.findByRole("heading", { name: "No such page" }),
+			).toBeInTheDocument();
+			expect(screen.getByText(path)).toBeInTheDocument();
+			expect(
+				screen.getByRole("link", { name: "Back to the fleet" }),
+			).toHaveAttribute("href", "/workloads");
+			expect(
+				screen.getByRole("navigation", { name: "Breadcrumb" }),
+			).toHaveTextContent("Not found");
+		},
+	);
 
 	it("renders every fresh-install state", async () => {
 		signedIn();
