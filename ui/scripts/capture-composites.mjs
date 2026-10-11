@@ -7,6 +7,14 @@
 // frame needs (700 for the 1440x900 screens), so they compare at a
 // glance.
 //
+// With --singles DIR it also writes each screen state as two single
+// images, one per theme: DIR/<name>-dark.png and DIR/<name>-light.png,
+// the very captures the composite is made of (same seed, same
+// interaction), at the capture's full size (2880x1800 for a 1440x900
+// screen). They are for wherever one theme is needed on its own; the
+// composites stay the committed review format and the singles are
+// on-demand output, not committed.
+//
 // It drives running control planes through their own console, logged
 // in with the operator password, at 1440x900 and twice the pixel
 // density. Four are expected: one serving the seeded fleet and the
@@ -36,13 +44,14 @@
 //                  [UNSET_CONSOLE_URL, https://127.0.0.1:8110]
 //   --password PW  the operator password [CONSOLE_PASSWORD]
 //   --out DIR      where composites go [docs/img/console]
+//   --singles DIR  also write each theme's capture there as its own image
 //   --only a,b     capture only the scenes whose names start with these
 //
 // Playwright is resolved from the global install when the console's own
 // dependencies do not carry it; it is a review tool, not a dependency.
 
 import { execSync } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -70,6 +79,7 @@ const { values: opt } = parseArgs({
 			type: "string",
 			default: resolve(import.meta.dirname, "../../docs/img/console"),
 		},
+		singles: { type: "string" },
 		only: { type: "string" },
 	},
 });
@@ -574,6 +584,7 @@ async function main() {
 	if (!opt.password)
 		throw new Error("--password (or CONSOLE_PASSWORD) is required");
 	mkdirSync(opt.out, { recursive: true });
+	if (opt.singles) mkdirSync(opt.singles, { recursive: true });
 	const only = opt.only?.split(",") ?? null;
 	const chosen = scenes.filter(
 		(s) => !only || only.some((o) => s.name.startsWith(o)),
@@ -593,6 +604,16 @@ async function main() {
 				scene.height,
 			);
 			console.log(file);
+			if (opt.singles) {
+				for (const [theme, png] of [
+					["dark", dark],
+					["light", light],
+				]) {
+					const single = join(opt.singles, `${scene.name}-${theme}.png`);
+					writeFileSync(single, png);
+					console.log(single);
+				}
+			}
 		}
 	} finally {
 		await browser.close();
