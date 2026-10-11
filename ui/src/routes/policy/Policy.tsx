@@ -24,26 +24,30 @@ export function Policy() {
 	const shell = useShell();
 	const { resource, reload } = useResource(loadEditor, []);
 	const data = resource.status === "ready" ? resource.data : null;
-	// A ruleset renamed here is followed by its id: the listing read
-	// before the rename still holds the old name, and the one read after
-	// it the new, which the address then moves to. Navigating elsewhere
-	// first stops following it.
+	// A ruleset created or renamed here is followed by its id: the listing
+	// read before the write does not hold it under its new name, and the
+	// one read after it does, which the address then moves to. Until that
+	// listing lands the editor does not fall back to the first ruleset (a
+	// created one is not in the older listing at all). Navigating
+	// elsewhere first stops following it.
 	const [following, setFollowing] = useState<{
 		id: string;
 		from: string | null;
 		listing: EditorData;
 	} | null>(null);
+	const settling = following !== null && data === following.listing;
 	const followed =
-		following && data && data !== following.listing && name === following.from
+		following && data && !settling && name === following.from
 			? data.rulesets.find((rs) => rs.id === following.id)
 			: undefined;
-	const current: Ruleset | null =
-		data && !creating
-			? (followed ??
-				data.rulesets.find((rs) => rs.name === name) ??
-				data.rulesets[0] ??
-				null)
-			: null;
+	const current: Ruleset | null = data
+		? (followed ??
+			(creating
+				? null
+				: (data.rulesets.find((rs) => rs.name === name) ??
+					(settling ? null : data.rulesets[0]) ??
+					null)))
+		: null;
 
 	// The address names what is shown: the first ruleset when none was
 	// named, or when the one named no longer exists.
@@ -76,15 +80,6 @@ export function Policy() {
 						error={resource.error}
 						onRetry={reload}
 					/>
-				) : creating && data ? (
-					<NewRuleset
-						data={data}
-						onCreated={(rs) => {
-							shell.policyChanged();
-							reload();
-							setParams({ ruleset: rs.name });
-						}}
-					/>
 				) : current && data ? (
 					<RulesetEditor
 						key={current.id}
@@ -95,6 +90,21 @@ export function Policy() {
 						onRenamed={(saved) => {
 							if (data && saved.id) {
 								setFollowing({ id: saved.id, from: name, listing: data });
+							}
+						}}
+					/>
+				) : settling ? (
+					<LoadingRow what="the new ruleset" />
+				) : creating && data ? (
+					<NewRuleset
+						data={data}
+						onCreated={(rs) => {
+							shell.policyChanged();
+							reload();
+							if (rs.id) {
+								setFollowing({ id: rs.id, from: name, listing: data });
+							} else {
+								setParams({ ruleset: rs.name });
 							}
 						}}
 					/>
