@@ -49,6 +49,11 @@ type Collector struct {
 	Log  *slog.Logger
 	// Now is the clock; time.Now if nil.
 	Now func() time.Time
+	// Monotonic reads a clock that never steps, as the time since any
+	// fixed origin; the runtime's monotonic clock if nil. A window's
+	// length is measured on it, so a wall clock stepped while a window was
+	// open is seen when the window closes.
+	Monotonic func() time.Duration
 	// WindowKeys bounds the distinct keys one open window holds;
 	// DefaultWindowKeys when zero.
 	WindowKeys int
@@ -65,6 +70,14 @@ func (c *Collector) now() time.Time {
 		return c.Now()
 	}
 	return time.Now()
+}
+
+func (c *Collector) monotonic() func() time.Duration {
+	if c.Monotonic != nil {
+		return c.Monotonic
+	}
+	origin := time.Now()
+	return func() time.Duration { return time.Since(origin) }
 }
 
 func (c *Collector) log() *slog.Logger {
@@ -104,8 +117,22 @@ func (c *Collector) Run(ctx context.Context) error {
 	}
 	rng := rand.New(rand.NewPCG(uint64(c.now().UnixNano()), 2)) //nolint:gosec // jitter, not secrecy
 
+	mono := c.monotonic()
 	agg := NewBoundedAggregator(c.now(), c.WindowKeys)
 	agg.Gaps = c.Gaps
+	opened := mono()
+	closeWindow := func() *Window {
+		now, at := c.now(), mono()
+		start := agg.Start()
+		end, next, step := closeBounds(start, now, at-opened)
+		opened = at
+		if step == 0 {
+			return agg.Close(end)
+		}
+		c.log().Warn("wall clock stepped back while a flow window was open; window cut at the step",
+			"step", step.String(), "start", start, "end", end, "next_start", next)
+		return agg.Cut(end, next)
+	}
 	go restarter{log: c.log(), base: base, limit: limit, rng: rng, now: c.Now}.run(ctx, c.Source, agg.Add)
 
 	timer := time.NewTimer(c.Window())
@@ -113,10 +140,10 @@ func (c *Collector) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			c.Buffer.Push(agg.Close(c.now()))
+			c.Buffer.Push(closeWindow())
 			return nil
 		case <-timer.C:
-			w := agg.Close(c.now())
+			w := closeWindow()
 			if w.Len() > 0 {
 				c.log().Debug("flow window closed", "start", w.Start, "end", w.End, "records", w.Len())
 			}
@@ -128,6 +155,48 @@ func (c *Collector) Run(ctx context.Context) error {
 			timer.Reset(c.Window())
 		}
 	}
+}
+
+// closeBounds decides where a closing window ends and the next one
+// starts, from the window's start, the wall clock now, and the window's
+// length on the monotonic clock. Ordinarily both are now.
+//
+// The wall clock can step back while a window is open (a manual set, a
+// time sync correcting by a step rather than a slew), and now would then
+// end the window before it started: a window no reader can place, which
+// the control plane refuses. When the window's wall-clock length falls
+// short of its monotonic length by more than slewing explains, the window
+// is cut at the step instead: it ends where its own clock reads now, its
+// start plus its monotonic length, so its bounds stay in order and its
+// length stays true, and the next window opens on the stepped clock. The
+// step, negative, is returned when the window is cut, and zero otherwise.
+// Nothing observed is lost in a cut, so no evidence gap is recorded for
+// it; the stepped clock is the control plane's to see, in the next
+// report's send instant. A smaller fall that would still put the end
+// before the start, in a window closed moments after it opened, holds
+// the end at the start and the next window opens there too.
+//
+// A forward step is left alone: the window ends at now, later than its
+// monotonic length says, and its bounds stay in order.
+func closeBounds(start, now time.Time, elapsed time.Duration) (end, next time.Time, step time.Duration) {
+	// On the wall clock alone: subtracting two readings that both carry
+	// the monotonic clock would measure the monotonic length again.
+	wall := now.Round(0).Sub(start.Round(0))
+	if d := wall - elapsed; d < -stepTolerance(elapsed) {
+		return start.Add(elapsed), now, d
+	}
+	if wall < 0 {
+		return start, start, 0
+	}
+	return now, now, 0
+}
+
+// stepTolerance is how far a window's wall-clock length may fall short of
+// its monotonic length before the difference is a step: a second, plus
+// the most a slewing time sync moves the clock over that length, 500
+// parts per million.
+func stepTolerance(elapsed time.Duration) time.Duration {
+	return time.Second + elapsed/2000
 }
 
 // Gapped is a source that records the evidence it loses. When such a
