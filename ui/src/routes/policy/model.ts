@@ -270,8 +270,21 @@ export function matchedHosts(m: ScopeMatch): MatchedHost[] {
 
 // bannerText is the immediate-effect statement: there is no draft, and
 // what saving does to the workloads the scope holds now. It says what
-// enforced workloads do only when the scope holds some.
+// enforced workloads do only when the scope holds some, and, when a scope
+// edit and a rule edit are both unsaved, that they are saved together.
 export function bannerText(opts: {
+	enabled: boolean;
+	count: number | null;
+	mix: ScopeMix | null;
+	bothPending?: boolean;
+}): string {
+	const both = opts.bothPending
+		? " A scope edit and a rule edit are both unsaved: saving the rule writes the two together, so what lands is the combination a dry run previews."
+		: "";
+	return immediateEffect(opts) + both;
+}
+
+function immediateEffect(opts: {
 	enabled: boolean;
 	count: number | null;
 	mix: ScopeMix | null;
@@ -553,19 +566,43 @@ export function planDryRun(
 	const target = set[at] as RulesetInput;
 	let rulePrefix: string | null = null;
 	if (edits.rule) {
-		const input = draftInput(edits.rule, true);
-		const rules = [...target.rules];
-		const i = rules.findIndex((r) => r.id && r.id === edits.rule?.base?.id);
-		const j = i >= 0 ? i : rules.length;
-		rules[j] = input;
-		target.rules = rules;
-		rulePrefix = `rulesets[${at}].rules[${j}]`;
+		const placed = withDraft(target.rules, edits.rule, true);
+		target.rules = placed.rules;
+		rulePrefix = `rulesets[${at}].rules[${placed.index}]`;
 	}
 	return {
 		body: { state_version: stateVersion, rulesets: set },
 		rulePrefix,
 		rulesetPrefix: `rulesets[${at}]`,
 	};
+}
+
+// withDraft is a ruleset's rules with the edited row in place: over the
+// rule it edits, or after the rest when it is new. dryRunId is as for
+// draftInput.
+export function withDraft(
+	rules: readonly RuleInput[],
+	d: RuleDraft,
+	dryRunId = false,
+): { rules: RuleInput[]; index: number } {
+	const out = [...rules];
+	const i = out.findIndex((r) => r.id && r.id === d.base?.id);
+	const index = i >= 0 ? i : out.length;
+	out[index] = draftInput(d, dryRunId);
+	return { rules: out, index };
+}
+
+// combinedSave is a pending scope edit and a pending row as one write of
+// the ruleset: its scope replaced and the row in place among its rules as
+// read. It is exactly the change a dry run of the two previews, so what
+// lands is what was previewed, never the rule under the old scope first.
+export function combinedSave(
+	ruleset: Ruleset,
+	scope: Selector,
+	d: RuleDraft,
+): { change: Partial<RulesetInput>; index: number } {
+	const placed = withDraft(rulesetInput(ruleset).rules, d);
+	return { change: { scope, rules: placed.rules }, index: placed.index };
 }
 
 // The freshness of a dry run's result: computed on the state the editor

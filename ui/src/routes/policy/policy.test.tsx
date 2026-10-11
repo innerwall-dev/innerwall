@@ -6,6 +6,7 @@ import type {
 	Rollup,
 	Rule,
 	Ruleset,
+	RulesetInput,
 	Workload,
 } from "@/api/schema";
 import { validLabelValue } from "@/lib/labels";
@@ -482,6 +483,167 @@ describe("policy editor", () => {
 				.map((c) => (c.body as { selector: Record<string, string[]> }).selector)
 				.some((sel) => "tier" in sel && sel.tier?.includes("")),
 		).toBe(false);
+	});
+
+	it("saves a pending scope edit and a pending rule in one write, never the rule under the old scope first", async () => {
+		const puts: { body: RulesetInput; ifMatch: string }[] = [];
+		const s = surface({
+			extra: [
+				{
+					method: "PUT",
+					path: `/api/v1/rulesets/${checkout.id}`,
+					reply: (body) => {
+						const b = body as RulesetInput;
+						const saved = {
+							...checkout,
+							scope: b.scope,
+							rules: [
+								...checkout.rules,
+								rule({
+									...(b.rules[4] as object),
+									id: "7a000000-0000-4000-8000-000000000099",
+									version: "1",
+								}),
+							],
+							version: "8",
+						};
+						s.setRulesets([saved, auth, billing]);
+						return { status: 200, json: saved };
+					},
+				},
+			],
+		});
+		const user = userEvent.setup();
+		renderApp("/policy?ruleset=checkout-inbound");
+		await waitFor(() =>
+			expect(screen.getByTestId("match-count")).toHaveTextContent("5"),
+		);
+		// The scope edit, unsaved.
+		await user.click(screen.getByRole("button", { name: "Remove env" }));
+		await user.type(
+			screen.getByRole("textbox", { name: "Add a scope requirement" }),
+			"app = checkout | auth{Enter}",
+		);
+		await waitFor(() =>
+			expect(screen.getByTestId("match-count")).toHaveTextContent(
+				"6workloads match this scope",
+			),
+		);
+		// And a new rule, unsaved.
+		await user.click(screen.getByRole("button", { name: "Add rule" }));
+		const editing = await row("New rule");
+		await user.type(
+			within(editing).getByRole("textbox", { name: "Add a peer" }),
+			"10.9.9.0/24{Enter}",
+		);
+		await user.type(
+			within(editing).getByRole("textbox", { name: "Add a service" }),
+			"tcp/9999{Enter}",
+		);
+		// The row's save says it writes both, to the workloads the edited
+		// scope matches, and why.
+		expect(screen.getByTestId("pending-scope")).toHaveTextContent(
+			"The scope edit above is unsaved too. Saved on its own, this rule would apply at once to the 5 workloads the saved scope matches, which no dry run here previews; saving writes the scope and the rule together, as the dry run shows them.",
+		);
+		expect(screen.getByTestId("banner")).toHaveTextContent(
+			"A scope edit and a rule edit are both unsaved: saving the rule writes the two together",
+		);
+		await user.click(
+			screen.getByRole("button", {
+				name: "Save rule and scope — applies to 6 workloads now",
+			}),
+		);
+		expect(await screen.findByRole("status")).toHaveTextContent(
+			/^Saved the scope of checkout-inbound and 7a000000 in one write, at version 8\./,
+		);
+		// One write of the ruleset, conditioned on its version, carrying
+		// the edited scope and the rule; no rule was created on its own.
+		for (const [url, init] of s.fetchMock.mock.calls) {
+			const r = init as RequestInit | undefined;
+			expect(r?.method === "POST" && String(url).endsWith("/rules")).toBe(
+				false,
+			);
+			if (r?.method !== "PUT") continue;
+			puts.push({
+				body: JSON.parse(String(r.body)),
+				ifMatch: (r.headers as Record<string, string>)["If-Match"] as string,
+			});
+		}
+		expect(puts).toHaveLength(1);
+		expect(puts[0]?.ifMatch).toBe('"7"');
+		expect(puts[0]?.body.scope).toEqual({ app: ["checkout", "auth"] });
+		expect(puts[0]?.body.rules.map((r) => r.id)).toEqual([
+			apiRule.id,
+			sshRule.id,
+			vpnRule.id,
+			scrape.id,
+			undefined,
+		]);
+		expect(puts[0]?.body.rules[4]).toMatchObject({
+			peers: [{ cidr: "10.9.9.0/24" }],
+			entries: [{ protocol: "tcp", ports: ["9999"] }],
+		});
+		// Both edits are gone: nothing is left unsaved.
+		await waitFor(() =>
+			expect(screen.queryByTestId("pending-scope")).not.toBeInTheDocument(),
+		);
+		expect(
+			screen.queryByRole("button", { name: /Save scope/ }),
+		).not.toBeInTheDocument();
+	});
+
+	it("keeps both pending edits across a conflict on their one write", async () => {
+		let version = "7";
+		const s = surface({
+			extra: [
+				{
+					method: "PUT",
+					path: `/api/v1/rulesets/${checkout.id}`,
+					reply: () => {
+						version = "8";
+						s.setRulesets([{ ...checkout, version }, auth, billing]);
+						return {
+							status: 412,
+							problem: {
+								...problem("precondition-failed", 412),
+								current_version: "8",
+							},
+						};
+					},
+				},
+			],
+		});
+		const user = userEvent.setup();
+		renderApp("/policy?ruleset=checkout-inbound");
+		await waitFor(() =>
+			expect(screen.getByTestId("match-count")).toHaveTextContent("5"),
+		);
+		await user.click(screen.getByRole("button", { name: "Remove env" }));
+		await user.click(screen.getByRole("button", { name: "Add rule" }));
+		const editing = await row("New rule");
+		await user.type(
+			within(editing).getByRole("textbox", { name: "Add a peer" }),
+			"10.9.9.0/24{Enter}",
+		);
+		await user.click(
+			screen.getByRole("button", { name: /Save rule and scope/ }),
+		);
+		const alert = await screen.findByRole("alert");
+		expect(alert).toHaveTextContent(
+			"checkout-inbound changed since this editor read it · it is now at version 8; nothing was changed.",
+		);
+		await user.click(
+			within(alert).getByRole("button", { name: "Reload and reapply" }),
+		);
+		// The scope edit and the row are both still there, still saved
+		// together.
+		expect(
+			await screen.findByRole("button", { name: /Save rule and scope/ }),
+		).toBeInTheDocument();
+		expect(
+			within(await row("New rule")).getByText("10.9.9.0/24"),
+		).toBeVisible();
+		expect(screen.getByRole("button", { name: /Save scope/ })).toBeVisible();
 	});
 
 	it("draws a stored scope outside the label grammar quoted, and places the preview's refusal on it", async () => {

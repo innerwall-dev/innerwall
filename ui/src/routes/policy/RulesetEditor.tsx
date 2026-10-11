@@ -29,6 +29,7 @@ import { useScopeMatch } from "./hooks";
 import {
 	attachFindings,
 	bannerText,
+	combinedSave,
 	draftInput,
 	draftOf,
 	freshness,
@@ -46,7 +47,7 @@ import {
 	servicesCell,
 	shortRuleId,
 } from "./model";
-import { type RowState, RulesCard } from "./RulesTable";
+import { type RowState, RulesCard, saveKey } from "./RulesTable";
 import { ScopeCard } from "./ScopeCard";
 
 // A notice is the outcome of a write, said where the write was made: a
@@ -355,6 +356,10 @@ export function RulesetEditor({
 
 	async function saveRow() {
 		if (!row) return;
+		if (edited && scopeDraft) {
+			await saveBoth(row, scopeDraft);
+			return;
+		}
 		const d = row.draft;
 		const input = draftInput(d);
 		setSaving(true);
@@ -375,7 +380,7 @@ export function RulesetEditor({
 				setRow({
 					...row,
 					findings: attachFindings(d, p.problem.errors ?? []),
-					refused: JSON.stringify(input),
+					refused: saveKey(d),
 				});
 			} else if (p.type === ProblemType.preconditionFailed && d.base) {
 				const ruleId = d.base.id ?? "";
@@ -393,6 +398,97 @@ export function RulesetEditor({
 			}
 		} finally {
 			setSaving(false);
+		}
+	}
+
+	// saveBoth writes a pending scope edit and the row as one write of the
+	// ruleset, conditioned on its version: the combination a dry run
+	// previews lands at once, or nothing does. Saving the rule first would
+	// apply it under the scope as saved, a state never previewed.
+	async function saveBoth(current: RowState, scope: Selector) {
+		const d = current.draft;
+		// The row is written as part of the ruleset as read now, so a rule
+		// that moved, or went, since the row opened is a conflict here
+		// rather than overwritten or brought back.
+		const stored = d.base
+			? ruleset.rules.find((r) => r.id === d.base?.id)
+			: undefined;
+		if (d.base && stored?.version !== d.base.version) {
+			const ruleId = d.base.id ?? "";
+			setRulesNotice({
+				tone: "conflict",
+				text: (
+					<>
+						<span className="font-mono">{ruleLabel(d.base)}</span> changed since
+						this row opened
+						{stored ? (
+							<>
+								{" "}
+								· it is now at version{" "}
+								<span className="font-mono">{stored.version}</span>
+							</>
+						) : (
+							" · it no longer exists"
+						)}
+						; nothing was changed.
+					</>
+				),
+				action: {
+					label: "Reload and reapply",
+					run: () => {
+						setReapply({ rule: ruleId, at: data.stateVersion });
+						reload();
+					},
+				},
+			});
+			return;
+		}
+		const { change, index } = combinedSave(ruleset, scope, d);
+		setSaving(true);
+		setBusy(true);
+		setRulesNotice(null);
+		setHeadNotice(null);
+		setScopeRefused([]);
+		try {
+			const saved = await write(() => putRuleset(ruleset, change));
+			const rule = saved.rules[index];
+			setRow(null);
+			setScopeDraft(null);
+			setRulesNotice({
+				tone: "ok",
+				text: `Saved the scope of ${saved.name} and ${rule ? ruleLabel(rule) : "the rule"} in one write, at version ${saved.version}. The workloads the scope now selects take both as each agent applies its next version.`,
+			});
+			reload();
+		} catch (err) {
+			const p = err as ProblemError;
+			if (p.type === ProblemType.validation) {
+				const findings = p.problem.errors ?? [];
+				setRow({
+					...current,
+					findings: attachFindings(d, findings, `rules[${index}]`),
+					refused: saveKey(d, scope),
+				});
+				setScopeRefused(findings.filter((f) => f.path.startsWith("scope")));
+			} else if (p.type === ProblemType.preconditionFailed) {
+				setRulesNotice(
+					conflict(ruleset.name, p, {
+						label: "Reload and reapply",
+						run: () => {
+							// Both edits are kept: the scope as it is, the row on
+							// top of its rule as stored now.
+							if (d.base) {
+								setReapply({ rule: d.base.id ?? "", at: data.stateVersion });
+							}
+							reload();
+						},
+					}),
+				);
+			} else {
+				setRulesNotice({ tone: "failed", text: problemText(p) });
+			}
+		} finally {
+			setSaving(false);
+			setBusy(false);
 		}
 	}
 
@@ -595,7 +691,14 @@ export function RulesetEditor({
 				data-testid="banner"
 			>
 				<Icon name="info" className="mt-0.5" />
-				<span>{bannerText({ enabled, count: inScope, mix })}</span>
+				<span>
+					{bannerText({
+						enabled,
+						count: inScope,
+						mix,
+						bothPending: edited && row !== null,
+					})}
+				</span>
 			</div>
 			<ScopeCard
 				scope={scopeShown}
@@ -642,6 +745,9 @@ export function RulesetEditor({
 				busy={busy}
 				notice={rulesNotice ? <NoticeLine notice={rulesNotice} inset /> : null}
 				inScope={inScope}
+				pendingScope={
+					edited && scopeDraft ? { scope: scopeDraft, count: draftCount } : null
+				}
 				saving={saving}
 				onToggle={(r, on) => void toggleRule(r, on)}
 				onEdit={(r) => editRule(r)}
