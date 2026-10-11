@@ -678,13 +678,13 @@ describe("promotion", () => {
 		const submit = within(dialog).getByRole("button", {
 			name: "Enforce anyway on 3 workloads",
 		});
-		expect(submit).toBeDisabled();
+		expect(submit).toHaveAttribute("aria-disabled", "true");
 		await userEvent.click(
 			within(dialog).getByRole("checkbox", {
 				name: "I understand 2 peer/service pairs (18,245 connections) will be dropped",
 			}),
 		);
-		expect(submit).toBeEnabled();
+		expect(submit).not.toHaveAttribute("aria-disabled");
 		// Including the degraded workload is the operator's choice.
 		await userEvent.click(
 			within(dialog).getByRole("checkbox", { name: /checkout-prod-07/ }),
@@ -711,6 +711,35 @@ describe("promotion", () => {
 		);
 	});
 
+	it("keeps the dialog open on a click of the unacknowledged confirm, and says what it waits for", async () => {
+		const { calls } = surface();
+		const dialog = await openDialog();
+		const submit = within(dialog).getByRole("button", {
+			name: "Enforce anyway on 3 workloads",
+		});
+		const ack = within(dialog).getByRole("checkbox", {
+			name: "I understand 2 peer/service pairs (18,245 connections) will be dropped",
+		});
+		await userEvent.click(submit);
+		// Nothing is submitted, the dialog stays with its state, and the
+		// acknowledgment is pointed at.
+		expect(calls.some((x) => x.path === "/api/v1/mode-changes")).toBe(false);
+		expect(screen.getByRole("dialog")).toBe(dialog);
+		expect(ack).toHaveFocus();
+		expect(within(dialog).getByRole("status")).toHaveTextContent(
+			"Nothing was enforced. Check the acknowledgment above to enforce anyway.",
+		);
+		await userEvent.click(submit);
+		expect(screen.getByRole("dialog")).toBe(dialog);
+		// Acknowledging clears the hint and the confirm acts.
+		await userEvent.click(ack);
+		expect(within(dialog).queryByRole("status")).not.toBeInTheDocument();
+		await userEvent.click(submit);
+		await waitFor(() =>
+			expect(calls.some((x) => x.path === "/api/v1/mode-changes")).toBe(true),
+		);
+	});
+
 	it("overrides missing evidence with the generic acknowledgment", async () => {
 		surface({ gaps: { "app=ledger": [gap(ledger[1], 80, 79)] } });
 		const dialog = await openDialog("/simulation?ruleset=ledger-inbound");
@@ -720,13 +749,13 @@ describe("promotion", () => {
 		const submit = within(dialog).getByRole("button", {
 			name: "Enforce anyway on 2 workloads",
 		});
-		expect(submit).toBeDisabled();
+		expect(submit).toHaveAttribute("aria-disabled", "true");
 		await userEvent.click(
 			within(dialog).getByRole("checkbox", {
 				name: "I understand this scope is not safe to enforce yet",
 			}),
 		);
-		expect(submit).toBeEnabled();
+		expect(submit).not.toHaveAttribute("aria-disabled");
 	});
 
 	it("names missing evidence in the acknowledgment beside the pairs it would drop", async () => {
@@ -768,7 +797,7 @@ describe("promotion", () => {
 			within(dialog).getByRole("button", {
 				name: "Enforce anyway on 3 workloads",
 			}),
-		).toBeDisabled();
+		).toHaveAttribute("aria-disabled", "true");
 		const previews = () =>
 			calls.filter((x) => x.path === "/api/v1/selectors/preview").length;
 		const before = previews();
@@ -782,7 +811,7 @@ describe("promotion", () => {
 				within(dialog).getByRole("button", {
 					name: "Enforce anyway on 3 workloads",
 				}),
-			).toBeEnabled(),
+			).not.toHaveAttribute("aria-disabled"),
 		);
 	});
 

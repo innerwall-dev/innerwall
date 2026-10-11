@@ -6,6 +6,7 @@ import { rule, ruleset } from "@/test/review";
 import {
 	attachFindings,
 	bannerText,
+	combinedSave,
 	deltaLines,
 	dirty,
 	draftInput,
@@ -246,6 +247,24 @@ describe("drafts and findings", () => {
 		expect(parsePeer('app="web env"')).toHaveProperty("error");
 		expect(parsePeer("10.40.0.0/33")).toEqual({ cidr: "10.40.0.0/33" });
 		expect(parsePeer("corp-vpn")).toEqual({ address_group: "corp-vpn" });
+		// Text shaped like an address is a CIDR however it is mistyped, so
+		// admission refuses it as one rather than as an unknown group.
+		for (const typo of [
+			"10.0.0.999/8",
+			"10.0.0.999/8!!",
+			"10.0.0.0/8/",
+			"10.0.0.0 /8",
+			"192.168.1.0/24x",
+			"fe80::1%eth0",
+			"2001:db8::/129",
+			"::1/",
+		]) {
+			expect(parsePeer(typo)).toEqual({ cidr: typo });
+		}
+		// Names stay names, digits and dots in them or not.
+		for (const name of ["office", "db.prod", "vpn-10.40", "v6-edge", "cafe"]) {
+			expect(parsePeer(name)).toEqual({ address_group: name });
+		}
 		expect(parseService("TCP/389")).toEqual({
 			entry: { protocol: "tcp", ports: ["389"] },
 		});
@@ -302,12 +321,14 @@ describe("drafts and findings", () => {
 			"rulesets[0].rules[4]",
 		);
 		expect(a.elements).toEqual({ p0: [cidr], p1: [tier], s0: [ref] });
-		expect(a.row).toEqual([other]);
-		expect(outstanding(d, a)).toBe(4);
+		// Another ruleset's finding is not this row's, and does not block
+		// its save.
+		expect(a.row).toEqual([]);
+		expect(outstanding(d, a)).toBe(3);
 		// Removing the bad prefix takes its finding with it; the others stay
 		// on their own elements.
 		const fixed = { ...d, peers: d.peers.slice(1) };
-		expect(outstanding(fixed, a)).toBe(3);
+		expect(outstanding(fixed, a)).toBe(2);
 		// A rule-level write's paths are relative to the rule.
 		const b = attachFindings(d, [
 			{
@@ -354,6 +375,31 @@ describe("the dry run", () => {
 		expect(plan.rulePrefix).toBe("rulesets[1].rules[1]");
 		// The untouched ruleset goes as it was read.
 		expect(plan.body.rulesets[0]?.rules[0]?.id).toBe(auth.rules[0]?.id);
+	});
+
+	it("saves a pending scope and row as exactly the set their dry run previews", () => {
+		const scope = { app: ["checkout"], tier: ["api"] };
+		for (const d of [
+			Object.assign(draftOf(scrape, "t1"), { enabled: true }),
+			Object.assign(draftOf(null, "t2"), {
+				peers: [{ key: "p", value: { cidr: "10.9.9.0/24" } }],
+			}),
+		]) {
+			const plan = planDryRun([auth, checkout], "sv-1", {
+				rulesetId: checkout.id ?? null,
+				ruleset: { scope },
+				rule: d,
+			});
+			const saved = combinedSave(checkout, scope, d);
+			const previewed = plan.body.rulesets[1];
+			expect(saved.change.scope).toEqual(previewed?.scope);
+			// The same rules in the same places; only the temporary id a dry
+			// run gives a new rule is not written.
+			expect(saved.change.rules).toEqual(
+				previewed?.rules.map((r) => (r.id === d.tempId ? draftInput(d) : r)),
+			);
+			expect(`rulesets[1].rules[${saved.index}]`).toBe(plan.rulePrefix);
+		}
 	});
 
 	it("appends a new rule under its temporary id, and applies a scope edit", () => {

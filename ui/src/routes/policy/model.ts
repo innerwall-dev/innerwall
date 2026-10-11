@@ -270,8 +270,21 @@ export function matchedHosts(m: ScopeMatch): MatchedHost[] {
 
 // bannerText is the immediate-effect statement: there is no draft, and
 // what saving does to the workloads the scope holds now. It says what
-// enforced workloads do only when the scope holds some.
+// enforced workloads do only when the scope holds some, and, when a scope
+// edit and a rule edit are both unsaved, that they are saved together.
 export function bannerText(opts: {
+	enabled: boolean;
+	count: number | null;
+	mix: ScopeMix | null;
+	bothPending?: boolean;
+}): string {
+	const both = opts.bothPending
+		? " A scope edit and a rule edit are both unsaved: saving the rule writes the two together, so what lands is the combination a dry run previews."
+		: "";
+	return immediateEffect(opts) + both;
+}
+
+function immediateEffect(opts: {
 	enabled: boolean;
 	count: number | null;
 	mix: ScopeMix | null;
@@ -361,13 +374,21 @@ export function dirty(d: RuleDraft): boolean {
 	return !d.base || !sameInput(d, draftOf(d.base, d.tempId));
 }
 
+// addressShaped is text that opens the way an address does: an IPv4
+// address's first octet and its dot, or an IPv6 address's hex groups
+// around two colons. No plausible address group name opens that way,
+// so text that does is an address whatever follows, typo or not.
+const addressShaped = /^(\d{1,3}\.|[0-9a-f]{0,4}:[0-9a-f]{0,4}:)/i;
+
 // parsePeer reads one peer as typed or pasted. Requirements (`key=value`,
 // several separated by spaces, a key's values by "|") are a workload
 // selector, read by the console's one label parser and refused with the
 // reason when they are outside the label grammar (ADR-0022); an address
-// or a prefix is a CIDR; anything else names an address group. A CIDR or
-// a group name is kept as typed, so the control plane's admission names
-// any fault in it.
+// or a prefix, or anything shaped like one, is a CIDR; anything else
+// names an address group. A CIDR or a group name is kept as typed, so
+// the control plane's admission names any fault in it: a mistyped
+// address (`10.0.0.999/8`) is refused as not a valid CIDR at its chip,
+// never read as the name of an address group that does not exist.
 export function parsePeer(text: string): Peer | { error: string } {
 	const t = text.trim();
 	if (t.includes("=")) {
@@ -379,7 +400,10 @@ export function parsePeer(text: string): Peer | { error: string } {
 		}
 		return { workloads: sel };
 	}
-	if (/^[0-9a-f:.]+(\/\d+)?$/i.test(t) && /[.:]/.test(t)) {
+	if (
+		addressShaped.test(t) ||
+		(/^[0-9a-f:.]+(\/\d+)?$/i.test(t) && /[.:]/.test(t))
+	) {
 		return { cidr: t };
 	}
 	return { address_group: t };
@@ -423,7 +447,9 @@ const push = <K extends string>(
 
 // attachFindings places findings whose paths are relative to the rule
 // (after the prefix, e.g. `rulesets[2].rules[4]`). Findings outside the
-// prefix are not this row's and are returned on the row.
+// prefix are not this row's: a dry run refused for another ruleset or for
+// the scope says so where those are drawn, and none of it is counted as
+// blocking this row's save, which writes neither.
 export function attachFindings(
 	d: RuleDraft,
 	findings: readonly Finding[],
@@ -433,10 +459,7 @@ export function attachFindings(
 	for (const f of findings) {
 		let path = f.path;
 		if (prefix) {
-			if (path !== prefix && !path.startsWith(`${prefix}.`)) {
-				out.row.push(f);
-				continue;
-			}
+			if (path !== prefix && !path.startsWith(`${prefix}.`)) continue;
 			path = path.slice(prefix.length).replace(/^\./, "");
 		}
 		const m = /^(peers|services|entries)\[(\d+)\]/.exec(path);
@@ -543,19 +566,43 @@ export function planDryRun(
 	const target = set[at] as RulesetInput;
 	let rulePrefix: string | null = null;
 	if (edits.rule) {
-		const input = draftInput(edits.rule, true);
-		const rules = [...target.rules];
-		const i = rules.findIndex((r) => r.id && r.id === edits.rule?.base?.id);
-		const j = i >= 0 ? i : rules.length;
-		rules[j] = input;
-		target.rules = rules;
-		rulePrefix = `rulesets[${at}].rules[${j}]`;
+		const placed = withDraft(target.rules, edits.rule, true);
+		target.rules = placed.rules;
+		rulePrefix = `rulesets[${at}].rules[${placed.index}]`;
 	}
 	return {
 		body: { state_version: stateVersion, rulesets: set },
 		rulePrefix,
 		rulesetPrefix: `rulesets[${at}]`,
 	};
+}
+
+// withDraft is a ruleset's rules with the edited row in place: over the
+// rule it edits, or after the rest when it is new. dryRunId is as for
+// draftInput.
+export function withDraft(
+	rules: readonly RuleInput[],
+	d: RuleDraft,
+	dryRunId = false,
+): { rules: RuleInput[]; index: number } {
+	const out = [...rules];
+	const i = out.findIndex((r) => r.id && r.id === d.base?.id);
+	const index = i >= 0 ? i : out.length;
+	out[index] = draftInput(d, dryRunId);
+	return { rules: out, index };
+}
+
+// combinedSave is a pending scope edit and a pending row as one write of
+// the ruleset: its scope replaced and the row in place among its rules as
+// read. It is exactly the change a dry run of the two previews, so what
+// lands is what was previewed, never the rule under the old scope first.
+export function combinedSave(
+	ruleset: Ruleset,
+	scope: Selector,
+	d: RuleDraft,
+): { change: Partial<RulesetInput>; index: number } {
+	const placed = withDraft(rulesetInput(ruleset).rules, d);
+	return { change: { scope, rules: placed.rules }, index: placed.index };
 }
 
 // The freshness of a dry run's result: computed on the state the editor

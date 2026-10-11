@@ -6,6 +6,7 @@ import type {
 	Rollup,
 	Rule,
 	Ruleset,
+	RulesetInput,
 	Workload,
 } from "@/api/schema";
 import { validLabelValue } from "@/lib/labels";
@@ -484,6 +485,167 @@ describe("policy editor", () => {
 		).toBe(false);
 	});
 
+	it("saves a pending scope edit and a pending rule in one write, never the rule under the old scope first", async () => {
+		const puts: { body: RulesetInput; ifMatch: string }[] = [];
+		const s = surface({
+			extra: [
+				{
+					method: "PUT",
+					path: `/api/v1/rulesets/${checkout.id}`,
+					reply: (body) => {
+						const b = body as RulesetInput;
+						const saved = {
+							...checkout,
+							scope: b.scope,
+							rules: [
+								...checkout.rules,
+								rule({
+									...(b.rules[4] as object),
+									id: "7a000000-0000-4000-8000-000000000099",
+									version: "1",
+								}),
+							],
+							version: "8",
+						};
+						s.setRulesets([saved, auth, billing]);
+						return { status: 200, json: saved };
+					},
+				},
+			],
+		});
+		const user = userEvent.setup();
+		renderApp("/policy?ruleset=checkout-inbound");
+		await waitFor(() =>
+			expect(screen.getByTestId("match-count")).toHaveTextContent("5"),
+		);
+		// The scope edit, unsaved.
+		await user.click(screen.getByRole("button", { name: "Remove env" }));
+		await user.type(
+			screen.getByRole("textbox", { name: "Add a scope requirement" }),
+			"app = checkout | auth{Enter}",
+		);
+		await waitFor(() =>
+			expect(screen.getByTestId("match-count")).toHaveTextContent(
+				"6workloads match this scope",
+			),
+		);
+		// And a new rule, unsaved.
+		await user.click(screen.getByRole("button", { name: "Add rule" }));
+		const editing = await row("New rule");
+		await user.type(
+			within(editing).getByRole("textbox", { name: "Add a peer" }),
+			"10.9.9.0/24{Enter}",
+		);
+		await user.type(
+			within(editing).getByRole("textbox", { name: "Add a service" }),
+			"tcp/9999{Enter}",
+		);
+		// The row's save says it writes both, to the workloads the edited
+		// scope matches, and why.
+		expect(screen.getByTestId("pending-scope")).toHaveTextContent(
+			"The scope edit above is unsaved too. Saved on its own, this rule would apply at once to the 5 workloads the saved scope matches, which no dry run here previews; saving writes the scope and the rule together, as the dry run shows them.",
+		);
+		expect(screen.getByTestId("banner")).toHaveTextContent(
+			"A scope edit and a rule edit are both unsaved: saving the rule writes the two together",
+		);
+		await user.click(
+			screen.getByRole("button", {
+				name: "Save rule and scope — applies to 6 workloads now",
+			}),
+		);
+		expect(await screen.findByRole("status")).toHaveTextContent(
+			/^Saved the scope of checkout-inbound and 7a000000 in one write, at version 8\./,
+		);
+		// One write of the ruleset, conditioned on its version, carrying
+		// the edited scope and the rule; no rule was created on its own.
+		for (const [url, init] of s.fetchMock.mock.calls) {
+			const r = init as RequestInit | undefined;
+			expect(r?.method === "POST" && String(url).endsWith("/rules")).toBe(
+				false,
+			);
+			if (r?.method !== "PUT") continue;
+			puts.push({
+				body: JSON.parse(String(r.body)),
+				ifMatch: (r.headers as Record<string, string>)["If-Match"] as string,
+			});
+		}
+		expect(puts).toHaveLength(1);
+		expect(puts[0]?.ifMatch).toBe('"7"');
+		expect(puts[0]?.body.scope).toEqual({ app: ["checkout", "auth"] });
+		expect(puts[0]?.body.rules.map((r) => r.id)).toEqual([
+			apiRule.id,
+			sshRule.id,
+			vpnRule.id,
+			scrape.id,
+			undefined,
+		]);
+		expect(puts[0]?.body.rules[4]).toMatchObject({
+			peers: [{ cidr: "10.9.9.0/24" }],
+			entries: [{ protocol: "tcp", ports: ["9999"] }],
+		});
+		// Both edits are gone: nothing is left unsaved.
+		await waitFor(() =>
+			expect(screen.queryByTestId("pending-scope")).not.toBeInTheDocument(),
+		);
+		expect(
+			screen.queryByRole("button", { name: /Save scope/ }),
+		).not.toBeInTheDocument();
+	});
+
+	it("keeps both pending edits across a conflict on their one write", async () => {
+		let version = "7";
+		const s = surface({
+			extra: [
+				{
+					method: "PUT",
+					path: `/api/v1/rulesets/${checkout.id}`,
+					reply: () => {
+						version = "8";
+						s.setRulesets([{ ...checkout, version }, auth, billing]);
+						return {
+							status: 412,
+							problem: {
+								...problem("precondition-failed", 412),
+								current_version: "8",
+							},
+						};
+					},
+				},
+			],
+		});
+		const user = userEvent.setup();
+		renderApp("/policy?ruleset=checkout-inbound");
+		await waitFor(() =>
+			expect(screen.getByTestId("match-count")).toHaveTextContent("5"),
+		);
+		await user.click(screen.getByRole("button", { name: "Remove env" }));
+		await user.click(screen.getByRole("button", { name: "Add rule" }));
+		const editing = await row("New rule");
+		await user.type(
+			within(editing).getByRole("textbox", { name: "Add a peer" }),
+			"10.9.9.0/24{Enter}",
+		);
+		await user.click(
+			screen.getByRole("button", { name: /Save rule and scope/ }),
+		);
+		const alert = await screen.findByRole("alert");
+		expect(alert).toHaveTextContent(
+			"checkout-inbound changed since this editor read it · it is now at version 8; nothing was changed.",
+		);
+		await user.click(
+			within(alert).getByRole("button", { name: "Reload and reapply" }),
+		);
+		// The scope edit and the row are both still there, still saved
+		// together.
+		expect(
+			await screen.findByRole("button", { name: /Save rule and scope/ }),
+		).toBeInTheDocument();
+		expect(
+			within(await row("New rule")).getByText("10.9.9.0/24"),
+		).toBeVisible();
+		expect(screen.getByRole("button", { name: /Save scope/ })).toBeVisible();
+	});
+
 	it("draws a stored scope outside the label grammar quoted, and places the preview's refusal on it", async () => {
 		// What a token form that split on the first "=" produced, kept in a
 		// ruleset's scope from before the grammar was admitted.
@@ -611,6 +773,174 @@ describe("policy editor", () => {
 			scope: checkout.scope,
 		});
 		expect((bodies[0] as Ruleset).rules).toHaveLength(4);
+	});
+
+	it("renames a ruleset and edits its description, conditioned on its version, and follows it to its new name", async () => {
+		const bodies: { body: unknown; ifMatch: string }[] = [];
+		const s = surface({
+			extra: [
+				{
+					method: "PUT",
+					path: `/api/v1/rulesets/${auth.id}`,
+					reply: (body) => {
+						const renamed = { ...auth, ...(body as object), version: "8" };
+						s.setRulesets([checkout, renamed as Ruleset, billing]);
+						return { status: 200, json: renamed };
+					},
+				},
+			],
+		});
+		const user = userEvent.setup();
+		renderApp("/policy?ruleset=auth-inbound");
+		await screen.findByRole("heading", { name: "auth-inbound" });
+		await user.click(
+			screen.getByRole("button", { name: "Edit name and description" }),
+		);
+		const save = screen.getByRole("button", {
+			name: "Save name and description",
+		});
+		// Nothing to save until something changed.
+		expect(save).toBeDisabled();
+		const name = screen.getByRole("textbox", { name: "Ruleset name" });
+		await user.clear(name);
+		await user.type(name, "auth-core");
+		await user.type(
+			screen.getByRole("textbox", { name: "Ruleset description" }),
+			"Inbound access to the auth service.",
+		);
+		await user.click(save);
+		expect(await screen.findByRole("status")).toHaveTextContent(
+			"Renamed auth-inbound to auth-core. Its id, scope, and rules are unchanged, and no workload's policy changes.",
+		);
+		// The editor stays on the renamed ruleset: the address, the crumb,
+		// and the rail follow it, never falling back to the first.
+		expect(
+			await screen.findByRole("heading", { name: "auth-core" }),
+		).toBeInTheDocument();
+		await waitFor(() =>
+			expect(
+				screen.getByRole("navigation", { name: "Breadcrumb" }),
+			).toHaveTextContent("Policy/auth-core"),
+		);
+		expect(
+			within(
+				screen.getByRole("navigation", { name: "Ruleset list" }),
+			).getByRole("link", { name: /auth-core/ }),
+		).toHaveAttribute("aria-current", "page");
+		expect(
+			screen.getByText("Inbound access to the auth service."),
+		).toBeInTheDocument();
+		for (const [, init] of s.fetchMock.mock.calls.filter(
+			([, init]) => (init as RequestInit | undefined)?.method === "PUT",
+		)) {
+			const r = init as RequestInit;
+			bodies.push({
+				body: JSON.parse(String(r.body)),
+				ifMatch: (r.headers as Record<string, string>)["If-Match"] as string,
+			});
+		}
+		expect(bodies).toHaveLength(1);
+		expect(bodies[0]?.ifMatch).toBe('"7"');
+		expect(bodies[0]?.body).toMatchObject({
+			id: auth.id,
+			name: "auth-core",
+			description: "Inbound access to the auth service.",
+			enabled: true,
+			scope: auth.scope,
+		});
+		expect((bodies[0]?.body as Ruleset | undefined)?.rules).toHaveLength(1);
+	});
+
+	it("keeps a name edit across a conflict and a duplicate, as a scope save does", async () => {
+		let attempt = 0;
+		const moved = { ...auth, version: "9", description: "Moved." };
+		const s = surface({
+			extra: [
+				{
+					method: "PUT",
+					path: `/api/v1/rulesets/${auth.id}`,
+					reply: (body) => {
+						attempt += 1;
+						if (attempt === 1) {
+							s.setRulesets([checkout, moved, billing]);
+							return {
+								status: 412,
+								problem: {
+									...problem("precondition-failed", 412),
+									current_version: "9",
+								},
+							};
+						}
+						if (attempt === 2) {
+							return {
+								status: 409,
+								problem: problem(
+									"duplicate-name",
+									409,
+									'duplicate name: ruleset "checkout-inbound"',
+								),
+							};
+						}
+						const saved = { ...moved, ...(body as object), version: "10" };
+						s.setRulesets([checkout, saved as Ruleset, billing]);
+						return { status: 200, json: saved };
+					},
+				},
+			],
+		});
+		const user = userEvent.setup();
+		renderApp("/policy?ruleset=auth-inbound");
+		await screen.findByRole("heading", { name: "auth-inbound" });
+		await user.click(
+			screen.getByRole("button", { name: "Edit name and description" }),
+		);
+		const name = screen.getByRole("textbox", { name: "Ruleset name" });
+		await user.clear(name);
+		await user.type(name, "checkout-inbound");
+		await user.click(
+			screen.getByRole("button", { name: "Save name and description" }),
+		);
+		const alert = await screen.findByRole("alert");
+		expect(alert).toHaveTextContent(
+			"auth-inbound changed since this editor read it · it is now at version 9; nothing was changed.",
+		);
+		await user.click(
+			within(alert).getByRole("button", { name: "Reload and reapply" }),
+		);
+		expect(
+			await screen.findByText(/your name and description edit is kept/),
+		).toBeInTheDocument();
+		expect(screen.getByRole("textbox", { name: "Ruleset name" })).toHaveValue(
+			"checkout-inbound",
+		);
+		await user.click(
+			screen.getByRole("button", { name: "Save name and description" }),
+		);
+		expect(
+			await screen.findByText(
+				"Another ruleset is already named checkout-inbound; nothing was changed.",
+			),
+		).toBeInTheDocument();
+		await user.clear(screen.getByRole("textbox", { name: "Ruleset name" }));
+		await user.type(
+			screen.getByRole("textbox", { name: "Ruleset name" }),
+			"auth-core",
+		);
+		await user.click(
+			screen.getByRole("button", { name: "Save name and description" }),
+		);
+		expect(
+			await screen.findByRole("heading", { name: "auth-core" }),
+		).toBeInTheDocument();
+		const ifMatch = s.fetchMock.mock.calls
+			.filter(([, init]) => (init as RequestInit | undefined)?.method === "PUT")
+			.map(
+				([, init]) =>
+					((init as RequestInit).headers as Record<string, string>)["If-Match"],
+			);
+		// The first save named the version read; the rest, the version the
+		// reload read.
+		expect(ifMatch).toEqual(['"7"', '"9"', '"9"']);
 	});
 
 	it("renders a refused save's findings at the fields their paths name", async () => {
@@ -998,7 +1328,9 @@ describe("policy editor", () => {
 		).toBeInTheDocument();
 	});
 
-	it("routes a refused dry run's findings to the row's fields", async () => {
+	it("routes a refused dry run's findings to the row's fields, and counts only the row's", async () => {
+		// One pass: the unresolvable peer and the out-of-range port come
+		// back together, beside a finding on another ruleset.
 		surface({
 			dryRun: () => ({
 				status: 400,
@@ -1006,9 +1338,21 @@ describe("policy editor", () => {
 					...problem("validation", 400),
 					errors: [
 						{
-							path: "rulesets[0].rules[4].peers[0].cidr",
-							rule: "cidr",
-							message: "not a valid CIDR",
+							path: "rulesets[0].rules[4].peers[0].address_group",
+							rule: "address-group-unknown",
+							message:
+								"rule references an address group that does not exist (corp-vpm)",
+						},
+						{
+							path: "rulesets[0].rules[4].entries[0].ports[0]",
+							rule: "port-range",
+							message:
+								"port range must satisfy start <= end <= 65535 (99999-99999)",
+						},
+						{
+							path: "rulesets[1].scope",
+							rule: "label-value",
+							message: "label value must be 1 to 63 letters",
 						},
 					],
 				},
@@ -1021,13 +1365,26 @@ describe("policy editor", () => {
 		const editing = await row("New rule");
 		await user.type(
 			within(editing).getByRole("textbox", { name: "Add a peer" }),
-			"10.0.0.0/40{Enter}",
+			"corp-vpm{Enter}",
+		);
+		await user.type(
+			within(editing).getByRole("textbox", { name: "Add a service" }),
+			"tcp/99999{Enter}",
 		);
 		await user.click(screen.getByRole("button", { name: "Dry run" }));
-		const finding = await within(editing).findByTestId("finding");
-		expect(finding).toHaveAttribute(
-			"data-path",
-			"rulesets[0].rules[4].peers[0].cidr",
+		await waitFor(() =>
+			expect(within(editing).getAllByTestId("finding")).toHaveLength(2),
+		);
+		expect(
+			within(editing)
+				.getAllByTestId("finding")
+				.map((f) => f.getAttribute("data-path")),
+		).toEqual([
+			"rulesets[0].rules[4].peers[0].address_group",
+			"rulesets[0].rules[4].entries[0].ports[0]",
+		]);
+		expect(screen.getByTestId("row-errors")).toHaveTextContent(
+			"2 errors block saving",
 		);
 		expect(
 			within(screen.getByRole("region", { name: "Dry run" })).getByRole(

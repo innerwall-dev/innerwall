@@ -222,8 +222,9 @@ func entryFromDoc(f *Findings, path string, d EntryDoc) ServiceEntry {
 	for i, spec := range d.Ports {
 		p, err := ParsePortSpec(spec)
 		if err != nil {
+			// The unreadable spec keeps its place, so every later port
+			// is admitted at its own index; the fault is at this one.
 			f.add(fmt.Sprintf("%s.ports[%d]", path, i), ErrBadPortSpec, spec)
-			continue
 		}
 		e.Ports = append(e.Ports, p)
 	}
@@ -262,9 +263,10 @@ func ResolveID(s string, byName map[string]uuid.UUID) (uuid.UUID, bool) {
 // DecodeRuleset parses a JSON document into a ruleset, resolving names.
 // It does not admit; admission does, with the store's view of what
 // exists. What the document itself gets wrong (an id that is not a UUID,
-// a name that resolves to nothing, a port that is not a number) is
-// reported as findings at the offending paths, the same shape admission
-// reports.
+// a name that resolves to nothing, a port that is not a number) travels
+// with the ruleset, and admission reports it at the offending path in the
+// same pass, and the same shape, as everything else it finds. The error
+// is only for a body that is not a ruleset document at all.
 func DecodeRuleset(data []byte, names Names) (*Ruleset, error) {
 	var doc RulesetDoc
 	dec := json.NewDecoder(strings.NewReader(string(data)))
@@ -272,12 +274,14 @@ func DecodeRuleset(data []byte, names Names) (*Ruleset, error) {
 	if err := dec.Decode(&doc); err != nil {
 		return nil, fmt.Errorf("policy: parsing ruleset document: %w", err)
 	}
-	return RulesetFromDoc(&doc, names)
+	return RulesetFromDoc(&doc, names), nil
 }
 
-// RulesetFromDoc converts a parsed document. The error, when there is
-// one, is a *Findings.
-func RulesetFromDoc(doc *RulesetDoc, names Names) (*Ruleset, error) {
+// RulesetFromDoc converts a parsed document. Every element of the
+// document has its place in the result, readable or not, so the paths
+// admission reports name the document's own elements; what could not be
+// read is carried to admission as faults (see DecodeRuleset).
+func RulesetFromDoc(doc *RulesetDoc, names Names) *Ruleset {
 	f := &Findings{}
 	rs := &Ruleset{Name: doc.Name, Description: doc.Description, Enabled: true, Scope: Selector(doc.Scope)}
 	if doc.Enabled != nil {
@@ -294,27 +298,16 @@ func RulesetFromDoc(doc *RulesetDoc, names Names) (*Ruleset, error) {
 		rs.Scope = Selector{}
 	}
 	for i := range doc.Rules {
-		rs.Rules = append(rs.Rules, ruleFromDoc(f, fmt.Sprintf("rules[%d]", i), &doc.Rules[i], names))
+		rs.Rules = append(rs.Rules, *RuleFromDoc(&doc.Rules[i], names))
 	}
-	if err := f.result(); err != nil {
-		return nil, err
-	}
-	return rs, nil
+	rs.faults = f.Errors
+	return rs
 }
 
-// RuleFromDoc converts one rule document, reporting findings relative to
-// the rule.
-func RuleFromDoc(doc *RuleDoc, names Names) (*Rule, error) {
+// RuleFromDoc converts one rule document; what could not be read is
+// carried to admission at paths relative to the rule.
+func RuleFromDoc(rd *RuleDoc, names Names) *Rule {
 	f := &Findings{}
-	r := ruleFromDoc(f, "", doc, names)
-	f.Rebase("")
-	if err := f.result(); err != nil {
-		return nil, err
-	}
-	return &r, nil
-}
-
-func ruleFromDoc(f *Findings, path string, rd *RuleDoc, names Names) Rule {
 	r := Rule{Description: rd.Description, Enabled: true}
 	if rd.Enabled != nil {
 		r.Enabled = *rd.Enabled
@@ -322,13 +315,13 @@ func ruleFromDoc(f *Findings, path string, rd *RuleDoc, names Names) Rule {
 	if rd.ID != "" {
 		id, err := uuid.Parse(rd.ID)
 		if err != nil {
-			f.add(join(path, "id"), ErrBadID, rd.ID)
+			f.add("id", ErrBadID, rd.ID)
 		}
 		r.ID = id
 	}
 	dir, err := ParseDirection(rd.Direction)
 	if err != nil {
-		f.add(join(path, "direction"), ErrBadDirection, rd.Direction)
+		f.add("direction", ErrBadDirection, rd.Direction)
 	}
 	r.Direction = dir
 	for j, pd := range rd.Peers {
@@ -339,7 +332,7 @@ func ruleFromDoc(f *Findings, path string, rd *RuleDoc, names Names) Rule {
 		case pd.AddressGroup != "":
 			id, ok := ResolveID(pd.AddressGroup, names.AddressGroupByName)
 			if !ok {
-				f.add(fmt.Sprintf("%s[%d].address_group", join(path, "peers"), j), ErrUnknownAddressGroup, pd.AddressGroup)
+				f.add(fmt.Sprintf("peers[%d].address_group", j), ErrUnknownAddressGroup, pd.AddressGroup)
 			}
 			p.Kind, p.AddressGroupID = PeerAddressGroup, id
 		case pd.CIDR != "":
@@ -350,14 +343,15 @@ func ruleFromDoc(f *Findings, path string, rd *RuleDoc, names Names) Rule {
 	for j, name := range rd.Services {
 		id, ok := ResolveID(name, names.ServiceByName)
 		if !ok {
-			f.add(fmt.Sprintf("%s[%d]", join(path, "services"), j), ErrUnknownService, name)
+			f.add(fmt.Sprintf("services[%d]", j), ErrUnknownService, name)
 		}
 		r.ServiceIDs = append(r.ServiceIDs, id)
 	}
 	for j, ed := range rd.Entries {
-		r.Entries = append(r.Entries, entryFromDoc(f, fmt.Sprintf("%s[%d]", join(path, "entries"), j), ed))
+		r.Entries = append(r.Entries, entryFromDoc(f, fmt.Sprintf("entries[%d]", j), ed))
 	}
-	return r
+	r.faults = f.Errors
+	return &r
 }
 
 // RulesetToDoc converts a ruleset to its document form, using names where

@@ -132,6 +132,16 @@ func expectFindings(t *testing.T, resp *reply, body map[string]any, paths ...str
 	}
 }
 
+// expectOnlyFindings is expectFindings that also holds the count: the
+// refusal carries a finding at each path and at no other, each once.
+func expectOnlyFindings(t *testing.T, resp *reply, body map[string]any, paths ...string) {
+	t.Helper()
+	expectFindings(t, resp, body, paths...)
+	if errs, _ := body["errors"].([]any); len(errs) != len(paths) {
+		t.Fatalf("findings %v, want exactly %v", errs, paths)
+	}
+}
+
 func TestWriteEndpointsRequireCredential(t *testing.T) {
 	s := newWriteSurface(t)
 	id := s.ruleset.ID.String()
@@ -255,13 +265,12 @@ func TestRulesetAndRuleEndpoints(t *testing.T) {
 		t.Fatalf("web-1 after create = %v", body["sync"])
 	}
 
-	// Validation: every finding at once, in the client's shape.
+	// Validation: every finding at once, in the client's shape. A name
+	// that resolves to nothing is reported beside the rest, never
+	// instead of it.
 	bad := map[string]any{"name": "", "scope": map[string][]string{}, "rules": []map[string]any{{"direction": "outbound", "peers": []map[string]any{{"cidr": "nope"}}, "services": []string{"missing"}}}}
 	resp, body = s.call(t, http.MethodPost, "/api/v1/rulesets", jsonBody(bad), nil)
-	expectFindings(t, resp, body, "rules[0].services[0]")
-	bad["rules"].([]map[string]any)[0]["services"] = []string{"postgres"}
-	resp, body = s.call(t, http.MethodPost, "/api/v1/rulesets", jsonBody(bad), nil)
-	expectFindings(t, resp, body, "name", "scope", "rules[0].direction", "rules[0].peers[0].cidr")
+	expectOnlyFindings(t, resp, body, "name", "scope", "rules[0].services[0]", "rules[0].direction", "rules[0].peers[0].cidr")
 	if r := field(body, "errors.0.rule"); r != "name-required" {
 		t.Fatalf("finding rule = %v", r)
 	}
@@ -285,6 +294,10 @@ func TestRulesetAndRuleEndpoints(t *testing.T) {
 	ruleID, ruleTag := body["id"].(string), resp.header.Get("ETag")
 	resp, body = s.call(t, http.MethodPost, rulePath, jsonBody(map[string]any{"direction": "inbound", "peers": []map[string]any{}, "entries": []map[string]any{{"protocol": "icmp", "ports": []string{"1"}}}}), nil)
 	expectFindings(t, resp, body, "peers", "entries[0].ports")
+	// An unresolvable peer and an out-of-range port are both refused in
+	// the one response.
+	resp, body = s.call(t, http.MethodPost, rulePath, jsonBody(map[string]any{"direction": "inbound", "peers": []map[string]any{{"address_group": "10.0.0.999/8!!"}}, "entries": []map[string]any{{"protocol": "tcp", "ports": []string{"99999"}}}}), nil)
+	expectOnlyFindings(t, resp, body, "peers[0].address_group", "entries[0].ports[0]")
 	resp, body = s.call(t, http.MethodGet, rulePath+"/"+ruleID, "", nil)
 	if resp.status != http.StatusOK || resp.header.Get("ETag") != ruleTag || body["description"] != "ssh" {
 		t.Fatalf("rule get: %d %v", resp.status, body)
@@ -509,10 +522,10 @@ func TestPreviewAndDryRunEndpoints(t *testing.T) {
 		t.Fatalf("stale dry run: %d %v", resp.status, body)
 	}
 	// Admission on the hypothetical set, with document faults and
-	// admission faults both under rulesets[i].
+	// admission faults both under rulesets[i], in one response.
 	broken := []any{current, map[string]any{"name": "x", "scope": map[string][]string{"role": {"web"}}, "rules": []map[string]any{{"direction": "sideways", "peers": []map[string]any{{"cidr": "nope"}}, "services": []string{"missing"}}}}}
 	resp, body = s.call(t, http.MethodPost, "/api/v1/policies/render-dryrun", jsonBody(map[string]any{"rulesets": broken}), nil)
-	expectFindings(t, resp, body, "rulesets[1].rules[0].direction", "rulesets[1].rules[0].services[0]")
+	expectOnlyFindings(t, resp, body, "rulesets[1].rules[0].direction", "rulesets[1].rules[0].services[0]", "rulesets[1].rules[0].peers[0].cidr")
 	broken[1].(map[string]any)["rules"].([]map[string]any)[0]["direction"] = "inbound"
 	broken[1].(map[string]any)["rules"].([]map[string]any)[0]["services"] = []string{"postgres"}
 	resp, body = s.call(t, http.MethodPost, "/api/v1/policies/render-dryrun", jsonBody(map[string]any{"rulesets": broken}), nil)

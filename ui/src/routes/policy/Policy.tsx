@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import type { Ruleset } from "@/api/schema";
 import { EmptyState } from "@/components/EmptyState";
@@ -6,7 +6,7 @@ import { LoadingRow, ProblemNotice } from "@/components/Problem";
 import { Button } from "@/components/ui/button";
 import { useResource } from "@/lib/resource";
 import { useShell } from "@/shell/Shell";
-import { loadEditor } from "./data";
+import { type EditorData, loadEditor } from "./data";
 import { NewRuleset } from "./NewRuleset";
 import { Rail } from "./Rail";
 import { RulesetEditor } from "./RulesetEditor";
@@ -24,9 +24,23 @@ export function Policy() {
 	const shell = useShell();
 	const { resource, reload } = useResource(loadEditor, []);
 	const data = resource.status === "ready" ? resource.data : null;
+	// A ruleset renamed here is followed by its id: the listing read
+	// before the rename still holds the old name, and the one read after
+	// it the new, which the address then moves to. Navigating elsewhere
+	// first stops following it.
+	const [following, setFollowing] = useState<{
+		id: string;
+		from: string | null;
+		listing: EditorData;
+	} | null>(null);
+	const followed =
+		following && data && data !== following.listing && name === following.from
+			? data.rulesets.find((rs) => rs.id === following.id)
+			: undefined;
 	const current: Ruleset | null =
 		data && !creating
-			? (data.rulesets.find((rs) => rs.name === name) ??
+			? (followed ??
+				data.rulesets.find((rs) => rs.name === name) ??
 				data.rulesets[0] ??
 				null)
 			: null;
@@ -36,8 +50,13 @@ export function Policy() {
 	useEffect(() => {
 		if (current && current.name !== name) {
 			setParams({ ruleset: current.name }, { replace: true });
+		} else if (
+			following &&
+			(name !== following.from || data !== following.listing)
+		) {
+			setFollowing(null);
 		}
-	}, [current, name, setParams]);
+	}, [current, name, setParams, following, data]);
 
 	return (
 		<div className="flex min-h-0 flex-1">
@@ -73,6 +92,11 @@ export function Policy() {
 						ruleset={current}
 						reload={reload}
 						onChanged={shell.policyChanged}
+						onRenamed={(saved) => {
+							if (data && saved.id) {
+								setFollowing({ id: saved.id, from: name, listing: data });
+							}
+						}}
 					/>
 				) : (
 					<FirstRuleset />

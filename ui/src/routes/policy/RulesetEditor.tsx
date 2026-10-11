@@ -18,15 +18,18 @@ import {
 import { Icon } from "@/components/Icon";
 import { SeverityNote, StatusGlyph } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useResource, useWrite } from "@/lib/resource";
 import { cn } from "@/lib/utils";
+import { FindingLines } from "./Chips";
 import { DryRunCard, type DryRunState } from "./DryRunCard";
 import { type EditorData, loadTraffic } from "./data";
 import { useScopeMatch } from "./hooks";
 import {
 	attachFindings,
 	bannerText,
+	combinedSave,
 	draftInput,
 	draftOf,
 	freshness,
@@ -44,7 +47,7 @@ import {
 	servicesCell,
 	shortRuleId,
 } from "./model";
-import { type RowState, RulesCard } from "./RulesTable";
+import { type RowState, RulesCard, saveKey } from "./RulesTable";
 import { ScopeCard } from "./ScopeCard";
 
 // A notice is the outcome of a write, said where the write was made: a
@@ -63,19 +66,22 @@ const problemText = (p: ProblemError) =>
 	p.problem.detail ||
 	p.problem.title;
 
-// RulesetEditor is one ruleset, edited live: its header with the
-// enabled switch, the immediate-effect statement, the scope with what it
-// matches now, the rules, and the dry run of whatever is unsaved.
+// RulesetEditor is one ruleset, edited live: its header with its name,
+// description, and enabled switch, the immediate-effect statement, the
+// scope with what it matches now, the rules, and the dry run of whatever
+// is unsaved.
 export function RulesetEditor({
 	data,
 	ruleset,
 	reload,
 	onChanged,
+	onRenamed,
 }: {
 	data: EditorData;
 	ruleset: Ruleset;
 	reload: () => void;
 	onChanged: () => void;
+	onRenamed: (saved: Ruleset) => void;
 }) {
 	const write = useWrite();
 	const names = useMemo(
@@ -85,6 +91,13 @@ export function RulesetEditor({
 	const id = ruleset.id ?? "";
 	const enabled = ruleset.enabled !== false;
 
+	// The name and description being edited, and a refused save's
+	// findings on them; null when the header is not being edited.
+	const [about, setAbout] = useState<{
+		name: string;
+		description: string;
+	} | null>(null);
+	const [aboutRefused, setAboutRefused] = useState<Finding[]>([]);
 	const [scopeDraft, setScopeDraft] = useState<Selector | null>(null);
 	const [scopeRefused, setScopeRefused] = useState<Finding[]>([]);
 	const [row, setRow] = useState<RowState | null>(null);
@@ -200,6 +213,68 @@ export function RulesetEditor({
 		}
 	}
 
+	// saveAbout writes the name and description, conditioned on the
+	// ruleset's version exactly as a scope save is: a ruleset that moved
+	// since it was read is refused with its current version, and the
+	// edit is kept to reapply on top of what is stored now.
+	async function saveAbout() {
+		if (!about) return;
+		setBusy(true);
+		setHeadNotice(null);
+		setAboutRefused([]);
+		try {
+			const saved = await write(() =>
+				putRuleset(ruleset, {
+					name: about.name,
+					description: about.description,
+				}),
+			);
+			setAbout(null);
+			const renamed = saved.name !== ruleset.name;
+			setHeadNotice({
+				tone: "ok",
+				text: renamed
+					? `Renamed ${ruleset.name} to ${saved.name}. Its id, scope, and rules are unchanged, and no workload's policy changes.`
+					: `Saved the description of ${saved.name}. No workload's policy changes.`,
+			});
+			reload();
+			onChanged();
+			if (renamed) onRenamed(saved);
+		} catch (err) {
+			const p = err as ProblemError;
+			if (p.type === ProblemType.validation) {
+				setAboutRefused(p.problem.errors ?? []);
+			} else if (p.type === ProblemType.duplicateName) {
+				setAboutRefused([
+					{
+						path: "name",
+						rule: "name-duplicate",
+						message: `Another ruleset is already named ${about.name}; nothing was changed.`,
+					},
+				]);
+			} else if (p.type === ProblemType.preconditionFailed) {
+				setHeadNotice(
+					conflict(ruleset.name, p, {
+						label: "Reload and reapply",
+						run: () => {
+							// The edit is kept; it goes on top of what is
+							// stored now.
+							reload();
+							setHeadNotice({
+								tone: "conflict",
+								text: "Reloaded: your name and description edit is kept on top of the ruleset as stored now. Save to apply it.",
+							});
+						},
+					}),
+				);
+			} else {
+				setHeadNotice({ tone: "failed", text: problemText(p) });
+			}
+		} finally {
+			setBusy(false);
+		}
+	}
+
 	async function saveScope() {
 		if (!scopeDraft) return;
 		setBusy(true);
@@ -281,6 +356,10 @@ export function RulesetEditor({
 
 	async function saveRow() {
 		if (!row) return;
+		if (edited && scopeDraft) {
+			await saveBoth(row, scopeDraft);
+			return;
+		}
 		const d = row.draft;
 		const input = draftInput(d);
 		setSaving(true);
@@ -301,7 +380,7 @@ export function RulesetEditor({
 				setRow({
 					...row,
 					findings: attachFindings(d, p.problem.errors ?? []),
-					refused: JSON.stringify(input),
+					refused: saveKey(d),
 				});
 			} else if (p.type === ProblemType.preconditionFailed && d.base) {
 				const ruleId = d.base.id ?? "";
@@ -319,6 +398,97 @@ export function RulesetEditor({
 			}
 		} finally {
 			setSaving(false);
+		}
+	}
+
+	// saveBoth writes a pending scope edit and the row as one write of the
+	// ruleset, conditioned on its version: the combination a dry run
+	// previews lands at once, or nothing does. Saving the rule first would
+	// apply it under the scope as saved, a state never previewed.
+	async function saveBoth(current: RowState, scope: Selector) {
+		const d = current.draft;
+		// The row is written as part of the ruleset as read now, so a rule
+		// that moved, or went, since the row opened is a conflict here
+		// rather than overwritten or brought back.
+		const stored = d.base
+			? ruleset.rules.find((r) => r.id === d.base?.id)
+			: undefined;
+		if (d.base && stored?.version !== d.base.version) {
+			const ruleId = d.base.id ?? "";
+			setRulesNotice({
+				tone: "conflict",
+				text: (
+					<>
+						<span className="font-mono">{ruleLabel(d.base)}</span> changed since
+						this row opened
+						{stored ? (
+							<>
+								{" "}
+								· it is now at version{" "}
+								<span className="font-mono">{stored.version}</span>
+							</>
+						) : (
+							" · it no longer exists"
+						)}
+						; nothing was changed.
+					</>
+				),
+				action: {
+					label: "Reload and reapply",
+					run: () => {
+						setReapply({ rule: ruleId, at: data.stateVersion });
+						reload();
+					},
+				},
+			});
+			return;
+		}
+		const { change, index } = combinedSave(ruleset, scope, d);
+		setSaving(true);
+		setBusy(true);
+		setRulesNotice(null);
+		setHeadNotice(null);
+		setScopeRefused([]);
+		try {
+			const saved = await write(() => putRuleset(ruleset, change));
+			const rule = saved.rules[index];
+			setRow(null);
+			setScopeDraft(null);
+			setRulesNotice({
+				tone: "ok",
+				text: `Saved the scope of ${saved.name} and ${rule ? ruleLabel(rule) : "the rule"} in one write, at version ${saved.version}. The workloads the scope now selects take both as each agent applies its next version.`,
+			});
+			reload();
+		} catch (err) {
+			const p = err as ProblemError;
+			if (p.type === ProblemType.validation) {
+				const findings = p.problem.errors ?? [];
+				setRow({
+					...current,
+					findings: attachFindings(d, findings, `rules[${index}]`),
+					refused: saveKey(d, scope),
+				});
+				setScopeRefused(findings.filter((f) => f.path.startsWith("scope")));
+			} else if (p.type === ProblemType.preconditionFailed) {
+				setRulesNotice(
+					conflict(ruleset.name, p, {
+						label: "Reload and reapply",
+						run: () => {
+							// Both edits are kept: the scope as it is, the row on
+							// top of its rule as stored now.
+							if (d.base) {
+								setReapply({ rule: d.base.id ?? "", at: data.stateVersion });
+							}
+							reload();
+						},
+					}),
+				);
+			} else {
+				setRulesNotice({ tone: "failed", text: problemText(p) });
+			}
+		} finally {
+			setSaving(false);
+			setBusy(false);
 		}
 	}
 
@@ -399,11 +569,58 @@ export function RulesetEditor({
 	const draftCount =
 		draft.match?.status === "ready" ? draft.match.data.count : null;
 
+	const aboutAt = (path: string) => aboutRefused.filter((f) => f.path === path);
+	const aboutRest = aboutRefused.filter(
+		(f) => f.path !== "name" && f.path !== "description",
+	);
+	const aboutUnchanged =
+		about !== null &&
+		about.name === ruleset.name &&
+		about.description === (ruleset.description ?? "");
+
 	return (
 		<>
 			<header className="flex flex-col gap-1.5">
 				<div className="flex flex-wrap items-center gap-x-8 gap-y-2">
-					<h1 className="type-title-page font-mono">{ruleset.name}</h1>
+					{about ? (
+						<div className="flex flex-col gap-1">
+							<input
+								aria-label="Ruleset name"
+								placeholder="ruleset name"
+								value={about.name}
+								onChange={(ev) => {
+									setAboutRefused((f) => f.filter((x) => x.path !== "name"));
+									setAbout({ ...about, name: ev.target.value });
+								}}
+								className={cn(
+									"h-control-lg w-[320px] rounded-md border bg-app px-3 type-title-section font-mono text-primary placeholder:font-normal placeholder:text-tertiary",
+									aboutAt("name").length > 0
+										? "border-status-critical-fg"
+										: "border-strong",
+								)}
+							/>
+							<FindingLines findings={aboutAt("name")} />
+						</div>
+					) : (
+						<span className="flex items-baseline gap-3">
+							<h1 className="type-title-page font-mono">{ruleset.name}</h1>
+							<button
+								type="button"
+								onClick={() => {
+									setHeadNotice(null);
+									setAboutRefused([]);
+									setAbout({
+										name: ruleset.name,
+										description: ruleset.description ?? "",
+									});
+								}}
+								className="cursor-pointer type-caption text-link hover:underline"
+								aria-label="Edit name and description"
+							>
+								Edit
+							</button>
+						</span>
+					)}
 					<span className="flex items-center gap-2 type-ui text-secondary">
 						<Switch
 							size="header"
@@ -422,7 +639,48 @@ export function RulesetEditor({
 						</Link>
 					</Button>
 				</div>
-				{ruleset.description ? (
+				{about ? (
+					<div className="flex flex-col gap-2">
+						<Input
+							aria-label="Ruleset description"
+							placeholder="What this ruleset protects, in a sentence"
+							value={about.description}
+							onChange={(ev) => {
+								setAboutRefused((f) =>
+									f.filter((x) => x.path !== "description"),
+								);
+								setAbout({ ...about, description: ev.target.value });
+							}}
+							className="max-w-[640px]"
+						/>
+						<FindingLines findings={aboutAt("description")} />
+						<FindingLines findings={aboutRest} />
+						<div className="flex flex-wrap items-center gap-2">
+							<span className="type-caption text-tertiary">
+								A rename changes the name links and the command line use; the
+								ruleset's id, scope, and rules stay, and no workload's policy
+								changes.
+							</span>
+							<Button
+								variant="secondary"
+								className="ml-auto"
+								disabled={busy}
+								onClick={() => {
+									setAbout(null);
+									setAboutRefused([]);
+								}}
+							>
+								Cancel
+							</Button>
+							<Button
+								disabled={busy || aboutUnchanged}
+								onClick={() => void saveAbout()}
+							>
+								Save name and description
+							</Button>
+						</div>
+					</div>
+				) : ruleset.description ? (
 					<p className="type-ui text-secondary">{ruleset.description}</p>
 				) : null}
 			</header>
@@ -433,7 +691,14 @@ export function RulesetEditor({
 				data-testid="banner"
 			>
 				<Icon name="info" className="mt-0.5" />
-				<span>{bannerText({ enabled, count: inScope, mix })}</span>
+				<span>
+					{bannerText({
+						enabled,
+						count: inScope,
+						mix,
+						bothPending: edited && row !== null,
+					})}
+				</span>
 			</div>
 			<ScopeCard
 				scope={scopeShown}
@@ -480,6 +745,9 @@ export function RulesetEditor({
 				busy={busy}
 				notice={rulesNotice ? <NoticeLine notice={rulesNotice} inset /> : null}
 				inScope={inScope}
+				pendingScope={
+					edited && scopeDraft ? { scope: scopeDraft, count: draftCount } : null
+				}
 				saving={saving}
 				onToggle={(r, on) => void toggleRule(r, on)}
 				onEdit={(r) => editRule(r)}

@@ -5,7 +5,10 @@ import { cn } from "@/lib/utils";
 // The design's dialog: the scrim behind a raised panel on the default
 // hairline at the dialog radius, flat (no shadow), and header, body,
 // and footer bands. Focus is held in the dialog while it is open and Escape
-// closes it.
+// closes it. On a viewport too short for the whole panel, only the body
+// scrolls: the header and the footer's actions stay in view, so no part
+// of an action is ever clipped out of the panel, where a click on it
+// would land on the page beneath the scrim and dismiss the dialog.
 export const Dialog = DialogPrimitive.Root;
 
 export function DialogContent({
@@ -22,7 +25,7 @@ export function DialogContent({
 					data-slot="dialog-content"
 					aria-describedby={undefined}
 					className={cn(
-						"pointer-events-auto flex max-h-[88vh] flex-col overflow-auto rounded-xl border border-default bg-raised text-primary outline-none",
+						"pointer-events-auto flex max-h-[88vh] flex-col overflow-hidden rounded-xl border border-default bg-raised text-primary outline-none",
 						className,
 					)}
 					style={{ width }}
@@ -43,7 +46,7 @@ export function DialogHeader({
 	children?: React.ReactNode;
 }) {
 	return (
-		<div className="flex flex-col gap-1 px-6 pt-5 pb-3">
+		<div className="flex shrink-0 flex-col gap-1 px-6 pt-5 pb-3">
 			<DialogPrimitive.Title className="type-title-section">
 				{title}
 			</DialogPrimitive.Title>
@@ -58,7 +61,10 @@ export function DialogBody({
 }: React.ComponentProps<"div">) {
 	return (
 		<div
-			className={cn("flex flex-col gap-4 px-6 pb-5 type-body", className)}
+			className={cn(
+				"flex min-h-0 flex-col gap-4 overflow-auto px-6 pb-5 type-body [&>*]:shrink-0",
+				className,
+			)}
 			{...props}
 		/>
 	);
@@ -71,7 +77,7 @@ export function DialogFooter({
 	return (
 		<div
 			className={cn(
-				"flex items-center justify-end gap-2 border-t border-default px-6 py-4",
+				"flex shrink-0 items-center justify-end gap-2 border-t border-default px-6 py-4",
 				className,
 			)}
 			{...props}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router";
 import type { ProblemError } from "@/api/client";
 import { createModeChange } from "@/api/fleet";
@@ -74,6 +74,11 @@ export function PromoteDialog({
 	const write = useWrite();
 	const [optedIn, setOptedIn] = useState<ReadonlySet<string>>(new Set());
 	const [acknowledged, setAcknowledged] = useState(false);
+	// The operator tried to confirm before acknowledging: the
+	// acknowledgment says what it is waiting for and takes the focus.
+	const [nudged, setNudged] = useState(false);
+	const ackRef = useRef<HTMLInputElement>(null);
+	const ackHintId = useId();
 	const [submitting, setSubmitting] = useState(false);
 	const [problem, setProblem] = useState<ProblemError | null>(null);
 	// A fresh preview is in flight: the set on screen is the old one, and
@@ -86,6 +91,7 @@ export function PromoteDialog({
 		if (open) {
 			setOptedIn(new Set());
 			setAcknowledged(false);
+			setNudged(false);
 			setProblem(null);
 		}
 	}, [open]);
@@ -106,6 +112,16 @@ export function PromoteDialog({
 	const incomplete = verdict.failing.some((c) => c.id === "evidence-gaps");
 
 	async function submit() {
+		// The confirm is never a disabled control, whose click a browser
+		// may hand to whatever lies under it: a click the dialog cannot act
+		// on stays here, changes nothing, and keeps the dialog open.
+		if (!canSubmit) {
+			if (awaitingAck) {
+				setNudged(true);
+				ackRef.current?.focus();
+			}
+			return;
+		}
 		setSubmitting(true);
 		setProblem(null);
 		try {
@@ -136,13 +152,14 @@ export function PromoteDialog({
 			? problem.problem
 			: null;
 	const blocked = mismatch !== null || gone !== null;
+	const awaitingAck = !verdict.safe && !acknowledged;
 	const canSubmit =
 		ready !== null &&
 		!previewing &&
 		ids.length > 0 &&
 		!submitting &&
 		!blocked &&
-		(verdict.safe || acknowledged);
+		!awaitingAck;
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
@@ -223,19 +240,41 @@ export function PromoteDialog({
 						applied the new version. Rollback is the same action in reverse.
 					</p>
 					{!verdict.safe ? (
-						<label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-default bg-subtle px-3 py-2.5 type-ui text-primary">
-							<input
-								type="checkbox"
-								checked={acknowledged}
-								onChange={(ev) => setAcknowledged(ev.target.checked)}
-								className="mt-[3px] size-3.5 shrink-0"
-							/>
-							<span>
-								{k.pairs > 0
-									? `I understand ${count(k.pairs)} peer/service ${k.pairs === 1 ? "pair" : "pairs"} (${count(k.connections)} connections) will be dropped${incomplete ? ", and that the evidence for this range is incomplete" : ""}`
-									: "I understand this scope is not safe to enforce yet"}
-							</span>
-						</label>
+						<div className="flex flex-col gap-1.5">
+							<label
+								className={cn(
+									"flex cursor-pointer items-start gap-2.5 rounded-lg border bg-subtle px-3 py-2.5 type-ui text-primary",
+									nudged && !acknowledged
+										? "border-status-warn-border"
+										: "border-default",
+								)}
+							>
+								<input
+									ref={ackRef}
+									type="checkbox"
+									checked={acknowledged}
+									onChange={(ev) => {
+										setAcknowledged(ev.target.checked);
+										setNudged(false);
+									}}
+									aria-describedby={nudged ? ackHintId : undefined}
+									className="mt-[3px] size-3.5 shrink-0"
+								/>
+								<span>
+									{k.pairs > 0
+										? `I understand ${count(k.pairs)} peer/service ${k.pairs === 1 ? "pair" : "pairs"} (${count(k.connections)} connections) will be dropped${incomplete ? ", and that the evidence for this range is incomplete" : ""}`
+										: "I understand this scope is not safe to enforce yet"}
+								</span>
+							</label>
+							{nudged && !acknowledged ? (
+								<div id={ackHintId} role="status">
+									<SeverityNote level="alert" className="type-caption">
+										Nothing was enforced. Check the acknowledgment above to
+										enforce anyway.
+									</SeverityNote>
+								</div>
+							) : null}
+						</div>
 					) : null}
 					{mismatch ? (
 						<StaleSet
@@ -268,7 +307,16 @@ export function PromoteDialog({
 					<DialogClose asChild>
 						<Button variant="secondary">Cancel</Button>
 					</DialogClose>
-					<Button variant="primary" disabled={!canSubmit} onClick={submit}>
+					<Button
+						variant="primary"
+						aria-disabled={!canSubmit || undefined}
+						className={
+							canSubmit
+								? undefined
+								: "opacity-disabled hover:border-action-primary-bg hover:bg-action-primary-bg"
+						}
+						onClick={submit}
+					>
 						{submitting
 							? "Enforcing…"
 							: `${verdict.safe ? "Enforce" : "Enforce anyway"} on ${count(ids.length)} ${ids.length === 1 ? "workload" : "workloads"}`}

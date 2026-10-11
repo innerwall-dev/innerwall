@@ -210,26 +210,14 @@ type dryRunInput struct {
 	Rulesets     []policy.RulesetDoc `json:"rulesets"`
 }
 
-// request converts every ruleset document, collecting document faults
-// under rulesets[i].
-func (in *dryRunInput) request(names policy.Names) (fleet.DryRunRequest, error) {
+// request converts every ruleset document; each one's document faults
+// travel with it to the dry run's admission.
+func (in *dryRunInput) request(names policy.Names) fleet.DryRunRequest {
 	req := fleet.DryRunRequest{StateVersion: in.StateVersion}
-	f := &policy.Findings{}
 	for i := range in.Rulesets {
-		rs, err := policy.RulesetFromDoc(&in.Rulesets[i], names)
-		if err != nil {
-			for _, fe := range policy.AsFindings(err).Errors {
-				fe.Path = fmt.Sprintf("rulesets[%d].%s", i, fe.Path)
-				f.Errors = append(f.Errors, fe)
-			}
-			continue
-		}
-		req.Rulesets = append(req.Rulesets, *rs)
+		req.Rulesets = append(req.Rulesets, *policy.RulesetFromDoc(&in.Rulesets[i], names))
 	}
-	if len(f.Errors) > 0 {
-		return req, f
-	}
-	return req, nil
+	return req
 }
 
 type renderedRuleDeltaJSON struct {

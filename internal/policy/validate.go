@@ -112,6 +112,12 @@ func (e *ValidationError) Message() string {
 // that needs attention; errors.Is and errors.As see through to each one.
 type Findings struct {
 	Errors []*ValidationError
+
+	// faulted are the paths a document fault was carried at. Admission
+	// adds nothing more at one of them: what it would say there (an
+	// unknown reference, a missing direction) restates the fault about
+	// the value the document could not supply.
+	faulted map[string]struct{}
 }
 
 func (f *Findings) Error() string {
@@ -132,7 +138,23 @@ func (f *Findings) Unwrap() []error {
 }
 
 func (f *Findings) add(path string, err error, detail string) {
+	if _, ok := f.faulted[path]; ok {
+		return
+	}
 	f.Errors = append(f.Errors, &ValidationError{Path: path, Err: err, Detail: detail})
+}
+
+// carry adds the document faults an object was converted with, under
+// path, ahead of admission's own findings about it.
+func (f *Findings) carry(path string, faults []*ValidationError) {
+	for _, e := range faults {
+		at := join(path, e.Path)
+		if f.faulted == nil {
+			f.faulted = map[string]struct{}{}
+		}
+		f.faulted[at] = struct{}{}
+		f.Errors = append(f.Errors, &ValidationError{Path: at, Err: e.Err, Detail: e.Detail})
+	}
 }
 
 // result is nil when nothing was found, so a validator returns a plain
@@ -211,9 +233,13 @@ func ValidateAddressGroup(g *AddressGroup) error {
 // (never empty), peers (well-formed, references resolve), services
 // (references resolve, ranges valid), rule ids (distinct). It checks
 // everything it can about a ruleset in isolation plus the references it
-// is given; uniqueness of the name is the store's constraint.
+// is given; uniqueness of the name is the store's constraint. A ruleset
+// converted from a document carries what the conversion could not read,
+// and those faults are reported here in the same pass as everything
+// else, so a name that resolves to nothing never hides a bad port range.
 func ValidateRuleset(rs *Ruleset, refs References) error {
 	f := &Findings{}
+	f.carry("", rs.faults)
 	if rs.Name == "" {
 		f.add("name", ErrEmptyName, "")
 	}
@@ -258,6 +284,7 @@ func join(path, field string) string {
 }
 
 func validateRule(f *Findings, path string, r *Rule, refs References) {
+	f.carry(path, r.faults)
 	switch r.Direction {
 	case innerwallv1.Direction_DIRECTION_INBOUND:
 	case innerwallv1.Direction_DIRECTION_OUTBOUND:

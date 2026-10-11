@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { Rule } from "@/api/schema";
+import type { Rule, Selector } from "@/api/schema";
 import { Eyebrow, verdicts } from "@/components/fleet/status";
 import { Icon } from "@/components/Icon";
 import { SeverityNote, StatusGlyph } from "@/components/StatusGlyph";
@@ -28,21 +28,36 @@ import {
 } from "./model";
 
 // RowState is the one row being edited: its draft, the findings of the
-// last refused write attached to what they name, and the draft as it was
-// refused, so saving the identical draft again is not offered.
+// last refused write attached to what they name, and the write as it was
+// refused (see saveKey), so saving the identical write again is not
+// offered.
 export interface RowState {
 	draft: RuleDraft;
 	findings: Attached;
 	refused: string | null;
 }
 
+// saveKey names the write the row's save makes: the row alone, or the
+// row with the unsaved scope it is saved together with.
+export function saveKey(d: RuleDraft, scope: Selector | null = null): string {
+	return JSON.stringify(scope ? [draftInput(d), scope] : draftInput(d));
+}
+
 // rowBlocked says whether saving is pointless as the row stands: the
-// draft is the one just refused, unchanged.
-export function rowBlocked(row: RowState): boolean {
-	return (
-		row.refused !== null &&
-		row.refused === JSON.stringify(draftInput(row.draft))
-	);
+// write is the one just refused, unchanged.
+export function rowBlocked(
+	row: RowState,
+	scope: Selector | null = null,
+): boolean {
+	return row.refused !== null && row.refused === saveKey(row.draft, scope);
+}
+
+// PendingScope is an unsaved scope edit beside the row: the row's save
+// then writes the two together, to the workloads the edited scope
+// matches.
+export interface PendingScope {
+	scope: Selector;
+	count: number | null;
 }
 
 // A cell's padding: the table's outer columns carry the card's inset.
@@ -61,6 +76,7 @@ export function RulesCard({
 	busy,
 	notice,
 	inScope,
+	pendingScope,
 	saving,
 	onToggle,
 	onEdit,
@@ -77,6 +93,7 @@ export function RulesCard({
 	busy: boolean;
 	notice: ReactNode;
 	inScope: number | null;
+	pendingScope: PendingScope | null;
 	saving: boolean;
 	onToggle: (rule: Rule, on: boolean) => void;
 	onEdit: (rule: Rule) => void;
@@ -165,6 +182,7 @@ export function RulesCard({
 				<Footer
 					row={row}
 					inScope={inScope}
+					pendingScope={pendingScope}
 					saving={saving}
 					onDiscard={onDiscard}
 					onSave={onSave}
@@ -493,11 +511,15 @@ function EditRow({
 
 // Footer is the edited row's actions: discard it, dry-run it, or save it
 // now. Saving writes immediately; the button says to how many
-// workloads. Nothing here gates a save on a dry run: the control plane
-// admits or refuses the write.
+// workloads. With a scope edit also unsaved, the save is of both in one
+// write, and the footer says why: the rule saved on its own would land
+// under the scope as saved, a state no dry run here previewed. Nothing
+// here gates a save on a dry run: the control plane admits or refuses
+// the write.
 function Footer({
 	row,
 	inScope,
+	pendingScope,
 	saving,
 	onDiscard,
 	onSave,
@@ -505,15 +527,30 @@ function Footer({
 }: {
 	row: RowState;
 	inScope: number | null;
+	pendingScope: PendingScope | null;
 	saving: boolean;
 	onDiscard: () => void;
 	onSave: () => void;
 	onDryRun: () => void;
 }) {
 	const errors = outstanding(row.draft, row.findings);
-	const blocked = rowBlocked(row);
+	const blocked = rowBlocked(row, pendingScope?.scope ?? null);
+	const n = (x: number) => `${count(x)} ${x === 1 ? "workload" : "workloads"}`;
+	const target = pendingScope ? pendingScope.count : inScope;
+	const what = pendingScope ? "Save rule and scope" : "Save";
 	return (
 		<div className="flex flex-wrap items-center gap-3 border-t border-default px-4 py-3">
+			{pendingScope ? (
+				<p data-testid="pending-scope" className="basis-full">
+					<SeverityNote level="alert" className="type-ui">
+						The scope edit above is unsaved too. Saved on its own, this rule
+						would apply at once to the{" "}
+						{inScope === null ? "workloads" : n(inScope)} the saved scope
+						matches, which no dry run here previews; saving writes the scope and
+						the rule together, as the dry run shows them.
+					</SeverityNote>
+				</p>
+			) : null}
 			<span data-testid="row-errors">
 				{errors > 0 ? (
 					<SeverityNote level="error" className="type-ui-strong">
@@ -534,9 +571,9 @@ function Footer({
 					disabled={saving || blocked}
 					className={blocked ? "text-tertiary" : undefined}
 				>
-					{inScope === null
-						? "Save — applies now"
-						: `Save — applies to ${count(inScope)} ${inScope === 1 ? "workload" : "workloads"} now`}
+					{target === null
+						? `${what} — applies now`
+						: `${what} — applies to ${n(target)} now`}
 				</Button>
 			</div>
 		</div>

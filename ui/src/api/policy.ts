@@ -88,10 +88,11 @@ export function createRule(rulesetId: string, rule: RuleInput): Promise<Rule> {
 }
 
 // putRuleset replaces a ruleset and its rules, conditioned on the
-// ruleset's version as read; the rules go back as they were read.
+// ruleset's version as read; the rules go back as they were read unless
+// the change carries them.
 export function putRuleset(
 	ruleset: Ruleset,
-	change: Partial<Omit<RulesetInput, "rules">>,
+	change: Partial<RulesetInput>,
 ): Promise<Ruleset> {
 	return request(
 		"PUT",
