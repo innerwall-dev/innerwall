@@ -386,6 +386,19 @@ func workloadsPageJSON(p *readmodel.WorkloadsPage) workloadsResponse {
 	return out
 }
 
+type workloadCountsResponse struct {
+	Total       int64            `json:"total"`
+	BySyncState map[string]int64 `json:"by_sync_state"`
+}
+
+func workloadCountsJSON(c *readmodel.WorkloadCounts) workloadCountsResponse {
+	out := workloadCountsResponse{Total: c.Total, BySyncState: make(map[string]int64, len(c.BySync))}
+	for st, n := range c.BySync {
+		out.BySyncState[readmodel.SyncStateName(st)] = n
+	}
+	return out
+}
+
 // --- rendered policy -------------------------------------------------------
 
 type portRangeJSON struct {

@@ -191,3 +191,11 @@ ORDER BY workload_id, address;
 SELECT * FROM workload_listening_services
 WHERE workload_id = ANY(sqlc.arg(workload_ids)::uuid[])
 ORDER BY workload_id, protocol, port;
+
+-- How many workloads hold each sync state, in one statement so the
+-- counts agree with each other. A state no workload holds has no row.
+-- name: CountWorkloadsBySyncState :many
+SELECT sync_state, count(*)::bigint AS workloads
+FROM workloads
+GROUP BY sync_state
+ORDER BY sync_state;

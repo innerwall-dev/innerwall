@@ -289,6 +289,26 @@ func TestWorkloadsAndPolicy(t *testing.T) {
 	}
 }
 
+// TestCountWorkloads checks the fleet counts: every state present, zero
+// included, the total their sum, and a stored state outside the four
+// refused rather than left out of the total.
+func TestCountWorkloads(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture()
+	c, err := f.reader.CountWorkloads(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Total != 2 || len(c.BySync) != 4 || c.BySync[innerwallv1.SyncState_SYNC_STATE_DEGRADED] != 1 || c.BySync[innerwallv1.SyncState_SYNC_STATE_SYNCED] != 1 ||
+		c.BySync[innerwallv1.SyncState_SYNC_STATE_PENDING] != 0 || c.BySync[innerwallv1.SyncState_SYNC_STATE_OFFLINE] != 0 {
+		t.Fatalf("counts = %+v", c)
+	}
+	f.store.Workloads[0].SyncState = innerwallv1.SyncState_SYNC_STATE_UNSPECIFIED
+	if _, err := f.reader.CountWorkloads(ctx); err == nil {
+		t.Fatal("a workload in no known sync state was counted")
+	}
+}
+
 // TestGapsScopeAndBound checks the gaps read: the default range, a label
 // scope resolved to the workloads it matches now (a scope matching none
 // reads nothing, never everything), the workload named on each gap, the

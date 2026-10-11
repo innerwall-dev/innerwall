@@ -603,6 +603,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/workloads/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How many workloads the fleet holds, in total and in each sync state.
+         * @description Counted in one statement over the fleet as it stands, so the totals
+         *     agree with each other; no client pages through the fleet to count
+         *     it. Every sync state is present, zero included, and `total` is
+         *     their sum.
+         */
+        get: operations["countWorkloads"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1087,6 +1110,17 @@ export interface components {
                 latest_version: number;
                 state: components["schemas"]["SyncState"];
             };
+        };
+        /** @description The fleet's size, in total and by sync state. */
+        WorkloadCounts: {
+            /** @description How many workloads are in each sync state; every state is present. */
+            by_sync_state: {
+                degraded: number;
+                offline: number;
+                pending: number;
+                synced: number;
+            };
+            total: number;
         };
         /**
          * Format: uuid
@@ -2532,6 +2566,27 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    countWorkloads: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The fleet's counts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkloadCounts"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
         };
     };
 }

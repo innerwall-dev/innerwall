@@ -6,14 +6,14 @@ import {
 	useLocation,
 	useOutletContext,
 } from "react-router";
-import { listWorkloads } from "@/api/fleet";
+import { countWorkloads } from "@/api/fleet";
 import { listRulesets } from "@/api/policy";
 import type { SyncState } from "@/api/schema";
 import { useSession } from "@/auth/SessionProvider";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { useResource } from "@/lib/resource";
 import { type Crumb, PageHeader } from "./PageHeader";
-import { Sidebar } from "./Sidebar";
+import { attentionBadge, type Badge, Sidebar } from "./Sidebar";
 
 // OpenWorkload is the workload a detail screen last showed: the sidebar
 // keeps it one click away, and the breadcrumb names it.
@@ -100,19 +100,15 @@ function Frame() {
 	const [generation, setGeneration] = useState(0);
 	const [policyGeneration, setPolicyGeneration] = useState(0);
 
-	// The frame reports only what it can state exactly. Whether the fleet
-	// is empty takes one row; the fleet's per-state totals have no read,
-	// so the sidebar shows none. The ruleset listing is complete, so its
-	// length is the policy count.
-	const { resource: fleet } = useResource(
-		() => listWorkloads({}, undefined).then((p) => p.workloads.length === 0),
-		[generation],
-	);
+	// The frame reports only what it can state exactly: the fleet's
+	// counts are the control plane's, read in one request, and the
+	// ruleset listing is complete, so its length is the policy count.
+	const { resource: fleet } = useResource(countWorkloads, [generation]);
 	const { resource: rulesets } = useResource(
 		() => listRulesets().then((r) => r.rulesets.length),
 		[policyGeneration],
 	);
-	const fleetEmpty = fleet.status === "ready" ? fleet.data : null;
+	const fleetEmpty = fleet.status === "ready" ? fleet.data.total === 0 : null;
 
 	const openWorkload = useCallback((w: OpenWorkload) => {
 		setOpen((cur) =>
@@ -134,9 +130,12 @@ function Frame() {
 		[openWorkload, fleetChanged, policyChanged],
 	);
 
-	const counts: Partial<Record<string, number>> = {};
-	if (fleetEmpty === true) counts["/workloads"] = 0;
-	if (rulesets.status === "ready") counts["/policy"] = rulesets.data;
+	const counts: Partial<Record<string, Badge>> = {};
+	if (fleet.status === "ready") {
+		const b = attentionBadge(fleet.data);
+		if (b) counts["/workloads"] = b;
+	}
+	if (rulesets.status === "ready") counts["/policy"] = { n: rulesets.data };
 
 	return (
 		<SidebarProvider className="h-dvh overflow-hidden bg-app text-primary">

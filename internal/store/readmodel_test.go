@@ -47,6 +47,16 @@ func TestWorkloadPage(t *testing.T) {
 		t.Fatalf("db-1 children = labels %v addresses %v", page[0].Labels, page[0].Addresses)
 	}
 
+	// Counts agree with the page: one degraded, one offline, one synced,
+	// and a state no workload holds is absent.
+	counts, err := s.CountWorkloadsBySyncState(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(counts) != 3 || counts[innerwallv1.SyncState_SYNC_STATE_DEGRADED] != 1 || counts[innerwallv1.SyncState_SYNC_STATE_OFFLINE] != 1 || counts[innerwallv1.SyncState_SYNC_STATE_SYNCED] != 1 {
+		t.Fatalf("counts = %v", counts)
+	}
+
 	// Filters.
 	sim, err := s.ListWorkloadPage(ctx, readmodel.WorkloadPageQuery{Mode: innerwallv1.EnforcementMode_ENFORCEMENT_MODE_SIMULATION, Limit: 10})
 	if err != nil {

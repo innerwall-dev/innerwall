@@ -171,7 +171,7 @@ func TestWriteEndpointsRequireCredential(t *testing.T) {
 		covered[rt.method+" "+p] = true
 	}
 	for _, mounted := range api.New(api.Deps{}).Routes() {
-		if strings.Contains(mounted, "/session") || strings.Contains(mounted, "/me") || strings.Contains(mounted, "/flows") || strings.HasSuffix(mounted, "/workloads") || strings.HasSuffix(mounted, "/workloads/{id}") || strings.HasSuffix(mounted, "/rendered-policy") {
+		if strings.Contains(mounted, "/session") || strings.Contains(mounted, "/me") || strings.Contains(mounted, "/flows") || strings.HasSuffix(mounted, "/workloads") || strings.HasSuffix(mounted, "/workloads/{id}") || strings.HasSuffix(mounted, "/workloads/counts") || strings.HasSuffix(mounted, "/rendered-policy") {
 			continue
 		}
 		if !covered[mounted] {

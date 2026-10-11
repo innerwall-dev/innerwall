@@ -194,6 +194,17 @@ func (s *Server) getWorkloads(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, workloadsPageJSON(page))
 }
 
+// getWorkloadCounts is GET /api/v1/workloads/counts: the fleet's size,
+// in total and in each sync state, counted in one read.
+func (s *Server) getWorkloadCounts(w http.ResponseWriter, r *http.Request) {
+	counts, err := s.reads.CountWorkloads(r.Context())
+	if err != nil {
+		s.readProblem(w, err)
+		return
+	}
+	writeJSON(w, workloadCountsJSON(counts))
+}
+
 // pathWorkloadID reads the {id} segment. A malformed id is not found:
 // no workload has it.
 func pathWorkloadID(w http.ResponseWriter, r *http.Request) (identity.WorkloadID, bool) {

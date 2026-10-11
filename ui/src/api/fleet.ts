@@ -14,6 +14,7 @@ import type {
 	RollupGrouping,
 	Verdict,
 	Workload,
+	WorkloadCounts,
 	WorkloadsPage,
 } from "./schema";
 
@@ -35,6 +36,12 @@ export function listWorkloads(
 	limit?: number,
 ): Promise<WorkloadsPage> {
 	return request("GET", withQuery("/workloads", { ...filter, cursor, limit }));
+}
+
+// countWorkloads is the fleet's size, in total and in each sync state,
+// counted by the control plane in one read.
+export function countWorkloads(): Promise<WorkloadCounts> {
+	return request("GET", "/workloads/counts");
 }
 
 export function getWorkload(id: string): Promise<Workload> {

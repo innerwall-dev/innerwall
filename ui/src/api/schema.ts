@@ -59,6 +59,7 @@ export type MintTokenRequest =
 	operations["mintProvisioningToken"]["requestBody"]["content"]["application/json"];
 export type MintedToken =
 	operations["mintProvisioningToken"]["responses"][201]["content"]["application/json"];
+export type WorkloadCounts = Schemas["WorkloadCounts"];
 export type WorkloadsPage =
 	operations["listWorkloads"]["responses"][200]["content"]["application/json"];
 
