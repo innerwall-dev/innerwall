@@ -6,7 +6,10 @@ import { shapeEdges } from "./geometry";
 import { layoutModel } from "./layout";
 import {
 	buildModel,
+	dashMetrics,
 	defaultKey,
+	edgeDash,
+	edgeDashAt,
 	edgeEmphasis,
 	groupingKeys,
 	type MapModel,
@@ -255,6 +258,62 @@ describe("volume scaling", () => {
 		expect(strokeWidth({ connections: 0 }, 100_000)).toBe(
 			"calc(var(--edge-width-min) + (var(--edge-width-max) - var(--edge-width-min)) * 0.0000)",
 		);
+	});
+});
+
+describe("observed dash", () => {
+	const style = (tokens: Record<string, string>) => ({
+		getPropertyValue: (name: string) => tokens[name] ?? "",
+	});
+	const metrics = dashMetrics(
+		style({ "--edge-width-min": " 1.25px", "--edge-dash-observed": " 1 4" }),
+	);
+
+	it("reads the tokens it scales by, and nothing it cannot read", () => {
+		expect(metrics).toEqual({ widthMin: 1.25, observed: [1, 4] });
+		expect(
+			dashMetrics(
+				style({ "--edge-width-min": "1.25px", "--edge-dash-observed": "1, 4" }),
+			),
+		).toEqual({ widthMin: 1.25, observed: [1, 4] });
+		// Unstyled (the tokens are not loaded): no metrics.
+		expect(dashMetrics(style({}))).toBeNull();
+		expect(
+			dashMetrics(
+				style({ "--edge-width-min": "1.25px", "--edge-dash-observed": "none" }),
+			),
+		).toBeNull();
+	});
+
+	it("scales the observed pattern with the stroke so the round caps never close its gaps", () => {
+		// At the minimum width it is the token's own pattern.
+		expect(edgeDashAt("observed", "1.25px", metrics)).toBe(
+			"calc(1.25px * 0.8000) calc(1.25px * 3.2000)",
+		);
+		// At every width a round cap adds the stroke width to each dot and
+		// takes it from each gap; scaled, the gap stays open, in the same
+		// proportion to the dot as at the minimum.
+		const visible = (w: number) => {
+			const [dot, gap] = (metrics?.observed ?? []).map((n) => (n / 1.25) * w);
+			return { dot: dot + w, gap: gap - w };
+		};
+		for (const w of [1.25, 2, 4]) {
+			const { dot, gap } = visible(w);
+			expect(gap).toBeGreaterThan(0);
+			expect(gap / dot).toBeCloseTo(visible(1.25).gap / visible(1.25).dot, 6);
+		}
+		const width = strokeWidth({ connections: 10 }, 10);
+		expect(edgeDashAt("observed", width, metrics)).toBe(
+			`calc(${width} * 0.8000) calc(${width} * 3.2000)`,
+		);
+	});
+
+	it("leaves the butt-capped patterns, and an unreadable token, as the tokens draw them", () => {
+		const width = strokeWidth({ connections: 10 }, 10);
+		for (const d of ["allowed", "would_block", "blocked"] as const) {
+			expect(edgeDashAt(d, width, metrics)).toBe(edgeDash[d]);
+		}
+		expect(edgeDashAt("observed", width, null)).toBe(edgeDash.observed);
 	});
 });
 

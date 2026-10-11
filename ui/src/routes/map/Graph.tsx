@@ -22,9 +22,12 @@ import { cn } from "@/lib/utils";
 import { type EdgeShape, shapeEdges } from "./geometry";
 import { type Layout, nodeHeight, nodeWidth } from "./layout";
 import {
+	type DashMetrics,
+	dashMetrics,
 	edgeCap,
 	edgeColor,
-	edgeDash,
+	type edgeDash,
+	edgeDashAt,
 	edgeEmphasis,
 	type MapEdge,
 	type MapModel,
@@ -54,8 +57,10 @@ type FlowData = {
 	from: string;
 	to: string;
 	shape: EdgeShape;
-	// The stroke width, a calc() over the edge-width tokens.
+	// The stroke width, a calc() over the edge-width tokens, and the dash
+	// at that width.
 	width: string;
+	dash: string;
 	selected: boolean;
 	dimmed: boolean;
 	onSelect: (s: Selection) => void;
@@ -121,12 +126,14 @@ export function Graph({
 			})),
 		[model, layout, selection, onSelect],
 	);
+	const metrics = useDashMetrics();
 	const edges = useMemo<FlowEdge[]>(() => {
 		const max = Math.max(0, ...model.edges.map((e) => e.connections));
 		const shapes = shapeEdges(model, layout);
 		const titles = new Map(model.nodes.map((n) => [n.id, n.title]));
 		return model.edges.map((e) => {
 			const { selected, dimmed } = edgeEmphasis(e, selection);
+			const width = strokeWidth(e, max);
 			return {
 				id: e.id,
 				type: "flow",
@@ -139,14 +146,15 @@ export function Graph({
 					from: titles.get(e.source) ?? e.source,
 					to: titles.get(e.target) ?? e.target,
 					shape: shapes.get(e.id) as EdgeShape,
-					width: strokeWidth(e, max),
+					width,
+					dash: edgeDashAt(e.decision, width, metrics),
 					selected,
 					dimmed,
 					onSelect,
 				},
 			};
 		});
-	}, [model, layout, selection, onSelect]);
+	}, [model, layout, selection, onSelect, metrics]);
 
 	return (
 		<div className="absolute inset-0" data-testid="flow-graph">
@@ -172,7 +180,7 @@ export function Graph({
 			<div className="absolute top-3 left-4 rounded-lg border border-default bg-raised p-1.5 pr-2.5">
 				{range}
 			</div>
-			<Legend />
+			<Legend metrics={metrics} />
 		</div>
 	);
 }
@@ -186,6 +194,15 @@ const fitOptions = {
 	padding: { top: "60px", bottom: "96px", left: "24px", right: "24px" },
 	maxZoom: 1.25,
 } as const;
+
+// useDashMetrics reads the tokens the observed dash scales by, once: they
+// are the same in both themes.
+function useDashMetrics(): DashMetrics | null {
+	return useMemo(
+		() => dashMetrics(getComputedStyle(document.documentElement)),
+		[],
+	);
+}
 
 // Refit fits the view again when the map is regrouped or rescoped, and
 // when the canvas changes size (the drawer opening or closing, the
@@ -399,7 +416,7 @@ function FlowEdgeView({ data }: EdgeProps<FlowEdge>) {
 	// only when the threshold is crossed, so zooming redraws no edge.
 	const legible = useStore((s) => s.transform[2] >= labelZoom);
 	if (!data) return null;
-	const { edge: e, width, selected, dimmed, onSelect } = data;
+	const { edge: e, width, dash, selected, dimmed, onSelect } = data;
 	const { path, lx, ly } = data.shape;
 	const color = edgeColor[e.decision];
 	const opacity = dimmed ? "var(--opacity-dimmed)" : 1;
@@ -429,7 +446,7 @@ function FlowEdgeView({ data }: EdgeProps<FlowEdge>) {
 				style={{
 					stroke: color,
 					strokeWidth: width,
-					strokeDasharray: edgeDash[e.decision],
+					strokeDasharray: dash,
 					strokeLinecap: edgeCap[e.decision],
 					opacity,
 					cursor: "pointer",
@@ -467,7 +484,7 @@ function FlowEdgeView({ data }: EdgeProps<FlowEdge>) {
 // Legend is the floating key on the raised surface: each decision with
 // its glyph and a line sample in the tokens' own color and dash, and the
 // node kinds by their icons.
-function Legend() {
+function Legend({ metrics }: { metrics: DashMetrics | null }) {
 	const sample = (d: keyof typeof edgeDash) => (
 		<svg width="32" height="8" aria-hidden="true" className="shrink-0">
 			<line
@@ -478,7 +495,7 @@ function Legend() {
 				style={{
 					stroke: edgeColor[d],
 					strokeWidth: 2,
-					strokeDasharray: edgeDash[d],
+					strokeDasharray: edgeDashAt(d, "2px", metrics),
 					strokeLinecap: edgeCap[d],
 				}}
 			/>
