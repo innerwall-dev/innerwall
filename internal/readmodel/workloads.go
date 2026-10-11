@@ -112,6 +112,10 @@ type Health struct {
 	// one of the agent's flow sources fell behind, since the agent
 	// started; each is also an evidence gap with its interval.
 	SourceOverruns uint64
+	// ClockSkew is the latest flow report whose agent clock was beyond
+	// the tolerance, and whether it is still the latest reading; nil when
+	// none has been received.
+	ClockSkew *registry.ClockSkew
 }
 
 // Workload is the one object shape the fleet list and the workload detail
@@ -238,6 +242,7 @@ func (s *Reader) workload(rec *WorkloadRecord, now time.Time) Workload {
 			Credential:         credentialStatus(rec, now),
 			DroppedFlowRecords: rec.DroppedFlowRecords,
 			SourceOverruns:     rec.SourceOverruns,
+			ClockSkew:          rec.ClockSkew,
 		},
 	}
 	if w.Labels == nil {

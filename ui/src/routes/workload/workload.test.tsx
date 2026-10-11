@@ -309,12 +309,61 @@ describe("workload detail", () => {
 		expect(read[0].get("limit")).toBe("4");
 	});
 
+	it("notes a current clock skew by the flow table, with the remedy", async () => {
+		surface({
+			workload: () => ({
+				...db,
+				health: {
+					...db.health,
+					clock_skew: {
+						offset_seconds: -72 * 60,
+						observed_at: minutesAgo(2),
+						current: true,
+					},
+				},
+			}),
+		});
+		renderApp(`/workloads/${db.id}`);
+		const note = await screen.findByTestId("clock-skew");
+		expect(note).toHaveTextContent(
+			"This agent's clock is 1h 12m behind the control plane's, as of its latest flow report 2m ago.",
+		);
+		expect(note).toHaveTextContent("systemctl restart systemd-timesyncd");
+	});
+
+	it("notes a past clock skew while its windows are in range, and not after", async () => {
+		const past = (minutes: number) => ({
+			...db,
+			health: {
+				...db.health,
+				clock_skew: {
+					offset_seconds: 600,
+					observed_at: minutesAgo(minutes),
+					current: false,
+				},
+			},
+		});
+		surface({ workload: () => past(180) });
+		const { unmount } = renderApp(`/workloads/${db.id}`);
+		const note = await screen.findByTestId("clock-skew");
+		expect(note).toHaveTextContent(
+			"This agent's clock was 10m ahead of the control plane's in a flow report 3h ago; its reports since are within tolerance.",
+		);
+		unmount();
+
+		surface({ workload: () => past(15 * 24 * 60) });
+		renderApp(`/workloads/${db.id}`);
+		await screen.findByTestId("status-card");
+		expect(screen.queryByTestId("clock-skew")).not.toBeInTheDocument();
+	});
+
 	it("says when the range has no evidence gaps", async () => {
 		surface();
 		renderApp(`/workloads/${db.id}`);
 		await screen.findByTestId("status-card");
 		expect(await screen.findByText("in 14 days")).toBeInTheDocument();
 		expect(screen.queryByTestId("evidence-gaps")).not.toBeInTheDocument();
+		expect(screen.queryByTestId("clock-skew")).not.toBeInTheDocument();
 	});
 
 	it("leads with the degraded state: versions, the apply error, and the health it carries", async () => {

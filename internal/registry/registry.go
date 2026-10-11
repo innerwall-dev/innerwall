@@ -72,6 +72,23 @@ type Workload struct {
 	// nil when none has been recorded. A later successful apply leaves
 	// it: SyncState says whether the workload is still degraded.
 	LastApplyFailedAt *time.Time
+	// ClockSkew is the latest flow report whose agent clock was beyond
+	// the tolerance; nil when none has been received. Written by flow
+	// ingest alone.
+	ClockSkew *ClockSkew
+}
+
+// ClockSkew is a skewed reading of an agent's clock from its flow
+// reports: the windows it stamps land at the wrong times.
+type ClockSkew struct {
+	// Offset is the agent's clock minus the control plane's in the latest
+	// skewed report: negative when the agent is behind.
+	Offset time.Duration
+	// ObservedAt is when that report was received.
+	ObservedAt time.Time
+	// Current says the latest report received was skewed; false once a
+	// report within tolerance has followed it.
+	Current bool
 }
 
 // ErrLabelsChanged is returned by a conditional label write whose expected

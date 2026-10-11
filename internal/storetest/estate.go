@@ -68,6 +68,11 @@ var (
 	estateDegradedHost    = "checkout-prod-07"
 )
 
+// estateSkewedHost is the agent whose clock is 72 minutes behind, as a
+// VM's is after its host slept: its flow reports show the skew, and its
+// detail notes it above the flow table.
+const estateSkewedHost = "billing-prod-06"
+
 // The unlabeled workloads, enrolled with no labels at all.
 const estateUnlabeled = 30
 
@@ -135,7 +140,7 @@ func SeedEstate(ctx context.Context, s *store.Store, f *Fleet, extra int) error 
 	members := map[string][]identity.WorkloadID{}
 	addrs := map[identity.WorkloadID]netip.Addr{}
 	modeOf := map[identity.WorkloadID]innerwallv1.EnforcementMode{}
-	var degraded identity.WorkloadID
+	var degraded, skewed identity.WorkloadID
 	enrolled := f.Now.Add(-20 * 24 * time.Hour)
 	enrollOne := func(hostname string, labels []enroll.Label, addr netip.Addr) (identity.WorkloadID, error) {
 		id, err := identity.NewWorkloadID()
@@ -178,6 +183,9 @@ func SeedEstate(ctx context.Context, s *store.Store, f *Fleet, extra int) error 
 			}
 			if hostname == estateDegradedHost {
 				degraded = id
+			}
+			if hostname == estateSkewedHost {
+				skewed = id
 			}
 			modeOf[id] = m
 			members[a.app] = append(members[a.app], id)
@@ -292,6 +300,9 @@ func SeedEstate(ctx context.Context, s *store.Store, f *Fleet, extra int) error 
 				return err
 			}
 		}
+	}
+	if err := s.RecordClockReading(ctx, skewed, -72*time.Minute, true, f.Now.Add(-40*time.Second)); err != nil {
+		return err
 	}
 
 	workloads, err := s.ListWorkloads(ctx)

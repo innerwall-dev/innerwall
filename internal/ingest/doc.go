@@ -3,5 +3,9 @@
 // the registry), and writes the windows and their evidence gaps through
 // the FlowStore interface (ADR-0009, ADR-0019). It does not deduplicate:
 // v1 observes inbound connections only (ADR-0010), so each connection is
-// reported once, by the workload it reached, and stored as reported.
+// reported once, by the workload it reached, and stored as reported. Each
+// report's clock reading, the agent's clock at send against the instant
+// of receipt, is recorded on the workload, and a skewed one is logged; a
+// skewed window is stored as reported all the same (ADR-0015 as
+// amended).
 package ingest

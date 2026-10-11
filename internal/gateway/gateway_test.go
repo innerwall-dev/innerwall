@@ -69,7 +69,7 @@ func newHarnessWith(t *testing.T, st enroll.Store, authority *fileca.Authority) 
 	if pg, ok := st.(*store.Store); ok {
 		h.engine = &compiler.Engine{Store: pg}
 		deps.Registry, deps.Policies, deps.Engine, deps.Events = pg, pg, h.engine, pg
-		deps.Ingest = &ingest.Service{Directory: pg, Flows: pg.Flows()}
+		deps.Ingest = &ingest.Service{Directory: pg, Flows: pg.Flows(), Clock: pg, FlowWindow: time.Minute}
 	}
 	gw := gateway.New(deps)
 	srv := gateway.NewGRPCServer(tlsCfg, gw)

@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { getRollup, listFlows } from "@/api/fleet";
-import type { FlowsPage, RenderedPolicy, Verdict } from "@/api/schema";
+import type {
+	FlowsPage,
+	RenderedPolicy,
+	Verdict,
+	Workload,
+} from "@/api/schema";
 import { FilterChip, VerdictPill, verdicts } from "@/components/fleet/status";
 import { LoadingRow, ProblemNotice } from "@/components/Problem";
 import { SeverityNote } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
-import { count, since } from "@/lib/format";
+import { ago, count, offset, since } from "@/lib/format";
 import { asProblem, useResource } from "@/lib/resource";
 import { cn } from "@/lib/utils";
 import { indexRules, matchedRule, peerNote } from "./rules";
@@ -21,11 +26,13 @@ export function FlowsTab({
 	from,
 	total,
 	policy,
+	clockSkew,
 }: {
 	workload: string;
 	from: string;
 	total: number | undefined;
 	policy: RenderedPolicy | null;
+	clockSkew: ClockSkew | null;
 }) {
 	const [verdict, setVerdict] = useState<Verdict | null>(null);
 	const [pages, setPages] = useState<FlowsPage[]>([]);
@@ -100,6 +107,7 @@ export function FlowsTab({
 					/>
 				))}
 			</fieldset>
+			<ClockSkewNote skew={clockSkew} from={from} />
 			{resource.status === "error" ? (
 				<ProblemNotice what="flows" error={resource.error} onRetry={reload} />
 			) : (
@@ -212,3 +220,51 @@ export function FlowsTab({
 const th =
 	"border-b border-default px-3 text-left type-label whitespace-nowrap text-tertiary";
 const td = "border-b border-subtle px-3 py-2 text-primary";
+
+type ClockSkew = NonNullable<Workload["health"]["clock_skew"]>;
+
+// ClockSkewNote says the agent's clock disagreed with the control
+// plane's: its windows are stamped with its own clock, so the times in
+// the table are off by about the offset. It shows while the skew is
+// current, and after the clock came back for as long as the last skewed
+// report falls inside the table's range, since the windows stamped by the
+// wrong clock are still in it.
+function ClockSkewNote({
+	skew,
+	from,
+}: {
+	skew: ClockSkew | null;
+	from: string;
+}) {
+	if (!skew) return null;
+	if (!skew.current && Date.parse(skew.observed_at) < Date.parse(from)) {
+		return null;
+	}
+	const by = offset(skew.offset_seconds * 1000);
+	const way = skew.offset_seconds < 0 ? "behind" : "ahead of";
+	return (
+		<p className="mb-4" data-testid="clock-skew">
+			<SeverityNote level="alert" className="type-ui">
+				{skew.current ? (
+					<span>
+						This agent's clock is {by} {way} the control plane's, as of its
+						latest flow report {ago(skew.observed_at)}. It stamps its windows
+						with its own clock, so the times below are off by about that much.
+						Re-sync the host's clock, for example with{" "}
+						<code className="type-mono-ui">
+							systemctl restart systemd-timesyncd
+						</code>
+						.
+					</span>
+				) : (
+					<span>
+						This agent's clock was {by} {way} the control plane's in a flow
+						report {ago(skew.observed_at)}; its reports since are within
+						tolerance. Windows it reported until then were stamped with the
+						wrong clock, and their times below are off by up to that much.
+					</span>
+				)}
+			</SeverityNote>
+		</p>
+	);
+}

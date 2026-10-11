@@ -239,6 +239,9 @@ type Workload struct {
 	LastAckedAt            *time.Time
 	LastApplyFailedAt      *time.Time
 	SourceOverruns         int64
+	ClockSkewOffsetMs      pgtype.Int8
+	ClockSkewObservedAt    *time.Time
+	ClockSkewCurrent       bool
 }
 
 type WorkloadAddress struct {

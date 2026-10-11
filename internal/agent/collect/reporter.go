@@ -25,9 +25,10 @@ const DefaultBatchMax = 1000
 type Dialer func(ctx context.Context) (innerwallv1.AgentServiceClient, io.Closer, error)
 
 // Reporter ships closed windows over ReportFlows: one stream per window,
-// one request per batch of at most the configured records, closed for the
-// accepted count, with the evidence gaps recorded since the last delivery
-// on the first request. A window whose stream fails is requeued, its gaps
+// one request per batch of at most the configured records, each stamped
+// with the agent's clock as it is sent, closed for the accepted count,
+// with the evidence gaps recorded since the last delivery on the first
+// request. A window whose stream fails is requeued, its gaps
 // put back, and both retried after a jittered backoff; the buffer's bound
 // decides what is dropped if the control plane stays away, and what it
 // drops becomes a gap of its own.
@@ -142,6 +143,10 @@ func (r *Reporter) report(ctx context.Context, w *Window, gaps []Gap) (uint64, e
 		reqs[0].Gaps = append(reqs[0].Gaps, g.Wire())
 	}
 	for _, req := range reqs {
+		// The agent's clock at the moment of sending, never the window's
+		// bounds: a window retried from the buffer is sent late, and the
+		// control plane must be able to tell lateness from skew.
+		req.SentAt = timestamppb.New(r.now())
 		if err := stream.Send(req); err != nil {
 			return 0, fmt.Errorf("collect: sending window: %w", err)
 		}

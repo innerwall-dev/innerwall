@@ -42,11 +42,34 @@ type Directory interface {
 	ListAddressGroups(ctx context.Context) ([]policy.AddressGroup, error)
 }
 
+// ClockRecorder records what a flow report said about its agent's clock
+// on the workload: a skewed reading's offset and instant, or that the
+// latest reading was within tolerance. The store implements it.
+type ClockRecorder interface {
+	RecordClockReading(ctx context.Context, id identity.WorkloadID, offset time.Duration, skewed bool, receivedAt time.Time) error
+}
+
 // Service ingests reported windows.
 type Service struct {
 	Directory Directory
 	Flows     flowstore.FlowStore
-	Log       *slog.Logger
+	// Clock records each report's clock reading on its workload; nil
+	// records nothing, and a skewed report is still logged.
+	Clock ClockRecorder
+	// FlowWindow is the flow aggregation window the control plane hands
+	// agents in SyncConfig; the clock-skew tolerance is ClockSkewWindows
+	// of it. Zero skips the clock check.
+	FlowWindow time.Duration
+	Log        *slog.Logger
+	// Now is the clock receipt is read from; time.Now if nil.
+	Now func() time.Time
+}
+
+func (s *Service) now() time.Time {
+	if s.Now != nil {
+		return s.Now()
+	}
+	return time.Now()
 }
 
 func (s *Service) log() *slog.Logger {
@@ -72,8 +95,11 @@ type Result struct {
 // Ingest validates and stores one window reported by workload id. The
 // identity comes from the caller, which took it from the connection
 // credential; nothing in the request names the reporter. Resolution reads
-// the registry once per window, so every record sees the same view.
+// the registry once per window, so every record sees the same view. The
+// report's clock reading is recorded on the workload and a skewed one is
+// logged, but skew rejects nothing: the window is stored as reported.
 func (s *Service) Ingest(ctx context.Context, id identity.WorkloadID, req *innerwallv1.ReportFlowsRequest) (Result, error) {
+	receivedAt := s.now()
 	if req.GetWindowStart() == nil || req.GetWindowEnd() == nil {
 		return Result{}, ErrInvalidWindow
 	}
@@ -90,16 +116,17 @@ func (s *Service) Ingest(ctx context.Context, id identity.WorkloadID, req *inner
 		return Result{}, err
 	}
 	idx := BuildIndex(workloads, groups)
-	known := false
+	var reporter *registry.Workload
 	for i := range workloads {
 		if workloads[i].ID == id {
-			known = true
+			reporter = &workloads[i]
 			break
 		}
 	}
-	if !known {
+	if reporter == nil {
 		return Result{}, registry.ErrWorkloadUnknown
 	}
+	s.checkClock(ctx, reporter, req, receivedAt)
 
 	window := flowstore.Window{WorkloadID: id, Start: start, End: end, Records: make([]flowstore.Record, 0, len(req.GetRecords()))}
 	var res Result
@@ -139,6 +166,29 @@ func (s *Service) Ingest(ctx context.Context, id identity.WorkloadID, req *inner
 	}
 	res.Accepted = n
 	return res, nil
+}
+
+// checkClock reads the report's clock, logs a skewed reading naming the
+// workload and the offset, and records the reading on the workload. A
+// failed record is logged and costs the window nothing.
+func (s *Service) checkClock(ctx context.Context, w *registry.Workload, req *innerwallv1.ReportFlowsRequest, receivedAt time.Time) {
+	if s.FlowWindow <= 0 {
+		return
+	}
+	r := ReadClock(req, receivedAt, s.FlowWindow)
+	if r.Skewed {
+		s.log().Warn("agent clock skewed: flow windows are stamped with the agent's clock",
+			"workload_id", w.ID, "hostname", w.Hostname,
+			"offset", r.Offset.Round(time.Second).String(), "offset_seconds", int64(r.Offset.Round(time.Second)/time.Second),
+			"measured_by", r.MeasuredBy, "tolerance", (ClockSkewWindows * s.FlowWindow).String(),
+			"window_end", req.GetWindowEnd().AsTime())
+	}
+	if s.Clock == nil {
+		return
+	}
+	if err := s.Clock.RecordClockReading(ctx, w.ID, r.Offset, r.Skewed, receivedAt); err != nil {
+		s.log().Warn("recording clock reading", "workload_id", w.ID, "error", err)
+	}
 }
 
 // convertGap validates one wire gap and shapes it for storage. Unlike a

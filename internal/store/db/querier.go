@@ -185,6 +185,11 @@ type Querier interface {
 	// instant. The applied version is untouched; the agent is still on it.
 	// Nothing else writes last_apply_failed_at (migration 00007).
 	RecordWorkloadApplyFailed(ctx context.Context, arg RecordWorkloadApplyFailedParams) (int64, error)
+	// One flow report's reading of the agent's clock (migration 00010). A
+	// skewed reading records its offset and instant and marks the skew current;
+	// a reading within tolerance only clears the mark, and writes nothing when
+	// there is no mark to clear, so a healthy agent's reports cost no write.
+	RecordWorkloadClockReading(ctx context.Context, arg RecordWorkloadClockReadingParams) error
 	RecordWorkloadHeartbeat(ctx context.Context, arg RecordWorkloadHeartbeatParams) (int64, error)
 	RecordWorkloadHeartbeatSeen(ctx context.Context, arg RecordWorkloadHeartbeatSeenParams) (int64, error)
 	RecordWorkloadInventory(ctx context.Context, arg RecordWorkloadInventoryParams) (int64, error)

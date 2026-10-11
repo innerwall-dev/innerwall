@@ -391,3 +391,80 @@ func TestReporterShipsGapsWithTheWindow(t *testing.T) {
 	cancel()
 	<-done
 }
+
+// TestReporterStampsTheClockAtEachSend checks that every request carries
+// the agent's clock at the moment it was sent, and that a retried window
+// is stamped again when it is resent rather than keeping its first
+// attempt's instant: the control plane reads the stamp as the agent's
+// clock, so a stamp older than the send would read as skew.
+func TestReporterStampsTheClockAtEachSend(t *testing.T) {
+	buf := NewBuffer(0)
+	buf.Push(window(t0, 3))
+	flows := &fakeFlows{fail: true}
+	var mu sync.Mutex
+	clock := t0.Add(time.Hour)
+	now := func() time.Time {
+		mu.Lock()
+		defer mu.Unlock()
+		return clock
+	}
+	r := &Reporter{
+		Buffer: buf, BackoffBase: time.Millisecond, BackoffCap: time.Millisecond, Now: now,
+		Dial: func(context.Context) (innerwallv1.AgentServiceClient, io.Closer, error) {
+			return flows, io.NopCloser(nil), nil
+		},
+		Log: slog.New(slog.DiscardHandler),
+	}
+	r.SetConfig(&innerwallv1.SyncConfig{FlowBatchMaxRecords: 2})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() { _ = r.Run(ctx); close(done) }()
+
+	waitSent := func(n int) []*innerwallv1.ReportFlowsRequest {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			flows.mu.Lock()
+			sent := append([]*innerwallv1.ReportFlowsRequest(nil), flows.sent...)
+			flows.mu.Unlock()
+			if len(sent) >= n {
+				return sent
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%d requests sent, want %d", len(sent), n)
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}
+	first := waitSent(2)
+	for i, req := range first[:2] {
+		if !req.GetSentAt().AsTime().Equal(t0.Add(time.Hour)) {
+			t.Fatalf("request %d sent_at = %v, want the clock at send %v", i, req.GetSentAt().AsTime(), t0.Add(time.Hour))
+		}
+	}
+	mu.Lock()
+	clock = t0.Add(2 * time.Hour)
+	mu.Unlock()
+	flows.mu.Lock()
+	flows.fail = false
+	flows.mu.Unlock()
+	deadline := time.Now().Add(5 * time.Second)
+	for buf.Len() > 0 || len(waitSent(2)) < 4 {
+		if time.Now().After(deadline) {
+			t.Fatal("the retry was not delivered")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	flows.mu.Lock()
+	last := flows.sent[len(flows.sent)-1]
+	flows.mu.Unlock()
+	if !last.GetSentAt().AsTime().Equal(t0.Add(2 * time.Hour)) {
+		t.Fatalf("retried request sent_at = %v, want the clock at resend %v", last.GetSentAt().AsTime(), t0.Add(2*time.Hour))
+	}
+	if !last.GetWindowEnd().AsTime().Equal(first[0].GetWindowEnd().AsTime()) {
+		t.Fatal("the retry changed the window's bounds")
+	}
+	cancel()
+	<-done
+}

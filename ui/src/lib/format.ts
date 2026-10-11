@@ -15,6 +15,21 @@ export function span(ms: number): string {
 	return `${Math.floor(abs / day)}d`;
 }
 
+// offset is a duration to the minute in its two largest units, for a
+// figure read as a magnitude rather than a recency: 45s, 12m, 1h 12m,
+// 2d 3h.
+export function offset(ms: number): string {
+	const abs = Math.abs(ms);
+	if (abs < minute) return `${Math.floor(abs / second)}s`;
+	if (abs < hour) return `${Math.floor(abs / minute)}m`;
+	if (abs < day) {
+		const m = Math.floor((abs % hour) / minute);
+		return `${Math.floor(abs / hour)}h${m ? ` ${m}m` : ""}`;
+	}
+	const h = Math.floor((abs % day) / hour);
+	return `${Math.floor(abs / day)}d${h ? ` ${h}h` : ""}`;
+}
+
 // since is how long ago an instant was, as a bare span.
 export function since(iso: string, now = Date.now()): string {
 	return span(now - Date.parse(iso));

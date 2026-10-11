@@ -136,6 +136,13 @@ func runWorkloadStatus(ctx context.Context, args []string) error {
 	fmt.Printf("agent           %s\n", wl.Agent.Version)
 	fmt.Printf("dropped flows   %d\n", wl.DroppedFlowRecords)
 	fmt.Printf("overruns        %d\n", wl.SourceOverruns)
+	if c := wl.ClockSkew; c != nil {
+		state := "current"
+		if !c.Current {
+			state = "since back within tolerance"
+		}
+		fmt.Printf("clock skew      %s, agent minus control plane, last skewed report %s; %s\n", c.Offset.Round(time.Second), ago(&c.ObservedAt, now), state)
+	}
 	if wl.CredentialRenewalError != "" {
 		fmt.Printf("renewal error   %s\n", wl.CredentialRenewalError)
 	}
