@@ -66,7 +66,7 @@ const head =
 	"h-row-header whitespace-nowrap border-b border-default px-3 text-left type-label text-tertiary first:pl-4 last:pr-4";
 
 // RulesCard is the ruleset's inbound rules: who may connect to the
-// scoped workloads, on what, whether each rule is on, and what each
+// scoped workloads, on what, whether each rule is enabled, and what each
 // admitted over the last day.
 export function RulesCard({
 	rules,
@@ -134,7 +134,7 @@ export function RulesCard({
 				className="w-full table-fixed border-collapse border-t border-default text-left"
 			>
 				<colgroup>
-					<col className="w-[64px]" />
+					<col className="w-[84px]" />
 					<col className="w-[30%]" />
 					<col className="w-[21%]" />
 					<col />
@@ -142,7 +142,7 @@ export function RulesCard({
 				</colgroup>
 				<thead>
 					<tr className="bg-subtle">
-						<th className={head}>On</th>
+						<th className={head}>Enabled</th>
 						<th className={head}>Peers (may connect)</th>
 						<th className={head}>Services (on)</th>
 						<th className={head}>Description</th>
