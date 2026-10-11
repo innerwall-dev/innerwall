@@ -78,6 +78,7 @@ export const ProblemType = {
 	invalidParameter: "urn:innerwall:problem:invalid-parameter",
 	matchCountMismatch: "urn:innerwall:problem:match-count-mismatch",
 	preconditionFailed: "urn:innerwall:problem:precondition-failed",
+	duplicateName: "urn:innerwall:problem:duplicate-name",
 	alreadyRevoked: "urn:innerwall:problem:already-revoked",
 	agentOffline: "urn:innerwall:problem:agent-offline",
 	validation: "urn:innerwall:problem:validation",
