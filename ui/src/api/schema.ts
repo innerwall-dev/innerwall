@@ -15,6 +15,7 @@ export type SyncState = Schemas["SyncState"];
 export type Verdict = Schemas["Verdict"];
 export type Protocol = Schemas["Protocol"];
 export type LabelMap = Schemas["LabelMap"];
+export type Labels = Schemas["Labels"];
 export type Workload = Schemas["Workload"];
 export type WorkloadRef = Schemas["WorkloadRef"];
 export type RenderedPolicy = Schemas["RenderedPolicy"];

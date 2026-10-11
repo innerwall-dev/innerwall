@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { EvidenceGap, Flow, RenderedPolicy, Workload } from "@/api/schema";
 import { minutesAgo, workload } from "@/test/fixtures";
 import {
+	chip,
 	gapsOf,
 	mockSurface,
 	problem,
@@ -697,5 +698,197 @@ describe("mode change from the detail", () => {
 				expected_match_count: 1,
 			}),
 		);
+	});
+});
+
+describe("label editor", () => {
+	const labelsAt = (labels: Record<string, string>, version: string) => ({
+		status: 200,
+		json: { labels, version },
+	});
+
+	it("edits through the shared parser, confirms the re-render, and writes the set conditioned on its version", async () => {
+		let stored: Record<string, string> = { env: "prod", role: "db" };
+		const s = surface({
+			workload: () => ({ ...db, labels: stored }),
+			extra: [
+				{
+					method: "GET",
+					path: `/api/v1/workloads/${db.id}/labels`,
+					reply: () => labelsAt(stored, "sha256:aaa"),
+				},
+				{
+					method: "PUT",
+					path: `/api/v1/workloads/${db.id}/labels`,
+					reply: (body) => {
+						stored = (body as { labels: Record<string, string> }).labels;
+						return labelsAt(stored, "sha256:bbb");
+					},
+				},
+			],
+		});
+		const user = userEvent.setup();
+		renderApp(`/workloads/${db.id}`);
+		await user.click(
+			await screen.findByRole("button", { name: "Edit labels" }),
+		);
+		const dialog = await screen.findByRole("dialog", {
+			name: "Edit labels of db-1",
+		});
+		const input = await within(dialog).findByRole("textbox", {
+			name: "Add a label",
+		});
+		// Text outside the grammar is refused with the reason and adds
+		// nothing.
+		await user.type(input, "tier=gold silver{Enter}");
+		expect(
+			within(dialog).getByText(/is not a label|written key=value/),
+		).toBeInTheDocument();
+		await user.clear(input);
+		// Two labels at once; a new value for a key replaces the old.
+		await user.type(input, "tier=gold env=staging{Enter}");
+		await user.click(
+			within(dialog).getByRole("button", { name: 'Remove "role"="db"' }),
+		);
+		await user.click(
+			within(dialog).getByRole("button", { name: "Review change" }),
+		);
+
+		const confirm = await screen.findByRole("dialog", {
+			name: "Save these labels?",
+		});
+		const changes = within(confirm).getByRole("list", {
+			name: "Label changes",
+		});
+		expect(changes).toHaveTextContent("changedenv=prod→toenv=staging");
+		expect(changes).toHaveTextContent("removedrole=db");
+		expect(changes).toHaveTextContent("addedtier=gold");
+		expect(within(confirm).getByTestId("label-effect")).toHaveTextContent(
+			/re-renders every ruleset they touch.*into or out of a ruleset's scope, changing what it enforces/,
+		);
+		expect(s.calls.some((c) => c.method === "PUT")).toBe(false);
+		await user.click(
+			within(confirm).getByRole("button", { name: "Save labels" }),
+		);
+
+		await waitFor(() =>
+			expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+		);
+		const put = s.calls.find((c) => c.method === "PUT");
+		expect(put?.body).toEqual({ labels: { env: "staging", tier: "gold" } });
+		const init = s.fetchMock.mock.calls.find(
+			([, i]) => (i as RequestInit | undefined)?.method === "PUT",
+		) as [unknown, RequestInit];
+		expect((init[1].headers as Record<string, string>)["If-Match"]).toBe(
+			'"sha256:aaa"',
+		);
+		// The workload is read again and shows the labels as stored.
+		await waitFor(() =>
+			expect(screen.getByText(chip("tier=gold"))).toBeInTheDocument(),
+		);
+	});
+
+	it("keeps the edit on a conflict and shows the labels as stored now", async () => {
+		let reads = 0;
+		const s = surface({
+			extra: [
+				{
+					method: "GET",
+					path: `/api/v1/workloads/${db.id}/labels`,
+					reply: () => {
+						reads += 1;
+						return reads === 1
+							? labelsAt({ env: "prod", role: "db" }, "v1")
+							: labelsAt({ env: "prod", role: "db", team: "data" }, "v2");
+					},
+				},
+				{
+					method: "PUT",
+					path: `/api/v1/workloads/${db.id}/labels`,
+					reply: (_b) =>
+						s.calls.filter((c) => c.method === "PUT").length === 1
+							? {
+									status: 412,
+									problem: {
+										...problem("precondition-failed", 412),
+										current_version: "v2",
+									},
+								}
+							: labelsAt({ env: "prod", role: "db", tier: "gold" }, "v3"),
+				},
+			],
+		});
+		const user = userEvent.setup();
+		renderApp(`/workloads/${db.id}`);
+		await user.click(
+			await screen.findByRole("button", { name: "Edit labels" }),
+		);
+		const input = await screen.findByRole("textbox", { name: "Add a label" });
+		await user.type(input, "tier=gold{Enter}");
+		await user.click(screen.getByRole("button", { name: "Review change" }));
+		await user.click(
+			await screen.findByRole("button", { name: "Save labels" }),
+		);
+
+		const alert = await screen.findByRole("alert");
+		expect(alert).toHaveTextContent(
+			"The labels changed since this editor read them; nothing was saved",
+		);
+		expect(within(alert).getByText(chip("team=data"))).toBeInTheDocument();
+		// The edit is kept, now against the set as stored: the stored
+		// team=data is a removal the operator sees before saving again.
+		expect(screen.getByText(chip("tier=gold"))).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Review change" }));
+		const confirm = await screen.findByRole("dialog", {
+			name: "Save these labels?",
+		});
+		expect(
+			within(confirm).getByRole("list", { name: "Label changes" }),
+		).toHaveTextContent("removedteam=data");
+		await user.click(
+			within(confirm).getByRole("button", { name: "Save labels" }),
+		);
+		await waitFor(() =>
+			expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+		);
+		const second = s.fetchMock.mock.calls.filter(
+			([, i]) => (i as RequestInit | undefined)?.method === "PUT",
+		)[1] as [unknown, RequestInit];
+		expect((second[1].headers as Record<string, string>)["If-Match"]).toBe(
+			'"v2"',
+		);
+	});
+
+	it("requires a label stored outside the grammar to be removed or replaced", async () => {
+		surface({
+			workload: () => ({ ...db, labels: { env: "prod", "app name": "web" } }),
+			extra: [
+				{
+					method: "GET",
+					path: `/api/v1/workloads/${db.id}/labels`,
+					reply: labelsAt({ env: "prod", "app name": "web" }, "v1"),
+				},
+			],
+		});
+		const user = userEvent.setup();
+		renderApp(`/workloads/${db.id}`);
+		await user.click(
+			await screen.findByRole("button", { name: "Edit labels" }),
+		);
+		const dialog = await screen.findByRole("dialog", {
+			name: "Edit labels of db-1",
+		});
+		expect(
+			await within(dialog).findByText(/One label is outside the label grammar/),
+		).toBeInTheDocument();
+		expect(
+			within(dialog).getByRole("button", { name: "Review change" }),
+		).toBeDisabled();
+		await user.click(
+			within(dialog).getByRole("button", { name: 'Remove "app name"="web"' }),
+		);
+		expect(
+			within(dialog).getByRole("button", { name: "Review change" }),
+		).toBeEnabled();
 	});
 });
