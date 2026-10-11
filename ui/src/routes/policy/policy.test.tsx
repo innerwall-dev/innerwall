@@ -396,6 +396,14 @@ describe("policy editor", () => {
 		expect(
 			screen.getByRole("columnheader", { name: /Simulation/ }),
 		).toHaveTextContent("Simulation · last 24h");
+		// The switch column names what it holds; a bare "On" read as the
+		// rule's destination, which a rule does not have.
+		expect(
+			within(screen.getByRole("table", { name: "Rules" }))
+				.getAllByRole("columnheader")
+				.map((h) => h.textContent)
+				.slice(0, 3),
+		).toEqual(["Enabled", "Peers (may connect)", "Services (on)"]);
 	});
 
 	it("states the blast radius from the live preview, joined with the scoped walk", async () => {
