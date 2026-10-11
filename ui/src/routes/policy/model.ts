@@ -361,13 +361,21 @@ export function dirty(d: RuleDraft): boolean {
 	return !d.base || !sameInput(d, draftOf(d.base, d.tempId));
 }
 
+// addressShaped is text that opens the way an address does: an IPv4
+// address's first octet and its dot, or an IPv6 address's hex groups
+// around two colons. No plausible address group name opens that way,
+// so text that does is an address whatever follows, typo or not.
+const addressShaped = /^(\d{1,3}\.|[0-9a-f]{0,4}:[0-9a-f]{0,4}:)/i;
+
 // parsePeer reads one peer as typed or pasted. Requirements (`key=value`,
 // several separated by spaces, a key's values by "|") are a workload
 // selector, read by the console's one label parser and refused with the
 // reason when they are outside the label grammar (ADR-0022); an address
-// or a prefix is a CIDR; anything else names an address group. A CIDR or
-// a group name is kept as typed, so the control plane's admission names
-// any fault in it.
+// or a prefix, or anything shaped like one, is a CIDR; anything else
+// names an address group. A CIDR or a group name is kept as typed, so
+// the control plane's admission names any fault in it: a mistyped
+// address (`10.0.0.999/8`) is refused as not a valid CIDR at its chip,
+// never read as the name of an address group that does not exist.
 export function parsePeer(text: string): Peer | { error: string } {
 	const t = text.trim();
 	if (t.includes("=")) {
@@ -379,7 +387,10 @@ export function parsePeer(text: string): Peer | { error: string } {
 		}
 		return { workloads: sel };
 	}
-	if (/^[0-9a-f:.]+(\/\d+)?$/i.test(t) && /[.:]/.test(t)) {
+	if (
+		addressShaped.test(t) ||
+		(/^[0-9a-f:.]+(\/\d+)?$/i.test(t) && /[.:]/.test(t))
+	) {
 		return { cidr: t };
 	}
 	return { address_group: t };

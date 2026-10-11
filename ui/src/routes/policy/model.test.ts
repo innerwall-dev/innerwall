@@ -246,6 +246,24 @@ describe("drafts and findings", () => {
 		expect(parsePeer('app="web env"')).toHaveProperty("error");
 		expect(parsePeer("10.40.0.0/33")).toEqual({ cidr: "10.40.0.0/33" });
 		expect(parsePeer("corp-vpn")).toEqual({ address_group: "corp-vpn" });
+		// Text shaped like an address is a CIDR however it is mistyped, so
+		// admission refuses it as one rather than as an unknown group.
+		for (const typo of [
+			"10.0.0.999/8",
+			"10.0.0.999/8!!",
+			"10.0.0.0/8/",
+			"10.0.0.0 /8",
+			"192.168.1.0/24x",
+			"fe80::1%eth0",
+			"2001:db8::/129",
+			"::1/",
+		]) {
+			expect(parsePeer(typo)).toEqual({ cidr: typo });
+		}
+		// Names stay names, digits and dots in them or not.
+		for (const name of ["office", "db.prod", "vpn-10.40", "v6-edge", "cafe"]) {
+			expect(parsePeer(name)).toEqual({ address_group: name });
+		}
 		expect(parseService("TCP/389")).toEqual({
 			entry: { protocol: "tcp", ports: ["389"] },
 		});
