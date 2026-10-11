@@ -3,6 +3,8 @@ import type {
 	AddressGroup,
 	EvidenceGaps,
 	FlowsPage,
+	LabelMap,
+	Labels,
 	MintedToken,
 	MintTokenRequest,
 	ModeChangeAck,
@@ -14,6 +16,7 @@ import type {
 	RollupGrouping,
 	Verdict,
 	Workload,
+	WorkloadCounts,
 	WorkloadsPage,
 } from "./schema";
 
@@ -37,8 +40,37 @@ export function listWorkloads(
 	return request("GET", withQuery("/workloads", { ...filter, cursor, limit }));
 }
 
+// countWorkloads is the fleet's size, in total and in each sync state,
+// counted by the control plane in one read.
+export function countWorkloads(): Promise<WorkloadCounts> {
+	return request("GET", "/workloads/counts");
+}
+
 export function getWorkload(id: string): Promise<Workload> {
 	return request("GET", `/workloads/${encodeURIComponent(id)}`);
+}
+
+// getWorkloadLabels is a workload's labels as the resource a label edit
+// is conditioned on, with their version.
+export function getWorkloadLabels(id: string): Promise<Labels> {
+	return request("GET", `/workloads/${encodeURIComponent(id)}/labels`);
+}
+
+// putWorkloadLabels replaces a workload's labels with a complete set,
+// conditioned on the version they were read at: a set changed since is
+// refused with its current version, never overwritten. The control plane
+// admits the set through the label grammar and renders the change.
+export function putWorkloadLabels(
+	id: string,
+	labels: LabelMap,
+	version: string,
+): Promise<Labels> {
+	return request(
+		"PUT",
+		`/workloads/${encodeURIComponent(id)}/labels`,
+		{ labels },
+		{ "If-Match": `"${version}"` },
+	);
 }
 
 export function getRenderedPolicy(id: string): Promise<RenderedPolicy> {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/innerwall-dev/innerwall/internal/fleet"
+	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 	"github.com/innerwall-dev/innerwall/internal/identity"
 	"github.com/innerwall-dev/innerwall/internal/policy"
 	"github.com/innerwall-dev/innerwall/internal/readmodel"
@@ -18,11 +19,13 @@ import (
 
 func runWorkload(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return usageError("usage: innerwall workload list|status|set-labels|set-mode|resend-snapshot [flags]")
+		return usageError("usage: innerwall workload list|counts|status|set-labels|set-mode|resend-snapshot [flags]")
 	}
 	switch args[0] {
 	case "list":
 		return runWorkloadList(ctx, args[1:])
+	case "counts":
+		return runWorkloadCounts(ctx, args[1:])
 	case "status":
 		return runWorkloadStatus(ctx, args[1:])
 	case "set-labels":
@@ -32,7 +35,7 @@ func runWorkload(ctx context.Context, args []string) error {
 	case "resend-snapshot":
 		return runWorkloadResendSnapshot(ctx, args[1:])
 	default:
-		return usageError("unknown workload command %q (list|status|set-labels|set-mode|resend-snapshot)", args[0])
+		return usageError("unknown workload command %q (list|counts|status|set-labels|set-mode|resend-snapshot)", args[0])
 	}
 }
 
@@ -81,6 +84,38 @@ func runWorkloadList(ctx context.Context, args []string) error {
 		}
 		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%d/%s\t%s\n", wl.ID, wl.Hostname, labelString(wl.Labels), policy.ModeName(wl.Mode), syncStateName(*wl), wl.AppliedVersion, latest, ago(wl.LastSeenAt, now))
 	}
+	return w.Flush()
+}
+
+// runWorkloadCounts prints the fleet's size in total and in each sync
+// state, through the read the operator surface's GET /workloads/counts
+// serves.
+func runWorkloadCounts(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("innerwall workload counts", flag.ContinueOnError)
+	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	st, err := openStore(ctx, *dbURL)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	reads := &readmodel.Reader{Store: st, Flows: st.Flows()}
+	counts, err := reads.CountWorkloads(ctx)
+	if err != nil {
+		return err
+	}
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	for _, state := range []innerwallv1.SyncState{
+		innerwallv1.SyncState_SYNC_STATE_DEGRADED,
+		innerwallv1.SyncState_SYNC_STATE_OFFLINE,
+		innerwallv1.SyncState_SYNC_STATE_PENDING,
+		innerwallv1.SyncState_SYNC_STATE_SYNCED,
+	} {
+		_, _ = fmt.Fprintf(w, "%s\t%d\n", readmodel.SyncStateName(state), counts.BySync[state])
+	}
+	_, _ = fmt.Fprintf(w, "total\t%d\n", counts.Total)
 	return w.Flush()
 }
 

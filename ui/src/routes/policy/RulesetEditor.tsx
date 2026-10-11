@@ -22,19 +22,23 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useResource, useWrite } from "@/lib/resource";
 import { cn } from "@/lib/utils";
-import { FindingLines } from "./Chips";
+import { ChipView, FindingLines } from "./Chips";
 import { DryRunCard, type DryRunState } from "./DryRunCard";
 import { type EditorData, loadTraffic } from "./data";
 import { useScopeMatch } from "./hooks";
+import { type Suggestion, viaText } from "./link";
 import {
 	attachFindings,
 	bannerText,
 	combinedSave,
 	draftInput,
 	draftOf,
+	entryChip,
 	freshness,
+	type Names,
 	namesOf,
 	newTempId,
+	nextKey,
 	noFindings,
 	peerChip,
 	planDryRun,
@@ -44,6 +48,7 @@ import {
 	scopeFindings,
 	scopeMix,
 	selectorText,
+	serviceRefChip,
 	servicesCell,
 	shortRuleId,
 } from "./model";
@@ -66,22 +71,47 @@ const problemText = (p: ProblemError) =>
 	p.problem.detail ||
 	p.problem.title;
 
+// suggestedRow is the new-rule row a pair of observed traffic opens:
+// its peers and services, unsaved, nothing written until the operator
+// saves it.
+function suggestedRow(s: Suggestion): RowState {
+	const d = draftOf(null, newTempId());
+	return {
+		draft: {
+			...d,
+			peers: s.peers.map((value) => ({ key: nextKey(), value })),
+			refs: s.refs.map((value) => ({ key: nextKey(), value })),
+			entries: s.entries.map((value) => ({ key: nextKey(), value })),
+		},
+		findings: noFindings,
+		refused: null,
+	};
+}
+
 // RulesetEditor is one ruleset, edited live: its header with its name,
 // description, and enabled switch, the immediate-effect statement, the
 // scope with what it matches now, the rules, and the dry run of whatever
-// is unsaved.
+// is unsaved. Opened from a pair of observed traffic (a suggestion), it
+// says so, and points at the rule the traffic was attributed to when
+// this ruleset holds it, or else opens a new rule from the pair.
 export function RulesetEditor({
 	data,
 	ruleset,
 	reload,
 	onChanged,
 	onRenamed,
+	suggestion = null,
+	onSuggestionDone,
 }: {
 	data: EditorData;
 	ruleset: Ruleset;
 	reload: () => void;
 	onChanged: () => void;
 	onRenamed: (saved: Ruleset) => void;
+	suggestion?: Suggestion | null;
+	// onSuggestionDone is called once the row a suggestion opened is saved
+	// or discarded, so the address stops carrying the pair.
+	onSuggestionDone?: () => void;
 }) {
 	const write = useWrite();
 	const names = useMemo(
@@ -100,7 +130,17 @@ export function RulesetEditor({
 	const [aboutRefused, setAboutRefused] = useState<Finding[]>([]);
 	const [scopeDraft, setScopeDraft] = useState<Selector | null>(null);
 	const [scopeRefused, setScopeRefused] = useState<Finding[]>([]);
-	const [row, setRow] = useState<RowState | null>(null);
+	// The rule a pair's traffic was attributed to, when this ruleset holds
+	// it; otherwise the pair opens a new rule. Both are decided once, as
+	// the editor opens.
+	const [highlight] = useState<string | null>(() =>
+		suggestion && highlightable(suggestion, ruleset) ? suggestion.rule : null,
+	);
+	const [row, setRow] = useState<RowState | null>(() =>
+		suggestion && !highlightable(suggestion, ruleset)
+			? suggestedRow(suggestion)
+			: null,
+	);
 	const [rulesNotice, setRulesNotice] = useState<Notice | null>(null);
 	const [headNotice, setHeadNotice] = useState<Notice | null>(null);
 	const [busy, setBusy] = useState(false);
@@ -369,6 +409,7 @@ export function RulesetEditor({
 				d.base ? putRule(id, d.base, input) : createRule(id, input),
 			);
 			setRow(null);
+			if (!d.base && suggestion) onSuggestionDone?.();
 			setRulesNotice({
 				tone: "ok",
 				text: `Saved ${ruleLabel(saved)} at version ${saved.version}. Each workload in scope takes it as its agent applies its next version.`,
@@ -453,6 +494,7 @@ export function RulesetEditor({
 			const saved = await write(() => putRuleset(ruleset, change));
 			const rule = saved.rules[index];
 			setRow(null);
+			if (!d.base && suggestion) onSuggestionDone?.();
 			setScopeDraft(null);
 			setRulesNotice({
 				tone: "ok",
@@ -493,6 +535,7 @@ export function RulesetEditor({
 	}
 
 	function discardRow() {
+		if (row && !row.draft.base && suggestion) onSuggestionDone?.();
 		setRow(null);
 		setRulesNotice(null);
 		if (!edited) setDry(null);
@@ -737,7 +780,15 @@ export function RulesetEditor({
 					) : null
 				}
 			/>
+			{suggestion ? (
+				<PairNote
+					suggestion={suggestion}
+					names={names}
+					highlighted={highlight !== null}
+				/>
+			) : null}
 			<RulesCard
+				highlight={highlight}
 				rules={ruleset.rules}
 				names={names}
 				traffic={traffic}
@@ -768,6 +819,74 @@ export function RulesetEditor({
 				/>
 			) : null}
 		</>
+	);
+}
+
+function highlightable(s: Suggestion, rs: Ruleset): boolean {
+	return s.rule !== null && rs.rules.some((r) => r.id === s.rule);
+}
+
+// PairNote is the pair the editor was opened from: where it came from,
+// its source and services as a rule names them, and what the editor did
+// with it.
+function PairNote({
+	suggestion: s,
+	names,
+	highlighted,
+}: {
+	suggestion: Suggestion;
+	names: Names;
+	highlighted: boolean;
+}) {
+	const services = [
+		...s.refs.map((r) => serviceRefChip(r, names)),
+		...s.entries.map(entryChip),
+	];
+	return (
+		<div
+			role="note"
+			data-testid="pair-context"
+			className="flex gap-2.5 rounded-lg border border-default bg-subtle px-4 py-3 type-ui text-secondary"
+		>
+			<Icon name="info" className="mt-0.5 shrink-0" />
+			<div className="flex min-w-0 flex-col gap-1.5">
+				<div className="flex flex-wrap items-center gap-1.5">
+					<span>From {viaText[s.via]}: traffic from</span>
+					{s.peers.length > 0 ? (
+						s.peers.map((p) => (
+							<ChipView key={JSON.stringify(p)} chip={peerChip(p, names)} />
+						))
+					) : (
+						<span className="text-tertiary">
+							a source no rule can name as a peer
+						</span>
+					)}
+					{services.length > 0 ? (
+						<>
+							<span>on</span>
+							{services.map((c) => (
+								<ChipView key={`${c.tag}|${c.text}`} chip={c} />
+							))}
+						</>
+					) : null}
+				</div>
+				<span>
+					{highlighted
+						? "The stored windows attribute it to the rule highlighted below."
+						: "A new rule below starts from it. Nothing is written until you save it; review its peers and services first."}
+				</span>
+				{s.unread.map((u) => (
+					<SeverityNote
+						key={u}
+						level="alert"
+						size="sm"
+						className="type-caption"
+					>
+						Not carried over: {u}
+					</SeverityNote>
+				))}
+			</div>
+		</div>
 	);
 }
 

@@ -19,6 +19,7 @@ import { useShell } from "@/shell/Shell";
 import { credential, credentialTone, lastSeen } from "../fleet/describe";
 import { ModeChangeDialog } from "../fleet/ModeChangeDialog";
 import { FlowsTab } from "./FlowsTab";
+import { LabelsDialog } from "./LabelsDialog";
 import { ListeningTab } from "./ListeningTab";
 import { PolicyTab } from "./PolicyTab";
 import { StatusCard } from "./StatusCard";
@@ -52,7 +53,10 @@ export function WorkloadDetail() {
 		new Date(Date.now() - rangeDays * 86_400_000).toISOString(),
 	);
 	const { resource: wl, reload } = useResource(() => getWorkload(id), [id]);
-	const { resource: policy } = useResource(() => getRenderedPolicy(id), [id]);
+	const { resource: policy, reload: reloadPolicy } = useResource(
+		() => getRenderedPolicy(id),
+		[id],
+	);
 	const { resource: flowTotals } = useResource(
 		() => getRollup({ group_by: "rule", workload: id, from, limit: 1 }),
 		[id, from],
@@ -108,6 +112,11 @@ export function WorkloadDetail() {
 				}}
 				onModeChanged={() => {
 					reload();
+					shell.fleetChanged();
+				}}
+				onLabelsSaved={() => {
+					reload();
+					reloadPolicy();
 					shell.fleetChanged();
 				}}
 			/>
@@ -190,13 +199,16 @@ function Rail({
 	gaps,
 	onReread,
 	onModeChanged,
+	onLabelsSaved,
 }: {
 	w: Workload;
 	gaps: Resource<EvidenceGaps>;
 	onReread: () => void;
 	onModeChanged: () => void;
+	onLabelsSaved: () => void;
 }) {
 	const [changing, setChanging] = useState(false);
+	const [editingLabels, setEditingLabels] = useState(false);
 	const cred = credential(w);
 	const labels = labelPairs(w.labels);
 	const os = w.os;
@@ -280,13 +292,14 @@ function Rail({
 			<div className="flex flex-col gap-2">
 				<div className="flex items-center">
 					<Eyebrow>Labels</Eyebrow>
-					<span
-						aria-disabled="true"
-						title="Editing labels arrives with its own session"
-						className="ml-auto cursor-default type-caption text-link opacity-disabled"
+					<button
+						type="button"
+						onClick={() => setEditingLabels(true)}
+						aria-label="Edit labels"
+						className="ml-auto cursor-pointer type-caption text-link hover:underline"
 					>
 						edit
-					</span>
+					</button>
 				</div>
 				<div className="flex flex-wrap gap-1">
 					{labels.length === 0 ? (
@@ -300,7 +313,8 @@ function Rail({
 					)}
 				</div>
 				<div className="type-caption text-tertiary">
-					Assigned from token scope at enrollment; editable by operators only.
+					Assigned by the provisioning token at enrollment; an operator may edit
+					them. The agent cannot.
 				</div>
 			</div>
 
@@ -331,6 +345,15 @@ function Rail({
 					</dd>
 				</dl>
 			</div>
+			<LabelsDialog
+				workload={w}
+				open={editingLabels}
+				onOpenChange={setEditingLabels}
+				onSaved={() => {
+					setEditingLabels(false);
+					onLabelsSaved();
+				}}
+			/>
 			<ModeChangeDialog
 				title="Change mode"
 				open={changing}

@@ -19,6 +19,19 @@ import (
 
 var _ readmodel.Store = (*Store)(nil)
 
+// CountWorkloadsBySyncState implements readmodel.Store in one statement.
+func (s *Store) CountWorkloadsBySyncState(ctx context.Context) (map[innerwallv1.SyncState]int64, error) {
+	rows, err := s.q.CountWorkloadsBySyncState(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("store: counting workloads: %w", err)
+	}
+	out := make(map[innerwallv1.SyncState]int64, len(rows))
+	for _, r := range rows {
+		out[innerwallv1.SyncState(r.SyncState)] = r.Workloads
+	}
+	return out, nil
+}
+
 // ListWorkloadPage implements readmodel.Store. The page is one statement
 // in fleet order; the page's labels, addresses, and listening services
 // are three more, each over the page's ids.

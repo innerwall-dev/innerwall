@@ -70,6 +70,40 @@ func (q *Queries) AddWorkloadListeningService(ctx context.Context, arg AddWorklo
 	return err
 }
 
+const countWorkloadsBySyncState = `-- name: CountWorkloadsBySyncState :many
+SELECT sync_state, count(*)::bigint AS workloads
+FROM workloads
+GROUP BY sync_state
+ORDER BY sync_state
+`
+
+type CountWorkloadsBySyncStateRow struct {
+	SyncState int32
+	Workloads int64
+}
+
+// How many workloads hold each sync state, in one statement so the
+// counts agree with each other. A state no workload holds has no row.
+func (q *Queries) CountWorkloadsBySyncState(ctx context.Context) ([]CountWorkloadsBySyncStateRow, error) {
+	rows, err := q.db.Query(ctx, countWorkloadsBySyncState)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountWorkloadsBySyncStateRow{}
+	for rows.Next() {
+		var i CountWorkloadsBySyncStateRow
+		if err := rows.Scan(&i.SyncState, &i.Workloads); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createWorkload = `-- name: CreateWorkload :exec
 
 INSERT INTO workloads (id, provisioning_token_id, hostname, enrolled_at, credential_serial, credential_expires_at)

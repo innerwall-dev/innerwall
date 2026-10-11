@@ -127,6 +127,7 @@ func (s *Server) mount(routes *router) {
 	routes.handle(http.MethodGet, APIPrefix+"/flows/gaps", s.getFlowGaps)
 	routes.handle(http.MethodGet, APIPrefix+"/flows", s.getFlows)
 	routes.handle(http.MethodGet, APIPrefix+"/workloads", s.getWorkloads)
+	routes.handle(http.MethodGet, APIPrefix+"/workloads/counts", s.getWorkloadCounts)
 	routes.handle(http.MethodGet, APIPrefix+"/workloads/{id}", s.getWorkload)
 	routes.handle(http.MethodGet, APIPrefix+"/workloads/{id}/rendered-policy", s.getRenderedPolicy)
 	routes.handle(http.MethodGet, APIPrefix+"/workloads/{id}/labels", s.getWorkloadLabels)

@@ -418,6 +418,25 @@ paths:
           $ref: "#/components/responses/InvalidParameter"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+  /workloads/counts:
+    get:
+      operationId: countWorkloads
+      tags: [workloads]
+      summary: How many workloads the fleet holds, in total and in each sync state.
+      description: |
+        Counted in one statement over the fleet as it stands, so the totals
+        agree with each other; no client pages through the fleet to count
+        it. Every sync state is present, zero included, and `total` is
+        their sum.
+      responses:
+        "200":
+          description: The fleet's counts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkloadCounts"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
   /workloads/{id}:
     parameters:
       - $ref: "#/components/parameters/workloadID"
@@ -1683,6 +1702,31 @@ components:
         type: array
         items:
           type: string
+    WorkloadCounts:
+      description: The fleet's size, in total and by sync state.
+      type: object
+      required: [total, by_sync_state]
+      properties:
+        total:
+          type: integer
+          minimum: 0
+        by_sync_state:
+          description: How many workloads are in each sync state; every state is present.
+          type: object
+          required: [synced, pending, degraded, offline]
+          properties:
+            synced:
+              type: integer
+              minimum: 0
+            pending:
+              type: integer
+              minimum: 0
+            degraded:
+              type: integer
+              minimum: 0
+            offline:
+              type: integer
+              minimum: 0
     Labels:
       description: A workload's labels with the version a label edit is conditioned on.
       type: object

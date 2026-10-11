@@ -1,4 +1,5 @@
 import { matchPath, NavLink, useLocation } from "react-router";
+import type { WorkloadCounts } from "@/api/schema";
 import { syncStates } from "@/components/fleet/status";
 import { Icon, type IconName } from "@/components/Icon";
 import { StatusGlyph } from "@/components/StatusGlyph";
@@ -14,9 +15,46 @@ import {
 	Sidebar as SidebarRail,
 	SidebarTrigger,
 } from "@/components/ui/sidebar";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { AccountPopover } from "./AccountPopover";
 import { LogoMark, Wordmark } from "./Logo";
 import type { OpenWorkload } from "./Shell";
+
+// Badge is a section's count, and what it counts when the number alone
+// does not say.
+export interface Badge {
+	n: number;
+	hint?: string;
+}
+
+// attentionBadge is the Workloads count: the workloads needing the
+// operator, those pending, degraded, or offline, from the control
+// plane's counts. A fleet with none needing attention shows no count; a
+// fleet with no workloads at all shows its zero, the fresh install's cue
+// to enroll the first.
+export function attentionBadge(c: WorkloadCounts): Badge | null {
+	if (c.total === 0) {
+		return { n: 0, hint: "No workloads enrolled" };
+	}
+	const s = c.by_sync_state;
+	const n = s.pending + s.degraded + s.offline;
+	if (n === 0) return null;
+	const parts = [
+		[s.pending, "pending"],
+		[s.degraded, "degraded"],
+		[s.offline, "offline"],
+	]
+		.filter(([k]) => (k as number) > 0)
+		.map(([k, label]) => `${k} ${label}`);
+	return {
+		n,
+		hint: `${n} ${n === 1 ? "workload needs" : "workloads need"} attention: ${parts.join(", ")}. Counts workloads whose sync state is pending, degraded, or offline.`,
+	};
+}
 
 // The four sections in product order, each with its Lucide icon. A
 // count is shown only for a section that counts something, and only
@@ -48,7 +86,7 @@ export function Sidebar({
 	fleetEmpty = null,
 	open = null,
 }: {
-	counts?: Partial<Record<string, number>>;
+	counts?: Partial<Record<string, Badge>>;
 	fleetEmpty?: boolean | null;
 	open?: OpenWorkload | null;
 }) {
@@ -71,23 +109,48 @@ export function Sidebar({
 				<SidebarGroup>
 					<nav aria-label="Sections">
 						<SidebarMenu>
-							{sections.map((s) => (
-								<SidebarMenuItem key={s.to}>
-									<SidebarMenuButton
-										asChild
-										isActive={current(s.to)}
-										tooltip={s.label}
-									>
-										<NavLink to={s.to}>
-											<Icon name={s.icon} />
-											<span>{s.label}</span>
-										</NavLink>
-									</SidebarMenuButton>
-									{s.counted && counts[s.to] !== undefined ? (
-										<SidebarMenuBadge>{counts[s.to]}</SidebarMenuBadge>
-									) : null}
-								</SidebarMenuItem>
-							))}
+							{sections.map((s) => {
+								const badge = s.counted ? counts[s.to] : undefined;
+								return (
+									<SidebarMenuItem key={s.to}>
+										<SidebarMenuButton
+											asChild
+											isActive={current(s.to)}
+											tooltip={
+												badge?.hint && badge.n > 0
+													? `${s.label} · ${badge.n} needing attention`
+													: s.label
+											}
+										>
+											<NavLink to={s.to}>
+												<Icon name={s.icon} />
+												<span>{s.label}</span>
+											</NavLink>
+										</SidebarMenuButton>
+										{badge === undefined ? null : badge.hint ? (
+											<Tooltip>
+												<TooltipTrigger asChild>
+													<SidebarMenuBadge
+														data-testid={`count-${s.label}`}
+														className="pointer-events-auto cursor-default"
+														tabIndex={0}
+														aria-label={badge.hint}
+													>
+														{badge.n}
+													</SidebarMenuBadge>
+												</TooltipTrigger>
+												<TooltipContent side="right" className="max-w-[260px]">
+													{badge.hint}
+												</TooltipContent>
+											</Tooltip>
+										) : (
+											<SidebarMenuBadge data-testid={`count-${s.label}`}>
+												{badge.n}
+											</SidebarMenuBadge>
+										)}
+									</SidebarMenuItem>
+								);
+							})}
 							{open ? (
 								<SidebarMenuItem>
 									<SidebarMenuButton
@@ -126,9 +189,8 @@ export function Sidebar({
 }
 
 // The fleet sync block above the sidebar's footer, in its fresh-install
-// form: the track alone. The populated form needs the fleet's per-state
-// totals, which no read supplies, so a fleet with workloads shows no
-// block rather than numbers the console cannot know. The icon rail has
+// form: the track alone. Its populated form is not drawn in this
+// version, so a fleet with workloads shows no block. The icon rail has
 // no room for it.
 function FleetSync() {
 	return (

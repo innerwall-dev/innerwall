@@ -15,6 +15,7 @@ export type SyncState = Schemas["SyncState"];
 export type Verdict = Schemas["Verdict"];
 export type Protocol = Schemas["Protocol"];
 export type LabelMap = Schemas["LabelMap"];
+export type Labels = Schemas["Labels"];
 export type Workload = Schemas["Workload"];
 export type WorkloadRef = Schemas["WorkloadRef"];
 export type RenderedPolicy = Schemas["RenderedPolicy"];
@@ -59,6 +60,7 @@ export type MintTokenRequest =
 	operations["mintProvisioningToken"]["requestBody"]["content"]["application/json"];
 export type MintedToken =
 	operations["mintProvisioningToken"]["responses"][201]["content"]["application/json"];
+export type WorkloadCounts = Schemas["WorkloadCounts"];
 export type WorkloadsPage =
 	operations["listWorkloads"]["responses"][200]["content"]["application/json"];
 

@@ -34,6 +34,9 @@ type Querier interface {
 	CountFlowWindows(ctx context.Context) (int64, error)
 	CountRulesReferencingAddressGroup(ctx context.Context, addressGroupID *uuid.UUID) (int64, error)
 	CountRulesReferencingService(ctx context.Context, serviceID uuid.UUID) (int64, error)
+	// How many workloads hold each sync state, in one statement so the
+	// counts agree with each other. A state no workload holds has no row.
+	CountWorkloadsBySyncState(ctx context.Context) ([]CountWorkloadsBySyncStateRow, error)
 	// Address groups: named CIDR sets for peers that are not managed workloads
 	// (ADR-0018).
 	CreateAddressGroup(ctx context.Context, arg CreateAddressGroupParams) error

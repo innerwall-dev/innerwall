@@ -157,6 +157,7 @@ func TestReadEndpointsRequireCredential(t *testing.T) {
 		"/api/v1/workloads",
 		"/api/v1/workloads/" + s.fx.db.String(),
 		"/api/v1/workloads/" + s.fx.db.String() + "/rendered-policy",
+		"/api/v1/workloads/counts",
 		// Even a request that would be refused for its parameters is
 		// refused for its credential first.
 		"/api/v1/flows/rollup",
@@ -170,7 +171,7 @@ func TestReadEndpointsRequireCredential(t *testing.T) {
 		resp, body = s.do(t, c, request{method: http.MethodGet, path: p, headers: map[string]string{"Cookie": api.SessionCookie + "=" + strings.Repeat("A", 43)}})
 		expectProblem(t, resp, body, http.StatusUnauthorized, api.ProblemUnauthenticated)
 	}
-	for _, p := range paths[:6] {
+	for _, p := range paths[:7] {
 		resp, body := s.get(t, p)
 		if resp.status != http.StatusOK {
 			t.Fatalf("GET %s with a credential: %d %v", p, resp.status, body)
@@ -407,6 +408,13 @@ func TestWorkloadEndpoints(t *testing.T) {
 	resp, body = s.get(t, "/api/v1/workloads?limit=1&cursor="+url.QueryEscape(body["next_cursor"].(string)))
 	if resp.status != http.StatusOK || field(body, "workloads.0.hostname") != "web-1" || body["next_cursor"] != nil {
 		t.Fatalf("second page = %v", body)
+	}
+
+	// Counts: every state present, zero included, and the total their
+	// sum; the literal segment is not read as a workload id.
+	resp, body = s.get(t, "/api/v1/workloads/counts")
+	if resp.status != http.StatusOK || body["total"] != float64(2) || field(body, "by_sync_state.degraded") != float64(1) || field(body, "by_sync_state.synced") != float64(1) || field(body, "by_sync_state.pending") != float64(0) || field(body, "by_sync_state.offline") != float64(0) {
+		t.Fatalf("counts = %d %v", resp.status, body)
 	}
 
 	// Detail: the same shape.

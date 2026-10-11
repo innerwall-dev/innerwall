@@ -7,6 +7,7 @@ import {
 	type AddressGroup,
 	type Entry,
 	type FlowsPage,
+	type Peer,
 	ProblemType,
 	type RollupGroup,
 	type Rule,
@@ -22,7 +23,7 @@ import { asProblem, useResource, useWrite } from "@/lib/resource";
 import { cn } from "@/lib/utils";
 import { peerName } from "../map/Drawer";
 import { peerKey } from "../map/model";
-import { editorPath } from "../policy/link";
+import { type PairContext, pairLink } from "../policy/link";
 import { rowLimit } from "./data";
 import { type ReviewRow, scopeRequirements, scopeText } from "./model";
 
@@ -78,6 +79,22 @@ export function ReviewDrawer({
 		pairs.status === "ready" && !pairs.data.truncated
 			? new Set(pairs.data.groups.map((g) => g.keys.dst?.id)).size
 			: null;
+	// An allowed row's windows name the rules that admitted it; the link
+	// points at one, in the ruleset under review when it holds one.
+	const [admitting, setAdmitting] = useState<Found[]>([]);
+	const pointed =
+		admitting.find((f) => f.rule && f.ruleset?.id === ruleset.id) ??
+		admitting.find((f) => f.rule && f.ruleset);
+	const pair: PairContext = {
+		via: "review",
+		peers: rowPeers(row),
+		services: [row.service],
+		rule: pointed?.id ?? null,
+	};
+	const link = pairLink(
+		{ ruleset: pointed?.ruleset?.name ?? ruleset.name },
+		pair,
+	);
 
 	return (
 		<aside
@@ -112,7 +129,7 @@ export function ReviewDrawer({
 						<InertAction label="Add to an address group" />
 					) : null}
 					<Button variant="secondary" size="sm" asChild>
-						<Link to={editorPath(ruleset.name)}>Open in policy editor</Link>
+						<Link to={link}>Open in policy editor</Link>
 					</Button>
 				</div>
 			</div>
@@ -127,6 +144,7 @@ export function ReviewDrawer({
 					from={from}
 					to={to}
 					onChanged={onChanged}
+					onFound={setAdmitting}
 				/>
 				<div className="px-4 pt-4 pb-2">
 					<Eyebrow>
@@ -155,6 +173,34 @@ export function ReviewDrawer({
 			</div>
 		</aside>
 	);
+}
+
+function hostBits(addr: string): string {
+	return addr.includes(":") ? "128" : "32";
+}
+
+// rowPeers is a row's peer as a rule names it: the peer workloads' label
+// set, the address group, or the address itself; none for a peer no
+// rule can name.
+export function rowPeers(row: ReviewRow): Peer[] {
+	switch (row.peer.kind) {
+		case "workloads":
+			return [
+				{
+					workloads: Object.fromEntries(
+						Object.entries(row.peer.labels).map(([k, v]) => [k, [v]]),
+					),
+				},
+			];
+		case "group":
+			return row.peer.addressGroupId
+				? [{ address_group: row.peer.addressGroupId }]
+				: [];
+		case "address":
+			return [{ cidr: `${row.peer.title}/${hostBits(row.peer.title)}` }];
+		default:
+			return [];
+	}
 }
 
 function InertAction({ label }: { label: string }) {
@@ -200,6 +246,7 @@ function RuleSection({
 	from,
 	to,
 	onChanged,
+	onFound,
 }: {
 	row: ReviewRow;
 	ruleset: Ruleset;
@@ -210,6 +257,7 @@ function RuleSection({
 	from: string;
 	to: string;
 	onChanged: () => void;
+	onFound: (found: Found[]) => void;
 }) {
 	return (
 		<div className="flex flex-col gap-2 border-b border-subtle p-4">
@@ -222,6 +270,7 @@ function RuleSection({
 					keys={keys}
 					from={from}
 					to={to}
+					onFound={onFound}
 				/>
 			) : (
 				<>
@@ -243,6 +292,14 @@ function RuleSection({
 // MatchedRules names the rules that admitted an allowed row's traffic:
 // the rule-by-peer rollup on the row's service, restricted to its peers,
 // resolved to the authored rules the listing holds.
+// Found is an authored rule a row's windows name, with the ruleset that
+// holds it; both null when the listing no longer holds the rule.
+export interface Found {
+	id: string;
+	rule: Rule | null;
+	ruleset: Ruleset | null;
+}
+
 function MatchedRules({
 	row,
 	rulesets,
@@ -250,6 +307,7 @@ function MatchedRules({
 	keys,
 	from,
 	to,
+	onFound,
 }: {
 	row: ReviewRow;
 	rulesets: Ruleset[];
@@ -257,6 +315,7 @@ function MatchedRules({
 	keys: ReadonlySet<string>;
 	from: string;
 	to: string;
+	onFound: (found: Found[]) => void;
 }) {
 	const { resource, reload } = useResource(
 		() =>
@@ -271,25 +330,29 @@ function MatchedRules({
 			}),
 		[row.id, from, to],
 	);
+	const found = useMemo<Found[]>(() => {
+		if (resource.status !== "ready") return [];
+		const authored = new Set<string>();
+		for (const g of resource.data.groups) {
+			if (g.keys.peer && keys.has(peerKey(g.keys.peer)) && g.keys.rule) {
+				authored.add(g.keys.rule.authored_rule_id ?? g.keys.rule.id);
+			}
+		}
+		return [...authored].map((id) => {
+			for (const rs of rulesets) {
+				const rule = rs.rules.find((r) => r.id === id);
+				if (rule) return { id, rule, ruleset: rs };
+			}
+			return { id, rule: null, ruleset: null };
+		});
+	}, [resource, keys, rulesets]);
+	useEffect(() => onFound(found), [found, onFound]);
 	if (resource.status === "loading") return <LoadingRow what="the rule" />;
 	if (resource.status === "error") {
 		return (
 			<ProblemNotice what="the rule" error={resource.error} onRetry={reload} />
 		);
 	}
-	const authored = new Set<string>();
-	for (const g of resource.data.groups) {
-		if (g.keys.peer && keys.has(peerKey(g.keys.peer)) && g.keys.rule) {
-			authored.add(g.keys.rule.authored_rule_id ?? g.keys.rule.id);
-		}
-	}
-	const found = [...authored].map((id) => {
-		for (const rs of rulesets) {
-			const rule = rs.rules.find((r) => r.id === id);
-			if (rule) return { id, rule, ruleset: rs };
-		}
-		return { id, rule: null, ruleset: null };
-	});
 	if (found.length === 0) {
 		return (
 			<p className="type-ui text-secondary">

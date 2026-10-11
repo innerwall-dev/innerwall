@@ -84,6 +84,18 @@ func seenKey(t *time.Time) time.Time {
 	return t.UTC()
 }
 
+// CountWorkloadsBySyncState implements readmodel.Store: a state no
+// fixture holds is absent, as it is from the Postgres statement.
+func (m *MemStore) CountWorkloadsBySyncState(context.Context) (map[innerwallv1.SyncState]int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := map[innerwallv1.SyncState]int64{}
+	for i := range m.Workloads {
+		out[m.Workloads[i].SyncState]++
+	}
+	return out, nil
+}
+
 // ListWorkloadPage implements readmodel.Store with the same order, filter,
 // and cursor semantics as the Postgres statement.
 func (m *MemStore) ListWorkloadPage(_ context.Context, q readmodel.WorkloadPageQuery) ([]readmodel.WorkloadRecord, error) {

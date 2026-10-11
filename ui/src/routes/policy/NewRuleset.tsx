@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 import { FindingLines } from "./Chips";
 import type { EditorData } from "./data";
 import { useScopeMatch } from "./hooks";
-import { editorPath } from "./link";
+import { editorPath, type Suggestion, viaText } from "./link";
 import { scopeFindings } from "./model";
 import { NoticeLine } from "./RulesetEditor";
 import { ScopeCard } from "./ScopeCard";
@@ -29,16 +29,23 @@ import { ScopeCard } from "./ScopeCard";
 // editor's own header and scope card, empty.
 export function NewRuleset({
 	data,
+	scope: initialScope = {},
+	suggestion = null,
 	onCreated,
 }: {
 	data: EditorData;
+	// scope is where a link starts the scope: the destination of a pair.
+	scope?: Selector;
+	// suggestion is the pair a link carries, which opens a new rule once
+	// the ruleset is created.
+	suggestion?: Suggestion | null;
 	onCreated: (rs: Ruleset) => void;
 }) {
 	const write = useWrite();
 	const [name, setName] = useState("");
 	const [description, setDescription] = useState("");
 	const [enabled, setEnabled] = useState(true);
-	const [scope, setScope] = useState<Selector>({});
+	const [scope, setScope] = useState<Selector>(initialScope);
 	const [findings, setFindings] = useState<Finding[]>([]);
 	const [failure, setFailure] = useState<string | null>(null);
 	const [saving, setSaving] = useState(false);
@@ -131,6 +138,22 @@ export function NewRuleset({
 					after renders immediately.
 				</span>
 			</div>
+			{suggestion ? (
+				<div
+					role="note"
+					data-testid="pair-context"
+					className="flex gap-2.5 rounded-lg border border-default bg-subtle px-4 py-3 type-ui text-secondary"
+				>
+					<Icon name="info" className="mt-0.5 shrink-0" />
+					<span>
+						From {viaText[suggestion.via]}: no ruleset's scope selects this
+						traffic's destination yet. The scope below starts from the
+						destination's labels; review it, name the ruleset, and create it.
+						The editor then opens a new rule from the pair's peers and services,
+						unsaved until you save it.
+					</span>
+				</div>
+			) : null}
 			<ScopeCard
 				scope={scope}
 				edited={true}

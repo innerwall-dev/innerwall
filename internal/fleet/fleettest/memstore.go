@@ -711,6 +711,18 @@ func (m *MemStore) GetWorkloadRecord(_ context.Context, id identity.WorkloadID) 
 	return nil, registry.ErrWorkloadUnknown
 }
 
+// CountWorkloadsBySyncState implements readmodel.Store: a state no
+// workload holds is absent, as it is from the Postgres statement.
+func (m *MemStore) CountWorkloadsBySyncState(context.Context) (map[innerwallv1.SyncState]int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := map[innerwallv1.SyncState]int64{}
+	for i := range m.Workloads {
+		out[m.Workloads[i].SyncState]++
+	}
+	return out, nil
+}
+
 // ListWorkloadPage implements readmodel.Store with the fleet order and
 // the cursor semantics of the Postgres statement.
 func (m *MemStore) ListWorkloadPage(_ context.Context, q readmodel.WorkloadPageQuery) ([]readmodel.WorkloadRecord, error) {

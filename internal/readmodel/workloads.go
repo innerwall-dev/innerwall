@@ -3,6 +3,7 @@ package readmodel
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/netip"
 	"strconv"
 	"time"
@@ -219,6 +220,44 @@ func (s *Reader) ListWorkloads(ctx context.Context, req WorkloadsRequest) (*Work
 		page.NextCursor = encodeWorkloadCursor(WorkloadCursor{SyncRank: last.SyncRank, SeenKey: last.SeenKey, ID: last.ID})
 	}
 	return page, nil
+}
+
+// WorkloadCounts is the fleet's size, in total and by sync state. Every
+// workload is in exactly one sync state, so Total is the sum of BySync.
+type WorkloadCounts struct {
+	Total  int64
+	BySync map[innerwallv1.SyncState]int64
+}
+
+// syncStates are the states a workload can hold, each counted even when
+// no workload holds it.
+var syncStates = []innerwallv1.SyncState{
+	innerwallv1.SyncState_SYNC_STATE_SYNCED,
+	innerwallv1.SyncState_SYNC_STATE_PENDING,
+	innerwallv1.SyncState_SYNC_STATE_DEGRADED,
+	innerwallv1.SyncState_SYNC_STATE_OFFLINE,
+}
+
+// CountWorkloads returns how many workloads the fleet holds, in total
+// and in each sync state, from one read of the store, so the counts agree
+// with each other. A count is exact or the read fails: a workload stored
+// in a state outside the four is an error, never left out of a total.
+func (s *Reader) CountWorkloads(ctx context.Context) (*WorkloadCounts, error) {
+	stored, err := s.Store.CountWorkloadsBySyncState(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := &WorkloadCounts{BySync: make(map[innerwallv1.SyncState]int64, len(syncStates))}
+	for _, st := range syncStates {
+		out.BySync[st] = stored[st]
+		out.Total += stored[st]
+	}
+	for st, n := range stored {
+		if _, known := out.BySync[st]; !known && n > 0 {
+			return nil, fmt.Errorf("readmodel: %d workloads are stored in unknown sync state %d", n, st)
+		}
+	}
+	return out, nil
 }
 
 // GetWorkload returns one workload, or registry.ErrWorkloadUnknown.

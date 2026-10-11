@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { listFlows } from "@/api/fleet";
-import type { Flow, FlowsPage, PeerRef, Workload } from "@/api/schema";
+import type {
+	Flow,
+	FlowsPage,
+	Peer,
+	PeerRef,
+	Selector,
+	Workload,
+} from "@/api/schema";
 import {
 	Eyebrow,
 	LabelChip,
@@ -16,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { count, since } from "@/lib/format";
 import { asProblem, useResource } from "@/lib/resource";
 import { cn } from "@/lib/utils";
-import { editorPath } from "../policy/link";
+import { type PairContext, pairLink } from "../policy/link";
 import { rulesetsSelecting } from "../policy/target";
 import { ModeLine, subtitle } from "./Graph";
 import {
@@ -201,6 +208,91 @@ export function peerSelector(
 	}
 }
 
+// sharedScope is the map's scope requirements, outside the grouping key,
+// that every one of a set of label maps carries.
+function sharedScope(
+	scope: readonly string[],
+	groupKey: string,
+	labels: readonly Record<string, string>[],
+): Selector {
+	const sel: Selector = {};
+	for (const req of scope) {
+		const at = req.indexOf("=");
+		const k = req.slice(0, at);
+		const v = req.slice(at + 1);
+		if (k !== groupKey && labels.every((l) => l[k] === v)) {
+			sel[k] = [...(sel[k] ?? []), v];
+		}
+	}
+	return sel;
+}
+
+// groupSelector is a managed group's requirement as a selector.
+function groupSelector(n: MapNode): Selector {
+	const sel = n.selector ?? "";
+	const at = sel.indexOf("=");
+	return at < 0 ? {} : { [sel.slice(0, at)]: [sel.slice(at + 1)] };
+}
+
+// rulePeers is the edge's source as a rule names it, the same derivation
+// peerSelector prints: the group's requirement with the scope its
+// sources share, the address group, or the addresses themselves; none
+// for sources no rule can name.
+export function rulePeers(
+	e: MapEdge,
+	from: MapNode,
+	groupKey: string,
+	scope: readonly string[],
+): Peer[] {
+	switch (from.kind) {
+		case "managed":
+			return [
+				{
+					workloads: {
+						...groupSelector(from),
+						...sharedScope(
+							scope,
+							groupKey,
+							e.pairs.map((p) => p.src.labels),
+						),
+					},
+				},
+			];
+		case "address-group":
+			return from.addressGroupId
+				? [{ address_group: from.addressGroupId }]
+				: [];
+		case "unknown":
+			return [
+				...new Set(
+					e.pairs.filter((p) => p.src.kind === "address").map((p) => p.peerKey),
+				),
+			].map((a) => ({ cidr: `${a}/${hostBits(a)}` }));
+		default:
+			return [];
+	}
+}
+
+// destScope is the scope a new ruleset for the edge's destination starts
+// from: the destination group's requirement with the map's scope its
+// workloads share; none for a group no selector can name.
+export function destScope(
+	e: MapEdge,
+	to: MapNode,
+	groupKey: string,
+	scope: readonly string[],
+): Selector | null {
+	if (to.kind !== "managed") return null;
+	return {
+		...groupSelector(to),
+		...sharedScope(
+			scope,
+			groupKey,
+			e.pairs.map((p) => p.dst.labels),
+		),
+	};
+}
+
 // peerName is a pair's source as a row names it.
 export function peerName(p: PeerRef): string {
 	switch (p.kind) {
@@ -244,7 +336,8 @@ function EdgeDrawer({
 	const [open, setOpen] = useState<string | null>(
 		e.pairs.length === 1 ? pairKey(e.pairs[0]) : null,
 	);
-	const [services, setServices] = useState<string[] | null>(null);
+	const [read, setRead] = useState<PairRead | null>(null);
+	const services = read?.services ?? null;
 	const opened = e.pairs.find((p) => pairKey(p) === open) ?? null;
 	// The ruleset a rule drawn from this edge belongs in: one whose scope
 	// selects the edge's destination workloads, resolved by the control
@@ -254,7 +347,26 @@ function EdgeDrawer({
 		() => rulesetsSelecting(dstIds),
 		[dstIds],
 	);
-	const chosen = target.status === "ready" ? (target.data[0] ?? null) : null;
+	// The opened pair's windows may attribute its traffic to a rule; the
+	// ruleset holding that rule is where the link lands, with the rule
+	// pointed at. Otherwise the first ruleset selecting the destination.
+	const attributed =
+		target.status === "ready" && read?.rule
+			? (target.data.find((t) =>
+					t.ruleset.rules.some((r) => r.id === read.rule),
+				) ?? null)
+			: null;
+	const chosen =
+		attributed ?? (target.status === "ready" ? (target.data[0] ?? null) : null);
+	const pair: PairContext = {
+		via: "map",
+		peers: rulePeers(e, src, groupKey, scope),
+		services: services ?? [],
+		rule: attributed ? read?.rule : null,
+	};
+	const link = chosen
+		? pairLink({ ruleset: chosen.ruleset.name }, pair)
+		: pairLink({ scope: destScope(e, dst, groupKey, scope) }, pair);
 
 	return (
 		<>
@@ -340,20 +452,20 @@ function EdgeDrawer({
 				</dl>
 				<div className="flex items-center gap-2">
 					<Button size="sm" asChild>
-						<Link to={editorPath(chosen?.ruleset.name)}>
-							Open in policy editor
-						</Link>
+						<Link to={link}>Open in policy editor</Link>
 					</Button>
 					<span
 						className="type-caption text-tertiary"
 						data-testid="editor-effect"
 					>
 						{chosen
-							? chosen.ruleset.enabled === false
-								? "This ruleset is disabled: saving changes nothing until it is enabled."
-								: `Saving takes effect immediately for ${count(chosen.inScope)} ${chosen.inScope === 1 ? "workload" : "workloads"}.`
+							? `${attributed ? "Opens the rule that admitted the opened pair." : "Opens a new rule from these peers and services, unsaved."} ${
+									chosen.ruleset.enabled === false
+										? "This ruleset is disabled: saving changes nothing until it is enabled."
+										: `Saving takes effect immediately for ${count(chosen.inScope)} ${chosen.inScope === 1 ? "workload" : "workloads"}.`
+								}`
 							: target.status === "ready"
-								? "Start a ruleset whose scope selects these workloads."
+								? "Start a ruleset whose scope selects these workloads, with a new rule from these peers and services."
 								: null}
 					</span>
 				</div>
@@ -377,7 +489,7 @@ function EdgeDrawer({
 									aria-expanded={isOpen}
 									onClick={() => {
 										setOpen(isOpen ? null : k);
-										setServices(null);
+										setRead(null);
 									}}
 									className={cn(
 										"grid h-row-dense w-full cursor-pointer grid-cols-[1fr_auto_auto] items-center gap-x-3 px-2 text-left type-mono-sm",
@@ -403,7 +515,7 @@ function EdgeDrawer({
 										pair={opened}
 										from={from}
 										to={to}
-										onServices={setServices}
+										onRead={setRead}
 									/>
 								) : null}
 							</li>
@@ -421,18 +533,25 @@ const th =
 	"border-b border-default px-3 text-left whitespace-nowrap type-label text-tertiary";
 const td = "border-b border-subtle px-3 py-2 type-ui";
 
+// PairRead is what an opened pair's windows say: the services the pair
+// reached, and the authored rule its admitted windows name, if any.
+export interface PairRead {
+	services: string[];
+	rule: string | null;
+}
+
 // PairFlows is one pair's stored windows under the pair's decision,
 // newest first, from GET /flows with the workload and peer filters.
 function PairFlows({
 	pair,
 	from,
 	to,
-	onServices,
+	onRead,
 }: {
 	pair: Pair;
 	from: string;
 	to: string;
-	onServices: (s: string[]) => void;
+	onRead: (r: PairRead) => void;
 }) {
 	const filter = useMemo(
 		() => ({
@@ -455,8 +574,15 @@ function PairFlows({
 	const rows = useMemo(() => pages.flatMap((p) => p.flows), [pages]);
 	const cursor = pages.at(-1)?.next_cursor ?? null;
 	useEffect(() => {
-		if (rows.length > 0) onServices([...new Set(rows.map(service))].sort());
-	}, [rows, onServices]);
+		if (rows.length === 0) return;
+		const admitted = rows.find(
+			(f) => f.verdict === "allowed" && f.rule?.authored_rule_id,
+		);
+		onRead({
+			services: [...new Set(rows.map(service))].sort(),
+			rule: admitted?.rule?.authored_rule_id ?? null,
+		});
+	}, [rows, onRead]);
 
 	async function loadMore() {
 		if (!cursor) return;

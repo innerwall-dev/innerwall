@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import type { Rule, Selector } from "@/api/schema";
 import { Eyebrow, verdicts } from "@/components/fleet/status";
 import { Icon } from "@/components/Icon";
@@ -69,6 +69,7 @@ const head =
 // scoped workloads, on what, whether each rule is enabled, and what each
 // admitted over the last day.
 export function RulesCard({
+	highlight = null,
 	rules,
 	names,
 	traffic,
@@ -86,6 +87,8 @@ export function RulesCard({
 	onSave,
 	onDryRun,
 }: {
+	// highlight is the rule a deep link points at.
+	highlight?: string | null;
 	rules: Rule[];
 	names: Names;
 	traffic: Resource<Traffic>;
@@ -164,6 +167,7 @@ export function RulesCard({
 						) : (
 							<RuleRow
 								key={r.id}
+								highlighted={r.id === highlight}
 								rule={r}
 								names={names}
 								traffic={traffic}
@@ -202,6 +206,7 @@ export function RulesCard({
 }
 
 function RuleRow({
+	highlighted = false,
 	rule: r,
 	names,
 	traffic,
@@ -209,6 +214,7 @@ function RuleRow({
 	onToggle,
 	onEdit,
 }: {
+	highlighted?: boolean;
 	rule: Rule;
 	names: Names;
 	traffic: Resource<Traffic>;
@@ -219,10 +225,20 @@ function RuleRow({
 	const id = r.id ?? "";
 	const label = r.description || shortRuleId(id);
 	const cue = recency(r);
+	const ref = useRef<HTMLTableRowElement>(null);
+	useEffect(() => {
+		if (highlighted) ref.current?.scrollIntoView?.({ block: "center" });
+	}, [highlighted]);
 	return (
 		<tr
+			ref={ref}
 			aria-label={label}
-			className="h-row-dense border-b border-subtle last:border-b-0 hover:bg-hover"
+			aria-current={highlighted || undefined}
+			data-highlighted={highlighted || undefined}
+			className={cn(
+				"h-row-dense border-b border-subtle last:border-b-0",
+				highlighted ? "bg-selection-bg" : "hover:bg-hover",
+			)}
 		>
 			<td className={cn(cell, "pt-[11px]")}>
 				<Switch

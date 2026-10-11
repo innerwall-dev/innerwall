@@ -21,7 +21,7 @@ import {
 	row,
 	wref,
 } from "@/test/map";
-import { gap, ruleset } from "@/test/review";
+import { gap, rule, ruleset } from "@/test/review";
 
 // The graph library sizes its canvas from the layout box, which the test
 // DOM does not compute; give every element the canvas's size so the map
@@ -337,11 +337,8 @@ describe("flow map", () => {
 			{ selector: { app: ["auth"] } },
 			{ selector: { app: ["checkout"] } },
 		]);
-		expect(
-			within(drawer).getByRole("link", { name: "Open in policy editor" }),
-		).toHaveAttribute("href", "/policy?ruleset=checkout-inbound");
 		expect(within(drawer).getByTestId("editor-effect")).toHaveTextContent(
-			"Saving takes effect immediately for 42 workloads.",
+			"Opens a new rule from these peers and services, unsaved. Saving takes effect immediately for 42 workloads.",
 		);
 		// One pair: its windows open at once, by workload, peer, and decision
 		// over the map's own range.
@@ -360,6 +357,14 @@ describe("flow map", () => {
 				"tcp/9100",
 			),
 		);
+		// The editor link carries the pair: the ruleset whose scope selects
+		// the destination, the peers and services the drawer shows.
+		expect(
+			within(drawer).getByRole("link", { name: "Open in policy editor" }),
+		).toHaveAttribute(
+			"href",
+			"/policy?ruleset=checkout-inbound&via=map&peer=app%3Dmetrics-collector+env%3Dprod&service=tcp%2F9100",
+		);
 		expect(
 			within(drawer).getByRole("link", { name: "Open checkout-prod-01" }),
 		).toHaveAttribute("href", `/workloads/${checkout1.id}`);
@@ -370,6 +375,113 @@ describe("flow map", () => {
 		expect(
 			screen.queryByRole("complementary", { name: "Traffic between groups" }),
 		).not.toBeInTheDocument();
+	});
+
+	it("links a pair no ruleset selects to a new ruleset scoped to its destination", async () => {
+		surface();
+		const user = userEvent.setup();
+		await openMap("/map?label=env%3Dprod");
+		const graph = await screen.findByTestId("flow-graph");
+		await user.click(
+			await within(graph).findByRole("button", {
+				name: "metrics-collector to checkout: would block 18204 connections",
+			}),
+		);
+		const drawer = await screen.findByRole("complementary", {
+			name: "Traffic between groups",
+		});
+		expect(
+			await within(drawer).findByText(/no ruleset's scope selects checkout/),
+		).toBeInTheDocument();
+		expect(within(drawer).getByTestId("editor-effect")).toHaveTextContent(
+			"Start a ruleset whose scope selects these workloads, with a new rule from these peers and services.",
+		);
+		expect(
+			within(drawer).getByRole("link", { name: "Open in policy editor" }),
+		).toHaveAttribute(
+			"href",
+			"/policy?new=1&scope=app%3Dcheckout+env%3Dprod&via=map&peer=app%3Dmetrics-collector+env%3Dprod",
+		);
+	});
+
+	it("links an admitted pair to the rule its windows name", async () => {
+		const ingress = ruleset("checkout-inbound", { app: ["checkout"] }, [
+			rule({ id: "5a000000-0000-4000-8000-000000000001" }),
+		]);
+		surface({
+			extra: [
+				{
+					method: "GET",
+					path: "/api/v1/rulesets",
+					reply: {
+						status: 200,
+						json: { rulesets: [ingress], state_version: "s1" },
+					},
+				},
+				{
+					method: "POST",
+					path: "/api/v1/selectors/preview",
+					reply: { status: 200, json: { matched: [checkout1], count: 1 } },
+				},
+				{
+					method: "GET",
+					path: "/api/v1/flows",
+					reply: (_b, q) => ({
+						status: 200,
+						json: {
+							workload: checkout1,
+							from: q.get("from"),
+							to: q.get("to"),
+							next_cursor: null,
+							flows: [
+								{
+									id: 9,
+									window_start: minutesAgo(10),
+									window_end: minutesAgo(5),
+									peer: peer.workload(api1),
+									src_address: "10.64.3.1",
+									dst_address: "10.64.0.1",
+									service: { protocol: "tcp", port: 8443 },
+									direction: "inbound",
+									verdict: "allowed",
+									rule: {
+										id: "5a000000-0000-4000-8000-000000000001/tcp",
+										authored_rule_id: "5a000000-0000-4000-8000-000000000001",
+										protocol: "tcp",
+									},
+									connection_count: 412_880,
+									byte_count: 9000,
+									first_seen: minutesAgo(10),
+									last_seen: minutesAgo(1),
+								},
+							],
+						},
+					}),
+				},
+			],
+		});
+		const user = userEvent.setup();
+		await openMap("/map?label=env%3Dprod");
+		const graph = await screen.findByTestId("flow-graph");
+		await user.click(
+			await within(graph).findByRole("button", {
+				name: /^storefront-api to checkout: allowed/,
+			}),
+		);
+		const drawer = await screen.findByRole("complementary", {
+			name: "Traffic between groups",
+		});
+		await waitFor(() =>
+			expect(
+				within(drawer).getByRole("link", { name: "Open in policy editor" }),
+			).toHaveAttribute(
+				"href",
+				"/policy?ruleset=checkout-inbound&via=map&peer=app%3Dstorefront-api+env%3Dprod&service=tcp%2F8443&rule=5a000000-0000-4000-8000-000000000001",
+			),
+		);
+		expect(within(drawer).getByTestId("editor-effect")).toHaveTextContent(
+			"Opens the rule that admitted the opened pair.",
+		);
 	});
 
 	it("scopes to a selected node and links its workloads to their detail", async () => {

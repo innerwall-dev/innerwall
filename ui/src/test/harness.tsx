@@ -3,7 +3,13 @@ import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router";
 import { vi } from "vitest";
 import { App } from "@/App";
-import type { EvidenceGap, Me, Problem, ProblemTypeURN } from "@/api/schema";
+import type {
+	EvidenceGap,
+	Me,
+	Problem,
+	ProblemTypeURN,
+	SyncState,
+} from "@/api/schema";
 
 // A scripted operator surface: each entry answers one request by method
 // and path, in order of registration, so a test states exactly what the
@@ -13,6 +19,9 @@ export type Reply = {
 	json?: unknown;
 	problem?: Problem;
 	headers?: Record<string, string>;
+	// gate holds the reply until it settles, so a test can observe the
+	// screen while a request is still in flight.
+	gate?: Promise<unknown>;
 };
 
 // A route answers requests to one path, whatever their query; a reply
@@ -58,6 +67,7 @@ export function mockSurface(routes: Route[]) {
 				typeof route.reply === "function"
 					? route.reply(body, parsed.searchParams)
 					: route.reply;
+			if (reply.gate) await reply.gate;
 			const headers: Record<string, string> = { ...(reply.headers ?? {}) };
 			let payload: string;
 			if (reply.problem) {
@@ -101,6 +111,11 @@ export const freshInstall: Route[] = [
 	},
 	{
 		method: "GET",
+		path: "/api/v1/workloads/counts",
+		reply: { status: 200, json: countsOf([]) },
+	},
+	{
+		method: "GET",
 		path: "/api/v1/provisioning-tokens",
 		reply: { status: 200, json: { tokens: [] } },
 	},
@@ -130,6 +145,14 @@ export const freshInstall: Route[] = [
 		reply: (_body, query) => ({ status: 200, json: gapsOf([], query) }),
 	},
 ];
+
+// countsOf is the fleet counts read over the given workloads, as the
+// control plane counts them.
+export function countsOf(workloads: readonly { sync: { state: SyncState } }[]) {
+	const by_sync_state = { synced: 0, pending: 0, degraded: 0, offline: 0 };
+	for (const w of workloads) by_sync_state[w.sync.state] += 1;
+	return { total: workloads.length, by_sync_state };
+}
 
 // gapsOf is a gaps read over the query's range returning gaps, the
 // whole of what intersects it.

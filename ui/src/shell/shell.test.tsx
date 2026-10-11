@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
+import type { SyncState } from "@/api/schema";
 import { freshInstall, mockSurface, operator, renderApp } from "@/test/harness";
 import { storageKey } from "@/theme/ThemeProvider";
 
@@ -29,13 +30,31 @@ describe("shell", () => {
 		expect(crumbs).toHaveTextContent("Workloads/Fleet");
 	});
 
-	it("routes the root to simulation review and unknown paths with it", async () => {
+	it("routes the root to simulation review", async () => {
 		signedIn();
-		renderApp("/no/such/screen");
+		renderApp("/");
 		expect(
 			await screen.findByRole("heading", { name: "Nothing to review yet" }),
 		).toBeInTheDocument();
 	});
+
+	it.each(["/no/such/screen", "/flows"])(
+		"says %s is not found, with the way back to the fleet",
+		async (path) => {
+			signedIn();
+			renderApp(path);
+			expect(
+				await screen.findByRole("heading", { name: "No such page" }),
+			).toBeInTheDocument();
+			expect(screen.getByText(path)).toBeInTheDocument();
+			expect(
+				screen.getByRole("link", { name: "Back to the fleet" }),
+			).toHaveAttribute("href", "/workloads");
+			expect(
+				screen.getByRole("navigation", { name: "Breadcrumb" }),
+			).toHaveTextContent("Not found");
+		},
+	);
 
 	it("renders every fresh-install state", async () => {
 		signedIn();
@@ -103,6 +122,61 @@ describe("sidebar", () => {
 		await user.click(screen.getByRole("button", { name: "Expand sidebar" }));
 		expect(rail).toHaveAttribute("data-state", "expanded");
 		expect(document.cookie).toContain("sidebar_state=true");
+	});
+});
+
+describe("workloads badge", () => {
+	const withCounts = (by: Partial<Record<SyncState, number>>) => {
+		const by_sync_state = {
+			synced: 0,
+			pending: 0,
+			degraded: 0,
+			offline: 0,
+			...by,
+		};
+		const total = Object.values(by_sync_state).reduce((a, b) => a + b, 0);
+		return mockSurface([
+			{
+				method: "GET",
+				path: "/api/v1/workloads/counts",
+				reply: { status: 200, json: { total, by_sync_state } },
+			},
+			...freshInstall,
+		]);
+	};
+
+	it("counts the workloads needing attention and says what it counts", async () => {
+		withCounts({ synced: 9, pending: 1, degraded: 2, offline: 1 });
+		const user = userEvent.setup();
+		renderApp("/policy");
+		const badge = await screen.findByTestId("count-Workloads");
+		expect(badge).toHaveTextContent("4");
+		const hint =
+			"4 workloads need attention: 1 pending, 2 degraded, 1 offline. Counts workloads whose sync state is pending, degraded, or offline.";
+		expect(badge).toHaveAttribute("aria-label", hint);
+		await user.hover(badge);
+		expect(await screen.findByRole("tooltip")).toHaveTextContent(hint);
+		// The fleet sync block is the fresh install's alone.
+		expect(screen.queryByText("no workloads")).not.toBeInTheDocument();
+	});
+
+	it("is hidden when no workload needs attention", async () => {
+		withCounts({ synced: 12 });
+		renderApp("/policy");
+		expect(await screen.findByTestId("count-Policy")).toHaveTextContent("0");
+		await waitFor(() =>
+			expect(screen.queryByText("no workloads")).not.toBeInTheDocument(),
+		);
+		expect(screen.queryByTestId("count-Workloads")).not.toBeInTheDocument();
+	});
+
+	it("keeps the fresh install's zero, the cue to enroll", async () => {
+		signedIn();
+		renderApp("/policy");
+		const badge = await screen.findByTestId("count-Workloads");
+		expect(badge).toHaveTextContent("0");
+		expect(badge).toHaveAttribute("aria-label", "No workloads enrolled");
+		expect(screen.getByText("no workloads")).toBeInTheDocument();
 	});
 });
 

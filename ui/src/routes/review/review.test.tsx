@@ -537,9 +537,14 @@ describe("simulation review", () => {
 		expect(within(drawer).getByTestId("rule-statement")).toHaveTextContent(
 			"No enabled rule matched",
 		);
+		// The editor link carries the pair: no rule admitted it, so the
+		// editor opens a new rule from its peer and service.
 		expect(
 			within(drawer).getByRole("link", { name: "Open in policy editor" }),
-		).toHaveAttribute("href", "/policy?ruleset=checkout-inbound");
+		).toHaveAttribute(
+			"href",
+			"/policy?ruleset=checkout-inbound&via=review&peer=app%3Dmetrics-collector+env%3Dprod&service=tcp%2F9100",
+		);
 
 		await userEvent.click(
 			within(drawer).getAllByRole("button", { expanded: false })[0],
@@ -570,6 +575,16 @@ describe("simulation review", () => {
 		expect(
 			await within(drawer).findByTestId("rule-statement"),
 		).toHaveTextContent("Matched api-to-checkout in checkout-inbound");
+		// The editor link points at the rule that matched, a render after
+		// the statement names it.
+		await waitFor(() =>
+			expect(
+				within(drawer).getByRole("link", { name: "Open in policy editor" }),
+			).toHaveAttribute(
+				"href",
+				`/policy?ruleset=checkout-inbound&via=review&peer=app%3Dstorefront-api+env%3Dprod&service=tcp%2F8443&rule=${apiRule.id}`,
+			),
+		);
 	});
 
 	it("enables a disabled rule, conditioned on the version it read", async () => {

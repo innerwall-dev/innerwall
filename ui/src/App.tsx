@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router";
 import { SessionProvider } from "@/auth/SessionProvider";
 import { Fleet } from "@/routes/fleet/Fleet";
 import { Login } from "@/routes/Login";
+import { NotFound } from "@/routes/NotFound";
 import { Policy } from "@/routes/policy/Policy";
 import { SimulationReview } from "@/routes/SimulationReview";
 import { WorkloadRoute } from "@/routes/workload/WorkloadDetail";
@@ -17,7 +18,8 @@ const FlowMap = lazy(() =>
 
 // The console's routes. Everything but the login screen sits inside the
 // authenticated shell; the sections are in product order (ADR-0001) and
-// each talks only to the public REST surface (ADR-0007).
+// each talks only to the public REST surface (ADR-0007). The root opens
+// the first section; any other address without a screen is not found.
 export function App() {
 	return (
 		<ThemeProvider>
@@ -39,7 +41,7 @@ export function App() {
 						<Route path="/workloads/tokens" element={<Fleet tab="tokens" />} />
 						<Route path="/workloads/:id/*" element={<WorkloadRoute />} />
 						<Route path="/policy/*" element={<Policy />} />
-						<Route path="*" element={<Navigate to="/simulation" replace />} />
+						<Route path="*" element={<NotFound />} />
 					</Route>
 				</Routes>
 			</SessionProvider>

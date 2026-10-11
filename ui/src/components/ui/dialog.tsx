@@ -86,3 +86,7 @@ export function DialogFooter({
 }
 
 export const DialogClose = DialogPrimitive.Close;
+
+// DialogTitle names a dialog that has no header band (the search
+// palette), for assistive technology.
+export const DialogTitle = DialogPrimitive.Title;
