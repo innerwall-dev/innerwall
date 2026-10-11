@@ -196,9 +196,12 @@ type References struct {
 }
 
 // ValidateService admits a service definition and normalizes nothing:
-// what is persisted is what was validated.
+// what is persisted is what was validated. A service converted from a
+// document carries what the conversion could not read, reported here in
+// the same pass as everything else.
 func ValidateService(s *Service) error {
 	f := &Findings{}
+	f.carry("", s.faults)
 	if s.Name == "" {
 		f.add("name", ErrEmptyName, "")
 	}

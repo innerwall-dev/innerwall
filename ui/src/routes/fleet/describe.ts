@@ -63,13 +63,14 @@ export function renewsAt(w: Workload): number {
 	return issued + ((expires - issued) * 2) / 3;
 }
 
-// credential is the column's text and tone. A renewing credential shows
-// how long until its renewal is due; the rail's longer form reads "renews
-// in 9h" where the table's reads "renews 9h".
+// credential is the column's text and tone. A renewing credential counts
+// down to the point its renewal is due, in one phrasing throughout:
+// "renewal due in 9h", then "renewal due now" once the point has passed.
+// The point is when renewal becomes due, not the jittered instant the
+// agent renews (renewsAt), so neither form says the agent "renews" then.
 export function credential(
 	w: Workload,
 	now = Date.now(),
-	form: "table" | "rail" = "table",
 ): { text: string; tone: CredentialTone } {
 	const c = w.health.credential;
 	switch (c.state) {
@@ -79,9 +80,8 @@ export function credential(
 			return { text: "renewal failed · retrying", tone: "warn" };
 		default: {
 			const due = renewsAt(w) - now;
-			if (due <= 0) return { text: "renewal due", tone: "ok" };
 			return {
-				text: `renews ${form === "rail" ? "in " : ""}${span(due)}`,
+				text: `renewal due ${due <= 0 ? "now" : `in ${span(due)}`}`,
 				tone: "ok",
 			};
 		}

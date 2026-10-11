@@ -34,6 +34,11 @@ type Service struct {
 	// Version is the object's write count: 1 when created, advanced by
 	// the store with every write.
 	Version int64
+
+	// faults are what converting the service from its document form
+	// could not read, at paths relative to the service; admission reports
+	// them beside its own findings (see Rule).
+	faults []*ValidationError
 }
 
 // AddressGroup is a named set of CIDRs for peers that are not managed

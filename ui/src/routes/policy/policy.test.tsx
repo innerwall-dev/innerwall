@@ -1451,6 +1451,82 @@ describe("policy editor", () => {
 		).toBeInTheDocument();
 	});
 
+	it("lands on the ruleset it created, not the first in the listing", async () => {
+		// The listing read before the write has no ruleset by the new name;
+		// the editor waits for the one read after it rather than falling
+		// back to the first ruleset and moving the address there.
+		const created = ruleset("ledger-inbound", { app: ["ledger"] });
+		let written = false;
+		const s = surface({
+			extra: [
+				{
+					method: "POST",
+					path: "/api/v1/rulesets",
+					reply: () => {
+						written = true;
+						s.setRulesets([checkout, auth, billing, created]);
+						return { status: 201, json: created };
+					},
+				},
+			],
+		});
+		// The listing read after the write is held until the test lets it
+		// through, so the editor renders with the listing read before it.
+		let release = () => {};
+		const held = new Promise<void>((r) => {
+			release = r;
+		});
+		const answer = s.fetchMock.getMockImplementation();
+		s.fetchMock.mockImplementation(async (input, init) => {
+			if (
+				written &&
+				(init?.method ?? "GET") === "GET" &&
+				String(input).endsWith("/rulesets")
+			) {
+				await held;
+			}
+			return (answer as typeof fetch)(input, init);
+		});
+		const user = userEvent.setup();
+		renderApp("/policy?new=1");
+		await user.type(
+			await screen.findByRole("textbox", { name: "Ruleset name" }),
+			"ledger-inbound",
+		);
+		await user.type(
+			screen.getByRole("textbox", { name: "Add a scope requirement" }),
+			"app=ledger{Enter}",
+		);
+		await user.click(screen.getByRole("button", { name: /^Create ruleset/ }));
+		// Written, the newer listing not yet read: the editor waits for it,
+		// and neither shows the first ruleset nor moves the address there.
+		await waitFor(() => expect(written).toBe(true));
+		expect(await screen.findByText(/Loading the new ruleset/)).toBeVisible();
+		expect(
+			screen.queryByRole("heading", { name: "checkout-inbound" }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.getByRole("navigation", { name: "Breadcrumb" }),
+		).not.toHaveTextContent("checkout-inbound");
+		release();
+		expect(
+			await screen.findByRole("heading", { name: "ledger-inbound" }),
+		).toBeInTheDocument();
+		await waitFor(() =>
+			expect(
+				screen.getByRole("navigation", { name: "Breadcrumb" }),
+			).toHaveTextContent("Policy/ledger-inbound"),
+		);
+		expect(
+			within(
+				screen.getByRole("navigation", { name: "Ruleset list" }),
+			).getByRole("link", { name: /ledger-inbound/ }),
+		).toHaveAttribute("aria-current", "page");
+		expect(
+			screen.queryByRole("heading", { name: "checkout-inbound" }),
+		).not.toBeInTheDocument();
+	});
+
 	it("commits a scope requirement left pending when Create is clicked", async () => {
 		// Typed, not entered, then Create: the requirement is committed as
 		// the field loses focus, so the scope sent is the one on screen.

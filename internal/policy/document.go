@@ -177,29 +177,20 @@ func FormatPortSpec(p PortRange) string {
 	return fmt.Sprintf("%d-%d", p.Start, p.End)
 }
 
-// ParseEntrySpec parses the command-line entry form "tcp:5432,6000-6010"
-// or "icmp" (no ports).
-func ParseEntrySpec(s string) (ServiceEntry, error) {
+// EntrySpecDoc reads the command-line entry form "tcp:5432,6000-6010" or
+// "icmp" (no ports) into its document form, unparsed: the protocol and
+// each port spec are read by ServiceFromDoc, so a command-line entry's
+// faults reach admission the way a document's do.
+func EntrySpecDoc(s string) EntryDoc {
 	protoName, ports, _ := strings.Cut(s, ":")
-	proto, err := ParseProtocol(protoName)
-	if err != nil {
-		return ServiceEntry{}, err
+	d := EntryDoc{Protocol: protoName}
+	if strings.TrimSpace(ports) != "" {
+		d.Ports = strings.Split(ports, ",")
 	}
-	e := ServiceEntry{Protocol: proto}
-	if strings.TrimSpace(ports) == "" {
-		return e, nil
-	}
-	for _, spec := range strings.Split(ports, ",") {
-		p, err := ParsePortSpec(spec)
-		if err != nil {
-			return ServiceEntry{}, err
-		}
-		e.Ports = append(e.Ports, p)
-	}
-	return e, nil
+	return d
 }
 
-// FormatEntrySpec is the inverse of ParseEntrySpec.
+// FormatEntrySpec is the inverse of EntrySpecDoc.
 func FormatEntrySpec(e ServiceEntry) string {
 	if len(e.Ports) == 0 {
 		return ProtocolName(e.Protocol)
@@ -231,13 +222,25 @@ func entryFromDoc(f *Findings, path string, d EntryDoc) ServiceEntry {
 	return e
 }
 
-// EntryFromDoc converts one entry document, reporting findings relative
-// to the entry.
-func EntryFromDoc(d EntryDoc) (ServiceEntry, error) {
+// ServiceDoc is a service definition as a client writes it.
+type ServiceDoc struct {
+	Name    string     `json:"name"`
+	Entries []EntryDoc `json:"entries"`
+}
+
+// ServiceFromDoc converts a service document. Like a ruleset's, every
+// entry and port keeps its place, readable or not, and what could not be
+// read travels with the service to admission: ValidateService reports it
+// beside its own findings in one pass, so a port that is not a number
+// never hides an empty name.
+func ServiceFromDoc(doc *ServiceDoc) *Service {
 	f := &Findings{}
-	e := entryFromDoc(f, "", d)
-	f.Rebase("")
-	return e, f.result()
+	s := &Service{Name: doc.Name}
+	for i, ed := range doc.Entries {
+		s.Entries = append(s.Entries, entryFromDoc(f, fmt.Sprintf("entries[%d]", i), ed))
+	}
+	s.faults = f.Errors
+	return s
 }
 
 func entryToDoc(e ServiceEntry) EntryDoc {
