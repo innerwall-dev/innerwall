@@ -25,7 +25,7 @@ builds:
     flags:
       - -trimpath
     ldflags:
-      - -s -w -X main.version={{ .Version }}
+      - -s -w -X github.com/innerwall-dev/innerwall/internal/buildinfo.version={{ .Version }} -X github.com/innerwall-dev/innerwall/internal/buildinfo.commit={{ .FullCommit }}
     mod_timestamp: "{{ .CommitTimestamp }}"
 
   - id: innerwall-agent
@@ -41,7 +41,7 @@ builds:
     flags:
       - -trimpath
     ldflags:
-      - -s -w -X main.version={{ .Version }}
+      - -s -w -X github.com/innerwall-dev/innerwall/internal/buildinfo.version={{ .Version }} -X github.com/innerwall-dev/innerwall/internal/buildinfo.commit={{ .FullCommit }}
     mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
