@@ -43,32 +43,6 @@ func authoredRuleJSON(r *policy.Rule) *policy.RuleDoc {
 
 // --- services ----------------------------------------------------------------
 
-type serviceInput struct {
-	Name    string            `json:"name"`
-	Entries []policy.EntryDoc `json:"entries"`
-}
-
-// service converts the input, reporting entry faults as findings.
-func (in *serviceInput) service() (*policy.Service, error) {
-	svc := &policy.Service{Name: in.Name}
-	f := &policy.Findings{}
-	for i, e := range in.Entries {
-		entry, err := policy.EntryFromDoc(e)
-		if err != nil {
-			for _, fe := range policy.AsFindings(err).Errors {
-				fe.Path = fmt.Sprintf("entries[%d].%s", i, fe.Path)
-				f.Errors = append(f.Errors, fe)
-			}
-			continue
-		}
-		svc.Entries = append(svc.Entries, entry)
-	}
-	if len(f.Errors) > 0 {
-		return nil, f
-	}
-	return svc, nil
-}
-
 type serviceDocJSON struct {
 	ID        string            `json:"id"`
 	Name      string            `json:"name"`

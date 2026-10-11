@@ -131,6 +131,34 @@ func TestValidateReportsDocumentFaultsWithAdmission(t *testing.T) {
 	t.Run("rule", func(t *testing.T) {
 		check(t, policy.ValidateRule(policy.RuleFromDoc(&unresolvedAndOutOfRange, names), refs), "")
 	})
+	t.Run("service", func(t *testing.T) {
+		// An unreadable port spec is reported beside the empty name, not
+		// instead of it, exactly as an out-of-range port always was.
+		for spec, portErr := range map[string]error{"many": policy.ErrBadPortSpec, "99999": policy.ErrBadPortRange} {
+			svc := policy.ServiceFromDoc(&policy.ServiceDoc{Name: "", Entries: []policy.EntryDoc{{Protocol: "tcp", Ports: []string{spec}}}})
+			f := policy.AsFindings(policy.ValidateService(svc))
+			if f == nil || len(f.Errors) != 2 {
+				t.Fatalf("ports %q: findings = %v, want name and entries[0].ports[0]", spec, f)
+			}
+			got := map[string]error{}
+			for _, e := range f.Errors {
+				got[e.Path] = e
+			}
+			if !errors.Is(got["name"], policy.ErrEmptyName) || !errors.Is(got["entries[0].ports[0]"], portErr) {
+				t.Fatalf("ports %q: findings = %v", spec, f)
+			}
+		}
+		// The command line's entry form reaches admission the same way.
+		svc := policy.ServiceFromDoc(&policy.ServiceDoc{Entries: []policy.EntryDoc{policy.EntrySpecDoc("tcp:5432,many"), policy.EntrySpecDoc("sctp")}})
+		f := policy.AsFindings(policy.ValidateService(svc))
+		if f == nil || len(f.Errors) != 3 || f.Errors[0].Path != "entries[0].ports[1]" || f.Errors[1].Path != "entries[1].protocol" || f.Errors[2].Path != "name" {
+			t.Fatalf("command-line entries: findings = %v", f)
+		}
+		ok := policy.ServiceFromDoc(&policy.ServiceDoc{Name: "pg", Entries: []policy.EntryDoc{policy.EntrySpecDoc("tcp:5432,6000-6010"), policy.EntrySpecDoc("icmp")}})
+		if err := policy.ValidateService(ok); err != nil || len(ok.Entries[0].Ports) != 2 || ok.Entries[0].Ports[1] != (policy.PortRange{Start: 6000, End: 6010}) || len(ok.Entries[1].Ports) != 0 {
+			t.Fatalf("command-line entries: %+v, %v", ok.Entries, err)
+		}
+	})
 	t.Run("ports keep their places", func(t *testing.T) {
 		// An unreadable port spec does not shift the ones after it: the
 		// range fault is reported at the index the document gave it.

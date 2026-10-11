@@ -116,14 +116,13 @@ func runServiceWrite(ctx context.Context, verb string, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	svc := &policy.Service{Name: *name}
+	// The entries are read the way a document's are, so admission reports
+	// an unreadable one beside every other finding.
+	doc := &policy.ServiceDoc{Name: *name}
 	for _, spec := range entries {
-		e, err := policy.ParseEntrySpec(spec)
-		if err != nil {
-			return err
-		}
-		svc.Entries = append(svc.Entries, e)
+		doc.Entries = append(doc.Entries, policy.EntrySpecDoc(spec))
 	}
+	svc := policy.ServiceFromDoc(doc)
 	a, err := openAuthoring(ctx, *dbURL)
 	if err != nil {
 		return err

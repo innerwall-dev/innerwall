@@ -366,17 +366,14 @@ func (s *Server) listServices(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, out)
 }
 
+// decodeService reads a service document; like a ruleset's, its document
+// faults are reported by admission beside every other finding.
 func (s *Server) decodeService(w http.ResponseWriter, r *http.Request) (*policy.Service, bool) {
-	var doc serviceInput
+	var doc policy.ServiceDoc
 	if !decodeJSON(w, r, &doc) {
 		return nil, false
 	}
-	svc, err := doc.service()
-	if err != nil {
-		s.writeProblemFor(w, err)
-		return nil, false
-	}
-	return svc, true
+	return policy.ServiceFromDoc(&doc), true
 }
 
 func (s *Server) respondService(w http.ResponseWriter, r *http.Request, id uuid.UUID, status int) {

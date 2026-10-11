@@ -348,8 +348,18 @@ func TestServiceAndAddressGroupEndpoints(t *testing.T) {
 		t.Fatalf("service create: %d %v", resp.status, body)
 	}
 	svcID, svcTag := body["id"].(string), resp.header.Get("ETag")
+	// Every finding in one pass: an unreadable port spec is reported
+	// beside the empty name and the other entry's fault, never instead of
+	// them.
+	resp, body = s.call(t, http.MethodPost, "/api/v1/services", jsonBody(map[string]any{"name": "", "entries": []map[string]any{{"protocol": "tcp", "ports": []string{"many"}}}}), nil)
+	expectOnlyFindings(t, resp, body, "name", "entries[0].ports[0]")
+	if r := field(body, "errors.0.rule"); r != "port-spec" {
+		t.Fatalf("finding rule = %v", r)
+	}
 	resp, body = s.call(t, http.MethodPost, "/api/v1/services", jsonBody(map[string]any{"name": "", "entries": []map[string]any{{"protocol": "tcp", "ports": []string{"x"}}, {"protocol": "icmp", "ports": []string{"1"}}}}), nil)
-	expectFindings(t, resp, body, "entries[0].ports[0]")
+	expectOnlyFindings(t, resp, body, "name", "entries[0].ports[0]", "entries[1].ports")
+	resp, body = s.call(t, http.MethodPut, "/api/v1/services/"+svcID, jsonBody(map[string]any{"name": "", "entries": []map[string]any{{"protocol": "tcp", "ports": []string{"many"}}}}), ifMatch(svcTag))
+	expectOnlyFindings(t, resp, body, "name", "entries[0].ports[0]")
 	resp, body = s.call(t, http.MethodPost, "/api/v1/services", jsonBody(map[string]any{"name": "", "entries": []map[string]any{{"protocol": "icmp", "ports": []string{"1"}}}}), nil)
 	expectFindings(t, resp, body, "name", "entries[0].ports")
 	resp, body = s.call(t, http.MethodPut, "/api/v1/services/"+svcID, jsonBody(map[string]any{"name": "redis", "entries": []map[string]any{{"protocol": "tcp", "ports": []string{"6379"}}}}), ifMatch(svcTag))
