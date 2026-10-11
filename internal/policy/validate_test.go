@@ -95,6 +95,53 @@ func TestValidateRulesetRejections(t *testing.T) {
 	}
 }
 
+// One pass returns every finding it can establish: a reference that
+// resolves to nothing is reported beside the shape faults of the same
+// rule, never instead of them, and each problem is counted once.
+func TestValidateReportsDocumentFaultsWithAdmission(t *testing.T) {
+	names := policy.NewNames([]policy.Service{{ID: svcID, Name: "postgres"}}, []policy.AddressGroup{{ID: groupID, Name: "office"}})
+	unresolvedAndOutOfRange := policy.RuleDoc{
+		Direction: "inbound",
+		Peers:     []policy.PeerDoc{{AddressGroup: "10.0.0.999/8!!"}},
+		Entries:   []policy.EntryDoc{{Protocol: "tcp", Ports: []string{"99999"}}},
+	}
+	want := map[string]error{
+		"peers[0].address_group": policy.ErrUnknownAddressGroup,
+		"entries[0].ports[0]":    policy.ErrBadPortRange,
+	}
+	check := func(t *testing.T, err error, prefix string) {
+		t.Helper()
+		f := policy.AsFindings(err)
+		if f == nil {
+			t.Fatal("admitted")
+		}
+		if len(f.Errors) != len(want) {
+			t.Fatalf("%d findings, want %d: %v", len(f.Errors), len(want), err)
+		}
+		for _, e := range f.Errors {
+			if w, ok := want[strings.TrimPrefix(e.Path, prefix)]; !ok || !errors.Is(e, w) {
+				t.Fatalf("unexpected finding %v (all: %v)", e, err)
+			}
+		}
+	}
+	t.Run("ruleset", func(t *testing.T) {
+		rs := policy.RulesetFromDoc(&policy.RulesetDoc{Name: "mixed", Scope: map[string][]string{"role": {"db"}}, Rules: []policy.RuleDoc{unresolvedAndOutOfRange}}, names)
+		check(t, policy.ValidateRuleset(rs, refs), "rules[0].")
+	})
+	t.Run("rule", func(t *testing.T) {
+		check(t, policy.ValidateRule(policy.RuleFromDoc(&unresolvedAndOutOfRange, names), refs), "")
+	})
+	t.Run("ports keep their places", func(t *testing.T) {
+		// An unreadable port spec does not shift the ones after it: the
+		// range fault is reported at the index the document gave it.
+		doc := policy.RuleDoc{Direction: "inbound", Peers: []policy.PeerDoc{{CIDR: "10.0.0.0/8"}}, Entries: []policy.EntryDoc{{Protocol: "tcp", Ports: []string{"many", "99999"}}}}
+		f := policy.AsFindings(policy.ValidateRule(policy.RuleFromDoc(&doc, names), refs))
+		if f == nil || len(f.Errors) != 2 || f.Errors[0].Path != "entries[0].ports[0]" || !errors.Is(f.Errors[0], policy.ErrBadPortSpec) || f.Errors[1].Path != "entries[0].ports[1]" || !errors.Is(f.Errors[1], policy.ErrBadPortRange) {
+			t.Fatalf("findings = %v", f)
+		}
+	})
+}
+
 func TestValidateServiceAndAddressGroup(t *testing.T) {
 	ok := &policy.Service{Name: "postgres", Entries: []policy.ServiceEntry{{Protocol: innerwallv1.Protocol_PROTOCOL_TCP, Ports: []policy.PortRange{{Start: 5432, End: 5432}}}}}
 	if err := policy.ValidateService(ok); err != nil {

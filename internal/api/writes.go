@@ -141,7 +141,8 @@ func (s *Server) listRulesets(w http.ResponseWriter, r *http.Request) {
 }
 
 // decodeRuleset reads a ruleset document, resolving names the way the
-// command line does; a document fault is a validation problem.
+// command line does; a document fault travels with the ruleset and is
+// reported by admission beside every other finding.
 func (s *Server) decodeRuleset(w http.ResponseWriter, r *http.Request) (*policy.Ruleset, bool) {
 	var doc policy.RulesetDoc
 	if !decodeJSON(w, r, &doc) {
@@ -152,12 +153,7 @@ func (s *Server) decodeRuleset(w http.ResponseWriter, r *http.Request) (*policy.
 		s.writeProblemFor(w, err)
 		return nil, false
 	}
-	rs, err := policy.RulesetFromDoc(&doc, names)
-	if err != nil {
-		s.writeProblemFor(w, err)
-		return nil, false
-	}
-	return rs, true
+	return policy.RulesetFromDoc(&doc, names), true
 }
 
 // createRuleset is POST /api/v1/rulesets.
@@ -240,7 +236,8 @@ func (s *Server) deleteRuleset(w http.ResponseWriter, r *http.Request) {
 
 // --- rules -------------------------------------------------------------------
 
-// decodeRule reads a rule document.
+// decodeRule reads a rule document; like a ruleset's, its document
+// faults are reported by admission.
 func (s *Server) decodeRule(w http.ResponseWriter, r *http.Request) (*policy.Rule, bool) {
 	var doc policy.RuleDoc
 	if !decodeJSON(w, r, &doc) {
@@ -251,12 +248,7 @@ func (s *Server) decodeRule(w http.ResponseWriter, r *http.Request) (*policy.Rul
 		s.writeProblemFor(w, err)
 		return nil, false
 	}
-	rule, err := policy.RuleFromDoc(&doc, names)
-	if err != nil {
-		s.writeProblemFor(w, err)
-		return nil, false
-	}
-	return rule, true
+	return policy.RuleFromDoc(&doc, names), true
 }
 
 // respondRule answers with one persisted rule and its entity tag.
@@ -658,12 +650,7 @@ func (s *Server) renderDryRun(w http.ResponseWriter, r *http.Request) {
 		s.writeProblemFor(w, err)
 		return
 	}
-	req, err := doc.request(names)
-	if err != nil {
-		s.writeProblemFor(w, err)
-		return
-	}
-	res, err := s.fleet.DryRun(r.Context(), req)
+	res, err := s.fleet.DryRun(r.Context(), doc.request(names))
 	if err != nil {
 		s.writeProblemFor(w, err)
 		return

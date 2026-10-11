@@ -302,12 +302,14 @@ describe("drafts and findings", () => {
 			"rulesets[0].rules[4]",
 		);
 		expect(a.elements).toEqual({ p0: [cidr], p1: [tier], s0: [ref] });
-		expect(a.row).toEqual([other]);
-		expect(outstanding(d, a)).toBe(4);
+		// Another ruleset's finding is not this row's, and does not block
+		// its save.
+		expect(a.row).toEqual([]);
+		expect(outstanding(d, a)).toBe(3);
 		// Removing the bad prefix takes its finding with it; the others stay
 		// on their own elements.
 		const fixed = { ...d, peers: d.peers.slice(1) };
-		expect(outstanding(fixed, a)).toBe(3);
+		expect(outstanding(fixed, a)).toBe(2);
 		// A rule-level write's paths are relative to the rule.
 		const b = attachFindings(d, [
 			{

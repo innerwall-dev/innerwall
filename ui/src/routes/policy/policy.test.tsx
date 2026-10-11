@@ -998,7 +998,9 @@ describe("policy editor", () => {
 		).toBeInTheDocument();
 	});
 
-	it("routes a refused dry run's findings to the row's fields", async () => {
+	it("routes a refused dry run's findings to the row's fields, and counts only the row's", async () => {
+		// One pass: the unresolvable peer and the out-of-range port come
+		// back together, beside a finding on another ruleset.
 		surface({
 			dryRun: () => ({
 				status: 400,
@@ -1006,9 +1008,21 @@ describe("policy editor", () => {
 					...problem("validation", 400),
 					errors: [
 						{
-							path: "rulesets[0].rules[4].peers[0].cidr",
-							rule: "cidr",
-							message: "not a valid CIDR",
+							path: "rulesets[0].rules[4].peers[0].address_group",
+							rule: "address-group-unknown",
+							message:
+								"rule references an address group that does not exist (corp-vpm)",
+						},
+						{
+							path: "rulesets[0].rules[4].entries[0].ports[0]",
+							rule: "port-range",
+							message:
+								"port range must satisfy start <= end <= 65535 (99999-99999)",
+						},
+						{
+							path: "rulesets[1].scope",
+							rule: "label-value",
+							message: "label value must be 1 to 63 letters",
 						},
 					],
 				},
@@ -1021,13 +1035,26 @@ describe("policy editor", () => {
 		const editing = await row("New rule");
 		await user.type(
 			within(editing).getByRole("textbox", { name: "Add a peer" }),
-			"10.0.0.0/40{Enter}",
+			"corp-vpm{Enter}",
+		);
+		await user.type(
+			within(editing).getByRole("textbox", { name: "Add a service" }),
+			"tcp/99999{Enter}",
 		);
 		await user.click(screen.getByRole("button", { name: "Dry run" }));
-		const finding = await within(editing).findByTestId("finding");
-		expect(finding).toHaveAttribute(
-			"data-path",
-			"rulesets[0].rules[4].peers[0].cidr",
+		await waitFor(() =>
+			expect(within(editing).getAllByTestId("finding")).toHaveLength(2),
+		);
+		expect(
+			within(editing)
+				.getAllByTestId("finding")
+				.map((f) => f.getAttribute("data-path")),
+		).toEqual([
+			"rulesets[0].rules[4].peers[0].address_group",
+			"rulesets[0].rules[4].entries[0].ports[0]",
+		]);
+		expect(screen.getByTestId("row-errors")).toHaveTextContent(
+			"2 errors block saving",
 		);
 		expect(
 			within(screen.getByRole("region", { name: "Dry run" })).getByRole(

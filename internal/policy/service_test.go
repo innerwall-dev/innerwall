@@ -302,20 +302,37 @@ func TestDocumentCarriesVersions(t *testing.T) {
 	if back.ID != rs.ID || back.Rules[0].ID != rs.Rules[0].ID || !back.UpdatedAt.IsZero() || !back.Rules[0].UpdatedAt.IsZero() {
 		t.Fatalf("decoded = %+v", back)
 	}
-	// Document faults are findings at their paths.
-	_, err = policy.DecodeRuleset([]byte(`{"name":"x","scope":{"role":["db"]},"rules":[{"id":"nope","direction":"sideways","peers":[{"address_group":"missing"}],"services":["missing"],"entries":[{"protocol":"tcp","ports":["many"]}]}]}`), names)
-	f := policy.AsFindings(err)
+	// Document faults travel with the decoded ruleset and are findings at
+	// their paths when it is admitted, each said once: admission adds
+	// nothing at a path the document already faulted.
+	bad, err := policy.DecodeRuleset([]byte(`{"name":"x","scope":{"role":["db"]},"rules":[{"id":"nope","direction":"sideways","peers":[{"address_group":"missing"}],"services":["missing"],"entries":[{"protocol":"tcp","ports":["many"]}]}]}`), names)
+	if err != nil {
+		t.Fatalf("a well-formed document with faults in it was refused before admission: %v", err)
+	}
+	f := policy.AsFindings(policy.ValidateRuleset(bad, refs))
 	if f == nil {
-		t.Fatalf("err = %v", err)
+		t.Fatal("document faults admitted")
 	}
 	paths := map[string]string{}
 	for _, e := range f.Errors {
+		if _, dup := paths[e.Path]; dup {
+			t.Fatalf("two findings at %s (all %v)", e.Path, f)
+		}
 		paths[e.Path] = e.Rule()
 	}
-	for p, r := range map[string]string{"rules[0].id": "id", "rules[0].direction": "direction", "rules[0].peers[0].address_group": "address-group-unknown", "rules[0].services[0]": "service-unknown", "rules[0].entries[0].ports[0]": "port-spec"} {
+	want := map[string]string{"rules[0].id": "id", "rules[0].direction": "direction", "rules[0].peers[0].address_group": "address-group-unknown", "rules[0].services[0]": "service-unknown", "rules[0].entries[0].ports[0]": "port-spec"}
+	for p, r := range want {
 		if paths[p] != r {
 			t.Fatalf("finding %s = %q, want %q (all %v)", p, paths[p], r, paths)
 		}
+	}
+	if len(paths) != len(want) {
+		t.Fatalf("findings = %v, want exactly %v", paths, want)
+	}
+	// A document that is not a ruleset at all is the one error decoding
+	// returns.
+	if _, err := policy.DecodeRuleset([]byte(`{"name":"x","bogus":1}`), names); err == nil || policy.AsFindings(err) != nil {
+		t.Fatalf("unknown field: err = %v", err)
 	}
 	if back.Version != 0 || back.Rules[0].Version != 0 {
 		t.Fatal("a version in a document was taken as input")

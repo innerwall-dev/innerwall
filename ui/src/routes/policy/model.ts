@@ -423,7 +423,9 @@ const push = <K extends string>(
 
 // attachFindings places findings whose paths are relative to the rule
 // (after the prefix, e.g. `rulesets[2].rules[4]`). Findings outside the
-// prefix are not this row's and are returned on the row.
+// prefix are not this row's: a dry run refused for another ruleset or for
+// the scope says so where those are drawn, and none of it is counted as
+// blocking this row's save, which writes neither.
 export function attachFindings(
 	d: RuleDraft,
 	findings: readonly Finding[],
@@ -433,10 +435,7 @@ export function attachFindings(
 	for (const f of findings) {
 		let path = f.path;
 		if (prefix) {
-			if (path !== prefix && !path.startsWith(`${prefix}.`)) {
-				out.row.push(f);
-				continue;
-			}
+			if (path !== prefix && !path.startsWith(`${prefix}.`)) continue;
 			path = path.slice(prefix.length).replace(/^\./, "");
 		}
 		const m = /^(peers|services|entries)\[(\d+)\]/.exec(path);

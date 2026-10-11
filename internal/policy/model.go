@@ -92,6 +92,13 @@ type Rule struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	Version     int64
+
+	// faults are what converting the rule from its document form could
+	// not read, at paths relative to the rule (a name that resolves to
+	// nothing, an id that is not an id). Admission reports them beside
+	// its own findings, so one pass over a document returns everything
+	// wrong with it rather than stopping at the first kind of fault.
+	faults []*ValidationError
 }
 
 // Ruleset is a named set of rules applied to the workloads its scope
@@ -108,6 +115,10 @@ type Ruleset struct {
 	// Version is the ruleset's write count: 1 when created, advanced by
 	// the store with every write, including a write of one of its rules.
 	Version int64
+
+	// faults are the ruleset's own document faults, at paths relative to
+	// the ruleset; each rule carries its own (see Rule).
+	faults []*ValidationError
 }
 
 // Matches reports whether a workload carrying labels satisfies the
