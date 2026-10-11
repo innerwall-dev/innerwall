@@ -93,6 +93,8 @@ export function kindText(kind: EvidenceGap["kind"]): string {
 			return "the connection table was cut at its bound";
 		case "window_overflow":
 			return "the agent's flow window was full";
+		case "window_rejected":
+			return "the control plane refused a malformed window";
 	}
 }
 

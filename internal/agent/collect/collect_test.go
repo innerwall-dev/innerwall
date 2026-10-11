@@ -1,8 +1,13 @@
 package collect
 
 import (
+	"bytes"
 	"context"
+	"io"
+	"log/slog"
 	"net/netip"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -278,4 +283,151 @@ func TestCollectorRotatesWindows(t *testing.T) {
 	}
 	cancel()
 	<-done
+}
+
+// TestCloseBounds checks where a closing window ends and the next starts.
+// In step, both are now. A wall clock stepped back while the window was
+// open cuts the window at its own clock, start plus its monotonic length,
+// and opens the next on the stepped clock, so the bounds never invert. A
+// fall within slewing's reach is no step; one that would still invert the
+// bounds of a window closed moments after it opened holds the end at the
+// start. A forward step is left alone.
+func TestCloseBounds(t *testing.T) {
+	cases := []struct {
+		name      string
+		now       time.Time
+		elapsed   time.Duration
+		end, next time.Time
+		step      time.Duration
+	}{
+		{"in step", t0.Add(time.Minute), time.Minute, t0.Add(time.Minute), t0.Add(time.Minute), 0},
+		{"stepped back 30m", t0.Add(time.Minute - 30*time.Minute), time.Minute, t0.Add(time.Minute), t0.Add(time.Minute - 30*time.Minute), -30 * time.Minute},
+		{"stepped back past the start, closed early", t0.Add(-5 * time.Second), 100 * time.Millisecond, t0.Add(100 * time.Millisecond), t0.Add(-5 * time.Second), -5*time.Second - 100*time.Millisecond},
+		{"slewed back within tolerance", t0.Add(time.Minute - 500*time.Millisecond), time.Minute, t0.Add(time.Minute - 500*time.Millisecond), t0.Add(time.Minute - 500*time.Millisecond), 0},
+		{"a small fall in a window closed at once", t0.Add(-200 * time.Millisecond), 50 * time.Millisecond, t0, t0, 0},
+		{"stepped forward", t0.Add(31 * time.Minute), time.Minute, t0.Add(31 * time.Minute), t0.Add(31 * time.Minute), 0},
+	}
+	for _, c := range cases {
+		end, next, step := closeBounds(t0, c.now, c.elapsed)
+		if !end.Equal(c.end) || !next.Equal(c.next) || step != c.step {
+			t.Errorf("%s: end %v next %v step %v, want end %v next %v step %v", c.name, end, next, step, c.end, c.next, c.step)
+		}
+		if end.Before(t0) {
+			t.Errorf("%s: end %v before start %v", c.name, end, t0)
+		}
+	}
+}
+
+// TestAggregatorCutHoldsInstantsWithinBounds checks a cut window: it ends
+// where it is told, the next window opens at the stepped clock, and the
+// instants the stepped clock stamped on its observations, and on its
+// first overflow drop, are held within its bounds.
+func TestAggregatorCutHoldsInstantsWithinBounds(t *testing.T) {
+	gaps := &Gaps{}
+	a := NewBoundedAggregator(t0, 1)
+	a.Gaps = gaps
+	stepped := t0.Add(-30 * time.Minute)
+	a.Add(obs(t0.Add(10*time.Second), src1, 22, 1, 0))
+	a.Add(obs(stepped.Add(20*time.Second), src1, 22, 1, 0))
+	a.Add(obs(stepped.Add(25*time.Second), src2, 22, 1, 0)) // past the bound: dropped
+	end := t0.Add(time.Minute)
+	w := a.Cut(end, stepped.Add(30*time.Second))
+	if !w.Start.Equal(t0) || !w.End.Equal(end) || w.Len() != 1 {
+		t.Fatalf("cut window = %v..%v with %d records", w.Start, w.End, w.Len())
+	}
+	r := w.Records[0]
+	if !r.GetFirstSeen().AsTime().Equal(t0) || !r.GetLastSeen().AsTime().Equal(t0.Add(10*time.Second)) || r.GetConnectionCount() != 2 {
+		t.Fatalf("record seen %v..%v, connections %d", r.GetFirstSeen().AsTime(), r.GetLastSeen().AsTime(), r.GetConnectionCount())
+	}
+	if got := gaps.Pending(); len(got) != 1 || !got[0].From.Equal(t0) || !got[0].To.Equal(end) {
+		t.Fatalf("overflow gap = %+v, want %v..%v", got, t0, end)
+	}
+	if !a.Start().Equal(stepped.Add(30 * time.Second)) {
+		t.Fatalf("next window starts %v, want the stepped clock", a.Start())
+	}
+}
+
+// stepSource steps the clocks once the collector has opened its first
+// window, then emits observations stamped with the stepped clock.
+type stepSource struct {
+	step func()
+	obs  []Observation
+}
+
+func (s *stepSource) Run(ctx context.Context, emit func(Observation)) error {
+	s.step()
+	for _, o := range s.obs {
+		emit(o)
+	}
+	<-ctx.Done()
+	return nil
+}
+
+// TestCollectorCutsAWindowAtABackwardsStep is the regression for a wall
+// clock stepped back while a window was open: the collector stamped the
+// window's end from the stepped clock, so it ended before it started and
+// the control plane refused it. The window is now cut at the step: it
+// ends at its start plus its monotonic length, its records are kept, and
+// it says why in a WARN line.
+func TestCollectorCutsAWindowAtABackwardsStep(t *testing.T) {
+	var mu sync.Mutex
+	wall, mono := t0, time.Duration(0)
+	stepped := t0.Add(-30 * time.Minute)
+	var logged bytes.Buffer
+	buf := NewBuffer(0)
+	c := &Collector{
+		Buffer: buf,
+		Log:    slog.New(slog.NewTextHandler(&lockedWriter{w: &logged}, &slog.HandlerOptions{Level: slog.LevelWarn})),
+		Now: func() time.Time {
+			mu.Lock()
+			defer mu.Unlock()
+			return wall
+		},
+		Monotonic: func() time.Duration {
+			mu.Lock()
+			defer mu.Unlock()
+			return mono
+		},
+		Source: &stepSource{
+			step: func() {
+				mu.Lock()
+				defer mu.Unlock()
+				wall, mono = stepped.Add(time.Minute), time.Minute
+			},
+			obs: []Observation{obs(stepped.Add(30*time.Second), src1, 22, 1, 0)},
+		},
+	}
+	c.window.Store(int64(30 * time.Millisecond))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { _ = c.Run(ctx); close(done) }()
+	w, ok := buf.Pop(ctx)
+	if !ok {
+		t.Fatal("no window")
+	}
+	cancel()
+	<-done
+	if !w.Start.Equal(t0) || !w.End.Equal(t0.Add(time.Minute)) {
+		t.Fatalf("window = %v..%v, want %v..%v", w.Start, w.End, t0, t0.Add(time.Minute))
+	}
+	if w.Len() != 1 || !w.Records[0].GetFirstSeen().AsTime().Equal(t0) {
+		t.Fatalf("records = %v", w.Records)
+	}
+	for _, want := range []string{"level=WARN", "wall clock stepped back", "step=-30m0s"} {
+		if !strings.Contains(logged.String(), want) {
+			t.Fatalf("log %q lacks %q", logged.String(), want)
+		}
+	}
+}
+
+// lockedWriter serializes writes from the collector's goroutines.
+type lockedWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (l *lockedWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Write(p)
 }

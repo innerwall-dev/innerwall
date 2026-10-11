@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/innerwall-dev/innerwall/internal/agent/credential"
@@ -120,5 +122,61 @@ func TestClockSkewRecordedOnTheWorkload(t *testing.T) {
 	}
 	if skew := w.Health.ClockSkew; skew == nil || !skew.Current || !near(skew.Offset, 10*time.Minute) {
 		t.Fatalf("skew after an unstamped window ending ahead = %+v", skew)
+	}
+}
+
+// TestRefusedWindowStillRecordsClockSkew runs a report whose window a
+// clock stepped back 30 minutes inverted, over a real stream: the window
+// is refused with InvalidArgument, which the agent's reporter takes as
+// final, and nothing is stored, but the report's send instant is read
+// before its bounds, so the skew that inverted them is on the workload.
+func TestRefusedWindowStillRecordsClockSkew(t *testing.T) {
+	st := storetest.Open(t)
+	h := newHarness(t, st)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	token, _, err := h.service.MintToken(ctx, "db", []enroll.Label{{Key: "role", Value: "db"}}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := enrollAgent(t, h, token, "db-1", "10.0.0.10/24")
+	holder, err := credential.LoadHolder(*db.cred)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, closer, err := agentsync.DialGRPC(ctx, h.addr, holder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = closer.Close() }()
+
+	before := time.Now()
+	stepped := before.Add(-30 * time.Minute)
+	stream, err := client.ReportFlows(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := stream.Send(&innerwallv1.ReportFlowsRequest{
+		WindowStart: timestamppb.New(before.Add(-time.Minute)), WindowEnd: timestamppb.New(stepped), SentAt: timestamppb.New(stepped),
+		Records: []*innerwallv1.FlowRecord{{SrcAddress: "203.0.113.9", DstAddress: "10.0.0.10", DstPort: 5432, Protocol: innerwallv1.Protocol_PROTOCOL_TCP, Direction: innerwallv1.Direction_DIRECTION_INBOUND, Decision: innerwallv1.PolicyDecision_POLICY_DECISION_OBSERVED, ConnectionCount: 1}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stream.CloseAndRecv(); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("inverted window: err = %v, want InvalidArgument", err)
+	}
+	rows, err := st.Flows().ListWindows(ctx, flowstore.WindowQuery{WorkloadID: db.id, Since: stepped.Add(-time.Hour), Until: before.Add(time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("a refused window was stored: %+v", rows)
+	}
+	w, err := (&readmodel.Reader{Store: st, Flows: st.Flows()}).GetWorkload(ctx, db.id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := w.Health.ClockSkew; d == nil || !d.Current || d.Offset > -29*time.Minute || d.Offset < -31*time.Minute {
+		t.Fatalf("skew after a refused window = %+v, want current at about -30m", d)
 	}
 }

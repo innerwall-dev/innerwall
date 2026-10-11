@@ -249,8 +249,8 @@ message EvidenceGap {
   google.protobuf.Timestamp from = 3;
   google.protobuf.Timestamp to = 4;
   // How many records, table entries, or observations were lost, when that
-  // is known: for a buffer overflow, a truncated dump, and a window
-  // overflow. A kernel-side loss has no count.
+  // is known: for a buffer overflow, a truncated dump, a window overflow,
+  // and a rejected window. A kernel-side loss has no count.
   optional uint64 count = 5;
 }
 
@@ -272,6 +272,10 @@ enum EvidenceGapKind {
   // from the first drop to the window's close, and the count is the
   // observations dropped.
   EVIDENCE_GAP_KIND_WINDOW_OVERFLOW = 5;
+  // The control plane refused a closed window as malformed, and the agent
+  // dropped it rather than retry a report that can never be accepted; the
+  // interval is the window's bounds and the count is its records.
+  EVIDENCE_GAP_KIND_WINDOW_REJECTED = 6;
 }
 
 // The agent's flow sources.

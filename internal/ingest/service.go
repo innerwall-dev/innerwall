@@ -98,24 +98,17 @@ type Result struct {
 // the registry once per window, so every record sees the same view. The
 // report's clock reading is recorded on the workload and a skewed one is
 // logged, but skew rejects nothing: the window is stored as reported.
+//
+// The clock is read before the window's bounds are validated. The send
+// instant is independent of the bounds, and a clock stepped while a
+// window was open is what inverts them, so a report refused for its
+// bounds still records the skew that most likely produced it.
 func (s *Service) Ingest(ctx context.Context, id identity.WorkloadID, req *innerwallv1.ReportFlowsRequest) (Result, error) {
 	receivedAt := s.now()
-	if req.GetWindowStart() == nil || req.GetWindowEnd() == nil {
-		return Result{}, ErrInvalidWindow
-	}
-	start, end := req.GetWindowStart().AsTime(), req.GetWindowEnd().AsTime()
-	if end.Before(start) {
-		return Result{}, ErrInvalidWindow
-	}
 	workloads, err := s.Directory.ListWorkloads(ctx)
 	if err != nil {
 		return Result{}, err
 	}
-	groups, err := s.Directory.ListAddressGroups(ctx)
-	if err != nil {
-		return Result{}, err
-	}
-	idx := BuildIndex(workloads, groups)
 	var reporter *registry.Workload
 	for i := range workloads {
 		if workloads[i].ID == id {
@@ -127,6 +120,19 @@ func (s *Service) Ingest(ctx context.Context, id identity.WorkloadID, req *inner
 		return Result{}, registry.ErrWorkloadUnknown
 	}
 	s.checkClock(ctx, reporter, req, receivedAt)
+
+	if req.GetWindowStart() == nil || req.GetWindowEnd() == nil {
+		return Result{}, ErrInvalidWindow
+	}
+	start, end := req.GetWindowStart().AsTime(), req.GetWindowEnd().AsTime()
+	if end.Before(start) {
+		return Result{}, ErrInvalidWindow
+	}
+	groups, err := s.Directory.ListAddressGroups(ctx)
+	if err != nil {
+		return Result{}, err
+	}
+	idx := BuildIndex(workloads, groups)
 
 	window := flowstore.Window{WorkloadID: id, Start: start, End: end, Records: make([]flowstore.Record, 0, len(req.GetRecords()))}
 	var res Result
@@ -175,6 +181,11 @@ func (s *Service) checkClock(ctx context.Context, w *registry.Workload, req *inn
 	if s.FlowWindow <= 0 {
 		return
 	}
+	// A report with neither a send instant nor a window end carries no
+	// reading of the agent's clock.
+	if req.GetSentAt() == nil && req.GetWindowEnd() == nil {
+		return
+	}
 	r := ReadClock(req, receivedAt, s.FlowWindow)
 	if r.Skewed {
 		s.log().Warn("agent clock skewed: flow windows are stamped with the agent's clock",
@@ -199,7 +210,7 @@ func convertGap(wg *innerwallv1.EvidenceGap) (flowstore.Gap, error) {
 	switch wg.GetKind() {
 	case innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_OVERRUN, innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_RESTART,
 		innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_BUFFER_OVERFLOW, innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_DUMP_TRUNCATED,
-		innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_WINDOW_OVERFLOW:
+		innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_WINDOW_OVERFLOW, innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_WINDOW_REJECTED:
 	case innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_UNSPECIFIED:
 		return g, errors.New("gap kind unspecified")
 	default:

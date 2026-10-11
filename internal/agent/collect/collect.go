@@ -161,6 +161,13 @@ func (a *Aggregator) Dropped() uint64 {
 	return a.dropped
 }
 
+// Start returns the open window's start.
+func (a *Aggregator) Start() time.Time {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.start
+}
+
 // Close ends the open window at end, returns it, and opens the next one
 // starting at end. A window that dropped observations records its
 // window_overflow gap now: from the first drop to end, because every new
@@ -168,11 +175,46 @@ func (a *Aggregator) Dropped() uint64 {
 func (a *Aggregator) Close(end time.Time) *Window {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	return a.close(end, end, false)
+}
+
+// Cut ends the open window at end and opens the next one at next, for a
+// window the wall clock stepped back under (see closeBounds): end is
+// where the window's own clock reads at its close, and next is the
+// stepped clock. Every observation in the window happened between its
+// bounds on the window's own clock, whatever the stepped clock stamped on
+// it, so each record's first and last seen, and the first drop of a
+// window overflow, are held within the bounds.
+func (a *Aggregator) Cut(end, next time.Time) *Window {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.close(end, next, true)
+}
+
+// close ends the open window at end and opens the next at next, holding
+// the instants it reports within the bounds when within is set; the
+// caller holds the lock.
+func (a *Aggregator) close(end, next time.Time, within bool) *Window {
+	start := a.start
+	hold := func(t time.Time) time.Time {
+		if !within {
+			return t
+		}
+		// On the wall clock: a monotonic reading would order a stamp
+		// taken after the step after the start it reads as before.
+		switch t = t.Round(0); {
+		case t.Before(start.Round(0)):
+			return start
+		case t.After(end.Round(0)):
+			return end
+		}
+		return t
+	}
 	if a.dropped > 0 {
-		a.Gaps.Record(Gap{Kind: GapWindowOverflow, Source: GapNoSource, From: a.firstDrop, To: end, Count: a.dropped, HasCount: true})
+		a.Gaps.Record(Gap{Kind: GapWindowOverflow, Source: GapNoSource, From: hold(a.firstDrop), To: end, Count: a.dropped, HasCount: true})
 		a.dropped = 0
 	}
-	w := &Window{Start: a.start, End: end, Records: make([]*innerwallv1.FlowRecord, 0, len(a.records))}
+	w := &Window{Start: start, End: end, Records: make([]*innerwallv1.FlowRecord, 0, len(a.records))}
 	keys := make([]Key, 0, len(a.records))
 	for k := range a.records {
 		keys = append(keys, k)
@@ -190,12 +232,12 @@ func (a *Aggregator) Close(end time.Time) *Window {
 			MatchedRuleId:   k.RuleID,
 			ConnectionCount: r.connections,
 			ByteCount:       r.bytes,
-			FirstSeen:       timestamppb.New(r.first),
-			LastSeen:        timestamppb.New(r.last),
+			FirstSeen:       timestamppb.New(hold(r.first)),
+			LastSeen:        timestamppb.New(hold(r.last)),
 			ProcessName:     r.process,
 		})
 	}
-	a.start = end
+	a.start = next
 	a.records = map[Key]*record{}
 	return w
 }

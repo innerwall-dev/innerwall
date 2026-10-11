@@ -130,3 +130,50 @@ func TestIngestRecordsClockSkew(t *testing.T) {
 		t.Fatalf("with no flow window the clock was still checked: %+v, %q", clock.calls, logged.String())
 	}
 }
+
+// TestIngestReadsTheClockBeforeTheBounds is the regression for a report
+// refused for its bounds that recorded nothing about the clock that
+// inverted them: a clock stepped back while a window was open ends the
+// window before it starts. The report is still refused, and stores
+// nothing, but its send instant is read first, so the skew is recorded
+// on the workload and logged. A report with neither a send instant nor a
+// window end has no reading to record.
+func TestIngestReadsTheClockBeforeTheBounds(t *testing.T) {
+	db := registry.Workload{ID: mustID(t), Hostname: "db-1", Addresses: []netip.Addr{netip.MustParseAddr("10.0.0.10")}}
+	now := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
+	var logged bytes.Buffer
+	flows, clock := &fakeFlows{}, &fakeClock{}
+	svc := &Service{
+		Directory: &fakeDirectory{workloads: []registry.Workload{db}}, Flows: flows, Clock: clock,
+		FlowWindow: time.Minute, Now: func() time.Time { return now },
+		Log: slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{Level: slog.LevelWarn})),
+	}
+	// Opened in step; the clock fell back 30 minutes before it closed.
+	stepped := now.Add(-30 * time.Minute)
+	inverted := &innerwallv1.ReportFlowsRequest{
+		WindowStart: timestamppb.New(now.Add(-time.Minute)), WindowEnd: timestamppb.New(stepped), SentAt: timestamppb.New(stepped),
+		Records: []*innerwallv1.FlowRecord{{SrcAddress: "10.0.0.20", DstAddress: "10.0.0.10", DstPort: 5432, Protocol: innerwallv1.Protocol_PROTOCOL_TCP, Direction: innerwallv1.Direction_DIRECTION_INBOUND, Decision: innerwallv1.PolicyDecision_POLICY_DECISION_OBSERVED, ConnectionCount: 1}},
+	}
+	if _, err := svc.Ingest(context.Background(), db.ID, inverted); err != ErrInvalidWindow { //nolint:errorlint // sentinel returned directly
+		t.Fatalf("inverted window: err = %v, want ErrInvalidWindow", err)
+	}
+	if len(flows.windows) != 0 {
+		t.Fatalf("a refused window was stored: %+v", flows.windows)
+	}
+	if len(clock.calls) != 1 || clock.calls[0] != (clockCall{db.ID, -30 * time.Minute, true, now}) {
+		t.Fatalf("recorded readings = %+v, want the refused report's skew", clock.calls)
+	}
+	for _, want := range []string{"agent clock skewed", "workload_id=" + db.ID.String(), "offset=-30m0s", "measured_by=sent_at"} {
+		if !strings.Contains(logged.String(), want) {
+			t.Fatalf("log %q lacks %q", logged.String(), want)
+		}
+	}
+
+	logged.Reset()
+	if _, err := svc.Ingest(context.Background(), db.ID, &innerwallv1.ReportFlowsRequest{}); err != ErrInvalidWindow { //nolint:errorlint // sentinel returned directly
+		t.Fatalf("bare report: err = %v, want ErrInvalidWindow", err)
+	}
+	if len(clock.calls) != 1 || logged.Len() != 0 {
+		t.Fatalf("a report carrying no clock recorded a reading: %+v, %q", clock.calls, logged.String())
+	}
+}

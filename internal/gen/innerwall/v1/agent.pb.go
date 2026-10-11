@@ -95,6 +95,10 @@ const (
 	// from the first drop to the window's close, and the count is the
 	// observations dropped.
 	EvidenceGapKind_EVIDENCE_GAP_KIND_WINDOW_OVERFLOW EvidenceGapKind = 5
+	// The control plane refused a closed window as malformed, and the agent
+	// dropped it rather than retry a report that can never be accepted; the
+	// interval is the window's bounds and the count is its records.
+	EvidenceGapKind_EVIDENCE_GAP_KIND_WINDOW_REJECTED EvidenceGapKind = 6
 )
 
 // Enum value maps for EvidenceGapKind.
@@ -106,6 +110,7 @@ var (
 		3: "EVIDENCE_GAP_KIND_BUFFER_OVERFLOW",
 		4: "EVIDENCE_GAP_KIND_DUMP_TRUNCATED",
 		5: "EVIDENCE_GAP_KIND_WINDOW_OVERFLOW",
+		6: "EVIDENCE_GAP_KIND_WINDOW_REJECTED",
 	}
 	EvidenceGapKind_value = map[string]int32{
 		"EVIDENCE_GAP_KIND_UNSPECIFIED":     0,
@@ -114,6 +119,7 @@ var (
 		"EVIDENCE_GAP_KIND_BUFFER_OVERFLOW": 3,
 		"EVIDENCE_GAP_KIND_DUMP_TRUNCATED":  4,
 		"EVIDENCE_GAP_KIND_WINDOW_OVERFLOW": 5,
+		"EVIDENCE_GAP_KIND_WINDOW_REJECTED": 6,
 	}
 )
 
@@ -1431,8 +1437,8 @@ type EvidenceGap struct {
 	From   *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=from,proto3" json:"from,omitempty"`
 	To     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=to,proto3" json:"to,omitempty"`
 	// How many records, table entries, or observations were lost, when that
-	// is known: for a buffer overflow, a truncated dump, and a window
-	// overflow. A kernel-side loss has no count.
+	// is known: for a buffer overflow, a truncated dump, a window overflow,
+	// and a rejected window. A kernel-side loss has no count.
 	Count         *uint64 `protobuf:"varint,5,opt,name=count,proto3,oneof" json:"count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1802,14 +1808,15 @@ const file_innerwall_v1_agent_proto_rawDesc = "" +
 	"\tAckStatus\x12\x1a\n" +
 	"\x16ACK_STATUS_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12ACK_STATUS_APPLIED\x10\x01\x12\x15\n" +
-	"\x11ACK_STATUS_FAILED\x10\x02*\xf4\x01\n" +
+	"\x11ACK_STATUS_FAILED\x10\x02*\x9b\x02\n" +
 	"\x0fEvidenceGapKind\x12!\n" +
 	"\x1dEVIDENCE_GAP_KIND_UNSPECIFIED\x10\x00\x12$\n" +
 	" EVIDENCE_GAP_KIND_SOURCE_OVERRUN\x10\x01\x12$\n" +
 	" EVIDENCE_GAP_KIND_SOURCE_RESTART\x10\x02\x12%\n" +
 	"!EVIDENCE_GAP_KIND_BUFFER_OVERFLOW\x10\x03\x12$\n" +
 	" EVIDENCE_GAP_KIND_DUMP_TRUNCATED\x10\x04\x12%\n" +
-	"!EVIDENCE_GAP_KIND_WINDOW_OVERFLOW\x10\x05*k\n" +
+	"!EVIDENCE_GAP_KIND_WINDOW_OVERFLOW\x10\x05\x12%\n" +
+	"!EVIDENCE_GAP_KIND_WINDOW_REJECTED\x10\x06*k\n" +
 	"\x0eEvidenceSource\x12\x1f\n" +
 	"\x1bEVIDENCE_SOURCE_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19EVIDENCE_SOURCE_CONNTRACK\x10\x01\x12\x19\n" +

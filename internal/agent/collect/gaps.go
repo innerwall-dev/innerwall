@@ -35,13 +35,18 @@ const (
 	// keys as it may, and observations for new keys were dropped until it
 	// closed. The count of dropped observations is known.
 	GapWindowOverflow GapKind = "window_overflow"
+	// GapWindowRejected: the control plane refused a closed window as
+	// malformed, and it was dropped rather than retried. The record count
+	// is known.
+	GapWindowRejected GapKind = "window_rejected"
 )
 
 // GapSource names the source that lost the evidence.
 type GapSource string
 
 // The flow sources that record gaps. A loss that is not one source's (a
-// buffer or window overflow drops records of every source) names none.
+// buffer or window overflow, or a rejected window, drops records of every
+// source) names none.
 const (
 	GapNoSource  GapSource = ""
 	GapConntrack GapSource = "conntrack"
@@ -282,6 +287,7 @@ var wireKinds = map[GapKind]innerwallv1.EvidenceGapKind{
 	GapBufferOverflow: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_BUFFER_OVERFLOW,
 	GapDumpTruncated:  innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_DUMP_TRUNCATED,
 	GapWindowOverflow: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_WINDOW_OVERFLOW,
+	GapWindowRejected: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_WINDOW_REJECTED,
 }
 
 var wireSources = map[GapSource]innerwallv1.EvidenceSource{
