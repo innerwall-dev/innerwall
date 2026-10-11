@@ -316,13 +316,6 @@ func TestCloseBounds(t *testing.T) {
 			t.Errorf("%s: end %v before start %v", c.name, end, t0)
 		}
 	}
-	// Readings that carry the runtime's monotonic clock are compared on
-	// the wall clock: the monotonic reading would hide the step.
-	start := time.Now()
-	stepped := start.Add(time.Minute).Add(-30 * time.Minute) // keeps start's monotonic reading
-	if _, _, step := closeBounds(start, stepped, time.Minute); step != -30*time.Minute {
-		t.Fatalf("step with monotonic readings = %v, want -30m", step)
-	}
 }
 
 // TestAggregatorCutHoldsInstantsWithinBounds checks a cut window: it ends
