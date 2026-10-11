@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/innerwall-dev/innerwall/internal/buildinfo"
 	"github.com/innerwall-dev/innerwall/internal/enroll"
 	"github.com/innerwall-dev/innerwall/internal/fleet"
 	"github.com/innerwall-dev/innerwall/internal/operator"
@@ -300,16 +301,20 @@ func NewHTTPServer(tlsCfg *tls.Config, handler http.Handler) *http.Server {
 // Me is the operator as the console sees it: the display name set with
 // the password (null until one is set, and the console renders a generic
 // fallback), the site label configured on the control plane (empty when
-// none is), and the advertised agent gateway address (null when none is
-// configured, and the console keeps its placeholder).
+// none is), the advertised agent gateway address (null when none is
+// configured, and the console keeps its placeholder), and the version of
+// the control plane answering, as internal/buildinfo names it. Only an
+// authenticated request reaches it, so the version is never disclosed
+// before login.
 type Me struct {
 	DisplayName    *string `json:"display_name"`
 	Site           string  `json:"site"`
 	GatewayAddress *string `json:"gateway_address"`
+	Version        string  `json:"version"`
 }
 
 func (s *Server) me(p *operator.Principal) Me {
-	me := Me{Site: s.site, GatewayAddress: optionalString(s.gateway)}
+	me := Me{Site: s.site, GatewayAddress: optionalString(s.gateway), Version: buildinfo.Version()}
 	if p != nil {
 		me.DisplayName = p.DisplayName
 	}
@@ -387,7 +392,7 @@ func (s *Server) deleteSession(w http.ResponseWriter, r *http.Request) {
 }
 
 // getMe is GET /api/v1/me: the authenticated operator, the site label,
-// and the advertised agent gateway address.
+// the advertised agent gateway address, and the control plane's version.
 func (s *Server) getMe(w http.ResponseWriter, r *http.Request) {
 	p, ok := PrincipalFromContext(r.Context())
 	if !ok {

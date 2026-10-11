@@ -91,6 +91,7 @@ export const operator: Me = {
 	display_name: "A. Rao",
 	site: "iad1",
 	gateway_address: null,
+	version: "v0.1.0+6007581f652b",
 };
 
 // signedIn is the identity read every authenticated screen starts from.

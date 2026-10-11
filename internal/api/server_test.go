@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/innerwall-dev/innerwall/internal/api"
+	"github.com/innerwall-dev/innerwall/internal/buildinfo"
 	"github.com/innerwall-dev/innerwall/internal/operator"
 	"github.com/innerwall-dev/innerwall/internal/operator/operatortest"
 )
@@ -214,6 +215,56 @@ func TestMeCarriesAdvertisedGatewayAddress(t *testing.T) {
 	resp, body = s.do(t, browser, request{method: http.MethodGet, path: "/api/v1/me"})
 	if resp.status != http.StatusOK || body["gateway_address"] != "gateway.lab.example:8443" || body["site"] != "lab" {
 		t.Fatalf("me: %d %v", resp.status, body)
+	}
+}
+
+// The control plane's version rides the identity read, to an
+// authenticated caller only: the login answer and /me, by session or by
+// operator token, carry the string internal/buildinfo names, and no
+// refusal before login does.
+func TestMeCarriesControlPlaneVersion(t *testing.T) {
+	want := buildinfo.Version()
+	if want == "" {
+		t.Fatal("buildinfo names no version")
+	}
+	s := newSurface(t, api.Deps{Site: "lab"})
+	browser := s.client(true)
+
+	resp, body := s.do(t, browser, login(testPassword))
+	expectProblem(t, resp, body, http.StatusForbidden, api.ProblemNoPassword)
+	if _, present := body["version"]; present {
+		t.Fatalf("a refused login disclosed the version: %v", body)
+	}
+	s.setPassword(t, "Ada")
+	resp, body = s.do(t, browser, login("a perfectly wrong password"))
+	expectProblem(t, resp, body, http.StatusUnauthorized, api.ProblemInvalidCredentials)
+	if _, present := body["version"]; present {
+		t.Fatalf("a refused login disclosed the version: %v", body)
+	}
+	resp, body = s.do(t, browser, request{method: http.MethodGet, path: "/api/v1/me"})
+	expectProblem(t, resp, body, http.StatusUnauthorized, api.ProblemUnauthenticated)
+	if _, present := body["version"]; present {
+		t.Fatalf("an unauthenticated read disclosed the version: %v", body)
+	}
+
+	resp, body = s.do(t, browser, login(testPassword))
+	if resp.status != http.StatusOK || body["version"] != want {
+		t.Fatalf("login: %d %v, want version %q", resp.status, body, want)
+	}
+	resp, body = s.do(t, browser, request{method: http.MethodGet, path: "/api/v1/me"})
+	if resp.status != http.StatusOK || body["version"] != want || body["site"] != "lab" {
+		t.Fatalf("me by session: %d %v, want version %q", resp.status, body, want)
+	}
+	token, _, err := s.operators.MintToken(context.Background(), "ci", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The test server hands out one shared client, so the bearer read
+	// gets a client of its own that holds no session cookie.
+	cli := &http.Client{Transport: s.ts.Client().Transport}
+	resp, body = s.do(t, cli, request{method: http.MethodGet, path: "/api/v1/me", headers: map[string]string{"Authorization": "Bearer " + token}})
+	if resp.status != http.StatusOK || body["version"] != want {
+		t.Fatalf("me by operator token: %d %v, want version %q", resp.status, body, want)
 	}
 }
 

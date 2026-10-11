@@ -194,7 +194,7 @@ paths:
     get:
       operationId: getMe
       tags: [session]
-      summary: The authenticated operator, the site label, and the advertised agent gateway address.
+      summary: The authenticated operator, the site label, the advertised agent gateway address, and the control plane's version.
       responses:
         "200":
           description: The operator.
@@ -1645,9 +1645,9 @@ components:
         message:
           type: string
     Me:
-      description: The operator as the console shows it, and the site label configured on the control plane.
+      description: The operator as the console shows it, the site label configured on the control plane, and the build of the control plane answering.
       type: object
-      required: [display_name, site, gateway_address]
+      required: [display_name, site, gateway_address, version]
       properties:
         display_name:
           type: [string, "null"]
@@ -1656,6 +1656,9 @@ components:
         gateway_address:
           type: [string, "null"]
           description: The host:port agents reach the agent gateway at, as the operator configured it for the enroll command; null when none is configured. It is never derived from the bind address or the host's interfaces.
+        version:
+          type: string
+          description: The version of the control plane answering, the same string its version subcommand and startup log line report (e.g. `v0.1.0+6007581f652b`, or `dev+f347cd966f58` for an untagged build). It is returned only to an authenticated caller.
     WorkloadID:
       type: string
       format: uuid
