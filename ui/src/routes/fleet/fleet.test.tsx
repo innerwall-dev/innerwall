@@ -126,7 +126,7 @@ describe("fleet workloads", () => {
 		expect(c.getByText("Degraded")).toBeInTheDocument();
 		expect(c.getByText("v41 · v42 failed")).toBeInTheDocument();
 		expect(c.getByText("v41")).toBeInTheDocument();
-		expect(c.getByText("renews 9h")).toBeInTheDocument();
+		expect(c.getByText("renewal due in 9h")).toBeInTheDocument();
 		expect(c.getByText("20s")).toBeInTheDocument();
 
 		const a = within(rowOf("auth-prod-11"));

@@ -693,7 +693,7 @@ export function composeVerdict(input: VerdictInput): ReviewVerdictResult {
 			"Every workload in scope is already enforced; there is no simulated verdict to review.";
 	} else if (wb.length > 0) {
 		headline = "Not safe to enforce yet";
-		sub = `${wb.length} peer/service ${plural(wb.length, "pair", "pairs")} carrying ${kpis.connections.toLocaleString("en-US")} connections would be dropped. ${kpis.recent} of them ${plural(kpis.recent, "was", "were")} seen in the last hour.`;
+		sub = `${wb.length} peer/service ${plural(wb.length, "pair", "pairs")} carrying ${kpis.connections.toLocaleString("en-US")} ${plural(kpis.connections, "connection", "connections")} would be dropped. ${kpis.recent} of them ${plural(kpis.recent, "was", "were")} seen in the last hour.`;
 	} else {
 		headline = "Not safe to enforce yet";
 		const incomplete = failing.some((c) => c.id === "evidence-gaps");

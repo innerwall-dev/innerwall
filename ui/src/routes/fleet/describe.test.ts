@@ -88,8 +88,10 @@ describe("credential", () => {
 		});
 		// Issued 05:00, 24h lifetime: due 16h later, at 21:00.
 		expect(renewsAt(w)).toBe(Date.parse("2026-09-25T21:00:00Z"));
-		expect(credential(w, now)).toEqual({ text: "renews 9h", tone: "ok" });
-		expect(credential(w, now, "rail").text).toBe("renews in 9h");
+		expect(credential(w, now)).toEqual({
+			text: "renewal due in 9h",
+			tone: "ok",
+		});
 	});
 
 	it("dates a never-renewed credential from enrollment", () => {
@@ -99,16 +101,16 @@ describe("credential", () => {
 				credential: { last_renewed_at: null, expires_at: hoursFromNow(23) },
 			},
 		});
-		expect(credential(w).text).toBe("renews 15h");
+		expect(credential(w).text).toBe("renewal due in 15h");
 	});
 
-	it("says renewal is due once the point has passed", () => {
+	it("counts down to the renewal point in one phrasing, past it included", () => {
 		const w = workload({
 			enrolled_at: minutesAgo(14 * 24 * 60),
 			health: {
 				credential: { last_renewed_at: null, expires_at: hoursFromNow(9) },
 			},
 		});
-		expect(credential(w).text).toBe("renewal due");
+		expect(credential(w).text).toBe("renewal due now");
 	});
 });

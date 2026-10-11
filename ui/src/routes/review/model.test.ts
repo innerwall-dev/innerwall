@@ -335,6 +335,16 @@ describe("the verdict", () => {
 		expect(v.caveats).toEqual([]);
 	});
 
+	it("counts a single would-block connection in the singular", () => {
+		const r = rollups(
+			{ would_block: [ps(peer.workload(m1), "tcp/9100", 1, 1, 2)] },
+			{ would_block: [srcDst(peer.workload(m1), c1, 1)] },
+		);
+		expect(verdictOf(ready(), r).sub).toBe(
+			"1 peer/service pair carrying 1 connection would be dropped. 1 of them was seen in the last hour.",
+		);
+	});
+
 	const broken: [string, (w: Workload[]) => void, string][] = [
 		[
 			"degraded",
