@@ -1604,35 +1604,37 @@ describe("policy editor", () => {
 		// back to the first ruleset and moving the address there.
 		const created = ruleset("ledger-inbound", { app: ["ledger"] });
 		let written = false;
-		const s = surface({
-			extra: [
-				{
-					method: "POST",
-					path: "/api/v1/rulesets",
-					reply: () => {
-						written = true;
-						s.setRulesets([checkout, auth, billing, created]);
-						return { status: 201, json: created };
-					},
-				},
-			],
-		});
 		// The listing read after the write is held until the test lets it
 		// through, so the editor renders with the listing read before it.
 		let release = () => {};
 		const held = new Promise<void>((r) => {
 			release = r;
 		});
-		const answer = s.fetchMock.getMockImplementation();
-		s.fetchMock.mockImplementation(async (input, init) => {
-			if (
-				written &&
-				(init?.method ?? "GET") === "GET" &&
-				String(input).endsWith("/rulesets")
-			) {
-				await held;
-			}
-			return (answer as typeof fetch)(input, init);
+		surface({
+			extra: [
+				{
+					method: "POST",
+					path: "/api/v1/rulesets",
+					reply: () => {
+						written = true;
+						return { status: 201, json: created };
+					},
+				},
+				{
+					method: "GET",
+					path: "/api/v1/rulesets",
+					reply: () => ({
+						status: 200,
+						json: {
+							rulesets: written
+								? [checkout, auth, billing, created]
+								: [checkout, auth, billing],
+							state_version: "sv-1",
+						},
+						gate: written ? held : undefined,
+					}),
+				},
+			],
 		});
 		const user = userEvent.setup();
 		renderApp("/policy?new=1");

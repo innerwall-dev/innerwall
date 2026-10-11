@@ -19,6 +19,9 @@ export type Reply = {
 	json?: unknown;
 	problem?: Problem;
 	headers?: Record<string, string>;
+	// gate holds the reply until it settles, so a test can observe the
+	// screen while a request is still in flight.
+	gate?: Promise<unknown>;
 };
 
 // A route answers requests to one path, whatever their query; a reply
@@ -64,6 +67,7 @@ export function mockSurface(routes: Route[]) {
 				typeof route.reply === "function"
 					? route.reply(body, parsed.searchParams)
 					: route.reply;
+			if (reply.gate) await reply.gate;
 			const headers: Record<string, string> = { ...(reply.headers ?? {}) };
 			let payload: string;
 			if (reply.problem) {
