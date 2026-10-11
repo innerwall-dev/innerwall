@@ -392,6 +392,49 @@ func TestReporterShipsGapsWithTheWindow(t *testing.T) {
 	<-done
 }
 
+// stampFlows is an AgentServiceClient whose ReportFlows streams fail or
+// succeed as decided when each stream opens, and which keeps the requests
+// of every stream, failed and delivered. Deciding at open, not at close, lets a
+// test move the clock before any stream that will succeed is opened: the
+// reporter stamps after it opens a stream, so every delivered request was
+// stamped under the moved clock.
+type stampFlows struct {
+	innerwallv1.AgentServiceClient
+	mu        sync.Mutex
+	fail      bool
+	failed    [][]*innerwallv1.ReportFlowsRequest
+	delivered [][]*innerwallv1.ReportFlowsRequest
+}
+
+type stampStream struct {
+	grpc.ClientStream
+	f    *stampFlows
+	fail bool
+	sent []*innerwallv1.ReportFlowsRequest
+}
+
+func (f *stampFlows) ReportFlows(context.Context, ...grpc.CallOption) (innerwallv1.AgentService_ReportFlowsClient, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return &stampStream{f: f, fail: f.fail}, nil
+}
+
+func (s *stampStream) Send(req *innerwallv1.ReportFlowsRequest) error {
+	s.sent = append(s.sent, req)
+	return nil
+}
+
+func (s *stampStream) CloseAndRecv() (*innerwallv1.ReportFlowsResponse, error) {
+	s.f.mu.Lock()
+	defer s.f.mu.Unlock()
+	if s.fail {
+		s.f.failed = append(s.f.failed, s.sent)
+		return nil, errors.New("stream failed")
+	}
+	s.f.delivered = append(s.f.delivered, s.sent)
+	return &innerwallv1.ReportFlowsResponse{}, nil
+}
+
 // TestReporterStampsTheClockAtEachSend checks that every request carries
 // the agent's clock at the moment it was sent, and that a retried window
 // is stamped again when it is resent rather than keeping its first
@@ -400,16 +443,17 @@ func TestReporterShipsGapsWithTheWindow(t *testing.T) {
 func TestReporterStampsTheClockAtEachSend(t *testing.T) {
 	buf := NewBuffer(0)
 	buf.Push(window(t0, 3))
-	flows := &fakeFlows{fail: true}
+	flows := &stampFlows{fail: true}
 	var mu sync.Mutex
-	clock := t0.Add(time.Hour)
-	now := func() time.Time {
-		mu.Lock()
-		defer mu.Unlock()
-		return clock
-	}
+	first, resend := t0.Add(time.Hour), t0.Add(2*time.Hour)
+	clock := first
 	r := &Reporter{
-		Buffer: buf, BackoffBase: time.Millisecond, BackoffCap: time.Millisecond, Now: now,
+		Buffer: buf, BackoffBase: time.Millisecond, BackoffCap: time.Millisecond,
+		Now: func() time.Time {
+			mu.Lock()
+			defer mu.Unlock()
+			return clock
+		},
 		Dial: func(context.Context) (innerwallv1.AgentServiceClient, io.Closer, error) {
 			return flows, io.NopCloser(nil), nil
 		},
@@ -421,49 +465,57 @@ func TestReporterStampsTheClockAtEachSend(t *testing.T) {
 	done := make(chan struct{})
 	go func() { _ = r.Run(ctx); close(done) }()
 
-	waitSent := func(n int) []*innerwallv1.ReportFlowsRequest {
-		t.Helper()
-		deadline := time.Now().Add(5 * time.Second)
-		for {
-			flows.mu.Lock()
-			sent := append([]*innerwallv1.ReportFlowsRequest(nil), flows.sent...)
-			flows.mu.Unlock()
-			if len(sent) >= n {
-				return sent
-			}
-			if time.Now().After(deadline) {
-				t.Fatalf("%d requests sent, want %d", len(sent), n)
-			}
-			time.Sleep(time.Millisecond)
+	// Wait for a failed attempt, then move the clock before letting any
+	// later stream succeed.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		flows.mu.Lock()
+		n := len(flows.failed)
+		flows.mu.Unlock()
+		if n >= 1 {
+			break
 		}
+		if time.Now().After(deadline) {
+			t.Fatal("the first attempt was not made")
+		}
+		time.Sleep(time.Millisecond)
 	}
-	first := waitSent(2)
-	for i, req := range first[:2] {
-		if !req.GetSentAt().AsTime().Equal(t0.Add(time.Hour)) {
-			t.Fatalf("request %d sent_at = %v, want the clock at send %v", i, req.GetSentAt().AsTime(), t0.Add(time.Hour))
-		}
+	flows.mu.Lock()
+	attempt := flows.failed[0]
+	flows.mu.Unlock()
+	if len(attempt) != 2 || !attempt[0].GetSentAt().AsTime().Equal(first) || !attempt[1].GetSentAt().AsTime().Equal(first) {
+		t.Fatalf("first attempt = %v, want 2 requests stamped %v", attempt, first)
 	}
 	mu.Lock()
-	clock = t0.Add(2 * time.Hour)
+	clock = resend
 	mu.Unlock()
 	flows.mu.Lock()
 	flows.fail = false
 	flows.mu.Unlock()
-	deadline := time.Now().Add(5 * time.Second)
-	for buf.Len() > 0 || len(waitSent(2)) < 4 {
+
+	deadline = time.Now().Add(5 * time.Second)
+	var delivered []*innerwallv1.ReportFlowsRequest
+	for delivered == nil {
+		flows.mu.Lock()
+		if len(flows.delivered) > 0 {
+			delivered = flows.delivered[0]
+		}
+		flows.mu.Unlock()
 		if time.Now().After(deadline) {
 			t.Fatal("the retry was not delivered")
 		}
 		time.Sleep(time.Millisecond)
 	}
-	flows.mu.Lock()
-	last := flows.sent[len(flows.sent)-1]
-	flows.mu.Unlock()
-	if !last.GetSentAt().AsTime().Equal(t0.Add(2 * time.Hour)) {
-		t.Fatalf("retried request sent_at = %v, want the clock at resend %v", last.GetSentAt().AsTime(), t0.Add(2*time.Hour))
+	if len(delivered) != 2 {
+		t.Fatalf("delivered %d requests, want the window's 2 batches", len(delivered))
 	}
-	if !last.GetWindowEnd().AsTime().Equal(first[0].GetWindowEnd().AsTime()) {
-		t.Fatal("the retry changed the window's bounds")
+	for i, req := range delivered {
+		if !req.GetSentAt().AsTime().Equal(resend) {
+			t.Fatalf("delivered request %d sent_at = %v, want the clock at resend %v", i, req.GetSentAt().AsTime(), resend)
+		}
+		if !req.GetWindowEnd().AsTime().Equal(t0.Add(time.Minute)) {
+			t.Fatalf("delivered request %d window end = %v; the retry changed the window's bounds", i, req.GetWindowEnd().AsTime())
+		}
 	}
 	cancel()
 	<-done
