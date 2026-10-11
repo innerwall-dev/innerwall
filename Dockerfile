@@ -14,6 +14,9 @@ RUN npm run build
 # The Go base is pinned to the patch release go.mod requires, so the image
 # never builds with an older, unpatched toolchain.
 FROM golang:1.26.9-alpine AS build
+# git lets the toolchain stamp the binary with the commit it was built from
+# (vcs.revision), which the control plane reports as its version.
+RUN apk add --no-cache git
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download

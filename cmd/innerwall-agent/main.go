@@ -24,10 +24,14 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/innerwall-dev/innerwall/internal/buildinfo"
 )
 
-// version is set at link time by the release build (see .goreleaser.yaml).
-var version = "dev"
+// version names this build: the tag when there is one and the commit, from
+// what the toolchain embeds or the release build's link flags (see
+// internal/buildinfo and .goreleaser.yaml).
+var version = buildinfo.Version()
 
 func main() {
 	os.Exit(exitCode())

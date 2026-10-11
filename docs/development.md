@@ -101,6 +101,19 @@ For iterating on the console itself, `npm --prefix ui run dev` serves it with ho
 
 `.github/workflows/claude.yml` runs the coding-agent jobs: `@claude` mentions on issues and PRs, and an advisory ADR-conformance review of every PR ready for review (a draft when it is marked ready; not one that changes only generated output or lockfiles) that posts findings as a sticky PR comment and never fails the build. Both authenticate through workload identity federation; there is no static credential in the workflow.
 
+## Versions
+
+Both binaries report one version string: `innerwall version`, `innerwall-agent version`, the control plane's `control plane serving` log line, the agent's `agent starting` line, and the agent version on the sync stream, which the console shows as a workload's `agent` host fact. It is the tag when the build is of a tagged commit, `dev` otherwise, with the commit as build metadata:
+
+| Build | Reports |
+|---|---|
+| a tagged commit | `v0.1.0+6007581f652b` |
+| any other commit | `dev+f347cd966f58` |
+| uncommitted changes in the tree | `dev+f347cd966f58.dirty` |
+| no commit known (a tree without `.git`, or no `git` on the build host) | `dev+unknown` |
+
+The commit is the 12-character prefix of what the Go toolchain embeds on every build made in a git checkout (`vcs.revision`), so `make build`, a plain `go build`, and a cross-compile all carry it with no flags; `go version -m <binary>` shows the full value. The image build installs `git` for the same reason. The release build sets both parts at link time instead (`-X github.com/innerwall-dev/innerwall/internal/buildinfo.version=…` and `.commit=…`, in `.goreleaser.yaml`). The logic is `internal/buildinfo`; nothing else formats a version.
+
 ## Where things live
 
 ```
@@ -121,6 +134,7 @@ internal/identity         workload identity and its URI SAN form (the only place
 internal/enroll           provisioning tokens, enrollment, renewal
 internal/registry         workloads: labels, mode, facts and addresses, sync status
 internal/store            queries/ (SQL), migrations/ (goose), db/ (sqlc output); storetest/ opens a test database and seeds the review fleet and estate (also behind `innerwall dev seed`)
+internal/buildinfo        the version string both binaries report: tag and commit, from the toolchain's VCS stamp or release link flags
 internal/agent            credential/ (enroll, renew, holder, renewal timer), sync/ (daemon), enforce/ (policy store; nft/ is the nftables backend), inventory/, collect/ (sources, aggregation, buffer, reporter), health/ (reserved; no code)
 internal/gen              buf output (generated; never edited)
 proto/innerwall/v1        the API contract (buf.yaml and buf.gen.yaml at the repo root)
