@@ -225,6 +225,15 @@ message ReportFlowsRequest {
   // window may carry gaps and no records. The reporting workload is the
   // connection credential's, as for the records.
   repeated EvidenceGap gaps = 4;
+  // The agent's clock when it sent this request, stamped on every request
+  // immediately before it is sent. The control plane compares it with the
+  // instant it received the request to detect an agent whose clock has
+  // drifted, which would otherwise misdate every window it reports. The
+  // window bounds cannot serve: a window held in the agent's buffer while
+  // the control plane was unreachable is delivered late by design, and
+  // late delivery is not skew. Unset from an agent that predates the
+  // field.
+  google.protobuf.Timestamp sent_at = 5;
 }
 
 // An interval [from, to) in which a workload's flow evidence is known to be

@@ -145,6 +145,7 @@ export function WorkloadDetail() {
 									: undefined
 							}
 							policy={rendered}
+							clockSkew={w.health.clock_skew}
 						/>
 					) : null}
 					{tab === "services" ? (

@@ -52,6 +52,7 @@ export function workload(
 			last_seen_at: minutesAgo(1),
 			dropped_flow_records: 0,
 			source_overruns: 0,
+			clock_skew: null,
 			...health,
 			credential: {
 				state: "renews",

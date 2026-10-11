@@ -82,6 +82,9 @@ func workloadFromRow(row *db.Workload, labels []registry.Label, addrs []netip.Ad
 	if labels == nil {
 		w.Labels = []registry.Label{}
 	}
+	if row.ClockSkewOffsetMs.Valid && row.ClockSkewObservedAt != nil {
+		w.ClockSkew = &registry.ClockSkew{Offset: time.Duration(row.ClockSkewOffsetMs.Int64) * time.Millisecond, ObservedAt: *row.ClockSkewObservedAt, Current: row.ClockSkewCurrent}
+	}
 	if len(row.Facts) > 0 {
 		w.Facts = &innerwallv1.HostFacts{}
 		if err := proto.Unmarshal(row.Facts, w.Facts); err != nil {
@@ -285,6 +288,17 @@ func (s *Store) RecordAgent(ctx context.Context, id identity.WorkloadID, agent r
 	}
 	if n == 0 {
 		return registry.ErrWorkloadUnknown
+	}
+	return nil
+}
+
+// RecordClockReading implements ingest.ClockRecorder: a skewed reading's
+// offset and instant, or the end of a current skew.
+func (s *Store) RecordClockReading(ctx context.Context, id identity.WorkloadID, offset time.Duration, skewed bool, receivedAt time.Time) error {
+	if err := s.q.RecordWorkloadClockReading(ctx, db.RecordWorkloadClockReadingParams{
+		ID: id.UUID(), Skewed: skewed, OffsetMs: offset.Milliseconds(), ObservedAt: receivedAt,
+	}); err != nil {
+		return fmt.Errorf("store: recording clock reading: %w", err)
 	}
 	return nil
 }

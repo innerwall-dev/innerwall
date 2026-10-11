@@ -1338,7 +1338,16 @@ type ReportFlowsRequest struct {
 	// not bounded by the window: a gap is wherever the loss happened. A
 	// window may carry gaps and no records. The reporting workload is the
 	// connection credential's, as for the records.
-	Gaps          []*EvidenceGap `protobuf:"bytes,4,rep,name=gaps,proto3" json:"gaps,omitempty"`
+	Gaps []*EvidenceGap `protobuf:"bytes,4,rep,name=gaps,proto3" json:"gaps,omitempty"`
+	// The agent's clock when it sent this request, stamped on every request
+	// immediately before it is sent. The control plane compares it with the
+	// instant it received the request to detect an agent whose clock has
+	// drifted, which would otherwise misdate every window it reports. The
+	// window bounds cannot serve: a window held in the agent's buffer while
+	// the control plane was unreachable is delivered late by design, and
+	// late delivery is not skew. Unset from an agent that predates the
+	// field.
+	SentAt        *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=sent_at,json=sentAt,proto3" json:"sent_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1397,6 +1406,13 @@ func (x *ReportFlowsRequest) GetRecords() []*FlowRecord {
 func (x *ReportFlowsRequest) GetGaps() []*EvidenceGap {
 	if x != nil {
 		return x.Gaps
+	}
+	return nil
+}
+
+func (x *ReportFlowsRequest) GetSentAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.SentAt
 	}
 	return nil
 }
@@ -1747,13 +1763,14 @@ const file_innerwall_v1_agent_proto_rawDesc = "" +
 	"\tdirective\"\v\n" +
 	"\tReconnect\"\n" +
 	"\n" +
-	"\bReenroll\"\xf1\x01\n" +
+	"\bReenroll\"\xa6\x02\n" +
 	"\x12ReportFlowsRequest\x12=\n" +
 	"\fwindow_start\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\vwindowStart\x129\n" +
 	"\n" +
 	"window_end\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\twindowEnd\x122\n" +
 	"\arecords\x18\x03 \x03(\v2\x18.innerwall.v1.FlowRecordR\arecords\x12-\n" +
-	"\x04gaps\x18\x04 \x03(\v2\x19.innerwall.v1.EvidenceGapR\x04gaps\"\xf7\x01\n" +
+	"\x04gaps\x18\x04 \x03(\v2\x19.innerwall.v1.EvidenceGapR\x04gaps\x123\n" +
+	"\asent_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\x06sentAt\"\xf7\x01\n" +
 	"\vEvidenceGap\x121\n" +
 	"\x04kind\x18\x01 \x01(\x0e2\x1d.innerwall.v1.EvidenceGapKindR\x04kind\x124\n" +
 	"\x06source\x18\x02 \x01(\x0e2\x1c.innerwall.v1.EvidenceSourceR\x06source\x12.\n" +
@@ -1883,28 +1900,29 @@ var file_innerwall_v1_agent_proto_depIdxs = []int32{
 	30, // 20: innerwall.v1.ReportFlowsRequest.window_end:type_name -> google.protobuf.Timestamp
 	23, // 21: innerwall.v1.ReportFlowsRequest.records:type_name -> innerwall.v1.FlowRecord
 	21, // 22: innerwall.v1.ReportFlowsRequest.gaps:type_name -> innerwall.v1.EvidenceGap
-	1,  // 23: innerwall.v1.EvidenceGap.kind:type_name -> innerwall.v1.EvidenceGapKind
-	2,  // 24: innerwall.v1.EvidenceGap.source:type_name -> innerwall.v1.EvidenceSource
-	30, // 25: innerwall.v1.EvidenceGap.from:type_name -> google.protobuf.Timestamp
-	30, // 26: innerwall.v1.EvidenceGap.to:type_name -> google.protobuf.Timestamp
-	31, // 27: innerwall.v1.FlowRecord.protocol:type_name -> innerwall.v1.Protocol
-	32, // 28: innerwall.v1.FlowRecord.direction:type_name -> innerwall.v1.Direction
-	3,  // 29: innerwall.v1.FlowRecord.decision:type_name -> innerwall.v1.PolicyDecision
-	30, // 30: innerwall.v1.FlowRecord.first_seen:type_name -> google.protobuf.Timestamp
-	30, // 31: innerwall.v1.FlowRecord.last_seen:type_name -> google.protobuf.Timestamp
-	4,  // 32: innerwall.v1.EnrollmentService.Enroll:input_type -> innerwall.v1.EnrollRequest
-	8,  // 33: innerwall.v1.AgentService.Sync:input_type -> innerwall.v1.SyncRequest
-	20, // 34: innerwall.v1.AgentService.ReportFlows:input_type -> innerwall.v1.ReportFlowsRequest
-	6,  // 35: innerwall.v1.AgentService.RenewCredential:input_type -> innerwall.v1.RenewCredentialRequest
-	5,  // 36: innerwall.v1.EnrollmentService.Enroll:output_type -> innerwall.v1.EnrollResponse
-	9,  // 37: innerwall.v1.AgentService.Sync:output_type -> innerwall.v1.SyncResponse
-	22, // 38: innerwall.v1.AgentService.ReportFlows:output_type -> innerwall.v1.ReportFlowsResponse
-	7,  // 39: innerwall.v1.AgentService.RenewCredential:output_type -> innerwall.v1.RenewCredentialResponse
-	36, // [36:40] is the sub-list for method output_type
-	32, // [32:36] is the sub-list for method input_type
-	32, // [32:32] is the sub-list for extension type_name
-	32, // [32:32] is the sub-list for extension extendee
-	0,  // [0:32] is the sub-list for field type_name
+	30, // 23: innerwall.v1.ReportFlowsRequest.sent_at:type_name -> google.protobuf.Timestamp
+	1,  // 24: innerwall.v1.EvidenceGap.kind:type_name -> innerwall.v1.EvidenceGapKind
+	2,  // 25: innerwall.v1.EvidenceGap.source:type_name -> innerwall.v1.EvidenceSource
+	30, // 26: innerwall.v1.EvidenceGap.from:type_name -> google.protobuf.Timestamp
+	30, // 27: innerwall.v1.EvidenceGap.to:type_name -> google.protobuf.Timestamp
+	31, // 28: innerwall.v1.FlowRecord.protocol:type_name -> innerwall.v1.Protocol
+	32, // 29: innerwall.v1.FlowRecord.direction:type_name -> innerwall.v1.Direction
+	3,  // 30: innerwall.v1.FlowRecord.decision:type_name -> innerwall.v1.PolicyDecision
+	30, // 31: innerwall.v1.FlowRecord.first_seen:type_name -> google.protobuf.Timestamp
+	30, // 32: innerwall.v1.FlowRecord.last_seen:type_name -> google.protobuf.Timestamp
+	4,  // 33: innerwall.v1.EnrollmentService.Enroll:input_type -> innerwall.v1.EnrollRequest
+	8,  // 34: innerwall.v1.AgentService.Sync:input_type -> innerwall.v1.SyncRequest
+	20, // 35: innerwall.v1.AgentService.ReportFlows:input_type -> innerwall.v1.ReportFlowsRequest
+	6,  // 36: innerwall.v1.AgentService.RenewCredential:input_type -> innerwall.v1.RenewCredentialRequest
+	5,  // 37: innerwall.v1.EnrollmentService.Enroll:output_type -> innerwall.v1.EnrollResponse
+	9,  // 38: innerwall.v1.AgentService.Sync:output_type -> innerwall.v1.SyncResponse
+	22, // 39: innerwall.v1.AgentService.ReportFlows:output_type -> innerwall.v1.ReportFlowsResponse
+	7,  // 40: innerwall.v1.AgentService.RenewCredential:output_type -> innerwall.v1.RenewCredentialResponse
+	37, // [37:41] is the sub-list for method output_type
+	33, // [33:37] is the sub-list for method input_type
+	33, // [33:33] is the sub-list for extension type_name
+	33, // [33:33] is the sub-list for extension extendee
+	0,  // [0:33] is the sub-list for field type_name
 }
 
 func init() { file_innerwall_v1_agent_proto_init() }

@@ -252,6 +252,13 @@ const scenes = [
 		ready: '[data-testid="evidence-gaps"]',
 	},
 	{
+		name: "workload-detail-clock-skew",
+		cp: "seeded",
+		path: async (api) =>
+			`/workloads/${await workloadId(api, "billing-prod-06")}`,
+		ready: '[data-testid="clock-skew"]',
+	},
+	{
 		name: "13-fleet-workloads",
 		cp: "seeded",
 		path: "/workloads",

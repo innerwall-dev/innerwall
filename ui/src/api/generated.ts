@@ -1024,6 +1024,14 @@ export interface components {
             };
             enrolled_at: components["schemas"]["Timestamp"];
             health: {
+                /** @description The latest flow report whose agent clock differed from the control plane's by more than twice the flow window; null when none has been received. Each report carries the agent's clock at send, compared with the instant it was received; a report from an agent that predates that stamp is judged by its window's end, and only for a clock running ahead, since a buffered window is delivered late by design. A skewed agent stamps its flow windows with its own clock, so their times are shifted by about the offset. Skew is recorded, never refused. */
+                clock_skew: {
+                    /** @description Whether the latest report received was skewed. False once a report within tolerance has followed; `observed_at` then says when the last misdated windows arrived. */
+                    current: boolean;
+                    observed_at: components["schemas"]["Timestamp"];
+                    /** @description The agent's clock minus the control plane's, in seconds; negative when the agent is behind. */
+                    offset_seconds: number;
+                } | null;
                 credential: {
                     expires_at: components["schemas"]["Timestamp"];
                     last_error: string;

@@ -307,6 +307,13 @@ type healthJSON struct {
 	Credential         credentialJSON `json:"credential"`
 	DroppedFlowRecords uint64         `json:"dropped_flow_records"`
 	SourceOverruns     uint64         `json:"source_overruns"`
+	ClockSkew          *clockSkewJSON `json:"clock_skew"`
+}
+
+type clockSkewJSON struct {
+	OffsetSeconds int64  `json:"offset_seconds"`
+	ObservedAt    string `json:"observed_at"`
+	Current       bool   `json:"current"`
 }
 
 type workloadResponse struct {
@@ -347,6 +354,9 @@ func workloadJSON(w *readmodel.Workload) workloadResponse {
 			DroppedFlowRecords: w.Health.DroppedFlowRecords,
 			SourceOverruns:     w.Health.SourceOverruns,
 		},
+	}
+	if c := w.Health.ClockSkew; c != nil {
+		out.Health.ClockSkew = &clockSkewJSON{OffsetSeconds: int64(c.Offset.Round(time.Second) / time.Second), ObservedAt: timestamp(c.ObservedAt), Current: c.Current}
 	}
 	if out.Agent.Capabilities == nil {
 		out.Agent.Capabilities = []string{}

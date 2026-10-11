@@ -2310,7 +2310,7 @@ components:
               description: When the agent last reported a failed apply; null when none has been recorded. It remains after a later successful apply; `state` says whether the failure still stands.
         health:
           type: object
-          required: [last_seen_at, credential, dropped_flow_records, source_overruns]
+          required: [last_seen_at, credential, dropped_flow_records, source_overruns, clock_skew]
           properties:
             last_seen_at:
               type: [string, "null"]
@@ -2334,6 +2334,19 @@ components:
             source_overruns:
               type: integer
               description: Moments the kernel dropped events because one of the agent's flow sources fell behind, since the agent started, as its heartbeat reports them. Each is also an evidence gap with its interval (`GET /flows/gaps`).
+            clock_skew:
+              type: [object, "null"]
+              description: The latest flow report whose agent clock differed from the control plane's by more than twice the flow window; null when none has been received. Each report carries the agent's clock at send, compared with the instant it was received; a report from an agent that predates that stamp is judged by its window's end, and only for a clock running ahead, since a buffered window is delivered late by design. A skewed agent stamps its flow windows with its own clock, so their times are shifted by about the offset. Skew is recorded, never refused.
+              required: [offset_seconds, observed_at, current]
+              properties:
+                offset_seconds:
+                  type: integer
+                  description: The agent's clock minus the control plane's, in seconds; negative when the agent is behind.
+                observed_at:
+                  $ref: "#/components/schemas/Timestamp"
+                current:
+                  type: boolean
+                  description: Whether the latest report received was skewed. False once a report within tolerance has followed; `observed_at` then says when the last misdated windows arrived.
     RenderedPolicy:
       description: A workload's persisted rendered policy as configuration.
       type: object

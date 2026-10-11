@@ -89,7 +89,7 @@ sudo bin/innerwall-agent enroll --server localhost:8443 --token <provisioning-to
 sudo bin/innerwall-agent daemon --server localhost:8443
 ```
 
-On another host, use the control plane's address in place of `localhost`; the gateway's certificate must name it (`--tls-hosts`). The workload appears in the console's fleet, synced, in visibility mode: observed, never blocked. From there the path is the one the console walks: write a ruleset, move workloads to simulation, read the simulation review, and promote. A rule has no destination of its own: the ruleset's scope is the destination, so write one ruleset per tier you protect and let the dry run show which workloads each change reaches ([docs/policy.md](docs/policy.md)). `sudo bin/innerwall-agent down` removes the agent's firewall table at any time without the control plane. Running it in production, with more than one replica, behind load balancers, is in [docs/deploy/README.md](docs/deploy/README.md).
+On another host, use the control plane's address in place of `localhost`; the gateway's certificate must name it (`--tls-hosts`). The agent stamps its flows with the host's clock, so keep it in sync: a VM on a laptop drifts when the laptop sleeps, and its flows then land at the wrong times until the clock is re-synced ([docs/troubleshooting.md](docs/troubleshooting.md)). The workload appears in the console's fleet, synced, in visibility mode: observed, never blocked. From there the path is the one the console walks: write a ruleset, move workloads to simulation, read the simulation review, and promote. A rule has no destination of its own: the ruleset's scope is the destination, so write one ruleset per tier you protect and let the dry run show which workloads each change reaches ([docs/policy.md](docs/policy.md)). `sudo bin/innerwall-agent down` removes the agent's firewall table at any time without the control plane. Running it in production, with more than one replica, behind load balancers, is in [docs/deploy/README.md](docs/deploy/README.md).
 
 ## Layout
 
@@ -104,6 +104,7 @@ On another host, use the control plane's address in place of `localhost`; the ga
 | `docs/adr/` | Architecture decision records: the design's source of truth |
 | `docs/deploy/` | Running it: deployment, the operator surface, high availability |
 | `docs/policy.md` | The policy model: the scope is the destination, one ruleset per tier, authoring and the dry run |
+| `docs/troubleshooting.md` | Symptom, cause, and remedy for what operators meet, such as an agent whose clock has drifted |
 | `docs/development.md` | Prerequisites, make targets, where things live |
 
 ## Contributing

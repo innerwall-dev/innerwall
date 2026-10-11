@@ -168,14 +168,22 @@ func runServe(ctx context.Context, args []string) error {
 	fleetSvc := &fleet.Service{Store: st, Engine: engine, Reads: reads, Directives: st}
 	apiSrv := api.New(api.Deps{Operators: operators, Reads: reads, Authoring: authoring, Fleet: fleetSvc, Enroll: svc, Site: *site, GatewayAddress: *gatewayAddr, Console: console, Log: log.With("service", "api")})
 	httpServer := api.NewHTTPServer(api.ServerTLSConfig(operatorCert), apiSrv.Handler())
+	// Ingest judges clock skew against the flow window the agents are
+	// handed, so both read the one configuration.
+	syncCfg := gateway.DefaultSyncConfig()
 	srv := gateway.New(gateway.Deps{
 		Enroll:   svc,
 		Registry: st,
 		Policies: st,
 		Engine:   engine,
 		Events:   st,
-		Ingest:   &ingest.Service{Directory: st, Flows: st.Flows(), Log: log.With("service", "ingest")},
-		Log:      log,
+		Ingest: &ingest.Service{
+			Directory: st, Flows: st.Flows(), Clock: st,
+			FlowWindow: time.Duration(syncCfg.GetFlowAggregationWindowSeconds()) * time.Second,
+			Log:        log.With("service", "ingest"),
+		},
+		SyncConfig: syncCfg,
+		Log:        log,
 	})
 	retention := &flowstore.Retention{
 		Store:    st.Flows(),
