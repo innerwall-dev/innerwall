@@ -244,6 +244,7 @@ type Workload struct {
 	ClockSkewCurrent       bool
 	OwnedTableState        int16
 	OwnedTableAbsentSince  *time.Time
+	LastFlowReportAt       *time.Time
 }
 
 type WorkloadAddress struct {

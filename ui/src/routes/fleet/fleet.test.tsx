@@ -86,6 +86,8 @@ const legacy = workload({
 	sync: { state: "offline", applied_version: 1, latest_version: 1 },
 	health: {
 		last_seen_at: minutesAgo(3 * 24 * 60),
+		last_flow_report_at: null,
+		telemetry_live: false,
 		credential: { state: "expired", expires_at: minutesAgo(2 * 24 * 60) },
 	},
 });
@@ -135,7 +137,7 @@ describe("fleet workloads", () => {
 
 		const l = within(rowOf("legacy-vm-0117"));
 		expect(l.getByText("no labels — matches no scope")).toBeInTheDocument();
-		expect(l.getByText("no stream for 3d")).toBeInTheDocument();
+		expect(l.getByText("no contact for 3d")).toBeInTheDocument();
 		expect(l.getByText("expired 2d ago")).toBeInTheDocument();
 
 		expect(
@@ -178,6 +180,36 @@ describe("fleet workloads", () => {
 		const b = within(rowOf("bastion-01"));
 		expect(b.getByText("Synced")).toBeInTheDocument();
 		expect(b.queryByTestId("enforcement-removed")).not.toBeInTheDocument();
+	});
+
+	it("names an offline stream whose flow reports still land as reconnecting", async () => {
+		// Issue #61: during a control-plane restart the sync stream waits out
+		// its backoff while the flow reports keep landing.
+		const restarting = workload({
+			hostname: "api-prod-03",
+			sync: { state: "offline", applied_version: 9, latest_version: 9 },
+			health: {
+				last_seen_at: minutesAgo(3.5),
+				last_flow_report_at: minutesAgo(0.5),
+				telemetry_live: true,
+			},
+		});
+		mockSurface([
+			...frame,
+			fleet(() => ({ workloads: [restarting, legacy], next_cursor: null })),
+		]);
+		renderApp("/workloads");
+		await screen.findByRole("link", { name: "api-prod-03" });
+		const r = within(rowOf("api-prod-03"));
+		expect(r.getByText("Reconnecting")).toBeInTheDocument();
+		expect(r.queryByText("Offline")).not.toBeInTheDocument();
+		expect(
+			r.getByText("control channel down · flow reports arriving"),
+		).toBeInTheDocument();
+		// No contact on either channel stays Offline.
+		expect(
+			within(rowOf("legacy-vm-0117")).getByText("Offline"),
+		).toBeInTheDocument();
 	});
 
 	it("filters by sync state and label requirements through the query", async () => {

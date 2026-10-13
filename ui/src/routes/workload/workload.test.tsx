@@ -447,6 +447,45 @@ describe("workload detail", () => {
 		).toHaveAttribute("data-status", "error");
 	});
 
+	it("heads an offline stream with live flow reports as reconnecting", async () => {
+		surface({
+			workload: () => ({
+				...db,
+				sync: { ...db.sync, state: "offline", error: "" },
+				health: {
+					...db.health,
+					last_seen_at: minutesAgo(3.5),
+					last_flow_report_at: minutesAgo(0.5),
+					telemetry_live: true,
+				},
+			}),
+		});
+		renderApp(`/workloads/${db.id}`);
+		const card = await screen.findByTestId("status-card");
+		expect(card).toHaveTextContent(
+			/^Reconnecting — control channel down, flow reports arriving/,
+		);
+		expect(screen.getByTestId("last-flow-report")).toHaveTextContent("30s ago");
+	});
+
+	it("heads an offline workload with no contact by its latest contact on either channel", async () => {
+		surface({
+			workload: () => ({
+				...db,
+				sync: { ...db.sync, state: "offline", error: "" },
+				health: {
+					...db.health,
+					last_seen_at: minutesAgo(30),
+					last_flow_report_at: minutesAgo(12),
+					telemetry_live: false,
+				},
+			}),
+		});
+		renderApp(`/workloads/${db.id}`);
+		const card = await screen.findByTestId("status-card");
+		expect(card).toHaveTextContent(/^Offline — no contact for 12m/);
+	});
+
 	it("lists flow windows by the required workload filter, with counts per decision", async () => {
 		const { calls } = surface();
 		const user = userEvent.setup();

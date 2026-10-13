@@ -19,7 +19,7 @@ import {
 } from "@/components/fleet/status";
 import { Icon } from "@/components/Icon";
 import { LoadingRow, ProblemNotice } from "@/components/Problem";
-import { SeverityNote } from "@/components/StatusGlyph";
+import { SeverityNote, StatusBadge } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
 import { labelPairs } from "@/lib/format";
 import { parseRequirements } from "@/lib/labels";
@@ -30,6 +30,7 @@ import {
 	credential,
 	enforcementRemoved,
 	lastSeen,
+	reconnecting,
 	syncNote,
 	version,
 } from "./describe";
@@ -360,6 +361,10 @@ function Row({
 					<SeverityNote level="error" data-testid="enforcement-removed">
 						Enforcement removed on host
 					</SeverityNote>
+				) : reconnecting(w) ? (
+					// Offline by its sync stream, and still reporting flows:
+					// the offline glyph, named for what is happening.
+					<StatusBadge status="offline">Reconnecting</StatusBadge>
 				) : (
 					<SyncLabel state={w.sync.state} />
 				)}

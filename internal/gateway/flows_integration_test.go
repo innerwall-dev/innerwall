@@ -184,6 +184,13 @@ func TestFlowPipelineEndToEnd(t *testing.T) {
 		t.Fatalf("%d gaps still held after delivery", gaps.Held())
 	}
 
+	// Every delivered report stamped its receipt on the workload, on the
+	// telemetry connection alone, whatever its sync stream is doing
+	// (issue #61).
+	if w, err := st.LookupWorkload(ctx, db.id); err != nil || w.LastFlowReportAt == nil || time.Since(*w.LastFlowReportAt) > time.Minute {
+		t.Fatalf("last flow report = %v, %v", w, err)
+	}
+
 	// A label change on the peer: the next window carries the new
 	// snapshot; the first window keeps the old one.
 	if err := st.SetWorkloadLabels(ctx, web.id, []registry.Label{{Key: "role", Value: "web"}, {Key: "env", Value: "prod"}}); err != nil {

@@ -176,7 +176,8 @@ func runWorkloadStatus(ctx context.Context, args []string) error {
 	}
 	fmt.Printf("applied version %d\n", wl.AppliedVersion)
 	fmt.Printf("latest version  %d\n", latest)
-	fmt.Printf("last seen       %s\n", ago(wl.LastSeenAt, now))
+	fmt.Printf("last seen       %s (control channel)\n", ago(wl.LastSeenAt, now))
+	fmt.Printf("last flow report %s\n", ago(wl.LastFlowReportAt, now))
 	fmt.Printf("last snapshot   %s\n", ago(wl.LastSnapshotSentAt, now))
 	fmt.Printf("last ack        %s\n", ago(wl.LastAckedAt, now))
 	fmt.Printf("apply failed    %s\n", ago(wl.LastApplyFailedAt, now))

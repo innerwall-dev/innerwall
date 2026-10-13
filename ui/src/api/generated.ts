@@ -1068,7 +1068,15 @@ export interface components {
                     state: "renews" | "renewal-failed" | "expired";
                 };
                 dropped_flow_records: number;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When the control plane last received a flow report from the agent, whatever the window or its fate at validation; null when none has been received. Flow reports and the sync stream travel on separate connections with separate backoff, so this can advance while `sync.state` is offline.
+                 */
+                last_flow_report_at: string | null;
+                /**
+                 * Format: date-time
+                 * @description The control channel's last contact with the agent; the latest message on its sync stream, or the instant the control plane recorded that stream ending. Flow reports travel on a connection of their own and do not move it (`last_flow_report_at`). Null when the agent has never connected.
+                 */
                 last_seen_at: string | null;
                 /** @description Whether the agent's owned firewall table is in the host's kernel, as its heartbeats last said. Everything the agent enforces and observes lives in that table, and the local kill switch removes it without the control plane, so `sync` (the version the agent acknowledged) cannot say whether anything is still installed; this does. While it is `absent` the host enforces and observes nothing, and the agent reports the interval as a `table_removed` evidence gap. */
                 owned_table: {
@@ -1085,6 +1093,8 @@ export interface components {
                 };
                 /** @description Moments the kernel dropped events because one of the agent's flow sources fell behind, since the agent started, as its heartbeat reports them. Each is also an evidence gap with its interval (`GET /flows/gaps`). */
                 source_overruns: number;
+                /** @description Whether a flow report arrived within two flow aggregation windows of this read, so the agent is running and reaching the control plane. With `sync.state` offline it tells a control channel that is reconnecting from a host the control plane has no contact with at all. */
+                telemetry_live: boolean;
             };
             hostname: string;
             id: components["schemas"]["WorkloadID"];

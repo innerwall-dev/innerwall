@@ -8,7 +8,12 @@ import { Button } from "@/components/ui/button";
 import { ago, since } from "@/lib/format";
 import { useWrite } from "@/lib/resource";
 import { cn } from "@/lib/utils";
-import { enforcementRemoved, version } from "../fleet/describe";
+import {
+	enforcementRemoved,
+	lastContact,
+	reconnecting,
+	version,
+} from "../fleet/describe";
 
 type Outcome =
 	| { kind: "idle" }
@@ -168,10 +173,15 @@ function headline(w: Workload): string {
 			return "Degraded — last apply failed";
 		case "pending":
 			return `Pending — ${version(s.latest_version)} not yet applied`;
-		case "offline":
-			return w.health.last_seen_at
-				? `Offline — no stream for ${since(w.health.last_seen_at)}`
+		case "offline": {
+			if (reconnecting(w)) {
+				return "Reconnecting — control channel down, flow reports arriving";
+			}
+			const contact = lastContact(w);
+			return contact
+				? `Offline — no contact for ${since(contact)}`
 				: "Offline — never connected";
+		}
 		default:
 			return `Synced — ${version(s.applied_version)} applied`;
 	}

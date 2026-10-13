@@ -195,6 +195,9 @@ type Querier interface {
 	// a reading within tolerance only clears the mark, and writes nothing when
 	// there is no mark to clear, so a healthy agent's reports cost no write.
 	RecordWorkloadClockReading(ctx context.Context, arg RecordWorkloadClockReadingParams) error
+	// The receipt of one flow report (migration 00013). Never moved backwards,
+	// so reports handled out of order across replicas leave the latest.
+	RecordWorkloadFlowReport(ctx context.Context, arg RecordWorkloadFlowReportParams) error
 	// A heartbeat's counters, renewal status, and owned-table state (migration
 	// 00012). An unknown state leaves the stored one; the absent instant is the
 	// first heartbeat's that said absent, kept while the state stays absent.

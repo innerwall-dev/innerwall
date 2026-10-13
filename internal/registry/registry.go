@@ -82,6 +82,11 @@ type Workload struct {
 	// plane first heard it was absent, nil unless it is.
 	OwnedTable            innerwallv1.OwnedTableState
 	OwnedTableAbsentSince *time.Time
+	// LastFlowReportAt is when the control plane last received a flow
+	// report from the agent; nil when none has been. Flow reports travel
+	// on a connection of their own (ADR-0015), so this can move while the
+	// sync stream is down. Written by flow ingest alone.
+	LastFlowReportAt *time.Time
 }
 
 // Heartbeat is what one heartbeat reports.

@@ -80,6 +80,7 @@ func workloadFromRow(row *db.Workload, labels []registry.Label, addrs []netip.Ad
 		LastApplyFailedAt:      row.LastApplyFailedAt,
 		OwnedTable:             innerwallv1.OwnedTableState(row.OwnedTableState),
 		OwnedTableAbsentSince:  row.OwnedTableAbsentSince,
+		LastFlowReportAt:       row.LastFlowReportAt,
 	}
 	if labels == nil {
 		w.Labels = []registry.Label{}
@@ -301,6 +302,15 @@ func (s *Store) RecordClockReading(ctx context.Context, id identity.WorkloadID, 
 		ID: id.UUID(), Skewed: skewed, OffsetMs: offset.Milliseconds(), ObservedAt: receivedAt,
 	}); err != nil {
 		return fmt.Errorf("store: recording clock reading: %w", err)
+	}
+	return nil
+}
+
+// RecordFlowReport implements ingest.ReportRecorder: the receipt of one
+// flow report, never moved backwards.
+func (s *Store) RecordFlowReport(ctx context.Context, id identity.WorkloadID, receivedAt time.Time) error {
+	if err := s.q.RecordWorkloadFlowReport(ctx, db.RecordWorkloadFlowReportParams{ID: id.UUID(), ReceivedAt: &receivedAt}); err != nil {
+		return fmt.Errorf("store: recording flow report: %w", err)
 	}
 	return nil
 }

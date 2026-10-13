@@ -157,7 +157,12 @@ func runServe(ctx context.Context, args []string) error {
 	svc := &enroll.Service{Store: st, Authority: authority, LeafTTL: *leafTTL}
 	engine := &compiler.Engine{Store: st, Log: log}
 	operators := &operator.Service{Store: st}
-	reads := &readmodel.Reader{Store: st, Flows: st.Flows()}
+	// Ingest judges clock skew, and the read model whether a workload's
+	// telemetry is live, against the flow window the agents are handed, so
+	// all three read the one configuration.
+	syncCfg := gateway.DefaultSyncConfig()
+	flowWindow := time.Duration(syncCfg.GetFlowAggregationWindowSeconds()) * time.Second
+	reads := &readmodel.Reader{Store: st, Flows: st.Flows(), FlowWindow: flowWindow}
 	// The console is served at every path outside the API prefix; a
 	// build without one (the noconsole tag, or a checkout where `make
 	// console` has not run) answers those paths with a marked problem.
@@ -168,9 +173,6 @@ func runServe(ctx context.Context, args []string) error {
 	fleetSvc := &fleet.Service{Store: st, Engine: engine, Reads: reads, Directives: st}
 	apiSrv := api.New(api.Deps{Operators: operators, Reads: reads, Authoring: authoring, Fleet: fleetSvc, Enroll: svc, Site: *site, GatewayAddress: *gatewayAddr, Console: console, Log: log.With("service", "api")})
 	httpServer := api.NewHTTPServer(api.ServerTLSConfig(operatorCert), apiSrv.Handler())
-	// Ingest judges clock skew against the flow window the agents are
-	// handed, so both read the one configuration.
-	syncCfg := gateway.DefaultSyncConfig()
 	srv := gateway.New(gateway.Deps{
 		Enroll:   svc,
 		Registry: st,
@@ -178,8 +180,8 @@ func runServe(ctx context.Context, args []string) error {
 		Engine:   engine,
 		Events:   st,
 		Ingest: &ingest.Service{
-			Directory: st, Flows: st.Flows(), Clock: st,
-			FlowWindow: time.Duration(syncCfg.GetFlowAggregationWindowSeconds()) * time.Second,
+			Directory: st, Flows: st.Flows(), Clock: st, Reports: st,
+			FlowWindow: flowWindow,
 			Log:        log.With("service", "ingest"),
 		},
 		SyncConfig: syncCfg,

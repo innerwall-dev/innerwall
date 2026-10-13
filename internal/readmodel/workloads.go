@@ -125,6 +125,24 @@ type Health struct {
 	// says of the version the agent acknowledged (issue #64).
 	OwnedTable            innerwallv1.OwnedTableState
 	OwnedTableAbsentSince *time.Time
+	// LastFlowReportAt is when the control plane last received a flow
+	// report from the agent; nil when none has been. TelemetryLive says
+	// one arrived within TelemetryLiveWindows flow windows of the read: the
+	// agent is running and reaching the control plane, whatever its sync
+	// stream's state, which travels on another connection (issue #61).
+	LastFlowReportAt *time.Time
+	TelemetryLive    bool
+}
+
+// TelemetryLiveWindows is how many flow windows may pass since the last
+// report while a workload's telemetry is still live. The reporter ships
+// one window per window length; two allow one late report.
+const TelemetryLiveWindows = 2
+
+// telemetryLive says a report arrived within TelemetryLiveWindows flow
+// windows of now; never with no window to judge by.
+func telemetryLive(last *time.Time, window time.Duration, now time.Time) bool {
+	return window > 0 && last != nil && now.Sub(*last) <= TelemetryLiveWindows*window
 }
 
 // Workload is the one object shape the fleet list and the workload detail
@@ -292,6 +310,8 @@ func (s *Reader) workload(rec *WorkloadRecord, now time.Time) Workload {
 			ClockSkew:             rec.ClockSkew,
 			OwnedTable:            rec.OwnedTable,
 			OwnedTableAbsentSince: rec.OwnedTableAbsentSince,
+			LastFlowReportAt:      rec.LastFlowReportAt,
+			TelemetryLive:         telemetryLive(rec.LastFlowReportAt, s.FlowWindow, now),
 		},
 	}
 	if w.Labels == nil {

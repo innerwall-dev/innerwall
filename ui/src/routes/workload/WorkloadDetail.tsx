@@ -21,6 +21,7 @@ import {
 	credentialTone,
 	enforcementRemoved,
 	lastSeen,
+	reconnecting,
 } from "../fleet/describe";
 import { ModeChangeDialog } from "../fleet/ModeChangeDialog";
 import { FlowsTab } from "./FlowsTab";
@@ -78,6 +79,7 @@ export function WorkloadDetail() {
 				hostname: wl.data.hostname,
 				state: wl.data.sync.state,
 				removed: enforcementRemoved(wl.data),
+				reconnecting: reconnecting(wl.data),
 			});
 		}
 	}, [wl, shell]);
@@ -248,6 +250,13 @@ function Rail({
 					<dt className={field}>last seen</dt>
 					<dd className={value}>
 						{w.health.last_seen_at ? `${lastSeen(w)} ago` : "never"}
+						<div className={note}>On the control channel, the sync stream.</div>
+					</dd>
+					<dt className={field}>flow report</dt>
+					<dd className={value} data-testid="last-flow-report">
+						{w.health.last_flow_report_at
+							? ago(w.health.last_flow_report_at)
+							: "none received"}
 					</dd>
 					<dt className={field}>enrolled</dt>
 					<dd className={value}>{ago(w.enrolled_at)}</dd>

@@ -213,7 +213,7 @@ function FleetSync() {
 // openLabel names the open workload's state beside its glyph: a removed
 // table outranks the sync state it still holds (issue #64).
 function openLabel(open: OpenWorkload): string {
-	return open.removed
-		? "Enforcement removed on host"
-		: syncStates[open.state].label;
+	if (open.removed) return "Enforcement removed on host";
+	if (open.reconnecting) return "Reconnecting";
+	return syncStates[open.state].label;
 }

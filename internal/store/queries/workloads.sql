@@ -110,6 +110,13 @@ SET clock_skew_offset_ms   = CASE WHEN sqlc.arg(skewed)::boolean THEN sqlc.arg(o
     clock_skew_current     = sqlc.arg(skewed)::boolean
 WHERE id = sqlc.arg(id) AND (sqlc.arg(skewed)::boolean OR clock_skew_current);
 
+-- The receipt of one flow report (migration 00013). Never moved backwards,
+-- so reports handled out of order across replicas leave the latest.
+-- name: RecordWorkloadFlowReport :exec
+UPDATE workloads
+SET last_flow_report_at = sqlc.arg(received_at)
+WHERE id = sqlc.arg(id) AND (last_flow_report_at IS NULL OR last_flow_report_at < sqlc.arg(received_at));
+
 -- name: SetWorkloadSyncState :execrows
 UPDATE workloads
 SET sync_state = $2, sync_error = $3, last_seen_at = $4
@@ -163,7 +170,7 @@ SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at,
        w.sync_state, w.applied_policy_version, w.sync_error, w.dropped_flow_records,
        w.credential_renewal_error, w.last_snapshot_sent_at, w.last_acked_at, w.last_apply_failed_at,
        w.source_overruns, w.clock_skew_offset_ms, w.clock_skew_observed_at, w.clock_skew_current,
-       w.owned_table_state, w.owned_table_absent_since,
+       w.owned_table_state, w.owned_table_absent_since, w.last_flow_report_at,
        w.sync_rank::integer AS sync_rank, w.seen_key::timestamptz AS seen_key,
        p.version AS latest_version, p.rendered_at AS latest_rendered_at
 FROM (

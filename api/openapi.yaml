@@ -2359,11 +2359,19 @@ components:
               description: When the agent last reported a failed apply; null when none has been recorded. It remains after a later successful apply; `state` says whether the failure still stands.
         health:
           type: object
-          required: [last_seen_at, credential, dropped_flow_records, source_overruns, clock_skew, owned_table]
+          required: [last_seen_at, last_flow_report_at, telemetry_live, credential, dropped_flow_records, source_overruns, clock_skew, owned_table]
           properties:
             last_seen_at:
               type: [string, "null"]
               format: date-time
+              description: The control channel's last contact with the agent; the latest message on its sync stream, or the instant the control plane recorded that stream ending. Flow reports travel on a connection of their own and do not move it (`last_flow_report_at`). Null when the agent has never connected.
+            last_flow_report_at:
+              type: [string, "null"]
+              format: date-time
+              description: When the control plane last received a flow report from the agent, whatever the window or its fate at validation; null when none has been received. Flow reports and the sync stream travel on separate connections with separate backoff, so this can advance while `sync.state` is offline.
+            telemetry_live:
+              type: boolean
+              description: Whether a flow report arrived within two flow aggregation windows of this read, so the agent is running and reaching the control plane. With `sync.state` offline it tells a control channel that is reconnecting from a host the control plane has no contact with at all.
             credential:
               type: object
               required: [state, expires_at, last_renewed_at, last_error]

@@ -49,6 +49,14 @@ type ClockRecorder interface {
 	RecordClockReading(ctx context.Context, id identity.WorkloadID, offset time.Duration, skewed bool, receivedAt time.Time) error
 }
 
+// ReportRecorder records the instant the control plane received a flow
+// report from a workload. A report proves the agent is running whatever
+// the state of its sync stream, which travels on a connection of its own.
+// The store implements it.
+type ReportRecorder interface {
+	RecordFlowReport(ctx context.Context, id identity.WorkloadID, receivedAt time.Time) error
+}
+
 // Service ingests reported windows.
 type Service struct {
 	Directory Directory
@@ -56,6 +64,9 @@ type Service struct {
 	// Clock records each report's clock reading on its workload; nil
 	// records nothing, and a skewed report is still logged.
 	Clock ClockRecorder
+	// Reports records the receipt of every report on its workload; nil
+	// records nothing.
+	Reports ReportRecorder
 	// FlowWindow is the flow aggregation window the control plane hands
 	// agents in SyncConfig; the clock-skew tolerance is ClockSkewWindows
 	// of it. Zero skips the clock check.
@@ -119,6 +130,7 @@ func (s *Service) Ingest(ctx context.Context, id identity.WorkloadID, req *inner
 	if reporter == nil {
 		return Result{}, registry.ErrWorkloadUnknown
 	}
+	s.recordReport(ctx, id, receivedAt)
 	s.checkClock(ctx, reporter, req, receivedAt)
 
 	if req.GetWindowStart() == nil || req.GetWindowEnd() == nil {
@@ -172,6 +184,18 @@ func (s *Service) Ingest(ctx context.Context, id identity.WorkloadID, req *inner
 	}
 	res.Accepted = n
 	return res, nil
+}
+
+// recordReport stamps the receipt of a report on its workload, before the
+// window is validated: a report refused for its bounds still came from a
+// running agent. A failed record is logged and costs the window nothing.
+func (s *Service) recordReport(ctx context.Context, id identity.WorkloadID, receivedAt time.Time) {
+	if s.Reports == nil {
+		return
+	}
+	if err := s.Reports.RecordFlowReport(ctx, id, receivedAt); err != nil {
+		s.log().Warn("recording flow report receipt", "workload_id", id, "error", err)
+	}
 }
 
 // checkClock reads the report's clock, logs a skewed reading naming the

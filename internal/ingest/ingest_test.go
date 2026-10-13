@@ -2,6 +2,7 @@ package ingest
 
 import (
 	"context"
+	"errors"
 	"net/netip"
 	"testing"
 	"time"
@@ -182,5 +183,42 @@ func TestIngestGaps(t *testing.T) {
 	}
 	if overflow.Count == nil || *overflow.Count != 5 || overflow.Source != innerwallv1.EvidenceSource_EVIDENCE_SOURCE_UNSPECIFIED {
 		t.Fatalf("overflow = %+v", overflow)
+	}
+}
+
+type reportCall struct {
+	id identity.WorkloadID
+	at time.Time
+}
+
+type fakeReports struct{ calls []reportCall }
+
+func (f *fakeReports) RecordFlowReport(_ context.Context, id identity.WorkloadID, at time.Time) error {
+	f.calls = append(f.calls, reportCall{id, at})
+	return nil
+}
+
+// TestIngestRecordsEveryReportReceipt checks that every report from a
+// registered workload stamps its receipt on the workload, a quiet window
+// and one refused for its bounds alike, since each proves the agent is
+// running whatever its sync stream is doing (issue #61); a report from an
+// unregistered workload stamps nothing.
+func TestIngestRecordsEveryReportReceipt(t *testing.T) {
+	db := registry.Workload{ID: mustID(t)}
+	now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
+	reports := &fakeReports{}
+	svc := &Service{Directory: &fakeDirectory{workloads: []registry.Workload{db}}, Flows: &fakeFlows{}, Reports: reports, Now: func() time.Time { return now }}
+	quiet := &innerwallv1.ReportFlowsRequest{WindowStart: timestamppb.New(now.Add(-time.Minute)), WindowEnd: timestamppb.New(now)}
+	if _, err := svc.Ingest(context.Background(), db.ID, quiet); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Ingest(context.Background(), db.ID, &innerwallv1.ReportFlowsRequest{}); !errors.Is(err, ErrInvalidWindow) {
+		t.Fatalf("bare report: err = %v", err)
+	}
+	if _, err := svc.Ingest(context.Background(), mustID(t), quiet); !errors.Is(err, registry.ErrWorkloadUnknown) {
+		t.Fatalf("unknown reporter: err = %v", err)
+	}
+	if len(reports.calls) != 2 || reports.calls[0] != (reportCall{db.ID, now}) || reports.calls[1] != (reportCall{db.ID, now}) {
+		t.Fatalf("receipts = %+v, want two for %s at %v", reports.calls, db.ID, now)
 	}
 }
