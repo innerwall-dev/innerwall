@@ -242,6 +242,8 @@ type Workload struct {
 	ClockSkewOffsetMs      pgtype.Int8
 	ClockSkewObservedAt    *time.Time
 	ClockSkewCurrent       bool
+	OwnedTableState        int16
+	OwnedTableAbsentSince  *time.Time
 }
 
 type WorkloadAddress struct {

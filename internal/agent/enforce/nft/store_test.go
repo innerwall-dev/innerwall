@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -18,8 +19,10 @@ import (
 
 // fakeRunner records scripts and can refuse them.
 type fakeRunner struct {
-	scripts []string
-	refuse  func(script string) error
+	scripts   []string
+	refuse    func(script string) error
+	tables    []string
+	tablesErr error
 }
 
 func (f *fakeRunner) Apply(_ context.Context, script string) error {
@@ -33,6 +36,8 @@ func (f *fakeRunner) Apply(_ context.Context, script string) error {
 }
 
 func (f *fakeRunner) List(context.Context, string) (string, error) { return "", nil }
+
+func (f *fakeRunner) Tables(context.Context) ([]string, error) { return f.tables, f.tablesErr }
 
 func isDelta(script string) bool {
 	return strings.HasPrefix(script, "add element") || strings.HasPrefix(script, "delete element")
@@ -249,6 +254,28 @@ func TestVisibilityPeerChangeIsOneFullApply(t *testing.T) {
 	}
 	if strings.Contains(logs.String(), "level=WARN") {
 		t.Fatalf("peer-only visibility change logged a warning:\n%s", logs.String())
+	}
+}
+
+// TestTablePresent reads the owned table's presence from the kernel's
+// table list, by name, among tables the agent does not own.
+func TestTablePresent(t *testing.T) {
+	ctx := context.Background()
+	runner := &fakeRunner{tables: []string{"filter", "innerwall"}}
+	s := New(Config{Runner: runner, StateDir: t.TempDir()})
+	if present, err := s.TablePresent(ctx); err != nil || !present {
+		t.Fatalf("present = %v, %v", present, err)
+	}
+	runner.tables = []string{"filter", "innerwall2"}
+	if present, err := s.TablePresent(ctx); err != nil || present {
+		t.Fatalf("after removal: present = %v, %v", present, err)
+	}
+	runner.tablesErr = errors.New("nft: not found")
+	if _, err := s.TablePresent(ctx); err == nil {
+		t.Fatal("a failed read reported an answer")
+	}
+	if got := parseTables("table inet filter\ntable inet innerwall\n\n"); !slices.Equal(got, []string{"filter", "innerwall"}) {
+		t.Fatalf("parseTables = %q", got)
 	}
 }
 

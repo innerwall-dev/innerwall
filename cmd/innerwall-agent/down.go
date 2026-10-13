@@ -34,7 +34,7 @@ func runDown(ctx context.Context, args []string) error {
 	case persisted == nil:
 		fmt.Fprintf(os.Stderr, "No persisted policy is on disk; a running or restarted daemon applies the next snapshot it receives.\n")
 	default:
-		fmt.Fprintf(os.Stderr, "The persisted policy (version %d, mode %s, %d rules) stays on disk: the next daemon start re-applies it, and a daemon that is still running re-applies on its next policy update. To keep enforcement off, stop the daemon too.\n",
+		fmt.Fprintf(os.Stderr, "The persisted policy (version %d, mode %s, %d rules) stays on disk: the next daemon start re-applies it, and a daemon that is still running re-applies on its next policy update. Until then a running daemon reports the table gone on its next heartbeat, and the control plane shows enforcement removed on this host. To keep enforcement off, stop the daemon too.\n",
 			persisted.GetVersion(), strings.ToLower(strings.TrimPrefix(persisted.GetMode().String(), "ENFORCEMENT_MODE_")), len(persisted.GetInboundRules()))
 	}
 	return nil

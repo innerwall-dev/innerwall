@@ -53,6 +53,7 @@ export function workload(
 			dropped_flow_records: 0,
 			source_overruns: 0,
 			clock_skew: null,
+			owned_table: { state: "present", absent_since: null },
 			...health,
 			credential: {
 				state: "renews",

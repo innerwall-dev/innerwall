@@ -2143,7 +2143,7 @@ components:
           $ref: "#/components/schemas/WorkloadRef"
         kind:
           type: string
-          enum: [source_overrun, source_restart, buffer_overflow, dump_truncated, window_overflow, window_rejected]
+          enum: [source_overrun, source_restart, buffer_overflow, dump_truncated, window_overflow, window_rejected, table_removed]
           description: |
             source_overrun — the kernel dropped events because a source's socket buffer was full.
             source_restart — a source was down between a failure and its next subscribe.
@@ -2151,10 +2151,11 @@ components:
             dump_truncated — the connection table held more entries at subscribe than the agent processes.
             window_overflow — the agent's open aggregation window held as many distinct keys as it may, and observations for new keys were dropped until it closed.
             window_rejected — the control plane refused a closed window as malformed, and the agent dropped it rather than retry it.
+            table_removed — the agent's owned firewall table was gone from the kernel (the local kill switch), so nothing was observed or classified; reported in pieces, one with each window, while it lasts.
         source:
           type: [string, "null"]
           enum: [conntrack, nflog, null]
-          description: The flow source that lost the evidence; null for a loss that is not one source's (a buffer or window overflow, or a rejected window).
+          description: The flow source that lost the evidence; null for a loss that is not one source's (a buffer or window overflow, a rejected window, or a removed table).
         from:
           $ref: "#/components/schemas/Timestamp"
         to:
@@ -2358,7 +2359,7 @@ components:
               description: When the agent last reported a failed apply; null when none has been recorded. It remains after a later successful apply; `state` says whether the failure still stands.
         health:
           type: object
-          required: [last_seen_at, credential, dropped_flow_records, source_overruns, clock_skew]
+          required: [last_seen_at, credential, dropped_flow_records, source_overruns, clock_skew, owned_table]
           properties:
             last_seen_at:
               type: [string, "null"]
@@ -2395,6 +2396,19 @@ components:
                 current:
                   type: boolean
                   description: Whether the latest report received was skewed. False once a report within tolerance has followed; `observed_at` then says when the last misdated windows arrived.
+            owned_table:
+              type: object
+              description: Whether the agent's owned firewall table is in the host's kernel, as its heartbeats last said. Everything the agent enforces and observes lives in that table, and the local kill switch removes it without the control plane, so `sync` (the version the agent acknowledged) cannot say whether anything is still installed; this does. While it is `absent` the host enforces and observes nothing, and the agent reports the interval as a `table_removed` evidence gap.
+              required: [state, absent_since]
+              properties:
+                state:
+                  type: string
+                  enum: [present, absent, unknown]
+                  description: present — the table is in the kernel; absent — the agent installed a policy and the table is gone; unknown — no heartbeat that knows has arrived (an agent that predates the report, or one that has installed nothing yet). A heartbeat whose read failed leaves the last known state.
+                absent_since:
+                  type: [string, "null"]
+                  format: date-time
+                  description: When the control plane first received a heartbeat saying the table was absent; null unless `state` is absent. The table may have gone up to one heartbeat interval earlier; the evidence gap carries the agent's own bound.
     RenderedPolicy:
       description: A workload's persisted rendered policy as configuration.
       type: object

@@ -182,7 +182,9 @@ type Querier interface {
 	RecordProvisioningTokenUse(ctx context.Context, arg RecordProvisioningTokenUseParams) error
 	RecordWorkloadAgent(ctx context.Context, arg RecordWorkloadAgentParams) (int64, error)
 	// An APPLIED acknowledgement: the version, the resulting state, and the
-	// instant. Nothing else writes last_acked_at (migration 00007).
+	// instant. Nothing else writes last_acked_at (migration 00007). An apply
+	// that succeeded installed the owned table, so a table recorded absent is
+	// present again (migration 00012).
 	RecordWorkloadApplied(ctx context.Context, arg RecordWorkloadAppliedParams) (int64, error)
 	// A FAILED acknowledgement: the degraded state, the agent's detail, and the
 	// instant. The applied version is untouched; the agent is still on it.
@@ -193,6 +195,9 @@ type Querier interface {
 	// a reading within tolerance only clears the mark, and writes nothing when
 	// there is no mark to clear, so a healthy agent's reports cost no write.
 	RecordWorkloadClockReading(ctx context.Context, arg RecordWorkloadClockReadingParams) error
+	// A heartbeat's counters, renewal status, and owned-table state (migration
+	// 00012). An unknown state leaves the stored one; the absent instant is the
+	// first heartbeat's that said absent, kept while the state stays absent.
 	RecordWorkloadHeartbeat(ctx context.Context, arg RecordWorkloadHeartbeatParams) (int64, error)
 	RecordWorkloadHeartbeatSeen(ctx context.Context, arg RecordWorkloadHeartbeatSeenParams) (int64, error)
 	RecordWorkloadInventory(ctx context.Context, arg RecordWorkloadInventoryParams) (int64, error)

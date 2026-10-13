@@ -155,6 +155,7 @@ func TestIngestGaps(t *testing.T) {
 	req := &innerwallv1.ReportFlowsRequest{WindowStart: timestamppb.New(start), WindowEnd: timestamppb.New(end), Gaps: []*innerwallv1.EvidenceGap{
 		{Kind: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_OVERRUN, Source: innerwallv1.EvidenceSource_EVIDENCE_SOURCE_NFLOG, From: ts(-time.Hour), To: ts(-59 * time.Minute)},
 		{Kind: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_BUFFER_OVERFLOW, From: ts(-2 * time.Hour), To: ts(-time.Hour), Count: &five},
+		{Kind: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_TABLE_REMOVED, From: ts(-3 * time.Minute), To: ts(time.Minute)},
 		{Source: innerwallv1.EvidenceSource_EVIDENCE_SOURCE_NFLOG, From: ts(0), To: ts(time.Second)}, // no kind
 		{Kind: 9, From: ts(0), To: ts(time.Second)}, // unknown kind
 		{Kind: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_RESTART, Source: 7, From: ts(0), To: ts(time.Second)},                                                    // unknown source
@@ -165,14 +166,17 @@ func TestIngestGaps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Accepted != 0 || res.Gaps != 2 || res.GapsRejected != 5 {
-		t.Fatalf("result = %+v, want 2 gaps accepted and 5 rejected", res)
+	if res.Accepted != 0 || res.Gaps != 3 || res.GapsRejected != 5 {
+		t.Fatalf("result = %+v, want 3 gaps accepted and 5 rejected", res)
 	}
 	w := flows.windows[0]
-	if w.WorkloadID != db.ID || len(w.Records) != 0 || len(w.Gaps) != 2 {
+	if w.WorkloadID != db.ID || len(w.Records) != 0 || len(w.Gaps) != 3 {
 		t.Fatalf("window = %+v", w)
 	}
-	overrun, overflow := w.Gaps[0], w.Gaps[1]
+	overrun, overflow, removed := w.Gaps[0], w.Gaps[1], w.Gaps[2]
+	if removed.Kind != innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_TABLE_REMOVED || removed.Count != nil || !removed.To.Equal(end) {
+		t.Fatalf("table removed = %+v", removed)
+	}
 	if overrun.Kind != innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_OVERRUN || overrun.Source != innerwallv1.EvidenceSource_EVIDENCE_SOURCE_NFLOG || overrun.Count != nil || !overrun.From.Equal(start.Add(-time.Hour)) {
 		t.Fatalf("overrun = %+v", overrun)
 	}

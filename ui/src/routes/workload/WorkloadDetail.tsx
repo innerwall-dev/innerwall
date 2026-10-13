@@ -16,7 +16,12 @@ import { ago, count, labelPairs } from "@/lib/format";
 import { between, kindText } from "@/lib/gaps";
 import { type Resource, useResource } from "@/lib/resource";
 import { useShell } from "@/shell/Shell";
-import { credential, credentialTone, lastSeen } from "../fleet/describe";
+import {
+	credential,
+	credentialTone,
+	enforcementRemoved,
+	lastSeen,
+} from "../fleet/describe";
 import { ModeChangeDialog } from "../fleet/ModeChangeDialog";
 import { FlowsTab } from "./FlowsTab";
 import { LabelsDialog } from "./LabelsDialog";
@@ -72,6 +77,7 @@ export function WorkloadDetail() {
 				id: wl.data.id,
 				hostname: wl.data.hostname,
 				state: wl.data.sync.state,
+				removed: enforcementRemoved(wl.data),
 			});
 		}
 	}, [wl, shell]);

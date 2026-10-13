@@ -151,6 +151,35 @@ describe("fleet workloads", () => {
 		);
 	});
 
+	it("says enforcement was removed instead of the sync state it still holds", async () => {
+		// Issue #64: the kill switch on an enforced host left the row saying
+		// Synced on its version. The agent now reports the table gone.
+		const killed = workload({
+			hostname: "pay-prod-02",
+			mode: "enforced",
+			sync: { state: "synced", applied_version: 12, latest_version: 12 },
+			health: {
+				owned_table: { state: "absent", absent_since: minutesAgo(4) },
+			},
+		});
+		mockSurface([
+			...frame,
+			fleet(() => ({ workloads: [killed, bastion], next_cursor: null })),
+		]);
+		renderApp("/workloads");
+		await screen.findByRole("link", { name: "pay-prod-02" });
+		const k = within(rowOf("pay-prod-02"));
+		expect(k.getByTestId("enforcement-removed")).toHaveTextContent(
+			"Enforcement removed on host",
+		);
+		expect(k.queryByText("Synced")).not.toBeInTheDocument();
+		expect(k.getByText("v12 not installed · 4m ago")).toBeInTheDocument();
+		// A healthy row is untouched.
+		const b = within(rowOf("bastion-01"));
+		expect(b.getByText("Synced")).toBeInTheDocument();
+		expect(b.queryByTestId("enforcement-removed")).not.toBeInTheDocument();
+	});
+
 	it("filters by sync state and label requirements through the query", async () => {
 		const { calls } = mockSurface([
 			...frame,

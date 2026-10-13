@@ -72,6 +72,50 @@ func TestGapsOpenCloseAndMerge(t *testing.T) {
 	}
 }
 
+// TestGapsCutOpenShipsAnOngoingRemoval checks the one kind of loss that
+// can last indefinitely, a removed owned table: each cut records the loss
+// so far and keeps it open from the cut, so every window carries it while
+// it lasts; a cut at or before the open start records nothing; pieces not
+// yet taken merge; the close records the rest. A source's restart interval
+// is not cut: it ends at the source's next subscribe.
+func TestGapsCutOpenShipsAnOngoingRemoval(t *testing.T) {
+	g := &Gaps{}
+	at := func(s int) time.Time { return t0.Add(time.Duration(s) * time.Second) }
+
+	g.Open(GapNoSource, GapTableRemoved, at(0))
+	g.Open(GapConntrack, GapSourceRestart, at(10))
+	g.CutOpen(at(60))
+	if got := g.Take(); len(got) != 1 || got[0] != (Gap{Kind: GapTableRemoved, From: at(0), To: at(60)}) {
+		t.Fatalf("first cut = %+v", got)
+	}
+	g.CutOpen(at(60))
+	g.CutOpen(at(50))
+	if g.Held() != 0 {
+		t.Fatalf("a cut at the open start recorded %+v", g.Pending())
+	}
+	g.CutOpen(at(120))
+	g.CutOpen(at(180))
+	if got := g.Pending(); len(got) != 1 || got[0] != (Gap{Kind: GapTableRemoved, From: at(60), To: at(180)}) {
+		t.Fatalf("untaken cuts = %+v, want one merged piece", got)
+	}
+	g.Take()
+	g.Close(GapNoSource, at(200))
+	g.Close(GapConntrack, at(201))
+	want := []Gap{
+		{Kind: GapTableRemoved, From: at(180), To: at(200)},
+		{Kind: GapSourceRestart, Source: GapConntrack, From: at(10), To: at(201)},
+	}
+	got := g.Pending()
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("after close = %+v, want %+v", got, want)
+	}
+	if w := got[0].Wire(); w.GetKind() != innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_TABLE_REMOVED || w.Source != innerwallv1.EvidenceSource_EVIDENCE_SOURCE_UNSPECIFIED || w.Count != nil {
+		t.Fatalf("wire = %v", w)
+	}
+	var none *Gaps
+	none.CutOpen(at(0))
+}
+
 // TestGapsStayBoundedByMerging checks that the recorder never holds more
 // than its capacity and never forgets that a loss happened: past the
 // bound, the two oldest gaps sharing a kind and source become one wider

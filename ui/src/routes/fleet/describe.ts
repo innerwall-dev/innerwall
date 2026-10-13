@@ -12,8 +12,24 @@ export function version(v: number): string {
 	return v === 0 ? "—" : `v${v}`;
 }
 
+// enforcementRemoved says the agent's owned firewall table is gone from
+// the host's kernel, as its heartbeats report: the local kill switch, or
+// another tool, removed it. The version the agent acknowledged still
+// stands, so the sync state alone would keep saying the host runs it;
+// nothing on the host is enforced or observed until the table is back
+// (issue #64).
+export function enforcementRemoved(w: Workload): boolean {
+	return w.health.owned_table.state === "absent";
+}
+
 export function syncNote(w: Workload, now = Date.now()): string {
 	const s = w.sync;
+	if (enforcementRemoved(w)) {
+		const since = w.health.owned_table.absent_since;
+		return since
+			? `${version(s.applied_version)} not installed · ${ago(since, now)}`
+			: `${version(s.applied_version)} not installed`;
+	}
 	switch (s.state) {
 		case "degraded":
 			if (s.latest_version > s.applied_version) {

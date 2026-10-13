@@ -26,7 +26,13 @@ import { parseRequirements } from "@/lib/labels";
 import { asProblem, useResource } from "@/lib/resource";
 import { cn } from "@/lib/utils";
 import { useShell } from "@/shell/Shell";
-import { credential, lastSeen, syncNote, version } from "./describe";
+import {
+	credential,
+	enforcementRemoved,
+	lastSeen,
+	syncNote,
+	version,
+} from "./describe";
 import { ModeChangeDialog } from "./ModeChangeDialog";
 
 const states: SyncState[] = ["synced", "pending", "degraded", "offline"];
@@ -347,7 +353,16 @@ function Row({
 				<ModePill mode={w.mode} />
 			</td>
 			<td className={cn(cell, "whitespace-nowrap")}>
-				<SyncLabel state={w.sync.state} />
+				{enforcementRemoved(w) ? (
+					// The acknowledged version is not what the host runs: its
+					// table is gone, so the row says that instead of the
+					// sync state.
+					<SeverityNote level="error" data-testid="enforcement-removed">
+						Enforcement removed on host
+					</SeverityNote>
+				) : (
+					<SyncLabel state={w.sync.state} />
+				)}
 				{note ? (
 					<span className="ml-2 type-caption text-tertiary">{note}</span>
 				) : null}

@@ -47,6 +47,24 @@ describe("sync note", () => {
 		expect(syncNote(w)).toBe("apply failed 2h ago");
 	});
 
+	it("names the acknowledged version as not installed once the table is gone", () => {
+		const w = workload({
+			sync: { state: "synced", applied_version: 7, latest_version: 7 },
+			health: {
+				owned_table: { state: "absent", absent_since: minutesAgo(9) },
+			},
+		});
+		expect(syncNote(w)).toBe("v7 not installed · 9m ago");
+		expect(
+			syncNote(
+				workload({
+					sync: { applied_version: 7, latest_version: 7 },
+					health: { owned_table: { state: "unknown", absent_since: null } },
+				}),
+			),
+		).toBe("");
+	});
+
 	it("says an offline agent that never connected did not", () => {
 		const w = workload({
 			sync: { state: "offline" },

@@ -408,6 +408,45 @@ describe("workload detail", () => {
 		).toHaveAttribute("data-status", "degraded");
 	});
 
+	it("leads with enforcement removed when the agent reports its table gone", async () => {
+		// Issue #64: synced on v41 and kill-switched; the header says the
+		// host holds none of it, and the sidebar's glyph agrees.
+		surface({
+			workload: () => ({
+				...db,
+				sync: {
+					...db.sync,
+					state: "synced",
+					applied_version: 41,
+					latest_version: 41,
+					error: "",
+				},
+				health: {
+					...db.health,
+					owned_table: { state: "absent", absent_since: minutesAgo(6) },
+				},
+			}),
+			gaps: [gap(db, 6, 0, { kind: "table_removed", source: null })],
+		});
+		renderApp(`/workloads/${db.id}`);
+		const card = await screen.findByTestId("status-card");
+		expect(card).toHaveTextContent(/^Enforcement removed on host/);
+		expect(card).not.toHaveTextContent("Synced");
+		expect(within(card).getByTestId("enforcement-removed")).toHaveTextContent(
+			"The agent reports its firewall table gone from the host since 6m ago, so nothing here is enforced or observed, and the blind interval is recorded as an evidence gap. v41 stays acknowledged",
+		);
+		const cell = await screen.findByTestId("evidence-gaps");
+		expect(cell).toHaveTextContent(
+			/enforcement was removed on the host, so nothing was observed between/,
+		);
+		const nav = screen.getByRole("navigation", { name: "Sections" });
+		expect(
+			within(within(nav).getByRole("link", { name: /db-1/ })).getByRole("img", {
+				name: "Enforcement removed on host",
+			}),
+		).toHaveAttribute("data-status", "error");
+	});
+
 	it("lists flow windows by the required workload filter, with counts per decision", async () => {
 		const { calls } = surface();
 		const user = userEvent.setup();

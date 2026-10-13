@@ -117,6 +117,14 @@ type Health struct {
 	// the tolerance, and whether it is still the latest reading; nil when
 	// none has been received.
 	ClockSkew *registry.ClockSkew
+	// OwnedTable is whether the agent's owned firewall table is in the
+	// kernel, as its heartbeats last said; unspecified until one that
+	// knows has arrived. OwnedTableAbsentSince is when the control plane
+	// first heard it was absent, nil unless it is. An absent table means
+	// the host enforces and observes nothing, whatever the sync state
+	// says of the version the agent acknowledged (issue #64).
+	OwnedTable            innerwallv1.OwnedTableState
+	OwnedTableAbsentSince *time.Time
 }
 
 // Workload is the one object shape the fleet list and the workload detail
@@ -277,11 +285,13 @@ func (s *Reader) workload(rec *WorkloadRecord, now time.Time) Workload {
 		Sync: SyncStatus{State: rec.SyncState, AppliedVersion: rec.AppliedVersion, LatestVersion: rec.LatestVersion, LatestRenderedAt: rec.LatestRenderedAt, Error: rec.SyncError, LastSnapshotSentAt: rec.LastSnapshotSentAt,
 			LastAckedAt: rec.LastAckedAt, LastApplyFailedAt: rec.LastApplyFailedAt},
 		Health: Health{
-			LastSeenAt:         rec.LastSeenAt,
-			Credential:         credentialStatus(rec, now),
-			DroppedFlowRecords: rec.DroppedFlowRecords,
-			SourceOverruns:     rec.SourceOverruns,
-			ClockSkew:          rec.ClockSkew,
+			LastSeenAt:            rec.LastSeenAt,
+			Credential:            credentialStatus(rec, now),
+			DroppedFlowRecords:    rec.DroppedFlowRecords,
+			SourceOverruns:        rec.SourceOverruns,
+			ClockSkew:             rec.ClockSkew,
+			OwnedTable:            rec.OwnedTable,
+			OwnedTableAbsentSince: rec.OwnedTableAbsentSince,
 		},
 	}
 	if w.Labels == nil {

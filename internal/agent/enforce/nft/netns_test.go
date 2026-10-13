@@ -413,8 +413,17 @@ func TestNetnsRole(t *testing.T) {
 			t.Fatalf("restore kind = %s", s.LastApply())
 		}
 	case "down":
+		// The presence read a heartbeat carries sees the table before the
+		// kill switch and its absence after (issue #64).
+		s := nft.New(nft.Config{StateDir: t.TempDir(), Table: tableName, NflogGroup: nflogGroup})
+		if present, err := s.TablePresent(context.Background()); err != nil || !present {
+			t.Fatalf("table present before teardown = %v, %v", present, err)
+		}
 		if err := nft.Teardown(context.Background(), nil, nft.Options{Table: tableName}); err != nil {
 			t.Fatal(err)
+		}
+		if present, err := s.TablePresent(context.Background()); err != nil || present {
+			t.Fatalf("table present after teardown = %v, %v", present, err)
 		}
 	default:
 		t.Fatalf("unknown role %q", os.Getenv(envRole))

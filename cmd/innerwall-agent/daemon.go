@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/innerwall-dev/innerwall/internal/agent/collect"
 	"github.com/innerwall-dev/innerwall/internal/agent/collect/conntrack"
@@ -72,6 +73,18 @@ func runDaemon(ctx context.Context, args []string) error {
 	// daemon carries on: the next snapshot from the control plane is the
 	// retry, and it is acknowledged FAILED if the kernel still refuses.
 	store := nft.New(nft.Config{StateDir: *stateDir, Table: *table, NflogGroup: uint16(*nflogGroup), Log: log.With("loop", "reconcile")})
+	// What the sources, the open window, and the buffer know they lost is
+	// recorded as evidence gaps and shipped with the windows; so is the
+	// time the owned table is gone from the kernel, which every heartbeat
+	// reads and reports (issue #64).
+	gaps := &collect.Gaps{Log: log.With("loop", "collect")}
+	presence := &enforce.Presence{
+		Probe:     store.TablePresent,
+		Installed: func() bool { return store.Current() != nil },
+		Removed:   func(since time.Time) { gaps.Open(collect.GapNoSource, collect.GapTableRemoved, since) },
+		Restored:  func(at time.Time) { gaps.Close(collect.GapNoSource, at) },
+		Log:       log.With("loop", "sync"),
+	}
 	if err := store.Load(); err != nil {
 		if errors.Is(err, enforce.ErrCorruptPolicyFile) {
 			log.Error("PERSISTED POLICY IS CORRUPT; applying nothing from it, the kernel keeps its current rules until the control plane sends a snapshot", "error", err)
@@ -81,6 +94,8 @@ func runDaemon(ctx context.Context, args []string) error {
 	} else if cur := store.Current(); cur != nil {
 		if err := store.Restore(ctx); err != nil {
 			log.Error("re-applying persisted policy failed; the kernel keeps its current rules", "version", cur.GetVersion(), "error", err)
+		} else {
+			presence.MarkInstalled(time.Now())
 		}
 	} else {
 		log.Info("no persisted policy; the host stays as it is until the first snapshot")
@@ -91,10 +106,7 @@ func runDaemon(ctx context.Context, args []string) error {
 	// Collection: conntrack events classified by connection mark, log
 	// events from the terminal rule, aggregated per window, buffered,
 	// reported on a connection of their own so telemetry never shares the
-	// sync stream's fate (ADR-0015). What the sources, the open window,
-	// and the buffer know they lost is recorded as evidence gaps and shipped with the
-	// windows.
-	gaps := &collect.Gaps{Log: log.With("loop", "collect")}
+	// sync stream's fate (ADR-0015).
 	buffer := collect.NewBuffer(*bufferRecords)
 	buffer.Gaps = gaps
 	collector := &collect.Collector{
@@ -119,13 +131,14 @@ func runDaemon(ctx context.Context, args []string) error {
 	daemon := agentsync.New(agentsync.Config{
 		Server:             *server,
 		Holder:             holder,
-		Store:              store,
+		Store:              enforce.Watched{PolicyStore: store, Presence: presence},
 		AgentVersion:       version,
 		Facts:              inventory.Facts,
 		ListeningServices:  inventory.ListeningServices,
 		DroppedFlowRecords: buffer.Dropped,
 		SourceOverruns:     gaps.Overruns,
 		RenewalError:       renewer.LastError,
+		OwnedTable:         presence.Check,
 		OnSyncConfig: func(cfg *innerwallv1.SyncConfig) {
 			collector.SetConfig(cfg)
 			reporter.SetConfig(cfg)

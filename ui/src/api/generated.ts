@@ -685,11 +685,12 @@ export interface components {
              *     dump_truncated — the connection table held more entries at subscribe than the agent processes.
              *     window_overflow — the agent's open aggregation window held as many distinct keys as it may, and observations for new keys were dropped until it closed.
              *     window_rejected — the control plane refused a closed window as malformed, and the agent dropped it rather than retry it.
+             *     table_removed — the agent's owned firewall table was gone from the kernel (the local kill switch), so nothing was observed or classified; reported in pieces, one with each window, while it lasts.
              * @enum {string}
              */
-            kind: "source_overrun" | "source_restart" | "buffer_overflow" | "dump_truncated" | "window_overflow" | "window_rejected";
+            kind: "source_overrun" | "source_restart" | "buffer_overflow" | "dump_truncated" | "window_overflow" | "window_rejected" | "table_removed";
             /**
-             * @description The flow source that lost the evidence; null for a loss that is not one source's (a buffer or window overflow, or a rejected window).
+             * @description The flow source that lost the evidence; null for a loss that is not one source's (a buffer or window overflow, a rejected window, or a removed table).
              * @enum {string|null}
              */
             source: "conntrack" | "nflog" | null;
@@ -1069,6 +1070,19 @@ export interface components {
                 dropped_flow_records: number;
                 /** Format: date-time */
                 last_seen_at: string | null;
+                /** @description Whether the agent's owned firewall table is in the host's kernel, as its heartbeats last said. Everything the agent enforces and observes lives in that table, and the local kill switch removes it without the control plane, so `sync` (the version the agent acknowledged) cannot say whether anything is still installed; this does. While it is `absent` the host enforces and observes nothing, and the agent reports the interval as a `table_removed` evidence gap. */
+                owned_table: {
+                    /**
+                     * Format: date-time
+                     * @description When the control plane first received a heartbeat saying the table was absent; null unless `state` is absent. The table may have gone up to one heartbeat interval earlier; the evidence gap carries the agent's own bound.
+                     */
+                    absent_since: string | null;
+                    /**
+                     * @description present — the table is in the kernel; absent — the agent installed a policy and the table is gone; unknown — no heartbeat that knows has arrived (an agent that predates the report, or one that has installed nothing yet). A heartbeat whose read failed leaves the last known state.
+                     * @enum {string}
+                     */
+                    state: "present" | "absent" | "unknown";
+                };
                 /** @description Moments the kernel dropped events because one of the agent's flow sources fell behind, since the agent started, as its heartbeat reports them. Each is also an evidence gap with its interval (`GET /flows/gaps`). */
                 source_overruns: number;
             };

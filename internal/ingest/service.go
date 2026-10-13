@@ -210,7 +210,8 @@ func convertGap(wg *innerwallv1.EvidenceGap) (flowstore.Gap, error) {
 	switch wg.GetKind() {
 	case innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_OVERRUN, innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_RESTART,
 		innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_BUFFER_OVERFLOW, innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_DUMP_TRUNCATED,
-		innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_WINDOW_OVERFLOW, innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_WINDOW_REJECTED:
+		innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_WINDOW_OVERFLOW, innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_WINDOW_REJECTED,
+		innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_TABLE_REMOVED:
 	case innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_UNSPECIFIED:
 		return g, errors.New("gap kind unspecified")
 	default:

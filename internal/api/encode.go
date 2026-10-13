@@ -308,6 +308,12 @@ type healthJSON struct {
 	DroppedFlowRecords uint64         `json:"dropped_flow_records"`
 	SourceOverruns     uint64         `json:"source_overruns"`
 	ClockSkew          *clockSkewJSON `json:"clock_skew"`
+	OwnedTable         ownedTableJSON `json:"owned_table"`
+}
+
+type ownedTableJSON struct {
+	State       string  `json:"state"`
+	AbsentSince *string `json:"absent_since"`
 }
 
 type clockSkewJSON struct {
@@ -353,6 +359,7 @@ func workloadJSON(w *readmodel.Workload) workloadResponse {
 				LastRenewedAt: optionalTimestamp(w.Health.Credential.LastRenewedAt), LastError: w.Health.Credential.LastError},
 			DroppedFlowRecords: w.Health.DroppedFlowRecords,
 			SourceOverruns:     w.Health.SourceOverruns,
+			OwnedTable:         ownedTableJSON{State: readmodel.OwnedTableStateName(w.Health.OwnedTable), AbsentSince: optionalTimestamp(w.Health.OwnedTableAbsentSince)},
 		},
 	}
 	if c := w.Health.ClockSkew; c != nil {
