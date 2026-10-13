@@ -1,6 +1,6 @@
 -- The owned table's presence as the agent's heartbeats report it, and the
 -- table-removed evidence gap (ADR-0015 and ADR-0019 as amended 2026-10-13,
--- issue #64).
+-- PR #95, issue #64).
 --
 -- The local kill switch deletes the agent's owned nftables table without
 -- the control plane (ADR-0011), and the version the agent last acknowledged
