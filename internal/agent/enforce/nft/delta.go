@@ -16,7 +16,16 @@ import (
 // installs to as a full rendering. Peer membership is the high-churn
 // quantity, and a set update leaves every rule and every other set
 // untouched (ADR-0015, ADR-0020).
+//
+// It also reports false when the installed table carries no sets, a
+// visibility table: peers still change there (the rendered policy keeps
+// its rules in every mode), but there is nothing in the kernel to update,
+// and a set update would only be refused before the full rendering ran
+// anyway (issue #45).
 func RenderDelta(from, to *innerwallv1.WorkloadPolicy, opts Options) (string, bool) {
+	if !carriesSets(from.GetMode()) || !carriesSets(to.GetMode()) {
+		return "", false
+	}
 	changes := rendered.Diff(from, to)
 	if len(changes) == 0 {
 		return "", false
