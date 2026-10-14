@@ -1,5 +1,5 @@
 -- The latest late renewal of a workload's credential (ADR-0016 as amended
--- 2026-10-14, issue #93).
+-- 2026-10-14, PR #102, issue #93).
 --
 -- A credential that expired while nothing could renew it (a control-plane
 -- outage spanning the renewal window) may still renew within the control
