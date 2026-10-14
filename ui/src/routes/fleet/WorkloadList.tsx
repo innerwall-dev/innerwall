@@ -19,7 +19,11 @@ import {
 } from "@/components/fleet/status";
 import { Icon } from "@/components/Icon";
 import { LoadingRow, ProblemNotice } from "@/components/Problem";
-import { SeverityNote, StatusBadge } from "@/components/StatusGlyph";
+import {
+	SeverityNote,
+	StatusBadge,
+	StatusGlyph,
+} from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
 import { labelPairs } from "@/lib/format";
 import { parseRequirements } from "@/lib/labels";
@@ -37,6 +41,43 @@ import {
 import { ModeChangeDialog } from "./ModeChangeDialog";
 
 const states: SyncState[] = ["synced", "pending", "degraded", "offline"];
+
+// Chip is one choice of the chip row: a sync state, or removed. Removed
+// is not a sync state: the stored state still records the version the
+// agent acknowledged. It is the health fact the row already reads
+// (enforcementRemoved), derived beside the states (issue #96).
+type Chip = SyncState | "removed";
+
+// largestPage is the page size the surface allows at most.
+const largestPage = 500;
+
+// listRemoved reads the workloads whose enforcement was removed on the
+// host, under the filter's labels, through the fleet read the list
+// already makes; no query parameter selects them. The fleet order ranks
+// a removed workload with the degraded ones, ahead of every other row, so
+// every removed workload lies in the leading run of rows that are removed
+// or degraded. The read pages through that run at the largest page and
+// stops at the first row past it, or at the fleet's end, so the result is
+// complete in one page.
+async function listRemoved(filter: WorkloadFilter): Promise<WorkloadsPage> {
+	const workloads: Workload[] = [];
+	let cursor: string | null = null;
+	do {
+		const page: WorkloadsPage = await listWorkloads(
+			filter,
+			cursor ?? undefined,
+			largestPage,
+		);
+		for (const w of page.workloads) {
+			if (enforcementRemoved(w)) workloads.push(w);
+			else if (w.sync.state !== "degraded") {
+				return { workloads, next_cursor: null };
+			}
+		}
+		cursor = page.next_cursor;
+	} while (cursor !== null);
+	return { workloads, next_cursor: null };
+}
 
 // th is the table's header cell: label type in sentence case on the
 // subtle band, held at the top while the rows scroll under it.
@@ -59,8 +100,9 @@ export function labelRequirements(
 }
 
 // WorkloadList is the fleet tab: the workloads in fleet order (the ones
-// needing attention first, most recently seen first within a state),
-// filtered by sync state and label requirements, a page at a time.
+// needing attention first, most recently seen first within a rank),
+// filtered by sync state or enforcement removed, and label requirements,
+// a page at a time.
 // Selected rows feed a mode change; after one the list is read again
 // and shows convergence as each row's applied version against latest.
 export function WorkloadList({
@@ -70,7 +112,7 @@ export function WorkloadList({
 }) {
 	const shell = useShell();
 	const navigate = useNavigate();
-	const [syncState, setSyncState] = useState<SyncState | null>(null);
+	const [chip, setChip] = useState<Chip | null>(null);
 	const [labels, setLabels] = useState<string[]>([]);
 	const [pages, setPages] = useState<WorkloadsPage[]>([]);
 	const [more, setMore] = useState<{ loading: boolean; error?: string }>({
@@ -79,14 +121,18 @@ export function WorkloadList({
 	const [selected, setSelected] = useState<Set<string>>(new Set());
 	const [changing, setChanging] = useState(false);
 
+	const removed = chip === "removed";
 	const filter = useMemo<WorkloadFilter>(
-		() => ({ sync_state: syncState ?? undefined, label: labels }),
-		[syncState, labels],
+		() => ({
+			sync_state: chip === null || chip === "removed" ? undefined : chip,
+			label: labels,
+		}),
+		[chip, labels],
 	);
-	const filtered = syncState !== null || labels.length > 0;
+	const filtered = chip !== null || labels.length > 0;
 	const { resource, reload } = useResource(
-		() => listWorkloads(filter),
-		[filter],
+		() => (removed ? listRemoved(filter) : listWorkloads(filter)),
+		[filter, removed],
 	);
 
 	// A new first page replaces whatever was paged in after the last one;
@@ -155,19 +201,25 @@ export function WorkloadList({
 				<fieldset className="m-0 flex min-w-0 gap-1 border-0 p-0">
 					<legend className="sr-only">Sync state</legend>
 					<FilterChip
-						on={syncState === null}
+						on={chip === null}
 						label="all"
-						onClick={() => setSyncState(null)}
+						onClick={() => setChip(null)}
 					/>
 					{states.map((s) => (
 						<FilterChip
 							key={s}
-							on={syncState === s}
+							on={chip === s}
 							glyph={syncStates[s].glyph}
 							label={s}
-							onClick={() => setSyncState(syncState === s ? null : s)}
+							onClick={() => setChip(chip === s ? null : s)}
 						/>
 					))}
+					<FilterChip
+						on={removed}
+						glyph={<StatusGlyph status="error" size="sm" />}
+						label="removed"
+						onClick={() => setChip(removed ? null : "removed")}
+					/>
 				</fieldset>
 				<div className="ml-auto flex items-center gap-2">
 					<LabelFilter labels={labels} onChange={setLabels} />
@@ -242,7 +294,7 @@ export function WorkloadList({
 							type="button"
 							className="cursor-pointer text-link hover:underline"
 							onClick={() => {
-								setSyncState(null);
+								setChip(null);
 								setLabels([]);
 							}}
 						>

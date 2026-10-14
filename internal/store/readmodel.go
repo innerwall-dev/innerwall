@@ -19,15 +19,15 @@ import (
 
 var _ readmodel.Store = (*Store)(nil)
 
-// CountWorkloadsBySyncState implements readmodel.Store in one statement.
-func (s *Store) CountWorkloadsBySyncState(ctx context.Context) (map[innerwallv1.SyncState]int64, error) {
-	rows, err := s.q.CountWorkloadsBySyncState(ctx)
+// CountWorkloadsByStatus implements readmodel.Store in one statement.
+func (s *Store) CountWorkloadsByStatus(ctx context.Context) ([]readmodel.StatusCount, error) {
+	rows, err := s.q.CountWorkloadsByStatus(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("store: counting workloads: %w", err)
 	}
-	out := make(map[innerwallv1.SyncState]int64, len(rows))
+	out := make([]readmodel.StatusCount, 0, len(rows))
 	for _, r := range rows {
-		out[innerwallv1.SyncState(r.SyncState)] = r.Workloads
+		out = append(out, readmodel.StatusCount{SyncState: innerwallv1.SyncState(r.SyncState), Removed: r.Removed, Workloads: r.Workloads})
 	}
 	return out, nil
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/innerwall-dev/innerwall/internal/identity"
 	"github.com/innerwall-dev/innerwall/internal/policy"
 	"github.com/innerwall-dev/innerwall/internal/readmodel"
+	"github.com/innerwall-dev/innerwall/internal/readmodel/readmodeltest"
 	"github.com/innerwall-dev/innerwall/internal/registry"
 	"github.com/innerwall-dev/innerwall/internal/rendered"
 )
@@ -671,7 +672,7 @@ func (m *MemStore) ListWorkloadLabelIndex(context.Context) (map[identity.Workloa
 }
 
 func (m *MemStore) record(w *registry.Workload) readmodel.WorkloadRecord {
-	rec := readmodel.WorkloadRecord{Workload: cloneWorkload(*w), SyncRank: syncRank(w.SyncState), SeenKey: time.Unix(0, 0).UTC()}
+	rec := readmodel.WorkloadRecord{Workload: cloneWorkload(*w), SyncRank: readmodeltest.SyncRank(w.SyncState, w.OwnedTable), SeenKey: time.Unix(0, 0).UTC()}
 	if w.LastSeenAt != nil {
 		rec.SeenKey = w.LastSeenAt.UTC()
 	}
@@ -679,23 +680,6 @@ func (m *MemStore) record(w *registry.Workload) readmodel.WorkloadRecord {
 		rec.LatestVersion = p.GetVersion()
 	}
 	return rec
-}
-
-func syncRank(s innerwallv1.SyncState) int32 {
-	switch s {
-	case innerwallv1.SyncState_SYNC_STATE_DEGRADED:
-		return 0
-	case innerwallv1.SyncState_SYNC_STATE_OFFLINE:
-		return 1
-	case innerwallv1.SyncState_SYNC_STATE_PENDING:
-		return 2
-	case innerwallv1.SyncState_SYNC_STATE_SYNCED:
-		return 3
-	case innerwallv1.SyncState_SYNC_STATE_UNSPECIFIED:
-		return 4
-	default:
-		return 4
-	}
 }
 
 // GetWorkloadRecord implements readmodel.Store.
@@ -711,14 +695,22 @@ func (m *MemStore) GetWorkloadRecord(_ context.Context, id identity.WorkloadID) 
 	return nil, registry.ErrWorkloadUnknown
 }
 
-// CountWorkloadsBySyncState implements readmodel.Store: a state no
-// workload holds is absent, as it is from the Postgres statement.
-func (m *MemStore) CountWorkloadsBySyncState(context.Context) (map[innerwallv1.SyncState]int64, error) {
+// CountWorkloadsByStatus implements readmodel.Store: a pair no workload
+// holds is absent, as it is from the Postgres statement.
+func (m *MemStore) CountWorkloadsByStatus(context.Context) ([]readmodel.StatusCount, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := map[innerwallv1.SyncState]int64{}
+	at := map[readmodel.StatusCount]int{}
+	var out []readmodel.StatusCount
 	for i := range m.Workloads {
-		out[m.Workloads[i].SyncState]++
+		key := readmodel.StatusCount{SyncState: m.Workloads[i].SyncState, Removed: m.Workloads[i].OwnedTable == innerwallv1.OwnedTableState_OWNED_TABLE_STATE_ABSENT}
+		j, ok := at[key]
+		if !ok {
+			j = len(out)
+			at[key] = j
+			out = append(out, key)
+		}
+		out[j].Workloads++
 	}
 	return out, nil
 }

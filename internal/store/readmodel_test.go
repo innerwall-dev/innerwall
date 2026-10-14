@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -48,13 +49,18 @@ func TestWorkloadPage(t *testing.T) {
 	}
 
 	// Counts agree with the page: one degraded, one offline, one synced,
-	// and a state no workload holds is absent.
-	counts, err := s.CountWorkloadsBySyncState(ctx)
+	// none removed, and a pair no workload holds is absent.
+	counts, err := s.CountWorkloadsByStatus(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(counts) != 3 || counts[innerwallv1.SyncState_SYNC_STATE_DEGRADED] != 1 || counts[innerwallv1.SyncState_SYNC_STATE_OFFLINE] != 1 || counts[innerwallv1.SyncState_SYNC_STATE_SYNCED] != 1 {
-		t.Fatalf("counts = %v", counts)
+	wantCounts := []readmodel.StatusCount{
+		{SyncState: innerwallv1.SyncState_SYNC_STATE_SYNCED, Workloads: 1},
+		{SyncState: innerwallv1.SyncState_SYNC_STATE_DEGRADED, Workloads: 1},
+		{SyncState: innerwallv1.SyncState_SYNC_STATE_OFFLINE, Workloads: 1},
+	}
+	if fmt.Sprint(counts) != fmt.Sprint(wantCounts) {
+		t.Fatalf("counts = %v, want %v", counts, wantCounts)
 	}
 
 	// Filters.

@@ -277,6 +277,83 @@ describe("fleet workloads", () => {
 		});
 	});
 
+	it("filters to the workloads whose enforcement was removed", async () => {
+		// Issue #96: removed is not a sync state, so no query selects it.
+		// The fleet order ranks it with degraded at the top, and the chip
+		// pages through that leading run and stops at the first row past it.
+		const killed = (hostname: string, state: Workload["sync"]["state"]) =>
+			workload({
+				hostname,
+				sync: { state, applied_version: 7, latest_version: 7 },
+				health: {
+					owned_table: { state: "absent", absent_since: minutesAgo(2) },
+				},
+			});
+		const pay = killed("pay-prod-02", "synced");
+		const edge = killed("edge-prod-05", "offline");
+		// The server's order: removed and degraded first, then the rest.
+		const order = [pay, checkout, edge, legacy, auth, bastion];
+		const { calls } = mockSurface([
+			...frame,
+			fleet((q) => {
+				// Two rows a page, so the run spans pages and the read must
+				// follow the cursor through it.
+				const from = Number(q.get("cursor") ?? 0);
+				const to = from + 2;
+				return {
+					workloads: order.slice(from, to),
+					next_cursor: to < order.length ? String(to) : null,
+				};
+			}),
+		]);
+		const user = userEvent.setup();
+		renderApp("/workloads");
+		await screen.findByRole("link", { name: "checkout-prod-07" });
+
+		const chipButton = screen.getByRole("button", { name: /removed/ });
+		expect(
+			chipButton.querySelector('[data-slot="status-glyph"]'),
+		).toHaveAttribute("data-status", "error");
+		await user.click(chipButton);
+		await waitFor(() =>
+			expect(
+				screen.queryByRole("link", { name: "checkout-prod-07" }),
+			).not.toBeInTheDocument(),
+		);
+		expect(chipButton).toHaveAttribute("aria-pressed", "true");
+		expect(
+			screen.getByRole("link", { name: "pay-prod-02" }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("link", { name: "edge-prod-05" }),
+		).toBeInTheDocument();
+		for (const h of ["legacy-vm-0117", "auth-prod-11", "bastion-01"]) {
+			expect(screen.queryByRole("link", { name: h })).not.toBeInTheDocument();
+		}
+		// Both removed rows say so; the whole result is one page.
+		expect(screen.getAllByTestId("enforcement-removed")).toHaveLength(2);
+		expect(
+			screen.queryByRole("button", { name: "Load more" }),
+		).not.toBeInTheDocument();
+
+		// The chip's reads ask for no sync state, follow the cursor through
+		// the leading run, and stop at legacy-vm-0117, the first row past
+		// it: the fourth row, on the second page, so no third page is read.
+		const reads = calls
+			.filter((c) => /\/workloads(\?|$)/.test(c.path))
+			.map((c) => new URL(c.path, "http://x").searchParams);
+		const chipReads = reads.filter((q) => q.get("limit") === "500");
+		expect(chipReads.map((q) => q.get("cursor"))).toEqual([null, "2"]);
+		for (const q of chipReads) expect(q.get("sync_state")).toBeNull();
+
+		// Pressed again, it clears back to the whole fleet.
+		await user.click(chipButton);
+		expect(
+			await screen.findByRole("link", { name: "checkout-prod-07" }),
+		).toBeInTheDocument();
+		expect(chipButton).toHaveAttribute("aria-pressed", "false");
+	});
+
 	it("says so when filters match nothing, and clears them", async () => {
 		mockSurface([
 			...frame,
