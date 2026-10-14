@@ -104,13 +104,15 @@ func New(d Deps) *Server {
 func (s *Server) now() time.Time { return s.nowFn() }
 
 // NewGRPCServer builds a gRPC server with the listener's TLS configuration
-// and the per-service authentication interceptors, and registers both
+// (ServerTLSConfig) and the per-service authentication interceptors, which
+// re-verify client chains against the same bundle, and registers both
 // services on it.
 func NewGRPCServer(tlsCfg *tls.Config, srv *Server, opts ...grpc.ServerOption) *grpc.Server {
+	auth := &authenticator{roots: tlsCfg.ClientCAs, enroll: srv.enroll}
 	opts = append(opts,
 		grpc.Creds(credentials.NewTLS(tlsCfg)),
-		grpc.ChainUnaryInterceptor(UnaryAuth),
-		grpc.ChainStreamInterceptor(StreamAuth),
+		grpc.ChainUnaryInterceptor(auth.unary),
+		grpc.ChainStreamInterceptor(auth.stream),
 	)
 	g := grpc.NewServer(opts...)
 	innerwallv1.RegisterEnrollmentServiceServer(g, srv)
@@ -165,7 +167,11 @@ func (s *Server) afterEnroll(ctx context.Context, id identity.WorkloadID, facts 
 }
 
 // RenewCredential implements AgentService. The workload being renewed is
-// whatever the interceptor derived from the connection credential.
+// whatever the interceptor derived from the connection credential, which
+// may have expired within the renewal grace: renewal is the one call such
+// a credential may make (ADR-0016 as amended). A late renewal is logged
+// at WARN, naming the workload and how late it was, and recorded on the
+// workload.
 func (s *Server) RenewCredential(ctx context.Context, req *innerwallv1.RenewCredentialRequest) (*innerwallv1.RenewCredentialResponse, error) {
 	id, ok := IdentityFromContext(ctx)
 	if !ok {
@@ -173,12 +179,18 @@ func (s *Server) RenewCredential(ctx context.Context, req *innerwallv1.RenewCred
 		// registered without it fails closed rather than renewing nobody.
 		return nil, status.Error(codes.Unauthenticated, "workload credential required")
 	}
-	cred, err := s.enroll.Renew(ctx, id, req.GetCsrPem())
+	notBefore, notAfter := credentialValidity(ctx)
+	cred, err := s.enroll.Renew(ctx, id, notBefore, notAfter, req.GetCsrPem())
 	if err != nil {
 		s.log.Info("renewal refused", "workload_id", id, "error", err)
 		return nil, toStatus(err)
 	}
-	s.log.Info("credential renewed", "workload_id", id, "serial", cred.Serial)
+	if cred.LateBy > 0 {
+		s.log.Warn("credential renewed late, within the renewal grace", "workload_id", id, "serial", cred.Serial,
+			"expired_at", notAfter, "late_by", cred.LateBy.Truncate(time.Second), "grace", s.enroll.Grace())
+	} else {
+		s.log.Info("credential renewed", "workload_id", id, "serial", cred.Serial)
+	}
 	return &innerwallv1.RenewCredentialResponse{
 		CertificatePem: cred.CertificatePEM,
 		CaBundlePem:    cred.BundlePEM,
@@ -199,6 +211,8 @@ func toStatus(err error) error {
 	case errors.Is(err, enroll.ErrTokenLabelsInvalid):
 		// The token authenticated; what it would assign cannot be.
 		return status.Error(codes.FailedPrecondition, err.Error())
+	case errors.Is(err, enroll.ErrCredentialExpired), errors.Is(err, enroll.ErrCredentialNotYetValid):
+		return status.Error(codes.Unauthenticated, err.Error())
 	case errors.Is(err, enroll.ErrWorkloadUnknown), errors.Is(err, registry.ErrWorkloadUnknown):
 		return status.Error(codes.PermissionDenied, err.Error())
 	case errors.Is(err, ca.ErrBadCSR):

@@ -20,6 +20,27 @@ import (
 // credential that is not renewed simply stops working (ADR-0016).
 const DefaultLeafTTL = 24 * time.Hour
 
+// DefaultRenewalGrace is how long after its expiry a workload credential
+// may still renew when the operator sets no grace. It is sized to outlast
+// a control-plane outage of a long weekend: a fleet whose credentials
+// lapsed while nothing could renew them comes back by itself, with the
+// same identities, once the control plane returns (ADR-0016 as amended).
+const DefaultRenewalGrace = 72 * time.Hour
+
+// ErrCredentialExpired is wrapped by every refusal of an expired workload
+// credential: on any method other than renewal, and on renewal once the
+// grace is spent. The message beyond the grace names re-enrollment, in
+// the words the agent uses for the same state.
+var ErrCredentialExpired = errors.New("workload credential has expired")
+
+// ErrCredentialNotYetValid is returned for a credential whose validity
+// has not begun on the control plane's clock.
+var ErrCredentialNotYetValid = errors.New("workload credential is not yet valid")
+
+// ReenrollRequired is the remedy a credential expired beyond the grace is
+// told, and the phrase the agent logs for the same state.
+const ReenrollRequired = "re-enrollment with a new provisioning token is required"
+
 // ErrWorkloadUnknown is returned when a credential names a workload the
 // registry does not hold.
 var ErrWorkloadUnknown = errors.New("enroll: workload is not registered")
@@ -35,6 +56,17 @@ type Workload struct {
 	CredentialSerial    string
 	CredentialExpiresAt time.Time
 	LastRenewedAt       *time.Time
+	// LateRenewal is the latest renewal made with an already-expired
+	// credential, within the grace; nil when there has been none.
+	LateRenewal *LateRenewal
+}
+
+// LateRenewal records a renewal made with a credential that had already
+// expired: when it happened, and when the credential it replaced had
+// expired. The difference is how late it was.
+type LateRenewal struct {
+	RenewedAt time.Time
+	ExpiredAt time.Time
 }
 
 // Store is the persistence the enrollment domain needs. Every method is
@@ -55,9 +87,11 @@ type Store interface {
 	CreateWorkload(ctx context.Context, w Workload, now time.Time) error
 	// GetWorkload returns ErrWorkloadUnknown when the id is not registered.
 	GetWorkload(ctx context.Context, id identity.WorkloadID) (*Workload, error)
-	// RecordRenewal stores the serial and expiry of a renewed credential. It
-	// returns ErrWorkloadUnknown when the id is not registered.
-	RecordRenewal(ctx context.Context, id identity.WorkloadID, serial string, expiresAt, now time.Time) error
+	// RecordRenewal stores the serial and expiry of a renewed credential,
+	// and, when late is non-nil, records it as the workload's latest late
+	// renewal in the same write. It returns ErrWorkloadUnknown when the id
+	// is not registered.
+	RecordRenewal(ctx context.Context, id identity.WorkloadID, serial string, expiresAt, now time.Time, late *LateRenewal) error
 }
 
 // Service performs enrollment and renewal.
@@ -66,6 +100,9 @@ type Service struct {
 	Authority ca.Authority
 	// LeafTTL is the lifetime of issued credentials; DefaultLeafTTL if zero.
 	LeafTTL time.Duration
+	// RenewalGrace is how long after its expiry a credential may still
+	// renew, and do nothing else; DefaultRenewalGrace if zero.
+	RenewalGrace time.Duration
 	// Now is the clock; time.Now if nil.
 	Now func() time.Time
 }
@@ -76,6 +113,9 @@ type Credential struct {
 	BundlePEM      []byte
 	Serial         string
 	ExpiresAt      time.Time
+	// LateBy is how long the credential a renewal replaced had been
+	// expired; zero for an enrollment and for a renewal on time.
+	LateBy time.Duration
 }
 
 // Result is the outcome of a successful enrollment.
@@ -96,6 +136,44 @@ func (s *Service) leafTTL() time.Duration {
 		return s.LeafTTL
 	}
 	return DefaultLeafTTL
+}
+
+// Grace returns the renewal grace in force.
+func (s *Service) Grace() time.Duration {
+	if s.RenewalGrace > 0 {
+		return s.RenewalGrace
+	}
+	return DefaultRenewalGrace
+}
+
+// AdmitCredential decides whether a verified workload credential valid
+// from notBefore to notAfter may make a call now. A credential within
+// its validity may make any call. An expired one may do exactly one
+// thing, renew, and only within the grace: it still proves possession of
+// a key the authority bound to the identity, and refusing it would turn
+// a control-plane outage longer than the renewal window into per-host
+// re-enrollment, a new identity, and an orphaned history. Everything
+// else (the sync stream, flow reports) keeps requiring a valid
+// credential, because what those carry is acted on as coming from the
+// identity now. Beyond the grace the refusal names re-enrollment.
+func (s *Service) AdmitCredential(notBefore, notAfter time.Time, renewal bool) error {
+	now := s.now()
+	if now.Before(notBefore) {
+		return fmt.Errorf("%w: its validity begins at %s and the control plane's clock reads %s", ErrCredentialNotYetValid, notBefore.UTC().Format(time.RFC3339), now.UTC().Format(time.RFC3339))
+	}
+	if !now.After(notAfter) {
+		return nil
+	}
+	late := now.Sub(notAfter).Truncate(time.Second)
+	grace := s.Grace()
+	expired := notAfter.UTC().Format(time.RFC3339)
+	if late > grace {
+		return fmt.Errorf("%w: it expired at %s, %s ago, beyond the %s renewal grace; %s", ErrCredentialExpired, expired, late, grace, ReenrollRequired)
+	}
+	if renewal {
+		return nil
+	}
+	return fmt.Errorf("%w: it expired at %s, %s ago; an expired credential may only renew, which it may for %s more", ErrCredentialExpired, expired, late, (grace - late).Truncate(time.Second))
 }
 
 // ListTokens returns every provisioning token, newest first: hashes and
@@ -185,9 +263,16 @@ func (s *Service) Enroll(ctx context.Context, tokenPlaintext string, csrPEM []by
 }
 
 // Renew reissues the credential for id, which the caller has already
-// derived from a verified connection credential. The same identity is
-// bound; the CSR contributes only its (possibly new) public key.
-func (s *Service) Renew(ctx context.Context, id identity.WorkloadID, csrPEM []byte) (*Credential, error) {
+// derived from a verified connection credential valid from presentedFrom
+// to presentedUntil. The same identity is bound; the CSR contributes only
+// its (possibly new) public key. A presented credential that has expired
+// renews within the grace and is recorded on the workload as a late
+// renewal; beyond it, or for a workload no longer registered, nothing is
+// issued.
+func (s *Service) Renew(ctx context.Context, id identity.WorkloadID, presentedFrom, presentedUntil time.Time, csrPEM []byte) (*Credential, error) {
+	if err := s.AdmitCredential(presentedFrom, presentedUntil, true); err != nil {
+		return nil, err
+	}
 	if _, err := s.Store.GetWorkload(ctx, id); err != nil {
 		return nil, err
 	}
@@ -195,7 +280,13 @@ func (s *Service) Renew(ctx context.Context, id identity.WorkloadID, csrPEM []by
 	if err != nil {
 		return nil, err
 	}
-	if err := s.Store.RecordRenewal(ctx, id, cred.Serial, cred.ExpiresAt, s.now()); err != nil {
+	now := s.now()
+	var late *LateRenewal
+	if now.After(presentedUntil) {
+		late = &LateRenewal{RenewedAt: now, ExpiredAt: presentedUntil}
+		cred.LateBy = now.Sub(presentedUntil)
+	}
+	if err := s.Store.RecordRenewal(ctx, id, cred.Serial, cred.ExpiresAt, now, late); err != nil {
 		return nil, err
 	}
 	return cred, nil

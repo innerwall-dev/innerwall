@@ -10,6 +10,7 @@ import (
 
 	"github.com/innerwall-dev/innerwall/internal/agent/credential"
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
+	"github.com/innerwall-dev/innerwall/internal/identity"
 )
 
 const (
@@ -40,8 +41,9 @@ func runEnroll(ctx context.Context, args []string) error {
 	}
 
 	store := credential.Store{Dir: *stateDir}
-	if _, err := store.LoadKey(); err == nil {
-		return fmt.Errorf("%s already holds a credential; remove it to enroll again", *stateDir)
+	expired, err := store.Enrollable(time.Now())
+	if err != nil {
+		return fmt.Errorf("%s: %w", *stateDir, err)
 	}
 
 	var anchor []byte
@@ -77,6 +79,15 @@ func runEnroll(ctx context.Context, args []string) error {
 	}
 	if err := store.Save(key, res.CertificatePEM, res.BundlePEM); err != nil {
 		return err
+	}
+	if expired != nil {
+		// A new enrollment is a new identity; the old workload's record
+		// stays on the control plane as it was.
+		was := "an unidentifiable workload"
+		if id, err := identity.FromCertificate(expired); err == nil {
+			was = id.String()
+		}
+		fmt.Printf("replaced the expired credential of %s (expired %s)\n", was, expired.NotAfter.UTC().Format(time.RFC3339))
 	}
 	fmt.Printf("enrolled as %s\n", res.WorkloadID)
 	for _, l := range res.Labels {

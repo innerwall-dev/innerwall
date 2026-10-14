@@ -62,6 +62,7 @@ export function workload(
 				expires_at: hoursFromNow(9),
 				last_renewed_at: null,
 				last_error: "",
+				last_late_renewal: null,
 				...health?.credential,
 			},
 		},

@@ -77,6 +77,7 @@ func (s *Store) ListWorkloadPage(ctx context.Context, q readmodel.WorkloadPageQu
 			LastAckedAt: r.LastAckedAt, LastApplyFailedAt: r.LastApplyFailedAt, SourceOverruns: r.SourceOverruns,
 			ClockSkewOffsetMs: r.ClockSkewOffsetMs, ClockSkewObservedAt: r.ClockSkewObservedAt, ClockSkewCurrent: r.ClockSkewCurrent,
 			OwnedTableState: r.OwnedTableState, OwnedTableAbsentSince: r.OwnedTableAbsentSince, LastFlowReportAt: r.LastFlowReportAt,
+			LateRenewalAt: r.LateRenewalAt, LateRenewalExpiredAt: r.LateRenewalExpiredAt,
 		}
 		w, err := workloadFromRow(&base, children.labels[r.ID], children.addrs[r.ID])
 		if err != nil {

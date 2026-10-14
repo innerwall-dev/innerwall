@@ -32,18 +32,24 @@ import (
 type harness struct {
 	addr      string
 	authority *fileca.Authority
-	bundle    []byte
-	service   *enroll.Service
-	engine    *compiler.Engine
+	// authorityDir holds the root key when the harness created the
+	// authority itself; issueAt signs with it.
+	authorityDir string
+	bundle       []byte
+	service      *enroll.Service
+	engine       *compiler.Engine
 }
 
 func newHarness(t *testing.T, st enroll.Store) *harness {
 	t.Helper()
-	authority, err := fileca.Init(t.TempDir(), fileca.InitOptions{})
+	dir := t.TempDir()
+	authority, err := fileca.Init(dir, fileca.InitOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return newHarnessWith(t, st, authority)
+	h := newHarnessWith(t, st, authority)
+	h.authorityDir = dir
+	return h
 }
 
 // newHarnessWith starts a control plane over an existing authority: a

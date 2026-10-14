@@ -70,8 +70,10 @@ const (
 	// CredentialRenewalFailed: the credential is still valid but the
 	// agent's last renewal attempt failed; it is heading for expiry.
 	CredentialRenewalFailed CredentialState = "renewal-failed"
-	// CredentialExpired: the credential has lapsed; the workload must
-	// re-enroll.
+	// CredentialExpired: the credential has lapsed. The agent keeps
+	// retrying renewal, which the control plane accepts within its
+	// renewal grace; beyond it the workload must re-enroll (ADR-0016 as
+	// amended).
 	CredentialExpired CredentialState = "expired"
 )
 
@@ -81,6 +83,9 @@ type CredentialStatus struct {
 	ExpiresAt     time.Time
 	LastRenewedAt *time.Time
 	LastError     string
+	// LastLateRenewal is the workload's latest late renewal; nil when it
+	// has never renewed late. A later on-time renewal leaves it.
+	LastLateRenewal *registry.LateRenewal
 }
 
 // SyncStatus is a workload's convergence with its rendered policy: the
@@ -333,7 +338,7 @@ func (s *Reader) workload(rec *WorkloadRecord, now time.Time) Workload {
 // expiry has passed, renewal-failed while the heartbeat's last renewal
 // error stands, renews otherwise.
 func credentialStatus(rec *WorkloadRecord, now time.Time) CredentialStatus {
-	st := CredentialStatus{State: CredentialRenews, ExpiresAt: rec.CredentialExpiresAt, LastRenewedAt: rec.LastRenewedAt, LastError: rec.CredentialRenewalError}
+	st := CredentialStatus{State: CredentialRenews, ExpiresAt: rec.CredentialExpiresAt, LastRenewedAt: rec.LastRenewedAt, LastError: rec.CredentialRenewalError, LastLateRenewal: rec.LateRenewal}
 	switch {
 	case !now.Before(rec.CredentialExpiresAt):
 		st.State = CredentialExpired

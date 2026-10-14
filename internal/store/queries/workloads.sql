@@ -19,10 +19,18 @@ SELECT * FROM workload_labels
 WHERE workload_id = $1
 ORDER BY key;
 
+-- A late renewal (one made with an already-expired credential, within the
+-- grace) also replaces the workload's late-renewal record; an on-time one
+-- leaves it (ADR-0016 as amended).
 -- name: RecordWorkloadRenewal :execrows
 UPDATE workloads
-SET credential_serial = $2, credential_expires_at = $3, last_renewed_at = $4
-WHERE id = $1;
+SET credential_serial = sqlc.arg(credential_serial),
+    credential_expires_at = sqlc.arg(credential_expires_at),
+    last_renewed_at = sqlc.arg(last_renewed_at),
+    late_renewal_at = CASE WHEN sqlc.narg(late_expired_at)::timestamptz IS NULL
+                           THEN late_renewal_at ELSE sqlc.arg(last_renewed_at) END,
+    late_renewal_expired_at = coalesce(sqlc.narg(late_expired_at)::timestamptz, late_renewal_expired_at)
+WHERE id = sqlc.arg(id);
 
 -- --- inventory and status (ADR-0018) ------------------------------------------
 
@@ -171,6 +179,7 @@ SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at,
        w.credential_renewal_error, w.last_snapshot_sent_at, w.last_acked_at, w.last_apply_failed_at,
        w.source_overruns, w.clock_skew_offset_ms, w.clock_skew_observed_at, w.clock_skew_current,
        w.owned_table_state, w.owned_table_absent_since, w.last_flow_report_at,
+       w.late_renewal_at, w.late_renewal_expired_at,
        w.sync_rank::integer AS sync_rank, w.seen_key::timestamptz AS seen_key,
        p.version AS latest_version, p.rendered_at AS latest_rendered_at
 FROM (

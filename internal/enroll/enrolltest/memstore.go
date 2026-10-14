@@ -98,7 +98,7 @@ func (m *MemStore) GetWorkload(_ context.Context, id identity.WorkloadID) (*enro
 }
 
 // RecordRenewal implements enroll.Store.
-func (m *MemStore) RecordRenewal(_ context.Context, id identity.WorkloadID, serial string, expiresAt, now time.Time) error {
+func (m *MemStore) RecordRenewal(_ context.Context, id identity.WorkloadID, serial string, expiresAt, now time.Time, late *enroll.LateRenewal) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	w, ok := m.workloads[id]
@@ -108,6 +108,10 @@ func (m *MemStore) RecordRenewal(_ context.Context, id identity.WorkloadID, seri
 	w.CredentialSerial = serial
 	w.CredentialExpiresAt = expiresAt
 	w.LastRenewedAt = &now
+	if late != nil {
+		cp := *late
+		w.LateRenewal = &cp
+	}
 	return nil
 }
 

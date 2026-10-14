@@ -85,6 +85,9 @@ func workloadFromRow(row *db.Workload, labels []registry.Label, addrs []netip.Ad
 	if labels == nil {
 		w.Labels = []registry.Label{}
 	}
+	if row.LateRenewalAt != nil && row.LateRenewalExpiredAt != nil {
+		w.LateRenewal = &registry.LateRenewal{RenewedAt: *row.LateRenewalAt, ExpiredAt: *row.LateRenewalExpiredAt}
+	}
 	if row.ClockSkewOffsetMs.Valid && row.ClockSkewObservedAt != nil {
 		w.ClockSkew = &registry.ClockSkew{Offset: time.Duration(row.ClockSkewOffsetMs.Int64) * time.Millisecond, ObservedAt: *row.ClockSkewObservedAt, Current: row.ClockSkewCurrent}
 	}

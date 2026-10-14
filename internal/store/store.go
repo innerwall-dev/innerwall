@@ -232,6 +232,9 @@ func (s *Store) GetWorkload(ctx context.Context, id identity.WorkloadID) (*enrol
 		CredentialExpiresAt: row.CredentialExpiresAt,
 		LastRenewedAt:       row.LastRenewedAt,
 	}
+	if row.LateRenewalAt != nil && row.LateRenewalExpiredAt != nil {
+		w.LateRenewal = &enroll.LateRenewal{RenewedAt: *row.LateRenewalAt, ExpiredAt: *row.LateRenewalExpiredAt}
+	}
 	for _, l := range labels {
 		w.Labels = append(w.Labels, enroll.Label{Key: l.Key, Value: l.Value})
 	}
@@ -239,13 +242,19 @@ func (s *Store) GetWorkload(ctx context.Context, id identity.WorkloadID) (*enrol
 }
 
 // RecordRenewal implements enroll.Store.
-func (s *Store) RecordRenewal(ctx context.Context, id identity.WorkloadID, serial string, expiresAt, now time.Time) error {
-	n, err := s.q.RecordWorkloadRenewal(ctx, db.RecordWorkloadRenewalParams{
+func (s *Store) RecordRenewal(ctx context.Context, id identity.WorkloadID, serial string, expiresAt, now time.Time, late *enroll.LateRenewal) error {
+	params := db.RecordWorkloadRenewalParams{
 		ID:                  id.UUID(),
 		CredentialSerial:    serial,
 		CredentialExpiresAt: expiresAt,
 		LastRenewedAt:       &now,
-	})
+	}
+	if late != nil {
+		// The renewal instant is the record's; the late record carries
+		// the expiry of the credential it replaced.
+		params.LateExpiredAt = &late.ExpiredAt
+	}
+	n, err := s.q.RecordWorkloadRenewal(ctx, params)
 	if err != nil {
 		return fmt.Errorf("store: recording renewal: %w", err)
 	}

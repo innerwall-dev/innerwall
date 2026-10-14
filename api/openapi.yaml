@@ -2374,11 +2374,12 @@ components:
               description: Whether a flow report arrived within two flow aggregation windows of this read, so the agent is running and reaching the control plane. With `sync.state` offline it tells a control channel that is reconnecting from a host the control plane has no contact with at all.
             credential:
               type: object
-              required: [state, expires_at, last_renewed_at, last_error]
+              required: [state, expires_at, last_renewed_at, last_error, last_late_renewal]
               properties:
                 state:
                   type: string
                   enum: [renews, renewal-failed, expired]
+                  description: renews — valid, and the last renewal that was due succeeded; renewal-failed — valid, but the agent's last renewal attempt failed (`last_error`); expired — past `expires_at`. An expired credential may still renew, and do nothing else, within the control plane's renewal grace (72 hours unless the operator sets otherwise); the agent keeps retrying, and beyond the grace the workload must re-enroll.
                 expires_at:
                   $ref: "#/components/schemas/Timestamp"
                 last_renewed_at:
@@ -2386,6 +2387,17 @@ components:
                   format: date-time
                 last_error:
                   type: string
+                last_late_renewal:
+                  type: [object, "null"]
+                  description: The latest renewal made with a credential that had already expired, within the renewal grace; null when the workload has never renewed late. A later renewal on time leaves it.
+                  required: [renewed_at, expired_at]
+                  properties:
+                    renewed_at:
+                      $ref: "#/components/schemas/Timestamp"
+                    expired_at:
+                      type: string
+                      format: date-time
+                      description: When the credential that renewal replaced had expired; `renewed_at` minus this is how late the renewal was.
             dropped_flow_records:
               type: integer
             source_overruns:

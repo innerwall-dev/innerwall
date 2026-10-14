@@ -204,6 +204,9 @@ type Querier interface {
 	RecordWorkloadHeartbeat(ctx context.Context, arg RecordWorkloadHeartbeatParams) (int64, error)
 	RecordWorkloadHeartbeatSeen(ctx context.Context, arg RecordWorkloadHeartbeatSeenParams) (int64, error)
 	RecordWorkloadInventory(ctx context.Context, arg RecordWorkloadInventoryParams) (int64, error)
+	// A late renewal (one made with an already-expired credential, within the
+	// grace) also replaces the workload's late-renewal record; an on-time one
+	// leaves it (ADR-0016 as amended).
 	RecordWorkloadRenewal(ctx context.Context, arg RecordWorkloadRenewalParams) (int64, error)
 	// Stamped by the sync path whenever it sends the workload a snapshot,
 	// whatever caused it; nothing else writes it (ADR-0018 as amended).

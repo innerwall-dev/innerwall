@@ -158,7 +158,7 @@ func SeedEstate(ctx context.Context, s *store.Store, f *Fleet, extra int) error 
 		// Renewed six hours ago for a day, as the agent does in the last
 		// third of each lifetime: the next renewal falls due in ten hours.
 		renewed := f.Now.Add(-6 * time.Hour)
-		if err := s.RecordRenewal(ctx, id, hostname+"-2", renewed.Add(24*time.Hour), renewed); err != nil {
+		if err := s.RecordRenewal(ctx, id, hostname+"-2", renewed.Add(24*time.Hour), renewed, nil); err != nil {
 			return id, err
 		}
 		addrs[id] = addr
