@@ -593,6 +593,9 @@ func (s *Server) resendSnapshot(w http.ResponseWriter, r *http.Request) {
 		s.writeProblemFor(w, err)
 		return
 	}
+	// The replica that hears the directive logs what it did with it; this
+	// line is the other end, so a request that no replica heard shows.
+	s.log.Info("reconnect requested", "workload_id", id)
 	writeJSON(w, resendSnapshotResponse{LastSnapshotSentAt: optionalTimestamp(res.LastSnapshotSentAt)})
 }
 

@@ -8,6 +8,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
+	"math/big"
 	"testing"
 	"time"
 
@@ -86,5 +87,70 @@ func TestLeafTemplate(t *testing.T) {
 	}
 	if _, err := LeafTemplate(id, now, 0); err == nil {
 		t.Fatal("zero ttl accepted")
+	}
+}
+
+// TestLeafIdentityKeysLikeTheDirectivePayload signs leaves from
+// LeafTemplate, the one place a workload SAN is built, and checks that the
+// identity the gateway's interceptor reads back from each (FromCertificate,
+// which keys the stream registry) is byte-equal to the identity the
+// notification listener parses from a directive's payload
+// (ParseWorkloadID of WorkloadID.String), so a directive finds the stream
+// whatever the uuid's digits (issue #106).
+func TestLeafIdentityKeysLikeTheDirectivePayload(t *testing.T) {
+	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caTmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "test root"},
+		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour),
+		IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign,
+	}
+	caDER, err := x509.CreateCertificate(rand.Reader, caTmpl, caTmpl, &caKey.PublicKey, caKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caCert, err := x509.ParseCertificate(caDER)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leafKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := map[identity.WorkloadID]int{}
+	for i := range 200 {
+		id, err := identity.NewWorkloadID()
+		if err != nil {
+			t.Fatal(err)
+		}
+		tmpl, err := LeafTemplate(id, time.Now(), time.Hour)
+		if err != nil {
+			t.Fatal(err)
+		}
+		der, err := x509.CreateCertificate(rand.Reader, tmpl, caCert, &leafKey.PublicKey, caKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		leaf, err := x509.ParseCertificate(der)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fromCert, err := identity.FromCertificate(leaf)
+		if err != nil {
+			t.Fatalf("leaf %d: %v", i, err)
+		}
+		fromPayload, err := identity.ParseWorkloadID(id.String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fromCert != fromPayload || fromCert.UUID() != fromPayload.UUID() {
+			t.Fatalf("leaf %d: certificate identity %v, payload identity %v", i, fromCert, fromPayload)
+		}
+		registry[fromCert] = i
+		if got, ok := registry[fromPayload]; !ok || got != i {
+			t.Fatalf("leaf %d: the payload identity does not find the certificate identity's entry", i)
+		}
 	}
 }

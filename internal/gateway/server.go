@@ -95,7 +95,7 @@ func New(d Deps) *Server {
 		events:     d.Events,
 		ingest:     d.Ingest,
 		syncConfig: d.SyncConfig,
-		sessions:   &sessions{live: map[identity.WorkloadID]*session{}},
+		sessions:   newSessions(),
 		log:        d.Log,
 		nowFn:      d.Now,
 	}
