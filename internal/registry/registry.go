@@ -59,6 +59,10 @@ type Workload struct {
 	// renewal failed, as its heartbeat reported it; empty when healthy.
 	CredentialRenewalError string
 	CredentialExpiresAt    time.Time
+	// LateRenewal is the latest renewal made with an already-expired
+	// credential, within the renewal grace; nil when the workload has
+	// never renewed late. Written by renewal alone (ADR-0016 as amended).
+	LateRenewal *LateRenewal
 	// LastSnapshotSentAt is when the sync path last sent this workload a
 	// snapshot, whatever caused it; nil when none has been recorded. It
 	// is a record of what the control plane did, written by the sync
@@ -97,6 +101,14 @@ type Heartbeat struct {
 	// OwnedTable is the owned table's state as the agent read it; an
 	// unspecified state leaves the recorded one as it was.
 	OwnedTable innerwallv1.OwnedTableState
+}
+
+// LateRenewal is a renewal made with a credential that had already
+// expired, within the renewal grace: when it happened and when the
+// credential it replaced had expired. The difference is how late it was.
+type LateRenewal struct {
+	RenewedAt time.Time
+	ExpiredAt time.Time
 }
 
 // ClockSkew is a skewed reading of an agent's clock from its flow

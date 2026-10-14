@@ -45,13 +45,14 @@ func newReadFixture(now time.Time) *readFixture {
 	failed := now.Add(-2 * time.Hour)
 	removed := now.Add(-90 * time.Second)
 	reported := now.Add(-30 * time.Second)
+	renewedLate := now.Add(-4 * time.Hour)
 	rule := policy.Rule{ID: uuid.New(), Direction: innerwallv1.Direction_DIRECTION_INBOUND, Enabled: true, Description: "postgres from web"}
 	rs := policy.Ruleset{ID: uuid.New(), Name: "web-to-db", Enabled: true, Scope: policy.Selector{"role": {"db"}}, Rules: []policy.Rule{rule}, CreatedAt: now.Add(-2 * time.Hour), UpdatedAt: now.Add(-time.Hour)}
 	ruleID := rendered.RuleID(rule.ID.String(), innerwallv1.Protocol_PROTOCOL_TCP)
 	group := policy.AddressGroup{ID: uuid.New(), Name: "office", CIDRs: []string{"192.0.2.0/24"}}
 	st := &readmodeltest.MemStore{
 		Workloads: []readmodel.WorkloadRecord{
-			{Workload: registry.Workload{ID: web, Hostname: "web-1", Labels: []registry.Label{{Key: "env", Value: "prod"}, {Key: "role", Value: "web"}}, Mode: innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED, Addresses: []netip.Addr{netip.MustParseAddr("10.0.0.10")}, Agent: registry.AgentInfo{Version: "0.3.0", Capabilities: []string{"nftables"}}, EnrolledAt: now.Add(-24 * time.Hour), LastSeenAt: &seen, SyncState: innerwallv1.SyncState_SYNC_STATE_SYNCED, AppliedVersion: 3, LastAckedAt: &acked, CredentialExpiresAt: now.Add(20 * time.Hour), OwnedTable: innerwallv1.OwnedTableState_OWNED_TABLE_STATE_ABSENT, OwnedTableAbsentSince: &removed, LastFlowReportAt: &reported}, LatestVersion: 3, LatestRenderedAt: &renderedAt},
+			{Workload: registry.Workload{ID: web, Hostname: "web-1", Labels: []registry.Label{{Key: "env", Value: "prod"}, {Key: "role", Value: "web"}}, Mode: innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED, Addresses: []netip.Addr{netip.MustParseAddr("10.0.0.10")}, Agent: registry.AgentInfo{Version: "0.3.0", Capabilities: []string{"nftables"}}, EnrolledAt: now.Add(-24 * time.Hour), LastSeenAt: &seen, SyncState: innerwallv1.SyncState_SYNC_STATE_SYNCED, AppliedVersion: 3, LastAckedAt: &acked, CredentialExpiresAt: now.Add(20 * time.Hour), LateRenewal: &registry.LateRenewal{RenewedAt: renewedLate, ExpiredAt: renewedLate.Add(-14 * time.Hour)}, OwnedTable: innerwallv1.OwnedTableState_OWNED_TABLE_STATE_ABSENT, OwnedTableAbsentSince: &removed, LastFlowReportAt: &reported}, LatestVersion: 3, LatestRenderedAt: &renderedAt},
 			{Workload: registry.Workload{ID: db, Hostname: "db-1", Labels: []registry.Label{{Key: "env", Value: "prod"}, {Key: "role", Value: "db"}}, Mode: innerwallv1.EnforcementMode_ENFORCEMENT_MODE_SIMULATION, Facts: &innerwallv1.HostFacts{Os: &innerwallv1.OsInfo{Family: "linux", Name: "debian"}}, EnrolledAt: now.Add(-20 * time.Hour), SyncState: innerwallv1.SyncState_SYNC_STATE_DEGRADED, SyncError: "apply refused", LastApplyFailedAt: &failed, CredentialExpiresAt: now.Add(2 * time.Hour), CredentialRenewalError: "authority unreachable", DroppedFlowRecords: 42}, LatestVersion: 5, LatestRenderedAt: &renderedAt, ListeningServices: []registry.ListeningService{{Protocol: innerwallv1.Protocol_PROTOCOL_TCP, Port: 5432, ProcessName: "postgres"}}},
 		},
 		AddressGroups: []policy.AddressGroup{group},
@@ -396,6 +397,14 @@ func TestWorkloadEndpoints(t *testing.T) {
 	}
 	if sync := web["sync"].(map[string]any); sync["last_acked_at"] != "2026-09-13T11:58:00Z" || !hasNull(sync, "last_apply_failed_at") {
 		t.Fatalf("web-1 instants = %v", sync)
+	}
+	// The latest late renewal (issue #93): present with both instants,
+	// and present and null for a workload that never renewed late.
+	if field(web, "health.credential.last_late_renewal.renewed_at") != "2026-09-13T08:00:00Z" || field(web, "health.credential.last_late_renewal.expired_at") != "2026-09-12T18:00:00Z" {
+		t.Fatalf("web-1 late renewal = %v", field(web, "health.credential"))
+	}
+	if c := field(db, "health.credential").(map[string]any); !hasNull(c, "last_late_renewal") {
+		t.Fatalf("db-1 credential = %v", c)
 	}
 	// The owned table: synced on its version and removed on the host, the
 	// state issue #64 makes visible; a workload whose agent has not said

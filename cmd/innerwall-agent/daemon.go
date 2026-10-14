@@ -25,10 +25,14 @@ import (
 // renewal timer, and the flow collection loop with its reporter. Before
 // dialing the control plane it re-applies the policy it last
 // acknowledged, from disk, so a restart or reboot changes nothing on the
-// host (ADR-0011). It exits when the credential expires or the control
-// plane directs re-enrollment, both of which need an operator with a new
-// provisioning token; it never enrolls itself. Exiting leaves the kernel
-// rules in place; only `innerwall-agent down` removes them.
+// host (ADR-0011). An expired credential is never a reason to exit, at
+// start or later: the daemon keeps enforcing from disk and keeps retrying
+// renewal, which the control plane accepts within its renewal grace, and
+// everything else resumes on the fresh credential (ADR-0016 as amended).
+// It exits when the control plane directs re-enrollment, or when the host
+// was enrolled again underneath it; it never enrolls itself. Exiting
+// leaves the kernel rules in place; only `innerwall-agent down` removes
+// them.
 func runDaemon(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall-agent daemon", flag.ContinueOnError)
 	server := fs.String("server", "", "control-plane address, host:port")
@@ -59,20 +63,47 @@ func runDaemon(ctx context.Context, args []string) error {
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	slog.SetDefault(log)
+	return daemon(ctx, daemonOptions{
+		server: *server, stateDir: *stateDir, bufferRecords: *bufferRecords, windowKeys: *windowKeys,
+		netlinkBuffer: *netlinkBuffer, dumpMax: *dumpMax, table: *table, nflogGroup: uint16(*nflogGroup), log: log,
+	})
+}
 
-	holder, err := credential.LoadHolder(credential.Store{Dir: *stateDir})
+// daemonOptions are the daemon's validated flags, and the seams a test
+// substitutes for the host: the nft runner and the flow sources.
+type daemonOptions struct {
+	server, stateDir                                  string
+	bufferRecords, windowKeys, netlinkBuffer, dumpMax int
+	table                                             string
+	nflogGroup                                        uint16
+	log                                               *slog.Logger
+	// runner executes nft; the nft binary when nil.
+	runner nft.Runner
+	// sources replaces the flow sources (the connection tracker and the
+	// terminal rule's log) when non-nil.
+	sources collect.Source
+}
+
+// daemon runs the agent as runDaemon describes, from validated options.
+func daemon(ctx context.Context, o daemonOptions) error {
+	log := o.log
+
+	holder, err := credential.LoadHolder(credential.Store{Dir: o.stateDir})
 	if err != nil {
 		return err
 	}
 	leaf := holder.Leaf()
-	log.Info("agent starting", "version", version, "server", *server, "credential_expires", leaf.NotAfter)
+	log.Info("agent starting", "version", version, "server", o.server, "credential_expires", leaf.NotAfter)
+	if !time.Now().Before(leaf.NotAfter) {
+		log.Warn("the stored credential has expired; enforcing from the persisted policy and retrying renewal until it succeeds", "expired_at", leaf.NotAfter)
+	}
 
 	// Enforcement: the persisted policy is re-applied before anything is
 	// dialed. A corrupt file applies nothing and is reported; the kernel
 	// keeps whatever it holds. A failed re-apply is reported and the
 	// daemon carries on: the next snapshot from the control plane is the
 	// retry, and it is acknowledged FAILED if the kernel still refuses.
-	store := nft.New(nft.Config{StateDir: *stateDir, Table: *table, NflogGroup: uint16(*nflogGroup), Log: log.With("loop", "reconcile")})
+	store := nft.New(nft.Config{Runner: o.runner, StateDir: o.stateDir, Table: o.table, NflogGroup: o.nflogGroup, Log: log.With("loop", "reconcile")})
 	// What the sources, the open window, and the buffer know they lost is
 	// recorded as evidence gaps and shipped with the windows; so is the
 	// time the owned table is gone from the kernel, which every heartbeat
@@ -101,35 +132,39 @@ func runDaemon(ctx context.Context, args []string) error {
 		log.Info("no persisted policy; the host stays as it is until the first snapshot")
 	}
 
-	renewer := &credential.Renewer{Holder: holder, Server: *server, Log: log.With("loop", "renew")}
+	renewer := &credential.Renewer{Holder: holder, Server: o.server, Log: log.With("loop", "renew")}
 
 	// Collection: conntrack events classified by connection mark, log
 	// events from the terminal rule, aggregated per window, buffered,
 	// reported on a connection of their own so telemetry never shares the
 	// sync stream's fate (ADR-0015).
-	buffer := collect.NewBuffer(*bufferRecords)
+	buffer := collect.NewBuffer(o.bufferRecords)
 	buffer.Gaps = gaps
+	sources := o.sources
+	if sources == nil {
+		sources = collect.Sources{
+			&conntrack.Source{Log: log.With("loop", "collect"), Classify: store.Classify, Gaps: gaps, ReadBuffer: o.netlinkBuffer, DumpMax: o.dumpMax},
+			&nflog.Source{Group: o.nflogGroup, Decide: store.TerminalDecision, Log: log.With("loop", "collect"), Gaps: gaps, ReadBuffer: o.netlinkBuffer},
+		}
+	}
 	collector := &collect.Collector{
-		Source: collect.Sources{
-			&conntrack.Source{Log: log.With("loop", "collect"), Classify: store.Classify, Gaps: gaps, ReadBuffer: *netlinkBuffer, DumpMax: *dumpMax},
-			&nflog.Source{Group: uint16(*nflogGroup), Decide: store.TerminalDecision, Log: log.With("loop", "collect"), Gaps: gaps, ReadBuffer: *netlinkBuffer},
-		},
+		Source:     sources,
 		Buffer:     buffer,
 		Gaps:       gaps,
-		WindowKeys: *windowKeys,
+		WindowKeys: o.windowKeys,
 		Log:        log.With("loop", "collect"),
 	}
 	reporter := &collect.Reporter{
 		Buffer: buffer,
 		Gaps:   gaps,
 		Dial: func(ctx context.Context) (innerwallv1.AgentServiceClient, io.Closer, error) {
-			return agentsync.DialGRPC(ctx, *server, holder)
+			return agentsync.DialGRPC(ctx, o.server, holder)
 		},
 		Log: log.With("loop", "report"),
 	}
 
 	daemon := agentsync.New(agentsync.Config{
-		Server:             *server,
+		Server:             o.server,
 		Holder:             holder,
 		Store:              enforce.Watched{PolicyStore: store, Presence: presence},
 		AgentVersion:       version,

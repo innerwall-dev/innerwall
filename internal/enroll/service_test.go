@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -219,9 +220,13 @@ func TestRenew(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cred, err := svc.Renew(ctx, res.Workload.ID, newCSR(t))
+	presented := time.Now().Add(-time.Minute)
+	cred, err := svc.Renew(ctx, res.Workload.ID, presented, res.Credential.ExpiresAt, newCSR(t))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if cred.LateBy != 0 {
+		t.Fatalf("on-time renewal reported late by %v", cred.LateBy)
 	}
 	if cred.Serial == res.Credential.Serial {
 		t.Fatal("renewal reused the serial")
@@ -232,12 +237,113 @@ func TestRenew(t *testing.T) {
 		t.Fatalf("renewed identity %v != %v", got, res.Workload.ID)
 	}
 	w, _ := st.GetWorkload(ctx, res.Workload.ID)
-	if w.CredentialSerial != cred.Serial || w.LastRenewedAt == nil {
-		t.Fatalf("renewal not recorded: %+v", w)
+	if w.CredentialSerial != cred.Serial || w.LastRenewedAt == nil || w.LateRenewal != nil {
+		t.Fatalf("renewal not recorded as on time: %+v", w)
 	}
 
 	stranger, _ := identity.NewWorkloadID()
-	if _, err := svc.Renew(ctx, stranger, newCSR(t)); !errors.Is(err, enroll.ErrWorkloadUnknown) {
+	if _, err := svc.Renew(ctx, stranger, presented, res.Credential.ExpiresAt, newCSR(t)); !errors.Is(err, enroll.ErrWorkloadUnknown) {
 		t.Fatalf("unknown workload: err = %v", err)
+	}
+}
+
+// TestAdmitCredential is the validity rule per call: a valid credential
+// may make any call; an expired one may only renew, and only within the
+// grace; beyond it every call is refused with a reason naming
+// re-enrollment; a credential not yet valid is refused outright.
+func TestAdmitCredential(t *testing.T) {
+	now := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
+	svc := &enroll.Service{Now: func() time.Time { return now }}
+	if svc.Grace() != enroll.DefaultRenewalGrace || enroll.DefaultRenewalGrace != 72*time.Hour {
+		t.Fatalf("grace = %v, want the 72h default", svc.Grace())
+	}
+	issued := func(expiredBy time.Duration) (time.Time, time.Time) {
+		notAfter := now.Add(-expiredBy)
+		return notAfter.Add(-24 * time.Hour), notAfter
+	}
+	for _, tc := range []struct {
+		name      string
+		expiredBy time.Duration
+		renewal   bool
+		want      error
+		mentions  string
+	}{
+		{"valid, any call", -time.Hour, false, nil, ""},
+		{"valid, renewal", -time.Hour, true, nil, ""},
+		{"at expiry, any call", 0, false, nil, ""},
+		{"expired 1h, renewal", time.Hour, true, nil, ""},
+		{"expired 1h, other call", time.Hour, false, enroll.ErrCredentialExpired, "may only renew"},
+		{"expired exactly the grace, renewal", 72 * time.Hour, true, nil, ""},
+		{"expired grace+1h, renewal", 73 * time.Hour, true, enroll.ErrCredentialExpired, enroll.ReenrollRequired},
+		{"expired grace+1h, other call", 73 * time.Hour, false, enroll.ErrCredentialExpired, enroll.ReenrollRequired},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			nb, na := issued(tc.expiredBy)
+			err := svc.AdmitCredential(nb, na, tc.renewal)
+			if !errors.Is(err, tc.want) || (tc.want == nil) != (err == nil) {
+				t.Fatalf("err = %v, want %v", err, tc.want)
+			}
+			if tc.mentions != "" && !strings.Contains(err.Error(), tc.mentions) {
+				t.Fatalf("err = %q, want it to say %q", err, tc.mentions)
+			}
+		})
+	}
+	if err := svc.AdmitCredential(now.Add(time.Minute), now.Add(time.Hour), true); !errors.Is(err, enroll.ErrCredentialNotYetValid) {
+		t.Fatalf("not yet valid: err = %v", err)
+	}
+	// The grace is configurable.
+	short := &enroll.Service{Now: svc.Now, RenewalGrace: time.Hour}
+	nb, na := issued(2 * time.Hour)
+	if err := short.AdmitCredential(nb, na, true); !errors.Is(err, enroll.ErrCredentialExpired) {
+		t.Fatalf("beyond a 1h grace: err = %v", err)
+	}
+}
+
+// TestRenewLate renews with a credential expired within the grace: a
+// credential is issued, the renewal is recorded as late with the expiry
+// it replaced, and a later on-time renewal leaves that record. Beyond the
+// grace nothing is issued and nothing is recorded.
+func TestRenewLate(t *testing.T) {
+	ctx := context.Background()
+	svc, st := newService(t)
+	plain, _, _ := svc.MintToken(ctx, "x", nil, 0)
+	res, err := svc.Enroll(ctx, plain, newCSR(t), "web-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	expired := res.Credential.ExpiresAt
+	issuedAt := expired.Add(-time.Hour)
+	now := expired.Add(time.Hour)
+	svc.Now = func() time.Time { return now }
+
+	cred, err := svc.Renew(ctx, res.Workload.ID, issuedAt, expired, newCSR(t))
+	if err != nil {
+		t.Fatalf("renewal an hour after expiry: %v", err)
+	}
+	if cred.LateBy != time.Hour {
+		t.Fatalf("LateBy = %v, want 1h", cred.LateBy)
+	}
+	w, _ := st.GetWorkload(ctx, res.Workload.ID)
+	if w.LateRenewal == nil || !w.LateRenewal.RenewedAt.Equal(now) || !w.LateRenewal.ExpiredAt.Equal(expired) {
+		t.Fatalf("late renewal recorded as %+v, want at %v for expiry %v", w.LateRenewal, now, expired)
+	}
+
+	// On time: the late record stands.
+	if _, err := svc.Renew(ctx, res.Workload.ID, now.Add(-time.Minute), now.Add(time.Hour), newCSR(t)); err != nil {
+		t.Fatal(err)
+	}
+	w, _ = st.GetWorkload(ctx, res.Workload.ID)
+	if w.LateRenewal == nil || !w.LateRenewal.ExpiredAt.Equal(expired) {
+		t.Fatalf("on-time renewal disturbed the late record: %+v", w.LateRenewal)
+	}
+
+	// Beyond the grace.
+	serial := w.CredentialSerial
+	now = expired.Add(svc.Grace() + time.Hour)
+	if _, err := svc.Renew(ctx, res.Workload.ID, issuedAt, expired, newCSR(t)); !errors.Is(err, enroll.ErrCredentialExpired) || !strings.Contains(err.Error(), enroll.ReenrollRequired) {
+		t.Fatalf("beyond the grace: err = %v", err)
+	}
+	if w, _ = st.GetWorkload(ctx, res.Workload.ID); w.CredentialSerial != serial {
+		t.Fatal("a refused renewal was recorded")
 	}
 }

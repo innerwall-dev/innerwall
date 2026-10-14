@@ -296,10 +296,16 @@ type syncJSON struct {
 }
 
 type credentialJSON struct {
-	State         string  `json:"state"`
-	ExpiresAt     string  `json:"expires_at"`
-	LastRenewedAt *string `json:"last_renewed_at"`
-	LastError     string  `json:"last_error"`
+	State           string           `json:"state"`
+	ExpiresAt       string           `json:"expires_at"`
+	LastRenewedAt   *string          `json:"last_renewed_at"`
+	LastError       string           `json:"last_error"`
+	LastLateRenewal *lateRenewalJSON `json:"last_late_renewal"`
+}
+
+type lateRenewalJSON struct {
+	RenewedAt string `json:"renewed_at"`
+	ExpiredAt string `json:"expired_at"`
 }
 
 type healthJSON struct {
@@ -365,6 +371,9 @@ func workloadJSON(w *readmodel.Workload) workloadResponse {
 			SourceOverruns:     w.Health.SourceOverruns,
 			OwnedTable:         ownedTableJSON{State: readmodel.OwnedTableStateName(w.Health.OwnedTable), AbsentSince: optionalTimestamp(w.Health.OwnedTableAbsentSince)},
 		},
+	}
+	if l := w.Health.Credential.LastLateRenewal; l != nil {
+		out.Health.Credential.LastLateRenewal = &lateRenewalJSON{RenewedAt: timestamp(l.RenewedAt), ExpiredAt: timestamp(l.ExpiredAt)}
 	}
 	if c := w.Health.ClockSkew; c != nil {
 		out.Health.ClockSkew = &clockSkewJSON{OffsetSeconds: int64(c.Offset.Round(time.Second) / time.Second), ObservedAt: timestamp(c.ObservedAt), Current: c.Current}

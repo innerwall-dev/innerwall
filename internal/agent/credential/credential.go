@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -134,6 +135,34 @@ func (s Store) Load() (cred tls.Certificate, bundlePEM []byte, err error) {
 		return tls.Certificate{}, nil, fmt.Errorf("credential: reading bundle: %w", err)
 	}
 	return cred, bundlePEM, nil
+}
+
+// ErrHoldsCredential is returned by Enrollable when the state directory
+// holds a credential that is still valid: a live identity, which a new
+// enrollment would orphan.
+var ErrHoldsCredential = errors.New("credential: the state directory already holds a valid credential; remove it to enroll again")
+
+// Enrollable reports whether a new enrollment may be written to the state
+// directory at instant now. An empty directory may take one, and so may
+// one whose stored credential has expired: the refusal exists to protect
+// a live identity, and an expired credential no longer is one (ADR-0016
+// as amended). The expired leaf is returned so the caller can say what it
+// replaces. A valid credential, or a key whose credential cannot be read
+// and so cannot be shown to have expired, is refused.
+func (s Store) Enrollable(now time.Time) (expired *x509.Certificate, err error) {
+	if _, err := s.LoadKey(); errors.Is(err, ErrNotEnrolled) {
+		return nil, nil
+	} else if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrHoldsCredential, err)
+	}
+	cred, _, err := s.Load()
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrHoldsCredential, err)
+	}
+	if now.Before(cred.Leaf.NotAfter) {
+		return nil, fmt.Errorf("%w (it expires %s)", ErrHoldsCredential, cred.Leaf.NotAfter.UTC().Format(time.RFC3339))
+	}
+	return cred.Leaf, nil
 }
 
 // LoadKey reads only the private key.

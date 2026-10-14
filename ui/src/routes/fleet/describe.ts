@@ -104,11 +104,28 @@ export function renewsAt(w: Workload): number {
 	return issued + ((expires - issued) * 2) / 3;
 }
 
+// renewedLate is how long after its expiry the current credential's
+// predecessor was renewed, when the current credential came from a late
+// renewal (one the control plane accepted within its renewal grace, after
+// an outage spanned the renewal window); null otherwise. A later renewal
+// on time makes the credential current again and this null, though the
+// workload keeps the record of its latest late renewal.
+export function renewedLate(w: Workload): number | null {
+	const c = w.health.credential;
+	const late = c.last_late_renewal;
+	if (late === null || c.last_renewed_at === null) return null;
+	if (Date.parse(late.renewed_at) !== Date.parse(c.last_renewed_at))
+		return null;
+	return Date.parse(late.renewed_at) - Date.parse(late.expired_at);
+}
+
 // credential is the column's text and tone. A renewing credential counts
 // down to the point its renewal is due, in one phrasing throughout:
 // "renewal due in 9h", then "renewal due now" once the point has passed.
 // The point is when renewal becomes due, not the jittered instant the
 // agent renews (renewsAt), so neither form says the agent "renews" then.
+// A credential that came from a late renewal says so first, as a warning:
+// the workload went without a valid credential for that long.
 export function credential(
 	w: Workload,
 	now = Date.now(),
@@ -121,10 +138,14 @@ export function credential(
 			return { text: "renewal failed · retrying", tone: "warn" };
 		default: {
 			const due = renewsAt(w) - now;
-			return {
-				text: `renewal due ${due <= 0 ? "now" : `in ${span(due)}`}`,
-				tone: "ok",
-			};
+			const countdown = `renewal due ${due <= 0 ? "now" : `in ${span(due)}`}`;
+			const late = renewedLate(w);
+			if (late !== null)
+				return {
+					text: `renewed ${span(late)} late · ${countdown}`,
+					tone: "warn",
+				};
+			return { text: countdown, tone: "ok" };
 		}
 	}
 }

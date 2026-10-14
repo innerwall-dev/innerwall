@@ -185,6 +185,9 @@ func runWorkloadStatus(ctx context.Context, args []string) error {
 	fmt.Printf("apply failed    %s\n", ago(wl.LastApplyFailedAt, now))
 	fmt.Printf("enrolled        %s\n", wl.EnrolledAt.UTC().Format(time.RFC3339))
 	fmt.Printf("credential      expires %s\n", wl.CredentialExpiresAt.UTC().Format(time.RFC3339))
+	if l := wl.LateRenewal; l != nil {
+		fmt.Printf("renewed late    %s, %s after the credential expired\n", ago(&l.RenewedAt, now), l.RenewedAt.Sub(l.ExpiredAt).Round(time.Second))
+	}
 	fmt.Printf("agent           %s\n", wl.Agent.Version)
 	fmt.Printf("dropped flows   %d\n", wl.DroppedFlowRecords)
 	fmt.Printf("overruns        %d\n", wl.SourceOverruns)

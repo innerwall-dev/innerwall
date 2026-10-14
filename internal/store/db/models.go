@@ -245,6 +245,8 @@ type Workload struct {
 	OwnedTableState        int16
 	OwnedTableAbsentSince  *time.Time
 	LastFlowReportAt       *time.Time
+	LateRenewalAt          *time.Time
+	LateRenewalExpiredAt   *time.Time
 }
 
 type WorkloadAddress struct {

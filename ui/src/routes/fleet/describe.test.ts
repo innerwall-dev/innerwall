@@ -167,6 +167,42 @@ describe("credential", () => {
 		expect(credential(w).text).toBe("renewal due in 15h");
 	});
 
+	it("says a credential that came from a late renewal renewed late", () => {
+		const now = Date.parse("2026-10-14T12:00:00Z");
+		const w = workload({
+			enrolled_at: "2026-10-01T00:00:00Z",
+			health: {
+				credential: {
+					last_renewed_at: "2026-10-14T05:00:00Z",
+					expires_at: "2026-10-15T05:00:00Z",
+					last_late_renewal: {
+						renewed_at: "2026-10-14T05:00:00Z",
+						expired_at: "2026-10-13T15:00:00Z",
+					},
+				},
+			},
+		});
+		expect(credential(w, now)).toEqual({
+			text: "renewed 14h late · renewal due in 9h",
+			tone: "warn",
+		});
+		// A renewal on time since then: the credential is current again.
+		const onTime = workload({
+			...w,
+			health: {
+				credential: {
+					...w.health.credential,
+					last_renewed_at: "2026-10-14T11:00:00Z",
+					expires_at: "2026-10-15T11:00:00Z",
+				},
+			},
+		});
+		expect(credential(onTime, now)).toEqual({
+			text: "renewal due in 15h",
+			tone: "ok",
+		});
+	});
+
 	it("counts down to the renewal point in one phrasing, past it included", () => {
 		const w = workload({
 			enrolled_at: minutesAgo(14 * 24 * 60),

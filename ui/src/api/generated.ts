@@ -1066,9 +1066,21 @@ export interface components {
                 credential: {
                     expires_at: components["schemas"]["Timestamp"];
                     last_error: string;
+                    /** @description The latest renewal made with a credential that had already expired, within the renewal grace; null when the workload has never renewed late. A later renewal on time leaves it. */
+                    last_late_renewal: {
+                        /**
+                         * Format: date-time
+                         * @description When the credential that renewal replaced had expired; `renewed_at` minus this is how late the renewal was.
+                         */
+                        expired_at: string;
+                        renewed_at: components["schemas"]["Timestamp"];
+                    } | null;
                     /** Format: date-time */
                     last_renewed_at: string | null;
-                    /** @enum {string} */
+                    /**
+                     * @description renews — valid, and the last renewal that was due succeeded; renewal-failed — valid, but the agent's last renewal attempt failed (`last_error`); expired — past `expires_at`. An expired credential may still renew, and do nothing else, within the control plane's renewal grace (72 hours unless the operator sets otherwise); the agent keeps retrying, and beyond the grace the workload must re-enroll.
+                     * @enum {string}
+                     */
                     state: "renews" | "renewal-failed" | "expired";
                 };
                 dropped_flow_records: number;

@@ -79,15 +79,28 @@ func TestTokensAndWorkloads(t *testing.T) {
 		t.Fatalf("token use not recorded: %+v", used)
 	}
 
-	if err := s.RecordRenewal(ctx, id, "def", now.Add(48*time.Hour), now); err != nil {
+	if err := s.RecordRenewal(ctx, id, "def", now.Add(48*time.Hour), now, nil); err != nil {
 		t.Fatal(err)
 	}
 	stored, _ = s.GetWorkload(ctx, id)
-	if stored.CredentialSerial != "def" || stored.LastRenewedAt == nil {
+	if stored.CredentialSerial != "def" || stored.LastRenewedAt == nil || stored.LateRenewal != nil {
 		t.Fatalf("renewal not recorded: %+v", stored)
 	}
+	// A late renewal records itself and the expiry it replaced; a later
+	// on-time renewal leaves the record.
+	lateAt, expiredAt := now.Add(50*time.Hour), now.Add(48*time.Hour)
+	if err := s.RecordRenewal(ctx, id, "ghi", lateAt.Add(24*time.Hour), lateAt, &enroll.LateRenewal{RenewedAt: lateAt, ExpiredAt: expiredAt}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordRenewal(ctx, id, "jkl", lateAt.Add(40*time.Hour), lateAt.Add(16*time.Hour), nil); err != nil {
+		t.Fatal(err)
+	}
+	stored, _ = s.GetWorkload(ctx, id)
+	if stored.CredentialSerial != "jkl" || stored.LateRenewal == nil || !stored.LateRenewal.RenewedAt.Equal(lateAt) || !stored.LateRenewal.ExpiredAt.Equal(expiredAt) {
+		t.Fatalf("late renewal = %+v, want at %v for expiry %v", stored.LateRenewal, lateAt, expiredAt)
+	}
 	stranger, _ := identity.NewWorkloadID()
-	if err := s.RecordRenewal(ctx, stranger, "x", now, now); !errors.Is(err, enroll.ErrWorkloadUnknown) {
+	if err := s.RecordRenewal(ctx, stranger, "x", now, now, nil); !errors.Is(err, enroll.ErrWorkloadUnknown) {
 		t.Fatalf("renewal of unknown: err = %v", err)
 	}
 	if _, err := s.GetWorkload(ctx, stranger); !errors.Is(err, enroll.ErrWorkloadUnknown) {

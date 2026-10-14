@@ -87,6 +87,7 @@ func runServe(ctx context.Context, args []string) error {
 	tlsCert := fs.String("tls-cert", "", "server certificate PEM (default <ca-dir>/server.crt)")
 	tlsKey := fs.String("tls-key", "", "server key PEM (default <ca-dir>/server.key)")
 	leafTTL := fs.Duration("leaf-ttl", enroll.DefaultLeafTTL, "lifetime of issued workload credentials")
+	renewalGrace := fs.Duration("renewal-grace", enroll.DefaultRenewalGrace, "how long after its expiry a workload credential may still renew, and do nothing else; beyond it the workload re-enrolls")
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
 	migrate := fs.Bool("migrate", false, "apply pending database migrations before serving")
 	initCA := fs.Bool("init-ca", false, "create the signing authority and server certificate if the CA directory holds none (development convenience)")
@@ -95,6 +96,9 @@ func runServe(ctx context.Context, args []string) error {
 	flowRetentionInterval := fs.Duration("flow-retention-interval", flowstore.DefaultRetentionInterval, "period between flow retention runs")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *renewalGrace <= 0 {
+		return errors.New("--renewal-grace must be positive")
 	}
 	if err := checkAdvertisedAddress(*gatewayAddr); err != nil {
 		return fmt.Errorf("--gateway-advertise-address: %w", err)
@@ -154,7 +158,7 @@ func runServe(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	svc := &enroll.Service{Store: st, Authority: authority, LeafTTL: *leafTTL}
+	svc := &enroll.Service{Store: st, Authority: authority, LeafTTL: *leafTTL, RenewalGrace: *renewalGrace}
 	engine := &compiler.Engine{Store: st, Log: log}
 	operators := &operator.Service{Store: st}
 	// Ingest judges clock skew, and the read model whether a workload's
