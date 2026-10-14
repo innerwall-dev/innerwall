@@ -34,8 +34,8 @@ type WorkloadRecord struct {
 	LatestRenderedAt  *time.Time
 	ListeningServices []registry.ListeningService
 	// SyncRank and SeenKey are the store's sort keys for the fleet order:
-	// the rank of the sync state (attention first) and the last-seen
-	// instant with never-seen as the epoch. A cursor carries them.
+	// the attention rank and the last-seen instant with never-seen as the
+	// epoch. A cursor carries them.
 	SyncRank int32
 	SeenKey  time.Time
 }
@@ -177,8 +177,9 @@ type WorkloadsRequest struct {
 	Limit     int
 }
 
-// WorkloadsPage is one page of the fleet in fleet order: sync state
-// (degraded, offline, pending, synced), then most recently seen first.
+// WorkloadsPage is one page of the fleet in fleet order: attention rank
+// (degraded or enforcement removed, offline, pending, synced), then most
+// recently seen first.
 type WorkloadsPage struct {
 	Workloads  []Workload
 	NextCursor string
@@ -253,11 +254,24 @@ func (s *Reader) ListWorkloads(ctx context.Context, req WorkloadsRequest) (*Work
 	return page, nil
 }
 
-// WorkloadCounts is the fleet's size, in total and by sync state. Every
-// workload is in exactly one sync state, so Total is the sum of BySync.
+// WorkloadCounts is the fleet's size, in total, by sync state, and
+// removed. A workload whose owned table is recorded absent counts in
+// Removed and in no sync state: its stored state is the agent's honest
+// record of the version it acknowledged, but the host enforces none of it
+// (issue #96). Every other workload is in exactly one sync state, so Total
+// is the sum of BySync and Removed.
 type WorkloadCounts struct {
-	Total  int64
-	BySync map[innerwallv1.SyncState]int64
+	Total   int64
+	BySync  map[innerwallv1.SyncState]int64
+	Removed int64
+}
+
+// StatusCount is how many workloads hold one sync state with their owned
+// table recorded absent (Removed), or not.
+type StatusCount struct {
+	SyncState innerwallv1.SyncState
+	Removed   bool
+	Workloads int64
 }
 
 // syncStates are the states a workload can hold, each counted even when
@@ -269,24 +283,33 @@ var syncStates = []innerwallv1.SyncState{
 	innerwallv1.SyncState_SYNC_STATE_OFFLINE,
 }
 
-// CountWorkloads returns how many workloads the fleet holds, in total
-// and in each sync state, from one read of the store, so the counts agree
-// with each other. A count is exact or the read fails: a workload stored
-// in a state outside the four is an error, never left out of a total.
+// CountWorkloads returns how many workloads the fleet holds, in total,
+// in each sync state, and removed, from one read of the store, so the
+// counts agree with each other. A count is exact or the read fails: a
+// workload stored in a state outside the four is an error, removed or
+// not, never left out of a total.
 func (s *Reader) CountWorkloads(ctx context.Context) (*WorkloadCounts, error) {
-	stored, err := s.Store.CountWorkloadsBySyncState(ctx)
+	stored, err := s.Store.CountWorkloadsByStatus(ctx)
 	if err != nil {
 		return nil, err
 	}
 	out := &WorkloadCounts{BySync: make(map[innerwallv1.SyncState]int64, len(syncStates))}
 	for _, st := range syncStates {
-		out.BySync[st] = stored[st]
-		out.Total += stored[st]
+		out.BySync[st] = 0
 	}
-	for st, n := range stored {
-		if _, known := out.BySync[st]; !known && n > 0 {
-			return nil, fmt.Errorf("readmodel: %d workloads are stored in unknown sync state %d", n, st)
+	for _, c := range stored {
+		if c.Workloads == 0 {
+			continue
 		}
+		if _, known := out.BySync[c.SyncState]; !known {
+			return nil, fmt.Errorf("readmodel: %d workloads are stored in unknown sync state %d", c.Workloads, c.SyncState)
+		}
+		if c.Removed {
+			out.Removed += c.Workloads
+		} else {
+			out.BySync[c.SyncState] += c.Workloads
+		}
+		out.Total += c.Workloads
 	}
 	return out, nil
 }

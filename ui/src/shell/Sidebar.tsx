@@ -32,27 +32,30 @@ export interface Badge {
 }
 
 // attentionBadge is the Workloads count: the workloads needing the
-// operator, those pending, degraded, or offline, from the control
-// plane's counts. A fleet with none needing attention shows no count; a
-// fleet with no workloads at all shows its zero, the fresh install's cue
-// to enroll the first.
+// operator, those pending, degraded, or offline, and those whose
+// enforcement was removed on the host, from the control plane's counts.
+// The control plane counts a removed workload in removed alone, so the
+// sum counts no workload twice (issue #96). A fleet with none needing
+// attention shows no count; a fleet with no workloads at all shows its
+// zero, the fresh install's cue to enroll the first.
 export function attentionBadge(c: WorkloadCounts): Badge | null {
 	if (c.total === 0) {
 		return { n: 0, hint: "No workloads enrolled" };
 	}
 	const s = c.by_sync_state;
-	const n = s.pending + s.degraded + s.offline;
+	const n = s.pending + s.degraded + s.offline + c.removed;
 	if (n === 0) return null;
 	const parts = [
 		[s.pending, "pending"],
 		[s.degraded, "degraded"],
 		[s.offline, "offline"],
+		[c.removed, "enforcement removed"],
 	]
 		.filter(([k]) => (k as number) > 0)
 		.map(([k, label]) => `${k} ${label}`);
 	return {
 		n,
-		hint: `${n} ${n === 1 ? "workload needs" : "workloads need"} attention: ${parts.join(", ")}. Counts workloads whose sync state is pending, degraded, or offline.`,
+		hint: `${n} ${n === 1 ? "workload needs" : "workloads need"} attention: ${parts.join(", ")}. Counts workloads whose sync state is pending, degraded, or offline, and those whose enforcement was removed on the host.`,
 	};
 }
 

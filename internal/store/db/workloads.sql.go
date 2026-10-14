@@ -70,30 +70,32 @@ func (q *Queries) AddWorkloadListeningService(ctx context.Context, arg AddWorklo
 	return err
 }
 
-const countWorkloadsBySyncState = `-- name: CountWorkloadsBySyncState :many
-SELECT sync_state, count(*)::bigint AS workloads
+const countWorkloadsByStatus = `-- name: CountWorkloadsByStatus :many
+SELECT sync_state, (owned_table_state = 2)::boolean AS removed, count(*)::bigint AS workloads
 FROM workloads
-GROUP BY sync_state
-ORDER BY sync_state
+GROUP BY 1, 2
+ORDER BY 1, 2
 `
 
-type CountWorkloadsBySyncStateRow struct {
+type CountWorkloadsByStatusRow struct {
 	SyncState int32
+	Removed   bool
 	Workloads int64
 }
 
-// How many workloads hold each sync state, in one statement so the
-// counts agree with each other. A state no workload holds has no row.
-func (q *Queries) CountWorkloadsBySyncState(ctx context.Context) ([]CountWorkloadsBySyncStateRow, error) {
-	rows, err := q.db.Query(ctx, countWorkloadsBySyncState)
+// How many workloads hold each sync state, split by whether their owned
+// table is recorded absent (migration 00012), in one statement so the
+// counts agree with each other. A pair no workload holds has no row.
+func (q *Queries) CountWorkloadsByStatus(ctx context.Context) ([]CountWorkloadsByStatusRow, error) {
+	rows, err := q.db.Query(ctx, countWorkloadsByStatus)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []CountWorkloadsBySyncStateRow{}
+	items := []CountWorkloadsByStatusRow{}
 	for rows.Next() {
-		var i CountWorkloadsBySyncStateRow
-		if err := rows.Scan(&i.SyncState, &i.Workloads); err != nil {
+		var i CountWorkloadsByStatusRow
+		if err := rows.Scan(&i.SyncState, &i.Removed, &i.Workloads); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -494,7 +496,9 @@ SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at,
        p.version AS latest_version, p.rendered_at AS latest_rendered_at
 FROM (
     SELECT workloads.id, workloads.region_id, workloads.provisioning_token_id, workloads.hostname, workloads.enrolled_at, workloads.credential_serial, workloads.credential_expires_at, workloads.last_renewed_at, workloads.mode, workloads.facts, workloads.agent_version, workloads.agent_capabilities, workloads.last_seen_at, workloads.sync_state, workloads.applied_policy_version, workloads.sync_error, workloads.dropped_flow_records, workloads.credential_renewal_error, workloads.last_snapshot_sent_at, workloads.last_acked_at, workloads.last_apply_failed_at, workloads.source_overruns, workloads.clock_skew_offset_ms, workloads.clock_skew_observed_at, workloads.clock_skew_current, workloads.owned_table_state, workloads.owned_table_absent_since, workloads.last_flow_report_at, workloads.late_renewal_at, workloads.late_renewal_expired_at,
-           CASE workloads.sync_state WHEN 3 THEN 0 WHEN 4 THEN 1 WHEN 2 THEN 2 WHEN 1 THEN 3 ELSE 4 END AS sync_rank,
+           CASE WHEN workloads.owned_table_state = 2 THEN 0
+                WHEN workloads.sync_state = 3 THEN 0 WHEN workloads.sync_state = 4 THEN 1
+                WHEN workloads.sync_state = 2 THEN 2 WHEN workloads.sync_state = 1 THEN 3 ELSE 4 END AS sync_rank,
            coalesce(workloads.last_seen_at, '1970-01-01 00:00:00+00'::timestamptz) AS seen_key
     FROM workloads
 ) AS w
@@ -559,9 +563,11 @@ type ListWorkloadPageRow struct {
 
 // --- operator read model (ADR-0007 as amended) -------------------------------
 // One page of the fleet in the order the fleet screen shows it: the
-// workloads needing attention first (degraded, then offline, then
-// pending, then synced), most recently seen first within a state, then by
-// id. The cursor is the (rank, last seen, id) of the last row served; the
+// workloads needing attention first (degraded or enforcement removed,
+// then offline, then pending, then synced), most recently seen first
+// within a rank, then by id. A workload whose owned table is recorded
+// absent (migration 00012) ranks with the degraded ones whatever its
+// stored sync state, which stays the agent's honest record (issue #96). The cursor is the (rank, last seen, id) of the last row served; the
 // first page passes a rank below every row. A workload never seen sorts
 // as if seen at the epoch. An empty id array means every workload; a zero
 // mode or sync state means any. The latest rendered version rides along

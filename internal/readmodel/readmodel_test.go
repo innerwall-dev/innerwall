@@ -309,6 +309,66 @@ func TestCountWorkloads(t *testing.T) {
 	}
 }
 
+// TestCountWorkloadsRemoved checks the removed bucket (issue #96): a
+// workload whose owned table is recorded absent counts in removed and in
+// no sync state, whatever state it is stored in, so a kill-switched host
+// that acknowledged its version is not counted synced, nothing is counted
+// twice, and the total is still every workload once. An unknown sync state
+// is refused even under a removed table.
+func TestCountWorkloadsRemoved(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture()
+	absent := innerwallv1.OwnedTableState_OWNED_TABLE_STATE_ABSENT
+	add := func(st innerwallv1.SyncState, table innerwallv1.OwnedTableState) {
+		id, _ := identity.NewWorkloadID()
+		f.store.Workloads = append(f.store.Workloads, readmodel.WorkloadRecord{Workload: registry.Workload{ID: id, Hostname: "w-" + id.String()[:8], SyncState: st, OwnedTable: table, CredentialExpiresAt: now.Add(time.Hour)}})
+	}
+	// Beside the fixture's synced web-1 and degraded db-1: two more synced
+	// hosts, one of them kill-switched; an offline host whose table was
+	// removed before it went quiet; and a present table, counted as usual.
+	add(innerwallv1.SyncState_SYNC_STATE_SYNCED, absent)
+	add(innerwallv1.SyncState_SYNC_STATE_SYNCED, innerwallv1.OwnedTableState_OWNED_TABLE_STATE_PRESENT)
+	add(innerwallv1.SyncState_SYNC_STATE_OFFLINE, absent)
+	c, err := f.reader.CountWorkloads(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[innerwallv1.SyncState]int64{
+		innerwallv1.SyncState_SYNC_STATE_SYNCED:   2,
+		innerwallv1.SyncState_SYNC_STATE_DEGRADED: 1,
+		innerwallv1.SyncState_SYNC_STATE_PENDING:  0,
+		innerwallv1.SyncState_SYNC_STATE_OFFLINE:  0,
+	}
+	if c.Total != 5 || c.Removed != 2 || len(c.BySync) != len(want) {
+		t.Fatalf("counts = %+v, want total 5, removed 2", c)
+	}
+	sum := c.Removed
+	for st, n := range want {
+		if c.BySync[st] != n {
+			t.Fatalf("%v = %d, want %d (counts %+v)", st, c.BySync[st], n, c)
+		}
+		sum += c.BySync[st]
+	}
+	if sum != c.Total {
+		t.Fatalf("buckets sum to %d, total %d", sum, c.Total)
+	}
+
+	// Restored: the apply that reinstalls the table leaves the host synced.
+	for i := range f.store.Workloads {
+		f.store.Workloads[i].OwnedTable = innerwallv1.OwnedTableState_OWNED_TABLE_STATE_PRESENT
+	}
+	c, err = f.reader.CountWorkloads(ctx)
+	if err != nil || c.Removed != 0 || c.BySync[innerwallv1.SyncState_SYNC_STATE_SYNCED] != 3 || c.BySync[innerwallv1.SyncState_SYNC_STATE_OFFLINE] != 1 || c.Total != 5 {
+		t.Fatalf("restored counts = %+v, %v", c, err)
+	}
+
+	f.store.Workloads[2].SyncState = innerwallv1.SyncState_SYNC_STATE_UNSPECIFIED
+	f.store.Workloads[2].OwnedTable = absent
+	if _, err := f.reader.CountWorkloads(ctx); err == nil {
+		t.Fatal("a removed workload in no known sync state was counted")
+	}
+}
+
 // TestGapsScopeAndBound checks the gaps read: the default range, a label
 // scope resolved to the workloads it matches now (a scope matching none
 // reads nothing, never everything), the workload named on each gap, the

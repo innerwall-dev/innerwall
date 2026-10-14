@@ -93,9 +93,10 @@ func runWorkloadList(ctx context.Context, args []string) error {
 	return w.Flush()
 }
 
-// runWorkloadCounts prints the fleet's size in total and in each sync
-// state, through the read the operator surface's GET /workloads/counts
-// serves.
+// runWorkloadCounts prints the fleet's size in total, removed, and in
+// each sync state, through the read the operator surface's GET
+// /workloads/counts serves. A removed workload is counted in removed
+// alone, so the lines sum to the total.
 func runWorkloadCounts(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall workload counts", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
@@ -113,6 +114,7 @@ func runWorkloadCounts(ctx context.Context, args []string) error {
 		return err
 	}
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintf(w, "removed\t%d\n", counts.Removed)
 	for _, state := range []innerwallv1.SyncState{
 		innerwallv1.SyncState_SYNC_STATE_DEGRADED,
 		innerwallv1.SyncState_SYNC_STATE_OFFLINE,

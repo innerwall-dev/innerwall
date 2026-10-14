@@ -409,10 +409,11 @@ func workloadsPageJSON(p *readmodel.WorkloadsPage) workloadsResponse {
 type workloadCountsResponse struct {
 	Total       int64            `json:"total"`
 	BySyncState map[string]int64 `json:"by_sync_state"`
+	Removed     int64            `json:"removed"`
 }
 
 func workloadCountsJSON(c *readmodel.WorkloadCounts) workloadCountsResponse {
-	out := workloadCountsResponse{Total: c.Total, BySyncState: make(map[string]int64, len(c.BySync))}
+	out := workloadCountsResponse{Total: c.Total, BySyncState: make(map[string]int64, len(c.BySync)), Removed: c.Removed}
 	for st, n := range c.BySync {
 		out.BySyncState[readmodel.SyncStateName(st)] = n
 	}

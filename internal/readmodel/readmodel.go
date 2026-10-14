@@ -53,9 +53,10 @@ type Store interface {
 	GetWorkloadPolicy(ctx context.Context, id identity.WorkloadID) (*innerwallv1.WorkloadPolicy, error)
 	// ListWorkloadPage returns one page of the fleet in fleet order.
 	ListWorkloadPage(ctx context.Context, q WorkloadPageQuery) ([]WorkloadRecord, error)
-	// CountWorkloadsBySyncState returns how many workloads hold each sync
-	// state, read at one instant; a state no workload holds is absent.
-	CountWorkloadsBySyncState(ctx context.Context) (map[innerwallv1.SyncState]int64, error)
+	// CountWorkloadsByStatus returns how many workloads hold each sync
+	// state, split by whether their owned table is recorded absent, read
+	// at one instant; a pair no workload holds is absent.
+	CountWorkloadsByStatus(ctx context.Context) ([]StatusCount, error)
 	// GetWorkloadRecord returns one workload with its latest rendered
 	// version and listening services, or registry.ErrWorkloadUnknown.
 	GetWorkloadRecord(ctx context.Context, id identity.WorkloadID) (*WorkloadRecord, error)

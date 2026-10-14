@@ -370,7 +370,11 @@ func TestWorkloadEndpoints(t *testing.T) {
 	if resp.status != http.StatusOK || len(field(body, "workloads").([]any)) != 2 || body["next_cursor"] != nil {
 		t.Fatalf("list: %d %v", resp.status, body)
 	}
-	db := field(body, "workloads.0").(map[string]any)
+	// Fleet order: web-1's owned table is removed (below), so it ranks with
+	// degraded db-1 at the top whatever its synced state, and leads it as
+	// the more recently seen (issue #96).
+	web := field(body, "workloads.0").(map[string]any)
+	db := field(body, "workloads.1").(map[string]any)
 	if db["id"] != s.fx.db.String() || db["hostname"] != "db-1" || db["mode"] != "simulation" || field(db, "labels.role") != "db" || field(db, "os.family") != "linux" {
 		t.Fatalf("db-1 = %v", db)
 	}
@@ -388,7 +392,6 @@ func TestWorkloadEndpoints(t *testing.T) {
 	if field(db, "listening_services.0.port") != float64(5432) || field(db, "listening_services.0.protocol") != "tcp" {
 		t.Fatalf("db-1 listening = %v", db["listening_services"])
 	}
-	web := field(body, "workloads.1").(map[string]any)
 	if field(web, "sync.state") != "synced" || field(web, "health.credential.state") != "renews" || field(web, "health.last_seen_at") != "2026-09-13T11:59:00Z" || field(web, "agent.capabilities.0") != "nftables" || field(web, "addresses.0") != "10.0.0.10" {
 		t.Fatalf("web-1 = %v", web)
 	}
@@ -434,14 +437,16 @@ func TestWorkloadEndpoints(t *testing.T) {
 		t.Fatalf("first page = %v", body)
 	}
 	resp, body = s.get(t, "/api/v1/workloads?limit=1&cursor="+url.QueryEscape(body["next_cursor"].(string)))
-	if resp.status != http.StatusOK || field(body, "workloads.0.hostname") != "web-1" || body["next_cursor"] != nil {
+	if resp.status != http.StatusOK || field(body, "workloads.0.hostname") != "db-1" || body["next_cursor"] != nil {
 		t.Fatalf("second page = %v", body)
 	}
 
 	// Counts: every state present, zero included, and the total their
-	// sum; the literal segment is not read as a workload id.
+	// sum plus removed; the literal segment is not read as a workload id.
+	// Removed web-1 counts in removed and not as the synced it is stored
+	// as (issue #96).
 	resp, body = s.get(t, "/api/v1/workloads/counts")
-	if resp.status != http.StatusOK || body["total"] != float64(2) || field(body, "by_sync_state.degraded") != float64(1) || field(body, "by_sync_state.synced") != float64(1) || field(body, "by_sync_state.pending") != float64(0) || field(body, "by_sync_state.offline") != float64(0) {
+	if resp.status != http.StatusOK || body["total"] != float64(2) || body["removed"] != float64(1) || field(body, "by_sync_state.degraded") != float64(1) || field(body, "by_sync_state.synced") != float64(0) || field(body, "by_sync_state.pending") != float64(0) || field(body, "by_sync_state.offline") != float64(0) {
 		t.Fatalf("counts = %d %v", resp.status, body)
 	}
 

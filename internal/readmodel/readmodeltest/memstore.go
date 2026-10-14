@@ -58,9 +58,14 @@ func (m *MemStore) GetWorkloadPolicy(_ context.Context, id identity.WorkloadID) 
 	return m.Policies[id], nil
 }
 
-// SyncRank is the fleet order of a sync state, as the store ranks it:
-// degraded, offline, pending, synced, then anything else.
-func SyncRank(s innerwallv1.SyncState) int32 {
+// SyncRank is the fleet order of a workload, as the store ranks it: a
+// removed owned table or degraded, then offline, pending, synced, then
+// anything else. A removed table outranks every stored sync state, which
+// it leaves as recorded (issue #96).
+func SyncRank(s innerwallv1.SyncState, ownedTable innerwallv1.OwnedTableState) int32 {
+	if ownedTable == innerwallv1.OwnedTableState_OWNED_TABLE_STATE_ABSENT {
+		return 0
+	}
 	switch s {
 	case innerwallv1.SyncState_SYNC_STATE_DEGRADED:
 		return 0
@@ -84,14 +89,22 @@ func seenKey(t *time.Time) time.Time {
 	return t.UTC()
 }
 
-// CountWorkloadsBySyncState implements readmodel.Store: a state no
-// fixture holds is absent, as it is from the Postgres statement.
-func (m *MemStore) CountWorkloadsBySyncState(context.Context) (map[innerwallv1.SyncState]int64, error) {
+// CountWorkloadsByStatus implements readmodel.Store: a pair no fixture
+// holds is absent, as it is from the Postgres statement.
+func (m *MemStore) CountWorkloadsByStatus(context.Context) ([]readmodel.StatusCount, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := map[innerwallv1.SyncState]int64{}
+	at := map[readmodel.StatusCount]int{}
+	var out []readmodel.StatusCount
 	for i := range m.Workloads {
-		out[m.Workloads[i].SyncState]++
+		key := readmodel.StatusCount{SyncState: m.Workloads[i].SyncState, Removed: m.Workloads[i].OwnedTable == innerwallv1.OwnedTableState_OWNED_TABLE_STATE_ABSENT}
+		j, ok := at[key]
+		if !ok {
+			j = len(out)
+			at[key] = j
+			out = append(out, key)
+		}
+		out[j].Workloads++
 	}
 	return out, nil
 }
@@ -119,7 +132,7 @@ func (m *MemStore) ListWorkloadPage(_ context.Context, q readmodel.WorkloadPageQ
 		if q.SyncState != 0 && r.SyncState != q.SyncState {
 			continue
 		}
-		r.SyncRank, r.SeenKey = SyncRank(r.SyncState), seenKey(r.LastSeenAt)
+		r.SyncRank, r.SeenKey = SyncRank(r.SyncState, r.OwnedTable), seenKey(r.LastSeenAt)
 		if q.After != nil {
 			a := q.After
 			after := r.SyncRank > a.SyncRank || (r.SyncRank == a.SyncRank && (r.SeenKey.Before(a.SeenKey) || (r.SeenKey.Equal(a.SeenKey) && r.ID.String() > a.ID.String())))
