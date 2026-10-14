@@ -69,6 +69,10 @@ type Store interface {
 type Reader struct {
 	Store Store
 	Flows flowstore.FlowStore
+	// FlowWindow is the flow aggregation window the control plane hands
+	// agents; a workload's telemetry is live while a report has arrived
+	// within TelemetryLiveWindows of it. Zero judges no telemetry live.
+	FlowWindow time.Duration
 	// Now is the clock; time.Now if nil.
 	Now func() time.Time
 }

@@ -126,6 +126,8 @@ func (c *Collector) Run(ctx context.Context) error {
 		start := agg.Start()
 		end, next, step := closeBounds(start, now, at-opened)
 		opened = at
+		// A loss still under way rides this window as far as it has run.
+		c.Gaps.CutOpen(end)
 		if step == 0 {
 			return agg.Close(end)
 		}

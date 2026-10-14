@@ -21,6 +21,12 @@ export interface OpenWorkload {
 	id: string;
 	hostname: string;
 	state: SyncState;
+	// removed is the agent reporting its firewall table gone from the
+	// host, which outranks the sync state (issue #64).
+	removed: boolean;
+	// reconnecting is an offline sync stream whose flow reports still
+	// arrive (issue #61).
+	reconnecting: boolean;
 }
 
 // ShellContext is what the screens tell the frame: the workload they
@@ -115,7 +121,9 @@ function Frame() {
 			cur &&
 			cur.id === w.id &&
 			cur.hostname === w.hostname &&
-			cur.state === w.state
+			cur.state === w.state &&
+			cur.removed === w.removed &&
+			cur.reconnecting === w.reconnecting
 				? cur
 				: w,
 		);

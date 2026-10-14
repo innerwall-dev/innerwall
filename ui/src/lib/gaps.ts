@@ -95,6 +95,8 @@ export function kindText(kind: EvidenceGap["kind"]): string {
 			return "the agent's flow window was full";
 		case "window_rejected":
 			return "the control plane refused a malformed window";
+		case "table_removed":
+			return "enforcement was removed on the host, so nothing was observed";
 	}
 }
 

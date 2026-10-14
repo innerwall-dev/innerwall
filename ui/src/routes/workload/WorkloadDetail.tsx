@@ -16,7 +16,13 @@ import { ago, count, labelPairs } from "@/lib/format";
 import { between, kindText } from "@/lib/gaps";
 import { type Resource, useResource } from "@/lib/resource";
 import { useShell } from "@/shell/Shell";
-import { credential, credentialTone, lastSeen } from "../fleet/describe";
+import {
+	credential,
+	credentialTone,
+	enforcementRemoved,
+	lastSeen,
+	reconnecting,
+} from "../fleet/describe";
 import { ModeChangeDialog } from "../fleet/ModeChangeDialog";
 import { FlowsTab } from "./FlowsTab";
 import { LabelsDialog } from "./LabelsDialog";
@@ -72,6 +78,8 @@ export function WorkloadDetail() {
 				id: wl.data.id,
 				hostname: wl.data.hostname,
 				state: wl.data.sync.state,
+				removed: enforcementRemoved(wl.data),
+				reconnecting: reconnecting(wl.data),
 			});
 		}
 	}, [wl, shell]);
@@ -242,6 +250,13 @@ function Rail({
 					<dt className={field}>last seen</dt>
 					<dd className={value}>
 						{w.health.last_seen_at ? `${lastSeen(w)} ago` : "never"}
+						<div className={note}>On the control channel, the sync stream.</div>
+					</dd>
+					<dt className={field}>flow report</dt>
+					<dd className={value} data-testid="last-flow-report">
+						{w.health.last_flow_report_at
+							? ago(w.health.last_flow_report_at)
+							: "none received"}
 					</dd>
 					<dt className={field}>enrolled</dt>
 					<dd className={value}>{ago(w.enrolled_at)}</dd>

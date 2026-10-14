@@ -82,7 +82,13 @@ func runWorkloadList(ctx context.Context, args []string) error {
 		if p, err := st.GetWorkloadPolicy(ctx, wl.ID); err == nil && p != nil {
 			latest = fmt.Sprint(p.GetVersion())
 		}
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%d/%s\t%s\n", wl.ID, wl.Hostname, labelString(wl.Labels), policy.ModeName(wl.Mode), syncStateName(*wl), wl.AppliedVersion, latest, ago(wl.LastSeenAt, now))
+		sync := syncStateName(*wl)
+		if wl.OwnedTable == innerwallv1.OwnedTableState_OWNED_TABLE_STATE_ABSENT {
+			// The version stands acknowledged; the table it was installed
+			// in is gone (issue #64).
+			sync += ", ENFORCEMENT REMOVED"
+		}
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%d/%s\t%s\n", wl.ID, wl.Hostname, labelString(wl.Labels), policy.ModeName(wl.Mode), sync, wl.AppliedVersion, latest, ago(wl.LastSeenAt, now))
 	}
 	return w.Flush()
 }
@@ -157,12 +163,21 @@ func runWorkloadStatus(ctx context.Context, args []string) error {
 	fmt.Printf("labels          %s\n", labelString(wl.Labels))
 	fmt.Printf("mode            %s\n", policy.ModeName(wl.Mode))
 	fmt.Printf("sync state      %s\n", syncStateName(*wl))
+	switch wl.OwnedTable {
+	case innerwallv1.OwnedTableState_OWNED_TABLE_STATE_ABSENT:
+		fmt.Printf("owned table     ABSENT since %s: enforcement removed on the host, nothing is enforced or observed\n", ago(wl.OwnedTableAbsentSince, now))
+	case innerwallv1.OwnedTableState_OWNED_TABLE_STATE_PRESENT, innerwallv1.OwnedTableState_OWNED_TABLE_STATE_UNSPECIFIED:
+		fmt.Printf("owned table     %s\n", readmodel.OwnedTableStateName(wl.OwnedTable))
+	default:
+		fmt.Printf("owned table     %s\n", readmodel.OwnedTableStateName(wl.OwnedTable))
+	}
 	if wl.SyncError != "" {
 		fmt.Printf("sync error      %s\n", wl.SyncError)
 	}
 	fmt.Printf("applied version %d\n", wl.AppliedVersion)
 	fmt.Printf("latest version  %d\n", latest)
-	fmt.Printf("last seen       %s\n", ago(wl.LastSeenAt, now))
+	fmt.Printf("last seen       %s (control channel)\n", ago(wl.LastSeenAt, now))
+	fmt.Printf("last flow report %s\n", ago(wl.LastFlowReportAt, now))
 	fmt.Printf("last snapshot   %s\n", ago(wl.LastSnapshotSentAt, now))
 	fmt.Printf("last ack        %s\n", ago(wl.LastAckedAt, now))
 	fmt.Printf("apply failed    %s\n", ago(wl.LastApplyFailedAt, now))

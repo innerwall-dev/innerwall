@@ -296,7 +296,7 @@ func SeedEstate(ctx context.Context, s *store.Store, f *Fleet, extra int) error 
 			if droppers[id] {
 				dropped = 212
 			}
-			if err := s.RecordHeartbeat(ctx, id, dropped, 0, "", seen); err != nil {
+			if err := s.RecordHeartbeat(ctx, id, registry.Heartbeat{DroppedFlowRecords: dropped, OwnedTable: innerwallv1.OwnedTableState_OWNED_TABLE_STATE_PRESENT}, seen); err != nil {
 				return err
 			}
 		}
@@ -394,5 +394,5 @@ func seedEvidenceGaps(ctx context.Context, s *store.Store, f *Fleet) error {
 	if _, err := s.Flows().WriteWindow(ctx, w); err != nil {
 		return err
 	}
-	return s.RecordHeartbeat(ctx, f.DB, 42, 3, "renewal refused: authority unreachable", f.Now.Add(-5*time.Minute))
+	return s.RecordHeartbeat(ctx, f.DB, registry.Heartbeat{DroppedFlowRecords: 42, SourceOverruns: 3, RenewalError: "renewal refused: authority unreachable", OwnedTable: innerwallv1.OwnedTableState_OWNED_TABLE_STATE_PRESENT}, f.Now.Add(-5*time.Minute))
 }

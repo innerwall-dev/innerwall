@@ -281,6 +281,29 @@ func TestRenderDelta(t *testing.T) {
 	if _, ok := RenderDelta(from, removed, Options{}); ok {
 		t.Fatal("a rule removal rendered a delta")
 	}
+	// A visibility table carries no sets, so a peer-only change there is
+	// a full rendering, never a set update the kernel would refuse
+	// (issue #45). Simulation carries the same sets as enforcement.
+	visFrom := multiRule(innerwallv1.EnforcementMode_ENFORCEMENT_MODE_VISIBILITY)
+	visTo := multiRule(innerwallv1.EnforcementMode_ENFORCEMENT_MODE_VISIBILITY)
+	visTo.Version = 8
+	visTo.InboundRules[1].PeerCidrs = to.InboundRules[1].PeerCidrs
+	if script, ok := RenderDelta(visFrom, visTo, Options{}); ok {
+		t.Fatalf("a peer-only change on a visibility table rendered a set update:\n%s", script)
+	}
+	unspecified := multiRule(innerwallv1.EnforcementMode_ENFORCEMENT_MODE_UNSPECIFIED)
+	unspecifiedTo := multiRule(innerwallv1.EnforcementMode_ENFORCEMENT_MODE_UNSPECIFIED)
+	unspecifiedTo.InboundRules[1].PeerCidrs = to.InboundRules[1].PeerCidrs
+	if _, ok := RenderDelta(unspecified, unspecifiedTo, Options{}); ok {
+		t.Fatal("a peer-only change on an unspecified-mode table rendered a set update")
+	}
+	simFrom := multiRule(innerwallv1.EnforcementMode_ENFORCEMENT_MODE_SIMULATION)
+	simTo := multiRule(innerwallv1.EnforcementMode_ENFORCEMENT_MODE_SIMULATION)
+	simTo.InboundRules[1].PeerCidrs = to.InboundRules[1].PeerCidrs
+	if _, ok := RenderDelta(simFrom, simTo, Options{}); !ok {
+		t.Fatal("a peer-only change on a simulation table was not a delta")
+	}
+
 	// Peers changed on one rule and ports on another: the whole thing is
 	// a full rendering.
 	both := multiRule(innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED)

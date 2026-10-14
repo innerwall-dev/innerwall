@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { hoursFromNow, minutesAgo, workload } from "@/test/fixtures";
-import { credential, renewsAt, syncNote, version } from "./describe";
+import {
+	credential,
+	lastContact,
+	reconnecting,
+	renewsAt,
+	syncNote,
+	version,
+} from "./describe";
 
 describe("sync note", () => {
 	it("shows drift in flight whatever state the stream last reported", () => {
@@ -47,12 +54,68 @@ describe("sync note", () => {
 		expect(syncNote(w)).toBe("apply failed 2h ago");
 	});
 
+	it("names the acknowledged version as not installed once the table is gone", () => {
+		const w = workload({
+			sync: { state: "synced", applied_version: 7, latest_version: 7 },
+			health: {
+				owned_table: { state: "absent", absent_since: minutesAgo(9) },
+			},
+		});
+		expect(syncNote(w)).toBe("v7 not installed · 9m ago");
+		expect(
+			syncNote(
+				workload({
+					sync: { applied_version: 7, latest_version: 7 },
+					health: { owned_table: { state: "unknown", absent_since: null } },
+				}),
+			),
+		).toBe("");
+	});
+
 	it("says an offline agent that never connected did not", () => {
 		const w = workload({
 			sync: { state: "offline" },
-			health: { last_seen_at: null },
+			health: {
+				last_seen_at: null,
+				last_flow_report_at: null,
+				telemetry_live: false,
+			},
 		});
 		expect(syncNote(w)).toBe("never connected");
+	});
+
+	it("tells a reconnecting control channel from no contact at all", () => {
+		// Issue #61: the sync stream waits out its backoff while flow reports
+		// keep landing; that is not a host gone.
+		const now = Date.parse("2026-10-13T12:00:00Z");
+		const at = (m: number) => new Date(now - m * 60_000).toISOString();
+		const alive = workload({
+			sync: { state: "offline" },
+			health: {
+				last_seen_at: at(3.5),
+				last_flow_report_at: at(0.5),
+				telemetry_live: true,
+			},
+		});
+		expect(reconnecting(alive)).toBe(true);
+		expect(syncNote(alive, now)).toBe(
+			"control channel down · flow reports arriving",
+		);
+		// Once the reports stop too, the counter runs from the latest contact
+		// on either channel: the last report, not the stream's end.
+		const gone = workload({
+			sync: { state: "offline" },
+			health: {
+				last_seen_at: at(30),
+				last_flow_report_at: at(12),
+				telemetry_live: false,
+			},
+		});
+		expect(reconnecting(gone)).toBe(false);
+		expect(lastContact(gone)).toBe(at(12));
+		expect(syncNote(gone, now)).toBe("no contact for 12m");
+		// A synced workload is never reconnecting, whatever its reports.
+		expect(reconnecting(workload())).toBe(false);
 	});
 });
 

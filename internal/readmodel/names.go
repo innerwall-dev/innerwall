@@ -46,3 +46,18 @@ func ParseSyncState(s string) (innerwallv1.SyncState, error) {
 func SyncStateName(s innerwallv1.SyncState) string {
 	return strings.ToLower(strings.TrimPrefix(s.String(), "SYNC_STATE_"))
 }
+
+// OwnedTableStateName is the owned table's state as the surface and the
+// command line name it: present, absent, or unknown.
+func OwnedTableStateName(s innerwallv1.OwnedTableState) string {
+	switch s {
+	case innerwallv1.OwnedTableState_OWNED_TABLE_STATE_PRESENT:
+		return "present"
+	case innerwallv1.OwnedTableState_OWNED_TABLE_STATE_ABSENT:
+		return "absent"
+	case innerwallv1.OwnedTableState_OWNED_TABLE_STATE_UNSPECIFIED:
+		return "unknown"
+	default:
+		return "unknown"
+	}
+}

@@ -12,8 +12,43 @@ export function version(v: number): string {
 	return v === 0 ? "—" : `v${v}`;
 }
 
+// enforcementRemoved says the agent's owned firewall table is gone from
+// the host's kernel, as its heartbeats report: the local kill switch, or
+// another tool, removed it. The version the agent acknowledged still
+// stands, so the sync state alone would keep saying the host runs it;
+// nothing on the host is enforced or observed until the table is back
+// (issue #64).
+export function enforcementRemoved(w: Workload): boolean {
+	return w.health.owned_table.state === "absent";
+}
+
+// reconnecting says the sync stream is down while the agent's flow
+// reports are still arriving: the agent is running and reaching the
+// control plane on its telemetry connection, and only the control channel
+// is waiting out its reconnect backoff. The two travel on separate
+// connections, so either can be down alone (issue #61).
+export function reconnecting(w: Workload): boolean {
+	return w.sync.state === "offline" && w.health.telemetry_live;
+}
+
+// lastContact is the latest instant the control plane heard from the
+// agent on either channel: the sync stream's last contact or the last
+// flow report received. Null when it has heard nothing on either.
+export function lastContact(w: Workload): string | null {
+	const { last_seen_at: seen, last_flow_report_at: report } = w.health;
+	if (seen === null) return report;
+	if (report === null) return seen;
+	return Date.parse(report) > Date.parse(seen) ? report : seen;
+}
+
 export function syncNote(w: Workload, now = Date.now()): string {
 	const s = w.sync;
+	if (enforcementRemoved(w)) {
+		const since = w.health.owned_table.absent_since;
+		return since
+			? `${version(s.applied_version)} not installed · ${ago(since, now)}`
+			: `${version(s.applied_version)} not installed`;
+	}
 	switch (s.state) {
 		case "degraded":
 			if (s.latest_version > s.applied_version) {
@@ -24,10 +59,16 @@ export function syncNote(w: Workload, now = Date.now()): string {
 			return s.last_apply_failed_at
 				? `apply failed ${ago(s.last_apply_failed_at, now)}`
 				: "apply failed";
-		case "offline":
-			return w.health.last_seen_at
-				? `no stream for ${since(w.health.last_seen_at, now)}`
+		case "offline": {
+			if (reconnecting(w))
+				return "control channel down · flow reports arriving";
+			// Measured from the latest contact on either channel, so it is
+			// what it says: nothing has been heard from the agent since.
+			const contact = lastContact(w);
+			return contact
+				? `no contact for ${since(contact, now)}`
 				: "never connected";
+		}
 		default:
 			// A newer version than the one applied is drift in flight, whatever
 			// state the stream last reported: after a mode change the list

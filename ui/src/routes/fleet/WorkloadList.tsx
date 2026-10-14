@@ -19,14 +19,21 @@ import {
 } from "@/components/fleet/status";
 import { Icon } from "@/components/Icon";
 import { LoadingRow, ProblemNotice } from "@/components/Problem";
-import { SeverityNote } from "@/components/StatusGlyph";
+import { SeverityNote, StatusBadge } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
 import { labelPairs } from "@/lib/format";
 import { parseRequirements } from "@/lib/labels";
 import { asProblem, useResource } from "@/lib/resource";
 import { cn } from "@/lib/utils";
 import { useShell } from "@/shell/Shell";
-import { credential, lastSeen, syncNote, version } from "./describe";
+import {
+	credential,
+	enforcementRemoved,
+	lastSeen,
+	reconnecting,
+	syncNote,
+	version,
+} from "./describe";
 import { ModeChangeDialog } from "./ModeChangeDialog";
 
 const states: SyncState[] = ["synced", "pending", "degraded", "offline"];
@@ -347,7 +354,20 @@ function Row({
 				<ModePill mode={w.mode} />
 			</td>
 			<td className={cn(cell, "whitespace-nowrap")}>
-				<SyncLabel state={w.sync.state} />
+				{enforcementRemoved(w) ? (
+					// The acknowledged version is not what the host runs: its
+					// table is gone, so the row says that instead of the
+					// sync state.
+					<SeverityNote level="error" data-testid="enforcement-removed">
+						Enforcement removed on host
+					</SeverityNote>
+				) : reconnecting(w) ? (
+					// Offline by its sync stream, and still reporting flows:
+					// the offline glyph, named for what is happening.
+					<StatusBadge status="offline">Reconnecting</StatusBadge>
+				) : (
+					<SyncLabel state={w.sync.state} />
+				)}
 				{note ? (
 					<span className="ml-2 type-caption text-tertiary">{note}</span>
 				) : null}

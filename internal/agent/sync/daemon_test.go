@@ -238,6 +238,7 @@ type kernel struct{}
 
 func (kernel) Apply(context.Context, string) error          { return nil }
 func (kernel) List(context.Context, string) (string, error) { return "", nil }
+func (kernel) Tables(context.Context) ([]string, error)     { return nil, nil }
 
 // TestUnpersistedApplyAcksFailed runs the daemon over the nftables store
 // with a kernel that accepts everything and a state directory that stops
@@ -348,6 +349,9 @@ func TestHeartbeatAndInventoryFollowConfig(t *testing.T) {
 		},
 		Uptime:         func() time.Duration { return 42 * time.Second },
 		SourceOverruns: func() uint64 { return 3 },
+		OwnedTable: func(context.Context) innerwallv1.OwnedTableState {
+			return innerwallv1.OwnedTableState_OWNED_TABLE_STATE_ABSENT
+		},
 	})
 	c := <-srv.conns
 	c.expect(t)
@@ -360,7 +364,7 @@ func TestHeartbeatAndInventoryFollowConfig(t *testing.T) {
 		select {
 		case m := <-c.in:
 			if hb := m.GetHeartbeat(); hb != nil {
-				if hb.GetUptimeSeconds() != 42 || hb.GetDroppedFlowRecords() != 0 || hb.GetSourceOverruns() != 3 {
+				if hb.GetUptimeSeconds() != 42 || hb.GetDroppedFlowRecords() != 0 || hb.GetSourceOverruns() != 3 || hb.GetOwnedTable() != innerwallv1.OwnedTableState_OWNED_TABLE_STATE_ABSENT {
 					t.Fatalf("heartbeat = %v", hb)
 				}
 				sawHeartbeat = true

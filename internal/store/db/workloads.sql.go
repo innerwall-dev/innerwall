@@ -165,7 +165,7 @@ func (q *Queries) DeleteWorkloadListeningServices(ctx context.Context, workloadI
 }
 
 const getWorkload = `-- name: GetWorkload :one
-SELECT id, region_id, provisioning_token_id, hostname, enrolled_at, credential_serial, credential_expires_at, last_renewed_at, mode, facts, agent_version, agent_capabilities, last_seen_at, sync_state, applied_policy_version, sync_error, dropped_flow_records, credential_renewal_error, last_snapshot_sent_at, last_acked_at, last_apply_failed_at, source_overruns, clock_skew_offset_ms, clock_skew_observed_at, clock_skew_current FROM workloads
+SELECT id, region_id, provisioning_token_id, hostname, enrolled_at, credential_serial, credential_expires_at, last_renewed_at, mode, facts, agent_version, agent_capabilities, last_seen_at, sync_state, applied_policy_version, sync_error, dropped_flow_records, credential_renewal_error, last_snapshot_sent_at, last_acked_at, last_apply_failed_at, source_overruns, clock_skew_offset_ms, clock_skew_observed_at, clock_skew_current, owned_table_state, owned_table_absent_since, last_flow_report_at FROM workloads
 WHERE id = $1
 `
 
@@ -198,12 +198,15 @@ func (q *Queries) GetWorkload(ctx context.Context, id uuid.UUID) (Workload, erro
 		&i.ClockSkewOffsetMs,
 		&i.ClockSkewObservedAt,
 		&i.ClockSkewCurrent,
+		&i.OwnedTableState,
+		&i.OwnedTableAbsentSince,
+		&i.LastFlowReportAt,
 	)
 	return i, err
 }
 
 const getWorkloadWithPolicy = `-- name: GetWorkloadWithPolicy :one
-SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at, w.credential_serial, w.credential_expires_at, w.last_renewed_at, w.mode, w.facts, w.agent_version, w.agent_capabilities, w.last_seen_at, w.sync_state, w.applied_policy_version, w.sync_error, w.dropped_flow_records, w.credential_renewal_error, w.last_snapshot_sent_at, w.last_acked_at, w.last_apply_failed_at, w.source_overruns, w.clock_skew_offset_ms, w.clock_skew_observed_at, w.clock_skew_current, p.version AS latest_version, p.rendered_at AS latest_rendered_at
+SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at, w.credential_serial, w.credential_expires_at, w.last_renewed_at, w.mode, w.facts, w.agent_version, w.agent_capabilities, w.last_seen_at, w.sync_state, w.applied_policy_version, w.sync_error, w.dropped_flow_records, w.credential_renewal_error, w.last_snapshot_sent_at, w.last_acked_at, w.last_apply_failed_at, w.source_overruns, w.clock_skew_offset_ms, w.clock_skew_observed_at, w.clock_skew_current, w.owned_table_state, w.owned_table_absent_since, w.last_flow_report_at, p.version AS latest_version, p.rendered_at AS latest_rendered_at
 FROM workloads w
 LEFT JOIN workload_policies p ON p.workload_id = w.id
 WHERE w.id = $1
@@ -245,6 +248,9 @@ func (q *Queries) GetWorkloadWithPolicy(ctx context.Context, id uuid.UUID) (GetW
 		&i.Workload.ClockSkewOffsetMs,
 		&i.Workload.ClockSkewObservedAt,
 		&i.Workload.ClockSkewCurrent,
+		&i.Workload.OwnedTableState,
+		&i.Workload.OwnedTableAbsentSince,
+		&i.Workload.LastFlowReportAt,
 		&i.LatestVersion,
 		&i.LatestRenderedAt,
 	)
@@ -478,10 +484,11 @@ SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at,
        w.sync_state, w.applied_policy_version, w.sync_error, w.dropped_flow_records,
        w.credential_renewal_error, w.last_snapshot_sent_at, w.last_acked_at, w.last_apply_failed_at,
        w.source_overruns, w.clock_skew_offset_ms, w.clock_skew_observed_at, w.clock_skew_current,
+       w.owned_table_state, w.owned_table_absent_since, w.last_flow_report_at,
        w.sync_rank::integer AS sync_rank, w.seen_key::timestamptz AS seen_key,
        p.version AS latest_version, p.rendered_at AS latest_rendered_at
 FROM (
-    SELECT workloads.id, workloads.region_id, workloads.provisioning_token_id, workloads.hostname, workloads.enrolled_at, workloads.credential_serial, workloads.credential_expires_at, workloads.last_renewed_at, workloads.mode, workloads.facts, workloads.agent_version, workloads.agent_capabilities, workloads.last_seen_at, workloads.sync_state, workloads.applied_policy_version, workloads.sync_error, workloads.dropped_flow_records, workloads.credential_renewal_error, workloads.last_snapshot_sent_at, workloads.last_acked_at, workloads.last_apply_failed_at, workloads.source_overruns, workloads.clock_skew_offset_ms, workloads.clock_skew_observed_at, workloads.clock_skew_current,
+    SELECT workloads.id, workloads.region_id, workloads.provisioning_token_id, workloads.hostname, workloads.enrolled_at, workloads.credential_serial, workloads.credential_expires_at, workloads.last_renewed_at, workloads.mode, workloads.facts, workloads.agent_version, workloads.agent_capabilities, workloads.last_seen_at, workloads.sync_state, workloads.applied_policy_version, workloads.sync_error, workloads.dropped_flow_records, workloads.credential_renewal_error, workloads.last_snapshot_sent_at, workloads.last_acked_at, workloads.last_apply_failed_at, workloads.source_overruns, workloads.clock_skew_offset_ms, workloads.clock_skew_observed_at, workloads.clock_skew_current, workloads.owned_table_state, workloads.owned_table_absent_since, workloads.last_flow_report_at,
            CASE workloads.sync_state WHEN 3 THEN 0 WHEN 4 THEN 1 WHEN 2 THEN 2 WHEN 1 THEN 3 ELSE 4 END AS sync_rank,
            coalesce(workloads.last_seen_at, '1970-01-01 00:00:00+00'::timestamptz) AS seen_key
     FROM workloads
@@ -534,6 +541,9 @@ type ListWorkloadPageRow struct {
 	ClockSkewOffsetMs      pgtype.Int8
 	ClockSkewObservedAt    *time.Time
 	ClockSkewCurrent       bool
+	OwnedTableState        int16
+	OwnedTableAbsentSince  *time.Time
+	LastFlowReportAt       *time.Time
 	SyncRank               int32
 	SeenKey                time.Time
 	LatestVersion          pgtype.Int8
@@ -592,6 +602,9 @@ func (q *Queries) ListWorkloadPage(ctx context.Context, arg ListWorkloadPagePara
 			&i.ClockSkewOffsetMs,
 			&i.ClockSkewObservedAt,
 			&i.ClockSkewCurrent,
+			&i.OwnedTableState,
+			&i.OwnedTableAbsentSince,
+			&i.LastFlowReportAt,
 			&i.SyncRank,
 			&i.SeenKey,
 			&i.LatestVersion,
@@ -609,7 +622,7 @@ func (q *Queries) ListWorkloadPage(ctx context.Context, arg ListWorkloadPagePara
 
 const listWorkloads = `-- name: ListWorkloads :many
 
-SELECT id, region_id, provisioning_token_id, hostname, enrolled_at, credential_serial, credential_expires_at, last_renewed_at, mode, facts, agent_version, agent_capabilities, last_seen_at, sync_state, applied_policy_version, sync_error, dropped_flow_records, credential_renewal_error, last_snapshot_sent_at, last_acked_at, last_apply_failed_at, source_overruns, clock_skew_offset_ms, clock_skew_observed_at, clock_skew_current FROM workloads
+SELECT id, region_id, provisioning_token_id, hostname, enrolled_at, credential_serial, credential_expires_at, last_renewed_at, mode, facts, agent_version, agent_capabilities, last_seen_at, sync_state, applied_policy_version, sync_error, dropped_flow_records, credential_renewal_error, last_snapshot_sent_at, last_acked_at, last_apply_failed_at, source_overruns, clock_skew_offset_ms, clock_skew_observed_at, clock_skew_current, owned_table_state, owned_table_absent_since, last_flow_report_at FROM workloads
 ORDER BY enrolled_at, id
 `
 
@@ -649,6 +662,9 @@ func (q *Queries) ListWorkloads(ctx context.Context) ([]Workload, error) {
 			&i.ClockSkewOffsetMs,
 			&i.ClockSkewObservedAt,
 			&i.ClockSkewCurrent,
+			&i.OwnedTableState,
+			&i.OwnedTableAbsentSince,
+			&i.LastFlowReportAt,
 		); err != nil {
 			return nil, err
 		}
@@ -690,7 +706,9 @@ func (q *Queries) RecordWorkloadAgent(ctx context.Context, arg RecordWorkloadAge
 
 const recordWorkloadApplied = `-- name: RecordWorkloadApplied :execrows
 UPDATE workloads
-SET applied_policy_version = $2, sync_state = $3, sync_error = '', last_seen_at = $4, last_acked_at = $4
+SET applied_policy_version = $2, sync_state = $3, sync_error = '', last_seen_at = $4, last_acked_at = $4,
+    owned_table_state = CASE WHEN owned_table_state = 2 THEN 1 ELSE owned_table_state END,
+    owned_table_absent_since = NULL
 WHERE id = $1
 `
 
@@ -702,7 +720,9 @@ type RecordWorkloadAppliedParams struct {
 }
 
 // An APPLIED acknowledgement: the version, the resulting state, and the
-// instant. Nothing else writes last_acked_at (migration 00007).
+// instant. Nothing else writes last_acked_at (migration 00007). An apply
+// that succeeded installed the owned table, so a table recorded absent is
+// present again (migration 00012).
 func (q *Queries) RecordWorkloadApplied(ctx context.Context, arg RecordWorkloadAppliedParams) (int64, error) {
 	result, err := q.db.Exec(ctx, recordWorkloadApplied,
 		arg.ID,
@@ -774,27 +794,56 @@ func (q *Queries) RecordWorkloadClockReading(ctx context.Context, arg RecordWork
 	return err
 }
 
+const recordWorkloadFlowReport = `-- name: RecordWorkloadFlowReport :exec
+UPDATE workloads
+SET last_flow_report_at = $1
+WHERE id = $2 AND (last_flow_report_at IS NULL OR last_flow_report_at < $1)
+`
+
+type RecordWorkloadFlowReportParams struct {
+	ReceivedAt *time.Time
+	ID         uuid.UUID
+}
+
+// The receipt of one flow report (migration 00013). Never moved backwards,
+// so reports handled out of order across replicas leave the latest.
+func (q *Queries) RecordWorkloadFlowReport(ctx context.Context, arg RecordWorkloadFlowReportParams) error {
+	_, err := q.db.Exec(ctx, recordWorkloadFlowReport, arg.ReceivedAt, arg.ID)
+	return err
+}
+
 const recordWorkloadHeartbeat = `-- name: RecordWorkloadHeartbeat :execrows
 UPDATE workloads
-SET last_seen_at = $2, dropped_flow_records = $3, credential_renewal_error = $4, source_overruns = $5
-WHERE id = $1
+SET last_seen_at = $1, dropped_flow_records = $2,
+    credential_renewal_error = $3, source_overruns = $4,
+    owned_table_absent_since = CASE
+        WHEN $5::smallint = 0 THEN owned_table_absent_since
+        WHEN $5::smallint = 2 THEN coalesce(owned_table_absent_since, $1)
+        ELSE NULL END,
+    owned_table_state = CASE WHEN $5::smallint = 0 THEN owned_table_state ELSE $5::smallint END
+WHERE id = $6
 `
 
 type RecordWorkloadHeartbeatParams struct {
-	ID                     uuid.UUID
 	LastSeenAt             *time.Time
 	DroppedFlowRecords     int64
 	CredentialRenewalError string
 	SourceOverruns         int64
+	OwnedTableState        int16
+	ID                     uuid.UUID
 }
 
+// A heartbeat's counters, renewal status, and owned-table state (migration
+// 00012). An unknown state leaves the stored one; the absent instant is the
+// first heartbeat's that said absent, kept while the state stays absent.
 func (q *Queries) RecordWorkloadHeartbeat(ctx context.Context, arg RecordWorkloadHeartbeatParams) (int64, error) {
 	result, err := q.db.Exec(ctx, recordWorkloadHeartbeat,
-		arg.ID,
 		arg.LastSeenAt,
 		arg.DroppedFlowRecords,
 		arg.CredentialRenewalError,
 		arg.SourceOverruns,
+		arg.OwnedTableState,
+		arg.ID,
 	)
 	if err != nil {
 		return 0, err

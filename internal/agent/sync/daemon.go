@@ -68,6 +68,11 @@ type Config struct {
 	// RenewalError reports the reason the last automatic credential
 	// renewal failed, or empty, carried on every heartbeat. Empty when nil.
 	RenewalError func() string
+	// OwnedTable reads whether the owned firewall table is in the kernel,
+	// carried on every heartbeat, so a table removed behind the daemon's
+	// back (the local kill switch) is reported within one heartbeat.
+	// Unspecified when nil.
+	OwnedTable func(ctx context.Context) innerwallv1.OwnedTableState
 	// OnSyncConfig is called with the configuration in every HelloAck, so
 	// the other loops adopt the control plane's parameters.
 	OnSyncConfig func(*innerwallv1.SyncConfig)
@@ -290,6 +295,7 @@ func (d *Daemon) runSession(ctx context.Context, onEstablished func()) error {
 				DroppedFlowRecords:     d.dropped(),
 				CredentialRenewalError: d.renewalError(),
 				SourceOverruns:         d.overruns(),
+				OwnedTable:             d.ownedTable(ctx),
 			}}}); err != nil {
 				return fmt.Errorf("sync: sending heartbeat: %w", err)
 			}
@@ -320,6 +326,13 @@ func (d *Daemon) overruns() uint64 {
 		return d.cfg.SourceOverruns()
 	}
 	return 0
+}
+
+func (d *Daemon) ownedTable(ctx context.Context) innerwallv1.OwnedTableState {
+	if d.cfg.OwnedTable != nil {
+		return d.cfg.OwnedTable(ctx)
+	}
+	return innerwallv1.OwnedTableState_OWNED_TABLE_STATE_UNSPECIFIED
 }
 
 func (d *Daemon) renewalError() string {

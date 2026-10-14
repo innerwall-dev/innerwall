@@ -300,8 +300,17 @@ func (s *Server) handleMessage(ctx context.Context, log *slog.Logger, sess *sess
 		}
 		return nil
 	case *innerwallv1.SyncRequest_Heartbeat:
-		if err := s.registry.RecordHeartbeat(ctx, sess.id, m.Heartbeat.GetDroppedFlowRecords(), m.Heartbeat.GetSourceOverruns(), m.Heartbeat.GetCredentialRenewalError(), now); err != nil {
+		hb := m.Heartbeat
+		if err := s.registry.RecordHeartbeat(ctx, sess.id, registry.Heartbeat{
+			DroppedFlowRecords: hb.GetDroppedFlowRecords(), SourceOverruns: hb.GetSourceOverruns(),
+			RenewalError: hb.GetCredentialRenewalError(), OwnedTable: hb.GetOwnedTable(),
+		}, now); err != nil {
 			return status.Error(codes.Internal, "recording heartbeat")
+		}
+		if hb.GetOwnedTable() == innerwallv1.OwnedTableState_OWNED_TABLE_STATE_ABSENT {
+			// Logged on every heartbeat that says so: the condition is the
+			// operator's to end, and until then the log keeps saying it.
+			log.Warn("agent reports its owned table gone from the kernel: nothing on this host is enforced or observed")
 		}
 		return nil
 	case *innerwallv1.SyncRequest_Hello:

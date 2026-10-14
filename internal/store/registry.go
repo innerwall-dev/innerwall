@@ -78,6 +78,9 @@ func workloadFromRow(row *db.Workload, labels []registry.Label, addrs []netip.Ad
 		LastSnapshotSentAt:     row.LastSnapshotSentAt,
 		LastAckedAt:            row.LastAckedAt,
 		LastApplyFailedAt:      row.LastApplyFailedAt,
+		OwnedTable:             innerwallv1.OwnedTableState(row.OwnedTableState),
+		OwnedTableAbsentSince:  row.OwnedTableAbsentSince,
+		LastFlowReportAt:       row.LastFlowReportAt,
 	}
 	if labels == nil {
 		w.Labels = []registry.Label{}
@@ -303,9 +306,21 @@ func (s *Store) RecordClockReading(ctx context.Context, id identity.WorkloadID, 
 	return nil
 }
 
+// RecordFlowReport implements ingest.ReportRecorder: the receipt of one
+// flow report, never moved backwards.
+func (s *Store) RecordFlowReport(ctx context.Context, id identity.WorkloadID, receivedAt time.Time) error {
+	if err := s.q.RecordWorkloadFlowReport(ctx, db.RecordWorkloadFlowReportParams{ID: id.UUID(), ReceivedAt: &receivedAt}); err != nil {
+		return fmt.Errorf("store: recording flow report: %w", err)
+	}
+	return nil
+}
+
 // RecordHeartbeat implements registry.Store.
-func (s *Store) RecordHeartbeat(ctx context.Context, id identity.WorkloadID, dropped, overruns uint64, renewalError string, now time.Time) error {
-	n, err := s.q.RecordWorkloadHeartbeat(ctx, db.RecordWorkloadHeartbeatParams{ID: id.UUID(), LastSeenAt: &now, DroppedFlowRecords: int64(dropped), CredentialRenewalError: renewalError, SourceOverruns: int64(overruns)}) //nolint:gosec // counters
+func (s *Store) RecordHeartbeat(ctx context.Context, id identity.WorkloadID, hb registry.Heartbeat, now time.Time) error {
+	n, err := s.q.RecordWorkloadHeartbeat(ctx, db.RecordWorkloadHeartbeatParams{
+		ID: id.UUID(), LastSeenAt: &now, DroppedFlowRecords: int64(hb.DroppedFlowRecords), CredentialRenewalError: hb.RenewalError, //nolint:gosec // counters
+		SourceOverruns: int64(hb.SourceOverruns), OwnedTableState: ownedTableState(hb.OwnedTable), //nolint:gosec // counters
+	})
 	if err != nil {
 		return fmt.Errorf("store: recording heartbeat: %w", err)
 	}
@@ -313,6 +328,22 @@ func (s *Store) RecordHeartbeat(ctx context.Context, id identity.WorkloadID, dro
 		return registry.ErrWorkloadUnknown
 	}
 	return nil
+}
+
+// ownedTableState is the stored number of a reported state; a value the
+// schema does not know is stored as unknown, which leaves the recorded
+// state as it was.
+func ownedTableState(st innerwallv1.OwnedTableState) int16 {
+	switch st {
+	case innerwallv1.OwnedTableState_OWNED_TABLE_STATE_PRESENT:
+		return 1
+	case innerwallv1.OwnedTableState_OWNED_TABLE_STATE_ABSENT:
+		return 2
+	case innerwallv1.OwnedTableState_OWNED_TABLE_STATE_UNSPECIFIED:
+		return 0
+	default:
+		return 0
+	}
 }
 
 // SetSyncState implements registry.Store.

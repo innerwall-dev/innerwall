@@ -76,6 +76,27 @@ type Workload struct {
 	// the tolerance; nil when none has been received. Written by flow
 	// ingest alone.
 	ClockSkew *ClockSkew
+	// OwnedTable is whether the agent's owned firewall table is in the
+	// kernel, as its heartbeats last said: unspecified until a heartbeat
+	// that knows has arrived. OwnedTableAbsentSince is when the control
+	// plane first heard it was absent, nil unless it is.
+	OwnedTable            innerwallv1.OwnedTableState
+	OwnedTableAbsentSince *time.Time
+	// LastFlowReportAt is when the control plane last received a flow
+	// report from the agent; nil when none has been. Flow reports travel
+	// on a connection of their own (ADR-0015), so this can move while the
+	// sync stream is down. Written by flow ingest alone.
+	LastFlowReportAt *time.Time
+}
+
+// Heartbeat is what one heartbeat reports.
+type Heartbeat struct {
+	DroppedFlowRecords uint64
+	SourceOverruns     uint64
+	RenewalError       string
+	// OwnedTable is the owned table's state as the agent read it; an
+	// unspecified state leaves the recorded one as it was.
+	OwnedTable innerwallv1.OwnedTableState
 }
 
 // ClockSkew is a skewed reading of an agent's clock from its flow
@@ -158,9 +179,9 @@ type Store interface {
 	// RecordAgent stores what a Hello said: agent info and the version the
 	// agent claims to have applied.
 	RecordAgent(ctx context.Context, id identity.WorkloadID, agent AgentInfo, appliedVersion uint64, now time.Time) error
-	// RecordHeartbeat refreshes last-seen, the dropped-flow counter, and
-	// the renewal status the heartbeat carries.
-	RecordHeartbeat(ctx context.Context, id identity.WorkloadID, droppedFlowRecords, sourceOverruns uint64, renewalError string, now time.Time) error
+	// RecordHeartbeat refreshes last-seen and what the heartbeat carries:
+	// the loss counters, the renewal status, and the owned table's state.
+	RecordHeartbeat(ctx context.Context, id identity.WorkloadID, hb Heartbeat, now time.Time) error
 	// SetSyncState records the convergence state with an optional detail.
 	SetSyncState(ctx context.Context, id identity.WorkloadID, state innerwallv1.SyncState, detail string, now time.Time) error
 	// RecordApplied stores an acknowledged version and the resulting

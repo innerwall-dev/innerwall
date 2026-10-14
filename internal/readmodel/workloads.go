@@ -117,6 +117,32 @@ type Health struct {
 	// the tolerance, and whether it is still the latest reading; nil when
 	// none has been received.
 	ClockSkew *registry.ClockSkew
+	// OwnedTable is whether the agent's owned firewall table is in the
+	// kernel, as its heartbeats last said; unspecified until one that
+	// knows has arrived. OwnedTableAbsentSince is when the control plane
+	// first heard it was absent, nil unless it is. An absent table means
+	// the host enforces and observes nothing, whatever the sync state
+	// says of the version the agent acknowledged (issue #64).
+	OwnedTable            innerwallv1.OwnedTableState
+	OwnedTableAbsentSince *time.Time
+	// LastFlowReportAt is when the control plane last received a flow
+	// report from the agent; nil when none has been. TelemetryLive says
+	// one arrived within TelemetryLiveWindows flow windows of the read: the
+	// agent is running and reaching the control plane, whatever its sync
+	// stream's state, which travels on another connection (issue #61).
+	LastFlowReportAt *time.Time
+	TelemetryLive    bool
+}
+
+// TelemetryLiveWindows is how many flow windows may pass since the last
+// report while a workload's telemetry is still live. The reporter ships
+// one window per window length; two allow one late report.
+const TelemetryLiveWindows = 2
+
+// telemetryLive says a report arrived within TelemetryLiveWindows flow
+// windows of now; never with no window to judge by.
+func telemetryLive(last *time.Time, window time.Duration, now time.Time) bool {
+	return window > 0 && last != nil && now.Sub(*last) <= TelemetryLiveWindows*window
 }
 
 // Workload is the one object shape the fleet list and the workload detail
@@ -277,11 +303,15 @@ func (s *Reader) workload(rec *WorkloadRecord, now time.Time) Workload {
 		Sync: SyncStatus{State: rec.SyncState, AppliedVersion: rec.AppliedVersion, LatestVersion: rec.LatestVersion, LatestRenderedAt: rec.LatestRenderedAt, Error: rec.SyncError, LastSnapshotSentAt: rec.LastSnapshotSentAt,
 			LastAckedAt: rec.LastAckedAt, LastApplyFailedAt: rec.LastApplyFailedAt},
 		Health: Health{
-			LastSeenAt:         rec.LastSeenAt,
-			Credential:         credentialStatus(rec, now),
-			DroppedFlowRecords: rec.DroppedFlowRecords,
-			SourceOverruns:     rec.SourceOverruns,
-			ClockSkew:          rec.ClockSkew,
+			LastSeenAt:            rec.LastSeenAt,
+			Credential:            credentialStatus(rec, now),
+			DroppedFlowRecords:    rec.DroppedFlowRecords,
+			SourceOverruns:        rec.SourceOverruns,
+			ClockSkew:             rec.ClockSkew,
+			OwnedTable:            rec.OwnedTable,
+			OwnedTableAbsentSince: rec.OwnedTableAbsentSince,
+			LastFlowReportAt:      rec.LastFlowReportAt,
+			TelemetryLive:         telemetryLive(rec.LastFlowReportAt, s.FlowWindow, now),
 		},
 	}
 	if w.Labels == nil {

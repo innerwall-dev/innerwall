@@ -50,9 +50,12 @@ export function workload(
 		},
 		health: {
 			last_seen_at: minutesAgo(1),
+			last_flow_report_at: minutesAgo(1),
+			telemetry_live: true,
 			dropped_flow_records: 0,
 			source_overruns: 0,
 			clock_skew: null,
+			owned_table: { state: "present", absent_since: null },
 			...health,
 			credential: {
 				state: "renews",

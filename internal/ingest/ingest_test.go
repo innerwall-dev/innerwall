@@ -2,6 +2,7 @@ package ingest
 
 import (
 	"context"
+	"errors"
 	"net/netip"
 	"testing"
 	"time"
@@ -155,6 +156,7 @@ func TestIngestGaps(t *testing.T) {
 	req := &innerwallv1.ReportFlowsRequest{WindowStart: timestamppb.New(start), WindowEnd: timestamppb.New(end), Gaps: []*innerwallv1.EvidenceGap{
 		{Kind: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_OVERRUN, Source: innerwallv1.EvidenceSource_EVIDENCE_SOURCE_NFLOG, From: ts(-time.Hour), To: ts(-59 * time.Minute)},
 		{Kind: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_BUFFER_OVERFLOW, From: ts(-2 * time.Hour), To: ts(-time.Hour), Count: &five},
+		{Kind: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_TABLE_REMOVED, From: ts(-3 * time.Minute), To: ts(time.Minute)},
 		{Source: innerwallv1.EvidenceSource_EVIDENCE_SOURCE_NFLOG, From: ts(0), To: ts(time.Second)}, // no kind
 		{Kind: 9, From: ts(0), To: ts(time.Second)}, // unknown kind
 		{Kind: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_RESTART, Source: 7, From: ts(0), To: ts(time.Second)},                                                    // unknown source
@@ -165,18 +167,58 @@ func TestIngestGaps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Accepted != 0 || res.Gaps != 2 || res.GapsRejected != 5 {
-		t.Fatalf("result = %+v, want 2 gaps accepted and 5 rejected", res)
+	if res.Accepted != 0 || res.Gaps != 3 || res.GapsRejected != 5 {
+		t.Fatalf("result = %+v, want 3 gaps accepted and 5 rejected", res)
 	}
 	w := flows.windows[0]
-	if w.WorkloadID != db.ID || len(w.Records) != 0 || len(w.Gaps) != 2 {
+	if w.WorkloadID != db.ID || len(w.Records) != 0 || len(w.Gaps) != 3 {
 		t.Fatalf("window = %+v", w)
 	}
-	overrun, overflow := w.Gaps[0], w.Gaps[1]
+	overrun, overflow, removed := w.Gaps[0], w.Gaps[1], w.Gaps[2]
+	if removed.Kind != innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_TABLE_REMOVED || removed.Count != nil || !removed.To.Equal(end) {
+		t.Fatalf("table removed = %+v", removed)
+	}
 	if overrun.Kind != innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_SOURCE_OVERRUN || overrun.Source != innerwallv1.EvidenceSource_EVIDENCE_SOURCE_NFLOG || overrun.Count != nil || !overrun.From.Equal(start.Add(-time.Hour)) {
 		t.Fatalf("overrun = %+v", overrun)
 	}
 	if overflow.Count == nil || *overflow.Count != 5 || overflow.Source != innerwallv1.EvidenceSource_EVIDENCE_SOURCE_UNSPECIFIED {
 		t.Fatalf("overflow = %+v", overflow)
+	}
+}
+
+type reportCall struct {
+	id identity.WorkloadID
+	at time.Time
+}
+
+type fakeReports struct{ calls []reportCall }
+
+func (f *fakeReports) RecordFlowReport(_ context.Context, id identity.WorkloadID, at time.Time) error {
+	f.calls = append(f.calls, reportCall{id, at})
+	return nil
+}
+
+// TestIngestRecordsEveryReportReceipt checks that every report from a
+// registered workload stamps its receipt on the workload, a quiet window
+// and one refused for its bounds alike, since each proves the agent is
+// running whatever its sync stream is doing (issue #61); a report from an
+// unregistered workload stamps nothing.
+func TestIngestRecordsEveryReportReceipt(t *testing.T) {
+	db := registry.Workload{ID: mustID(t)}
+	now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
+	reports := &fakeReports{}
+	svc := &Service{Directory: &fakeDirectory{workloads: []registry.Workload{db}}, Flows: &fakeFlows{}, Reports: reports, Now: func() time.Time { return now }}
+	quiet := &innerwallv1.ReportFlowsRequest{WindowStart: timestamppb.New(now.Add(-time.Minute)), WindowEnd: timestamppb.New(now)}
+	if _, err := svc.Ingest(context.Background(), db.ID, quiet); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Ingest(context.Background(), db.ID, &innerwallv1.ReportFlowsRequest{}); !errors.Is(err, ErrInvalidWindow) {
+		t.Fatalf("bare report: err = %v", err)
+	}
+	if _, err := svc.Ingest(context.Background(), mustID(t), quiet); !errors.Is(err, registry.ErrWorkloadUnknown) {
+		t.Fatalf("unknown reporter: err = %v", err)
+	}
+	if len(reports.calls) != 2 || reports.calls[0] != (reportCall{db.ID, now}) || reports.calls[1] != (reportCall{db.ID, now}) {
+		t.Fatalf("receipts = %+v, want two for %s at %v", reports.calls, db.ID, now)
 	}
 }

@@ -1,11 +1,14 @@
 package nft
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -16,8 +19,10 @@ import (
 
 // fakeRunner records scripts and can refuse them.
 type fakeRunner struct {
-	scripts []string
-	refuse  func(script string) error
+	scripts   []string
+	refuse    func(script string) error
+	tables    []string
+	tablesErr error
 }
 
 func (f *fakeRunner) Apply(_ context.Context, script string) error {
@@ -31,6 +36,8 @@ func (f *fakeRunner) Apply(_ context.Context, script string) error {
 }
 
 func (f *fakeRunner) List(context.Context, string) (string, error) { return "", nil }
+
+func (f *fakeRunner) Tables(context.Context) ([]string, error) { return f.tables, f.tablesErr }
 
 func isDelta(script string) bool {
 	return strings.HasPrefix(script, "add element") || strings.HasPrefix(script, "delete element")
@@ -216,6 +223,62 @@ func TestStoreAppliesPersistsAndRestores(t *testing.T) {
 // TestStoreRefusesCorruptPolicyFile checks that a corrupt persisted
 // policy loads nothing and applies nothing: the store stays empty and
 // Restore is a no-op, so the kernel keeps whatever it holds.
+// TestVisibilityPeerChangeIsOneFullApply pins issue #45: a visibility
+// table carries no sets, so a change that is peer membership only goes
+// straight to one full rendering. Before the fix the store first tried a
+// set update against sets that do not exist, logged a WARN blaming the
+// kernel, and fell back.
+func TestVisibilityPeerChangeIsOneFullApply(t *testing.T) {
+	ctx := context.Background()
+	runner := &fakeRunner{refuse: func(script string) error {
+		if isDelta(script) {
+			return errors.New("Error: No such file or directory; did you mean set ...")
+		}
+		return nil
+	}}
+	var logs bytes.Buffer
+	s := New(Config{Runner: runner, StateDir: t.TempDir(), Log: slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))})
+
+	v7 := multiRule(innerwallv1.EnforcementMode_ENFORCEMENT_MODE_VISIBILITY)
+	if err := s.Apply(ctx, v7); err != nil {
+		t.Fatal(err)
+	}
+	v8 := multiRule(innerwallv1.EnforcementMode_ENFORCEMENT_MODE_VISIBILITY)
+	v8.Version = 8
+	v8.InboundRules[1].PeerCidrs = append(v8.InboundRules[1].PeerCidrs, "10.0.0.21/32")
+	if err := s.Apply(ctx, v8); err != nil {
+		t.Fatal(err)
+	}
+	if len(runner.scripts) != 2 || isDelta(runner.scripts[1]) || s.LastApply() != ApplyFull || s.Current().GetVersion() != 8 {
+		t.Fatalf("peer-only visibility change: kind=%s scripts=%q", s.LastApply(), runner.scripts)
+	}
+	if strings.Contains(logs.String(), "level=WARN") {
+		t.Fatalf("peer-only visibility change logged a warning:\n%s", logs.String())
+	}
+}
+
+// TestTablePresent reads the owned table's presence from the kernel's
+// table list, by name, among tables the agent does not own.
+func TestTablePresent(t *testing.T) {
+	ctx := context.Background()
+	runner := &fakeRunner{tables: []string{"filter", "innerwall"}}
+	s := New(Config{Runner: runner, StateDir: t.TempDir()})
+	if present, err := s.TablePresent(ctx); err != nil || !present {
+		t.Fatalf("present = %v, %v", present, err)
+	}
+	runner.tables = []string{"filter", "innerwall2"}
+	if present, err := s.TablePresent(ctx); err != nil || present {
+		t.Fatalf("after removal: present = %v, %v", present, err)
+	}
+	runner.tablesErr = errors.New("nft: not found")
+	if _, err := s.TablePresent(ctx); err == nil {
+		t.Fatal("a failed read reported an answer")
+	}
+	if got := parseTables("table inet filter\ntable inet innerwall\n\n"); !slices.Equal(got, []string{"filter", "innerwall"}) {
+		t.Fatalf("parseTables = %q", got)
+	}
+}
+
 func TestStoreRefusesCorruptPolicyFile(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, enforce.PolicyFileName), []byte("innerwall-policy-v1\ngarbage that is long enough to carry a checksum trailer........"), 0o600); err != nil {

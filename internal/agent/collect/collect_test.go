@@ -285,6 +285,36 @@ func TestCollectorRotatesWindows(t *testing.T) {
 	<-done
 }
 
+// TestCollectorCarriesAnOngoingRemoval checks that a window closing while
+// the owned table is gone carries the loss up to its end, even with no
+// records in it, so a host whose observation died with its table is never
+// read as a quiet one (issue #64).
+func TestCollectorCarriesAnOngoingRemoval(t *testing.T) {
+	buf := NewBuffer(0)
+	gaps := &Gaps{}
+	removedAt := time.Now().Add(-time.Minute)
+	gaps.Open(GapNoSource, GapTableRemoved, removedAt)
+	c := &Collector{Source: &fakeSource{}, Buffer: buf, Gaps: gaps}
+	c.window.Store(int64(30 * time.Millisecond))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { _ = c.Run(ctx); close(done) }()
+	defer func() { cancel(); <-done }()
+	w, ok := buf.Pop(ctx)
+	if !ok {
+		t.Fatal("no window")
+	}
+	if w.Len() != 0 {
+		t.Fatalf("records = %v", w.Records)
+	}
+	// A later window may have closed by now; its piece touches this one's
+	// and merges, so the held gap reaches at least this window's end.
+	got := gaps.Take()
+	if len(got) != 1 || got[0].Kind != GapTableRemoved || !got[0].From.Equal(removedAt) || got[0].To.Before(w.End) {
+		t.Fatalf("gaps = %+v, want one table_removed gap from %v to at least the window's end %v", got, removedAt, w.End)
+	}
+}
+
 // TestCloseBounds checks where a closing window ends and the next starts.
 // In step, both are now. A wall clock stepped back while the window was
 // open cuts the window at its own clock, start plus its monotonic length,

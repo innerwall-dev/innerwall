@@ -156,13 +156,15 @@ export function Sidebar({
 									<SidebarMenuButton
 										asChild
 										isActive={onDetail && detail?.params.id === open.id}
-										tooltip={`${open.hostname} · ${syncStates[open.state].label}`}
+										tooltip={`${open.hostname} · ${openLabel(open)}`}
 									>
 										<NavLink to={`/workloads/${open.id}`}>
 											<StatusGlyph
-												status={syncStates[open.state].status}
+												status={
+													open.removed ? "error" : syncStates[open.state].status
+												}
 												size="lg"
-												label={syncStates[open.state].label}
+												label={openLabel(open)}
 											/>
 											<span>{open.hostname}</span>
 										</NavLink>
@@ -206,4 +208,12 @@ function FleetSync() {
 			</div>
 		</div>
 	);
+}
+
+// openLabel names the open workload's state beside its glyph: a removed
+// table outranks the sync state it still holds (issue #64).
+function openLabel(open: OpenWorkload): string {
+	if (open.removed) return "Enforcement removed on host";
+	if (open.reconnecting) return "Reconnecting";
+	return syncStates[open.state].label;
 }

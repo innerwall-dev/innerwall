@@ -3,12 +3,17 @@ import type { ProblemError } from "@/api/client";
 import { resendSnapshot } from "@/api/fleet";
 import { ProblemType, type Workload } from "@/api/schema";
 import { syncStates } from "@/components/fleet/status";
-import { SeverityNote, StatusGlyph } from "@/components/StatusGlyph";
+import { SeverityNote, StatusGlyph, tone } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
 import { ago, since } from "@/lib/format";
 import { useWrite } from "@/lib/resource";
 import { cn } from "@/lib/utils";
-import { version } from "../fleet/describe";
+import {
+	enforcementRemoved,
+	lastContact,
+	reconnecting,
+	version,
+} from "../fleet/describe";
 
 type Outcome =
 	| { kind: "idle" }
@@ -29,25 +34,33 @@ export function StatusCard({
 }) {
 	const s = w.sync;
 	const lag = s.latest_version > s.applied_version;
-	const tone = {
-		degraded: "border-status-warn-border bg-status-warn-bg",
-		pending: "border-strong bg-app",
-		synced: "border-default bg-app",
-		offline: "border-default bg-app",
-	}[s.state];
+	// A removed table outranks every sync state: whatever version the
+	// agent acknowledged, the host holds none of it (issue #64).
+	const removed = enforcementRemoved(w);
+	const frame = removed
+		? "border-status-critical-border bg-status-critical-bg"
+		: {
+				degraded: "border-status-warn-border bg-status-warn-bg",
+				pending: "border-strong bg-app",
+				synced: "border-default bg-app",
+				offline: "border-default bg-app",
+			}[s.state];
 
 	return (
 		<div
-			className={cn("flex flex-col gap-2.5 rounded-lg border px-3 py-3", tone)}
+			className={cn("flex flex-col gap-2.5 rounded-lg border px-3 py-3", frame)}
 			data-testid="status-card"
 		>
 			<div
 				className={cn(
 					"flex items-center gap-2 type-ui-strong",
-					syncStates[s.state].cls,
+					removed ? tone.error : syncStates[s.state].cls,
 				)}
 			>
-				<StatusGlyph status={syncStates[s.state].status} size="md" />
+				<StatusGlyph
+					status={removed ? "error" : syncStates[s.state].status}
+					size="md"
+				/>
 				<span>{headline(w)}</span>
 			</div>
 			<dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-4 gap-y-1">
@@ -87,6 +100,27 @@ export function StatusCard({
 				<div className="rounded-md border border-default bg-app px-2.5 py-2 type-mono-xs break-words whitespace-pre-wrap text-status-warn-fg">
 					{s.error}
 				</div>
+			) : null}
+			{removed ? (
+				<p
+					className="type-caption text-secondary"
+					data-testid="enforcement-removed"
+				>
+					The agent reports its firewall table gone from the host
+					{w.health.owned_table.absent_since ? (
+						<>
+							{" "}
+							since{" "}
+							<time dateTime={w.health.owned_table.absent_since}>
+								{ago(w.health.owned_table.absent_since)}
+							</time>
+						</>
+					) : null}
+					, so nothing here is enforced or observed, and the blind interval is
+					recorded as an evidence gap. {version(s.applied_version)} stays
+					acknowledged and on the host's disk: the agent reinstalls it on its
+					next policy update or restart, and a resent snapshot is one.
+				</p>
 			) : null}
 			{s.state === "degraded" ? (
 				<p className="type-caption text-secondary">
@@ -133,15 +167,21 @@ const value = "min-w-0 type-mono-sm text-primary";
 
 function headline(w: Workload): string {
 	const s = w.sync;
+	if (enforcementRemoved(w)) return "Enforcement removed on host";
 	switch (s.state) {
 		case "degraded":
 			return "Degraded — last apply failed";
 		case "pending":
 			return `Pending — ${version(s.latest_version)} not yet applied`;
-		case "offline":
-			return w.health.last_seen_at
-				? `Offline — no stream for ${since(w.health.last_seen_at)}`
+		case "offline": {
+			if (reconnecting(w)) {
+				return "Reconnecting — control channel down, flow reports arriving";
+			}
+			const contact = lastContact(w);
+			return contact
+				? `Offline — no contact for ${since(contact)}`
 				: "Offline — never connected";
+		}
 		default:
 			return `Synced — ${version(s.applied_version)} applied`;
 	}

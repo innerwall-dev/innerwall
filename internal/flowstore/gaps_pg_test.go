@@ -143,3 +143,24 @@ func TestWindowRejectedGapStored(t *testing.T) {
 		t.Fatalf("stored window-rejected gap = %+v", rows)
 	}
 }
+
+// TestTableRemovedGapStored checks that the table-removed kind the agent
+// reports while its owned table is gone from the kernel is admitted, with
+// no source and no count, and read back (migration 00012, issue #64).
+func TestTableRemovedGapStored(t *testing.T) {
+	ctx := context.Background()
+	s := storetest.Open(t)
+	f := storetest.SeedFleet(t, s)
+	flows := s.Flows()
+	gap := flowstore.Gap{Kind: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_TABLE_REMOVED, From: f.Now.Add(-3 * time.Minute), To: f.Now}
+	if _, err := flows.WriteWindow(ctx, flowstore.Window{WorkloadID: f.DB, Start: f.Now.Add(-time.Minute), End: f.Now, Gaps: []flowstore.Gap{gap}}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := flows.ListGaps(ctx, flowstore.GapQuery{WorkloadIDs: []identity.WorkloadID{f.DB}, Since: f.Now.Add(-time.Hour), Until: f.Now.Add(time.Second)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Kind != gap.Kind || rows[0].Source != innerwallv1.EvidenceSource_EVIDENCE_SOURCE_UNSPECIFIED || rows[0].Count != nil {
+		t.Fatalf("stored table-removed gap = %+v", rows)
+	}
+}

@@ -166,7 +166,7 @@ func Render(policy *innerwallv1.WorkloadPolicy, marks map[string]uint32, opts Op
 	fmt.Fprintf(&b, "table inet %s {}\n", table)
 	fmt.Fprintf(&b, "delete table inet %s\n", table)
 	fmt.Fprintf(&b, "table inet %s {\n", table)
-	if policy.GetMode() == innerwallv1.EnforcementMode_ENFORCEMENT_MODE_VISIBILITY || policy.GetMode() == innerwallv1.EnforcementMode_ENFORCEMENT_MODE_UNSPECIFIED {
+	if !carriesSets(policy.GetMode()) {
 		// Visibility decides nothing. The one rule exists to reference
 		// connection tracking, which is what makes the kernel track
 		// connections in this namespace at all; it accepts, and the chain's
@@ -215,6 +215,22 @@ func Render(policy *innerwallv1.WorkloadPolicy, marks map[string]uint32, opts Op
 	}
 	b.WriteString("\t}\n}\n")
 	return b.String(), nil
+}
+
+// carriesSets reports whether the table Render installs for mode holds
+// the rules' peer sets. Enforced and simulated tables do; a visibility
+// table, which is also what an unspecified mode renders, holds only the
+// observation chain. It is the one place that says so, for Render and
+// for RenderDelta, which can update only sets that exist.
+func carriesSets(mode innerwallv1.EnforcementMode) bool {
+	switch mode {
+	case innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED, innerwallv1.EnforcementMode_ENFORCEMENT_MODE_SIMULATION:
+		return true
+	case innerwallv1.EnforcementMode_ENFORCEMENT_MODE_VISIBILITY, innerwallv1.EnforcementMode_ENFORCEMENT_MODE_UNSPECIFIED:
+		return false
+	default:
+		return false
+	}
 }
 
 // RenderTeardown returns the script that deletes the owned table and

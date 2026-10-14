@@ -191,6 +191,27 @@ message Heartbeat {
   // fell behind. Each is also reported as an EvidenceGap with its interval;
   // this is the live counter beside dropped_flow_records.
   uint64 source_overruns = 4;
+  // Whether the Innerwall-owned firewall table is in the kernel, read when
+  // this heartbeat is composed. Everything the agent enforces and observes
+  // lives in that table, and the local kill switch removes it without the
+  // control plane (ADR-0011), so the version the agent last acknowledged
+  // says nothing about whether it is still installed; this does.
+  // UNSPECIFIED from an agent that predates the field, from one that has
+  // installed nothing yet, or when the read failed.
+  OwnedTableState owned_table = 5;
+}
+
+// The owned table as a heartbeat found it in the kernel.
+enum OwnedTableState {
+  OWNED_TABLE_STATE_UNSPECIFIED = 0;
+  // The owned table is in the kernel.
+  OWNED_TABLE_STATE_PRESENT = 1;
+  // The agent installed a policy and the owned table is gone from the
+  // kernel: nothing on the host is enforced or observed by Innerwall. The
+  // installed policy stays on disk, and the agent's next apply or restart
+  // reinstalls it; the agent never reinstalls on its own, because removing
+  // the table is the kill switch.
+  OWNED_TABLE_STATE_ABSENT = 2;
 }
 
 // Server-initiated commands. Modeled as a oneof of messages rather than an
@@ -276,6 +297,13 @@ enum EvidenceGapKind {
   // dropped it rather than retry a report that can never be accepted; the
   // interval is the window's bounds and the count is its records.
   EVIDENCE_GAP_KIND_WINDOW_REJECTED = 6;
+  // The owned table was gone from the kernel, so neither the observation
+  // that depends on it nor the classification its marks carry could be
+  // trusted: the interval runs from the last instant the agent knew the
+  // table present to the instant it was installed again, and is shipped in
+  // pieces, one with each window, while the table stays gone. Not one
+  // source's loss; no count.
+  EVIDENCE_GAP_KIND_TABLE_REMOVED = 7;
 }
 
 // The agent's flow sources.

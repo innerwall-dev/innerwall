@@ -408,6 +408,84 @@ describe("workload detail", () => {
 		).toHaveAttribute("data-status", "degraded");
 	});
 
+	it("leads with enforcement removed when the agent reports its table gone", async () => {
+		// Issue #64: synced on v41 and kill-switched; the header says the
+		// host holds none of it, and the sidebar's glyph agrees.
+		surface({
+			workload: () => ({
+				...db,
+				sync: {
+					...db.sync,
+					state: "synced",
+					applied_version: 41,
+					latest_version: 41,
+					error: "",
+				},
+				health: {
+					...db.health,
+					owned_table: { state: "absent", absent_since: minutesAgo(6) },
+				},
+			}),
+			gaps: [gap(db, 6, 0, { kind: "table_removed", source: null })],
+		});
+		renderApp(`/workloads/${db.id}`);
+		const card = await screen.findByTestId("status-card");
+		expect(card).toHaveTextContent(/^Enforcement removed on host/);
+		expect(card).not.toHaveTextContent("Synced");
+		expect(within(card).getByTestId("enforcement-removed")).toHaveTextContent(
+			"The agent reports its firewall table gone from the host since 6m ago, so nothing here is enforced or observed, and the blind interval is recorded as an evidence gap. v41 stays acknowledged",
+		);
+		const cell = await screen.findByTestId("evidence-gaps");
+		expect(cell).toHaveTextContent(
+			/enforcement was removed on the host, so nothing was observed between/,
+		);
+		const nav = screen.getByRole("navigation", { name: "Sections" });
+		expect(
+			within(within(nav).getByRole("link", { name: /db-1/ })).getByRole("img", {
+				name: "Enforcement removed on host",
+			}),
+		).toHaveAttribute("data-status", "error");
+	});
+
+	it("heads an offline stream with live flow reports as reconnecting", async () => {
+		surface({
+			workload: () => ({
+				...db,
+				sync: { ...db.sync, state: "offline", error: "" },
+				health: {
+					...db.health,
+					last_seen_at: minutesAgo(3.5),
+					last_flow_report_at: minutesAgo(0.5),
+					telemetry_live: true,
+				},
+			}),
+		});
+		renderApp(`/workloads/${db.id}`);
+		const card = await screen.findByTestId("status-card");
+		expect(card).toHaveTextContent(
+			/^Reconnecting — control channel down, flow reports arriving/,
+		);
+		expect(screen.getByTestId("last-flow-report")).toHaveTextContent("30s ago");
+	});
+
+	it("heads an offline workload with no contact by its latest contact on either channel", async () => {
+		surface({
+			workload: () => ({
+				...db,
+				sync: { ...db.sync, state: "offline", error: "" },
+				health: {
+					...db.health,
+					last_seen_at: minutesAgo(30),
+					last_flow_report_at: minutesAgo(12),
+					telemetry_live: false,
+				},
+			}),
+		});
+		renderApp(`/workloads/${db.id}`);
+		const card = await screen.findByTestId("status-card");
+		expect(card).toHaveTextContent(/^Offline — no contact for 12m/);
+	});
+
 	it("lists flow windows by the required workload filter, with counts per decision", async () => {
 		const { calls } = surface();
 		const user = userEvent.setup();

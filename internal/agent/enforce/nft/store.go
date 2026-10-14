@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sync"
 
 	"github.com/innerwall-dev/innerwall/internal/agent/enforce"
@@ -288,6 +289,17 @@ func (s *Store) TerminalDecision() innerwallv1.PolicyDecision {
 	default:
 		return innerwallv1.PolicyDecision_POLICY_DECISION_OBSERVED
 	}
+}
+
+// TablePresent reports whether the owned table is in the kernel. The
+// local kill switch deletes it without the daemon (ADR-0011), so what the
+// store last applied is not evidence that it is still installed.
+func (s *Store) TablePresent(ctx context.Context) (bool, error) {
+	names, err := s.runner.Tables(ctx)
+	if err != nil {
+		return false, err
+	}
+	return slices.Contains(names, s.opts.table()), nil
 }
 
 // List returns the owned table as the kernel holds it.

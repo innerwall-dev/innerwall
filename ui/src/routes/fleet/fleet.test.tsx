@@ -86,6 +86,8 @@ const legacy = workload({
 	sync: { state: "offline", applied_version: 1, latest_version: 1 },
 	health: {
 		last_seen_at: minutesAgo(3 * 24 * 60),
+		last_flow_report_at: null,
+		telemetry_live: false,
 		credential: { state: "expired", expires_at: minutesAgo(2 * 24 * 60) },
 	},
 });
@@ -135,7 +137,7 @@ describe("fleet workloads", () => {
 
 		const l = within(rowOf("legacy-vm-0117"));
 		expect(l.getByText("no labels — matches no scope")).toBeInTheDocument();
-		expect(l.getByText("no stream for 3d")).toBeInTheDocument();
+		expect(l.getByText("no contact for 3d")).toBeInTheDocument();
 		expect(l.getByText("expired 2d ago")).toBeInTheDocument();
 
 		expect(
@@ -149,6 +151,65 @@ describe("fleet workloads", () => {
 		expect(screen.getByRole("tab", { name: "Workloads" })).toHaveTextContent(
 			/^Workloads$/,
 		);
+	});
+
+	it("says enforcement was removed instead of the sync state it still holds", async () => {
+		// Issue #64: the kill switch on an enforced host left the row saying
+		// Synced on its version. The agent now reports the table gone.
+		const killed = workload({
+			hostname: "pay-prod-02",
+			mode: "enforced",
+			sync: { state: "synced", applied_version: 12, latest_version: 12 },
+			health: {
+				owned_table: { state: "absent", absent_since: minutesAgo(4) },
+			},
+		});
+		mockSurface([
+			...frame,
+			fleet(() => ({ workloads: [killed, bastion], next_cursor: null })),
+		]);
+		renderApp("/workloads");
+		await screen.findByRole("link", { name: "pay-prod-02" });
+		const k = within(rowOf("pay-prod-02"));
+		expect(k.getByTestId("enforcement-removed")).toHaveTextContent(
+			"Enforcement removed on host",
+		);
+		expect(k.queryByText("Synced")).not.toBeInTheDocument();
+		expect(k.getByText("v12 not installed · 4m ago")).toBeInTheDocument();
+		// A healthy row is untouched.
+		const b = within(rowOf("bastion-01"));
+		expect(b.getByText("Synced")).toBeInTheDocument();
+		expect(b.queryByTestId("enforcement-removed")).not.toBeInTheDocument();
+	});
+
+	it("names an offline stream whose flow reports still land as reconnecting", async () => {
+		// Issue #61: during a control-plane restart the sync stream waits out
+		// its backoff while the flow reports keep landing.
+		const restarting = workload({
+			hostname: "api-prod-03",
+			sync: { state: "offline", applied_version: 9, latest_version: 9 },
+			health: {
+				last_seen_at: minutesAgo(3.5),
+				last_flow_report_at: minutesAgo(0.5),
+				telemetry_live: true,
+			},
+		});
+		mockSurface([
+			...frame,
+			fleet(() => ({ workloads: [restarting, legacy], next_cursor: null })),
+		]);
+		renderApp("/workloads");
+		await screen.findByRole("link", { name: "api-prod-03" });
+		const r = within(rowOf("api-prod-03"));
+		expect(r.getByText("Reconnecting")).toBeInTheDocument();
+		expect(r.queryByText("Offline")).not.toBeInTheDocument();
+		expect(
+			r.getByText("control channel down · flow reports arriving"),
+		).toBeInTheDocument();
+		// No contact on either channel stays Offline.
+		expect(
+			within(rowOf("legacy-vm-0117")).getByText("Offline"),
+		).toBeInTheDocument();
 	});
 
 	it("filters by sync state and label requirements through the query", async () => {

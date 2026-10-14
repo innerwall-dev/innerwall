@@ -75,6 +75,62 @@ func (AckStatus) EnumDescriptor() ([]byte, []int) {
 	return file_innerwall_v1_agent_proto_rawDescGZIP(), []int{0}
 }
 
+// The owned table as a heartbeat found it in the kernel.
+type OwnedTableState int32
+
+const (
+	OwnedTableState_OWNED_TABLE_STATE_UNSPECIFIED OwnedTableState = 0
+	// The owned table is in the kernel.
+	OwnedTableState_OWNED_TABLE_STATE_PRESENT OwnedTableState = 1
+	// The agent installed a policy and the owned table is gone from the
+	// kernel: nothing on the host is enforced or observed by Innerwall. The
+	// installed policy stays on disk, and the agent's next apply or restart
+	// reinstalls it; the agent never reinstalls on its own, because removing
+	// the table is the kill switch.
+	OwnedTableState_OWNED_TABLE_STATE_ABSENT OwnedTableState = 2
+)
+
+// Enum value maps for OwnedTableState.
+var (
+	OwnedTableState_name = map[int32]string{
+		0: "OWNED_TABLE_STATE_UNSPECIFIED",
+		1: "OWNED_TABLE_STATE_PRESENT",
+		2: "OWNED_TABLE_STATE_ABSENT",
+	}
+	OwnedTableState_value = map[string]int32{
+		"OWNED_TABLE_STATE_UNSPECIFIED": 0,
+		"OWNED_TABLE_STATE_PRESENT":     1,
+		"OWNED_TABLE_STATE_ABSENT":      2,
+	}
+)
+
+func (x OwnedTableState) Enum() *OwnedTableState {
+	p := new(OwnedTableState)
+	*p = x
+	return p
+}
+
+func (x OwnedTableState) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (OwnedTableState) Descriptor() protoreflect.EnumDescriptor {
+	return file_innerwall_v1_agent_proto_enumTypes[1].Descriptor()
+}
+
+func (OwnedTableState) Type() protoreflect.EnumType {
+	return &file_innerwall_v1_agent_proto_enumTypes[1]
+}
+
+func (x OwnedTableState) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use OwnedTableState.Descriptor instead.
+func (OwnedTableState) EnumDescriptor() ([]byte, []int) {
+	return file_innerwall_v1_agent_proto_rawDescGZIP(), []int{1}
+}
+
 type EvidenceGapKind int32
 
 const (
@@ -99,6 +155,13 @@ const (
 	// dropped it rather than retry a report that can never be accepted; the
 	// interval is the window's bounds and the count is its records.
 	EvidenceGapKind_EVIDENCE_GAP_KIND_WINDOW_REJECTED EvidenceGapKind = 6
+	// The owned table was gone from the kernel, so neither the observation
+	// that depends on it nor the classification its marks carry could be
+	// trusted: the interval runs from the last instant the agent knew the
+	// table present to the instant it was installed again, and is shipped in
+	// pieces, one with each window, while the table stays gone. Not one
+	// source's loss; no count.
+	EvidenceGapKind_EVIDENCE_GAP_KIND_TABLE_REMOVED EvidenceGapKind = 7
 )
 
 // Enum value maps for EvidenceGapKind.
@@ -111,6 +174,7 @@ var (
 		4: "EVIDENCE_GAP_KIND_DUMP_TRUNCATED",
 		5: "EVIDENCE_GAP_KIND_WINDOW_OVERFLOW",
 		6: "EVIDENCE_GAP_KIND_WINDOW_REJECTED",
+		7: "EVIDENCE_GAP_KIND_TABLE_REMOVED",
 	}
 	EvidenceGapKind_value = map[string]int32{
 		"EVIDENCE_GAP_KIND_UNSPECIFIED":     0,
@@ -120,6 +184,7 @@ var (
 		"EVIDENCE_GAP_KIND_DUMP_TRUNCATED":  4,
 		"EVIDENCE_GAP_KIND_WINDOW_OVERFLOW": 5,
 		"EVIDENCE_GAP_KIND_WINDOW_REJECTED": 6,
+		"EVIDENCE_GAP_KIND_TABLE_REMOVED":   7,
 	}
 )
 
@@ -134,11 +199,11 @@ func (x EvidenceGapKind) String() string {
 }
 
 func (EvidenceGapKind) Descriptor() protoreflect.EnumDescriptor {
-	return file_innerwall_v1_agent_proto_enumTypes[1].Descriptor()
+	return file_innerwall_v1_agent_proto_enumTypes[2].Descriptor()
 }
 
 func (EvidenceGapKind) Type() protoreflect.EnumType {
-	return &file_innerwall_v1_agent_proto_enumTypes[1]
+	return &file_innerwall_v1_agent_proto_enumTypes[2]
 }
 
 func (x EvidenceGapKind) Number() protoreflect.EnumNumber {
@@ -147,7 +212,7 @@ func (x EvidenceGapKind) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EvidenceGapKind.Descriptor instead.
 func (EvidenceGapKind) EnumDescriptor() ([]byte, []int) {
-	return file_innerwall_v1_agent_proto_rawDescGZIP(), []int{1}
+	return file_innerwall_v1_agent_proto_rawDescGZIP(), []int{2}
 }
 
 // The agent's flow sources.
@@ -186,11 +251,11 @@ func (x EvidenceSource) String() string {
 }
 
 func (EvidenceSource) Descriptor() protoreflect.EnumDescriptor {
-	return file_innerwall_v1_agent_proto_enumTypes[2].Descriptor()
+	return file_innerwall_v1_agent_proto_enumTypes[3].Descriptor()
 }
 
 func (EvidenceSource) Type() protoreflect.EnumType {
-	return &file_innerwall_v1_agent_proto_enumTypes[2]
+	return &file_innerwall_v1_agent_proto_enumTypes[3]
 }
 
 func (x EvidenceSource) Number() protoreflect.EnumNumber {
@@ -199,7 +264,7 @@ func (x EvidenceSource) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EvidenceSource.Descriptor instead.
 func (EvidenceSource) EnumDescriptor() ([]byte, []int) {
-	return file_innerwall_v1_agent_proto_rawDescGZIP(), []int{2}
+	return file_innerwall_v1_agent_proto_rawDescGZIP(), []int{3}
 }
 
 // The outcome the policy engine reached (or would have reached) for a flow.
@@ -248,11 +313,11 @@ func (x PolicyDecision) String() string {
 }
 
 func (PolicyDecision) Descriptor() protoreflect.EnumDescriptor {
-	return file_innerwall_v1_agent_proto_enumTypes[3].Descriptor()
+	return file_innerwall_v1_agent_proto_enumTypes[4].Descriptor()
 }
 
 func (PolicyDecision) Type() protoreflect.EnumType {
-	return &file_innerwall_v1_agent_proto_enumTypes[3]
+	return &file_innerwall_v1_agent_proto_enumTypes[4]
 }
 
 func (x PolicyDecision) Number() protoreflect.EnumNumber {
@@ -261,7 +326,7 @@ func (x PolicyDecision) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PolicyDecision.Descriptor instead.
 func (PolicyDecision) EnumDescriptor() ([]byte, []int) {
-	return file_innerwall_v1_agent_proto_rawDescGZIP(), []int{3}
+	return file_innerwall_v1_agent_proto_rawDescGZIP(), []int{4}
 }
 
 type EnrollRequest struct {
@@ -1111,8 +1176,16 @@ type Heartbeat struct {
 	// fell behind. Each is also reported as an EvidenceGap with its interval;
 	// this is the live counter beside dropped_flow_records.
 	SourceOverruns uint64 `protobuf:"varint,4,opt,name=source_overruns,json=sourceOverruns,proto3" json:"source_overruns,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Whether the Innerwall-owned firewall table is in the kernel, read when
+	// this heartbeat is composed. Everything the agent enforces and observes
+	// lives in that table, and the local kill switch removes it without the
+	// control plane (ADR-0011), so the version the agent last acknowledged
+	// says nothing about whether it is still installed; this does.
+	// UNSPECIFIED from an agent that predates the field, from one that has
+	// installed nothing yet, or when the read failed.
+	OwnedTable    OwnedTableState `protobuf:"varint,5,opt,name=owned_table,json=ownedTable,proto3,enum=innerwall.v1.OwnedTableState" json:"owned_table,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Heartbeat) Reset() {
@@ -1171,6 +1244,13 @@ func (x *Heartbeat) GetSourceOverruns() uint64 {
 		return x.SourceOverruns
 	}
 	return 0
+}
+
+func (x *Heartbeat) GetOwnedTable() OwnedTableState {
+	if x != nil {
+		return x.OwnedTable
+	}
+	return OwnedTableState_OWNED_TABLE_STATE_UNSPECIFIED
 }
 
 // Server-initiated commands. Modeled as a oneof of messages rather than an
@@ -1757,12 +1837,14 @@ const file_innerwall_v1_agent_proto_rawDesc = "" +
 	"\ferror_detail\x18\x03 \x01(\tR\verrorDetail\"\x8f\x01\n" +
 	"\x0fInventoryReport\x12-\n" +
 	"\x05facts\x18\x01 \x01(\v2\x17.innerwall.v1.HostFactsR\x05facts\x12M\n" +
-	"\x12listening_services\x18\x02 \x03(\v2\x1e.innerwall.v1.ListeningServiceR\x11listeningServices\"\xc7\x01\n" +
+	"\x12listening_services\x18\x02 \x03(\v2\x1e.innerwall.v1.ListeningServiceR\x11listeningServices\"\x87\x02\n" +
 	"\tHeartbeat\x12%\n" +
 	"\x0euptime_seconds\x18\x01 \x01(\x04R\ruptimeSeconds\x120\n" +
 	"\x14dropped_flow_records\x18\x02 \x01(\x04R\x12droppedFlowRecords\x128\n" +
 	"\x18credential_renewal_error\x18\x03 \x01(\tR\x16credentialRenewalError\x12'\n" +
-	"\x0fsource_overruns\x18\x04 \x01(\x04R\x0esourceOverruns\"\x87\x01\n" +
+	"\x0fsource_overruns\x18\x04 \x01(\x04R\x0esourceOverruns\x12>\n" +
+	"\vowned_table\x18\x05 \x01(\x0e2\x1d.innerwall.v1.OwnedTableStateR\n" +
+	"ownedTable\"\x87\x01\n" +
 	"\tDirective\x127\n" +
 	"\treconnect\x18\x01 \x01(\v2\x17.innerwall.v1.ReconnectH\x00R\treconnect\x124\n" +
 	"\breenroll\x18\x02 \x01(\v2\x16.innerwall.v1.ReenrollH\x00R\breenrollB\v\n" +
@@ -1808,7 +1890,11 @@ const file_innerwall_v1_agent_proto_rawDesc = "" +
 	"\tAckStatus\x12\x1a\n" +
 	"\x16ACK_STATUS_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12ACK_STATUS_APPLIED\x10\x01\x12\x15\n" +
-	"\x11ACK_STATUS_FAILED\x10\x02*\x9b\x02\n" +
+	"\x11ACK_STATUS_FAILED\x10\x02*q\n" +
+	"\x0fOwnedTableState\x12!\n" +
+	"\x1dOWNED_TABLE_STATE_UNSPECIFIED\x10\x00\x12\x1d\n" +
+	"\x19OWNED_TABLE_STATE_PRESENT\x10\x01\x12\x1c\n" +
+	"\x18OWNED_TABLE_STATE_ABSENT\x10\x02*\xc0\x02\n" +
 	"\x0fEvidenceGapKind\x12!\n" +
 	"\x1dEVIDENCE_GAP_KIND_UNSPECIFIED\x10\x00\x12$\n" +
 	" EVIDENCE_GAP_KIND_SOURCE_OVERRUN\x10\x01\x12$\n" +
@@ -1816,7 +1902,8 @@ const file_innerwall_v1_agent_proto_rawDesc = "" +
 	"!EVIDENCE_GAP_KIND_BUFFER_OVERFLOW\x10\x03\x12$\n" +
 	" EVIDENCE_GAP_KIND_DUMP_TRUNCATED\x10\x04\x12%\n" +
 	"!EVIDENCE_GAP_KIND_WINDOW_OVERFLOW\x10\x05\x12%\n" +
-	"!EVIDENCE_GAP_KIND_WINDOW_REJECTED\x10\x06*k\n" +
+	"!EVIDENCE_GAP_KIND_WINDOW_REJECTED\x10\x06\x12#\n" +
+	"\x1fEVIDENCE_GAP_KIND_TABLE_REMOVED\x10\a*k\n" +
 	"\x0eEvidenceSource\x12\x1f\n" +
 	"\x1bEVIDENCE_SOURCE_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19EVIDENCE_SOURCE_CONNTRACK\x10\x01\x12\x19\n" +
@@ -1846,90 +1933,92 @@ func file_innerwall_v1_agent_proto_rawDescGZIP() []byte {
 	return file_innerwall_v1_agent_proto_rawDescData
 }
 
-var file_innerwall_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_innerwall_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
 var file_innerwall_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_innerwall_v1_agent_proto_goTypes = []any{
 	(AckStatus)(0),                  // 0: innerwall.v1.AckStatus
-	(EvidenceGapKind)(0),            // 1: innerwall.v1.EvidenceGapKind
-	(EvidenceSource)(0),             // 2: innerwall.v1.EvidenceSource
-	(PolicyDecision)(0),             // 3: innerwall.v1.PolicyDecision
-	(*EnrollRequest)(nil),           // 4: innerwall.v1.EnrollRequest
-	(*EnrollResponse)(nil),          // 5: innerwall.v1.EnrollResponse
-	(*RenewCredentialRequest)(nil),  // 6: innerwall.v1.RenewCredentialRequest
-	(*RenewCredentialResponse)(nil), // 7: innerwall.v1.RenewCredentialResponse
-	(*SyncRequest)(nil),             // 8: innerwall.v1.SyncRequest
-	(*SyncResponse)(nil),            // 9: innerwall.v1.SyncResponse
-	(*Hello)(nil),                   // 10: innerwall.v1.Hello
-	(*HelloAck)(nil),                // 11: innerwall.v1.HelloAck
-	(*SyncConfig)(nil),              // 12: innerwall.v1.SyncConfig
-	(*PolicyUpdate)(nil),            // 13: innerwall.v1.PolicyUpdate
-	(*PolicyAck)(nil),               // 14: innerwall.v1.PolicyAck
-	(*InventoryReport)(nil),         // 15: innerwall.v1.InventoryReport
-	(*Heartbeat)(nil),               // 16: innerwall.v1.Heartbeat
-	(*Directive)(nil),               // 17: innerwall.v1.Directive
-	(*Reconnect)(nil),               // 18: innerwall.v1.Reconnect
-	(*Reenroll)(nil),                // 19: innerwall.v1.Reenroll
-	(*ReportFlowsRequest)(nil),      // 20: innerwall.v1.ReportFlowsRequest
-	(*EvidenceGap)(nil),             // 21: innerwall.v1.EvidenceGap
-	(*ReportFlowsResponse)(nil),     // 22: innerwall.v1.ReportFlowsResponse
-	(*FlowRecord)(nil),              // 23: innerwall.v1.FlowRecord
-	(*HostFacts)(nil),               // 24: innerwall.v1.HostFacts
-	(*Label)(nil),                   // 25: innerwall.v1.Label
-	(*AgentInfo)(nil),               // 26: innerwall.v1.AgentInfo
-	(*PolicySnapshot)(nil),          // 27: innerwall.v1.PolicySnapshot
-	(*PolicyDelta)(nil),             // 28: innerwall.v1.PolicyDelta
-	(*ListeningService)(nil),        // 29: innerwall.v1.ListeningService
-	(*timestamppb.Timestamp)(nil),   // 30: google.protobuf.Timestamp
-	(Protocol)(0),                   // 31: innerwall.v1.Protocol
-	(Direction)(0),                  // 32: innerwall.v1.Direction
+	(OwnedTableState)(0),            // 1: innerwall.v1.OwnedTableState
+	(EvidenceGapKind)(0),            // 2: innerwall.v1.EvidenceGapKind
+	(EvidenceSource)(0),             // 3: innerwall.v1.EvidenceSource
+	(PolicyDecision)(0),             // 4: innerwall.v1.PolicyDecision
+	(*EnrollRequest)(nil),           // 5: innerwall.v1.EnrollRequest
+	(*EnrollResponse)(nil),          // 6: innerwall.v1.EnrollResponse
+	(*RenewCredentialRequest)(nil),  // 7: innerwall.v1.RenewCredentialRequest
+	(*RenewCredentialResponse)(nil), // 8: innerwall.v1.RenewCredentialResponse
+	(*SyncRequest)(nil),             // 9: innerwall.v1.SyncRequest
+	(*SyncResponse)(nil),            // 10: innerwall.v1.SyncResponse
+	(*Hello)(nil),                   // 11: innerwall.v1.Hello
+	(*HelloAck)(nil),                // 12: innerwall.v1.HelloAck
+	(*SyncConfig)(nil),              // 13: innerwall.v1.SyncConfig
+	(*PolicyUpdate)(nil),            // 14: innerwall.v1.PolicyUpdate
+	(*PolicyAck)(nil),               // 15: innerwall.v1.PolicyAck
+	(*InventoryReport)(nil),         // 16: innerwall.v1.InventoryReport
+	(*Heartbeat)(nil),               // 17: innerwall.v1.Heartbeat
+	(*Directive)(nil),               // 18: innerwall.v1.Directive
+	(*Reconnect)(nil),               // 19: innerwall.v1.Reconnect
+	(*Reenroll)(nil),                // 20: innerwall.v1.Reenroll
+	(*ReportFlowsRequest)(nil),      // 21: innerwall.v1.ReportFlowsRequest
+	(*EvidenceGap)(nil),             // 22: innerwall.v1.EvidenceGap
+	(*ReportFlowsResponse)(nil),     // 23: innerwall.v1.ReportFlowsResponse
+	(*FlowRecord)(nil),              // 24: innerwall.v1.FlowRecord
+	(*HostFacts)(nil),               // 25: innerwall.v1.HostFacts
+	(*Label)(nil),                   // 26: innerwall.v1.Label
+	(*AgentInfo)(nil),               // 27: innerwall.v1.AgentInfo
+	(*PolicySnapshot)(nil),          // 28: innerwall.v1.PolicySnapshot
+	(*PolicyDelta)(nil),             // 29: innerwall.v1.PolicyDelta
+	(*ListeningService)(nil),        // 30: innerwall.v1.ListeningService
+	(*timestamppb.Timestamp)(nil),   // 31: google.protobuf.Timestamp
+	(Protocol)(0),                   // 32: innerwall.v1.Protocol
+	(Direction)(0),                  // 33: innerwall.v1.Direction
 }
 var file_innerwall_v1_agent_proto_depIdxs = []int32{
-	24, // 0: innerwall.v1.EnrollRequest.facts:type_name -> innerwall.v1.HostFacts
-	25, // 1: innerwall.v1.EnrollResponse.assigned_labels:type_name -> innerwall.v1.Label
-	10, // 2: innerwall.v1.SyncRequest.hello:type_name -> innerwall.v1.Hello
-	14, // 3: innerwall.v1.SyncRequest.policy_ack:type_name -> innerwall.v1.PolicyAck
-	15, // 4: innerwall.v1.SyncRequest.inventory:type_name -> innerwall.v1.InventoryReport
-	16, // 5: innerwall.v1.SyncRequest.heartbeat:type_name -> innerwall.v1.Heartbeat
-	11, // 6: innerwall.v1.SyncResponse.hello_ack:type_name -> innerwall.v1.HelloAck
-	13, // 7: innerwall.v1.SyncResponse.policy_update:type_name -> innerwall.v1.PolicyUpdate
-	17, // 8: innerwall.v1.SyncResponse.directive:type_name -> innerwall.v1.Directive
-	26, // 9: innerwall.v1.Hello.agent:type_name -> innerwall.v1.AgentInfo
-	24, // 10: innerwall.v1.Hello.facts:type_name -> innerwall.v1.HostFacts
-	12, // 11: innerwall.v1.HelloAck.config:type_name -> innerwall.v1.SyncConfig
-	27, // 12: innerwall.v1.PolicyUpdate.snapshot:type_name -> innerwall.v1.PolicySnapshot
-	28, // 13: innerwall.v1.PolicyUpdate.delta:type_name -> innerwall.v1.PolicyDelta
+	25, // 0: innerwall.v1.EnrollRequest.facts:type_name -> innerwall.v1.HostFacts
+	26, // 1: innerwall.v1.EnrollResponse.assigned_labels:type_name -> innerwall.v1.Label
+	11, // 2: innerwall.v1.SyncRequest.hello:type_name -> innerwall.v1.Hello
+	15, // 3: innerwall.v1.SyncRequest.policy_ack:type_name -> innerwall.v1.PolicyAck
+	16, // 4: innerwall.v1.SyncRequest.inventory:type_name -> innerwall.v1.InventoryReport
+	17, // 5: innerwall.v1.SyncRequest.heartbeat:type_name -> innerwall.v1.Heartbeat
+	12, // 6: innerwall.v1.SyncResponse.hello_ack:type_name -> innerwall.v1.HelloAck
+	14, // 7: innerwall.v1.SyncResponse.policy_update:type_name -> innerwall.v1.PolicyUpdate
+	18, // 8: innerwall.v1.SyncResponse.directive:type_name -> innerwall.v1.Directive
+	27, // 9: innerwall.v1.Hello.agent:type_name -> innerwall.v1.AgentInfo
+	25, // 10: innerwall.v1.Hello.facts:type_name -> innerwall.v1.HostFacts
+	13, // 11: innerwall.v1.HelloAck.config:type_name -> innerwall.v1.SyncConfig
+	28, // 12: innerwall.v1.PolicyUpdate.snapshot:type_name -> innerwall.v1.PolicySnapshot
+	29, // 13: innerwall.v1.PolicyUpdate.delta:type_name -> innerwall.v1.PolicyDelta
 	0,  // 14: innerwall.v1.PolicyAck.status:type_name -> innerwall.v1.AckStatus
-	24, // 15: innerwall.v1.InventoryReport.facts:type_name -> innerwall.v1.HostFacts
-	29, // 16: innerwall.v1.InventoryReport.listening_services:type_name -> innerwall.v1.ListeningService
-	18, // 17: innerwall.v1.Directive.reconnect:type_name -> innerwall.v1.Reconnect
-	19, // 18: innerwall.v1.Directive.reenroll:type_name -> innerwall.v1.Reenroll
-	30, // 19: innerwall.v1.ReportFlowsRequest.window_start:type_name -> google.protobuf.Timestamp
-	30, // 20: innerwall.v1.ReportFlowsRequest.window_end:type_name -> google.protobuf.Timestamp
-	23, // 21: innerwall.v1.ReportFlowsRequest.records:type_name -> innerwall.v1.FlowRecord
-	21, // 22: innerwall.v1.ReportFlowsRequest.gaps:type_name -> innerwall.v1.EvidenceGap
-	30, // 23: innerwall.v1.ReportFlowsRequest.sent_at:type_name -> google.protobuf.Timestamp
-	1,  // 24: innerwall.v1.EvidenceGap.kind:type_name -> innerwall.v1.EvidenceGapKind
-	2,  // 25: innerwall.v1.EvidenceGap.source:type_name -> innerwall.v1.EvidenceSource
-	30, // 26: innerwall.v1.EvidenceGap.from:type_name -> google.protobuf.Timestamp
-	30, // 27: innerwall.v1.EvidenceGap.to:type_name -> google.protobuf.Timestamp
-	31, // 28: innerwall.v1.FlowRecord.protocol:type_name -> innerwall.v1.Protocol
-	32, // 29: innerwall.v1.FlowRecord.direction:type_name -> innerwall.v1.Direction
-	3,  // 30: innerwall.v1.FlowRecord.decision:type_name -> innerwall.v1.PolicyDecision
-	30, // 31: innerwall.v1.FlowRecord.first_seen:type_name -> google.protobuf.Timestamp
-	30, // 32: innerwall.v1.FlowRecord.last_seen:type_name -> google.protobuf.Timestamp
-	4,  // 33: innerwall.v1.EnrollmentService.Enroll:input_type -> innerwall.v1.EnrollRequest
-	8,  // 34: innerwall.v1.AgentService.Sync:input_type -> innerwall.v1.SyncRequest
-	20, // 35: innerwall.v1.AgentService.ReportFlows:input_type -> innerwall.v1.ReportFlowsRequest
-	6,  // 36: innerwall.v1.AgentService.RenewCredential:input_type -> innerwall.v1.RenewCredentialRequest
-	5,  // 37: innerwall.v1.EnrollmentService.Enroll:output_type -> innerwall.v1.EnrollResponse
-	9,  // 38: innerwall.v1.AgentService.Sync:output_type -> innerwall.v1.SyncResponse
-	22, // 39: innerwall.v1.AgentService.ReportFlows:output_type -> innerwall.v1.ReportFlowsResponse
-	7,  // 40: innerwall.v1.AgentService.RenewCredential:output_type -> innerwall.v1.RenewCredentialResponse
-	37, // [37:41] is the sub-list for method output_type
-	33, // [33:37] is the sub-list for method input_type
-	33, // [33:33] is the sub-list for extension type_name
-	33, // [33:33] is the sub-list for extension extendee
-	0,  // [0:33] is the sub-list for field type_name
+	25, // 15: innerwall.v1.InventoryReport.facts:type_name -> innerwall.v1.HostFacts
+	30, // 16: innerwall.v1.InventoryReport.listening_services:type_name -> innerwall.v1.ListeningService
+	1,  // 17: innerwall.v1.Heartbeat.owned_table:type_name -> innerwall.v1.OwnedTableState
+	19, // 18: innerwall.v1.Directive.reconnect:type_name -> innerwall.v1.Reconnect
+	20, // 19: innerwall.v1.Directive.reenroll:type_name -> innerwall.v1.Reenroll
+	31, // 20: innerwall.v1.ReportFlowsRequest.window_start:type_name -> google.protobuf.Timestamp
+	31, // 21: innerwall.v1.ReportFlowsRequest.window_end:type_name -> google.protobuf.Timestamp
+	24, // 22: innerwall.v1.ReportFlowsRequest.records:type_name -> innerwall.v1.FlowRecord
+	22, // 23: innerwall.v1.ReportFlowsRequest.gaps:type_name -> innerwall.v1.EvidenceGap
+	31, // 24: innerwall.v1.ReportFlowsRequest.sent_at:type_name -> google.protobuf.Timestamp
+	2,  // 25: innerwall.v1.EvidenceGap.kind:type_name -> innerwall.v1.EvidenceGapKind
+	3,  // 26: innerwall.v1.EvidenceGap.source:type_name -> innerwall.v1.EvidenceSource
+	31, // 27: innerwall.v1.EvidenceGap.from:type_name -> google.protobuf.Timestamp
+	31, // 28: innerwall.v1.EvidenceGap.to:type_name -> google.protobuf.Timestamp
+	32, // 29: innerwall.v1.FlowRecord.protocol:type_name -> innerwall.v1.Protocol
+	33, // 30: innerwall.v1.FlowRecord.direction:type_name -> innerwall.v1.Direction
+	4,  // 31: innerwall.v1.FlowRecord.decision:type_name -> innerwall.v1.PolicyDecision
+	31, // 32: innerwall.v1.FlowRecord.first_seen:type_name -> google.protobuf.Timestamp
+	31, // 33: innerwall.v1.FlowRecord.last_seen:type_name -> google.protobuf.Timestamp
+	5,  // 34: innerwall.v1.EnrollmentService.Enroll:input_type -> innerwall.v1.EnrollRequest
+	9,  // 35: innerwall.v1.AgentService.Sync:input_type -> innerwall.v1.SyncRequest
+	21, // 36: innerwall.v1.AgentService.ReportFlows:input_type -> innerwall.v1.ReportFlowsRequest
+	7,  // 37: innerwall.v1.AgentService.RenewCredential:input_type -> innerwall.v1.RenewCredentialRequest
+	6,  // 38: innerwall.v1.EnrollmentService.Enroll:output_type -> innerwall.v1.EnrollResponse
+	10, // 39: innerwall.v1.AgentService.Sync:output_type -> innerwall.v1.SyncResponse
+	23, // 40: innerwall.v1.AgentService.ReportFlows:output_type -> innerwall.v1.ReportFlowsResponse
+	8,  // 41: innerwall.v1.AgentService.RenewCredential:output_type -> innerwall.v1.RenewCredentialResponse
+	38, // [38:42] is the sub-list for method output_type
+	34, // [34:38] is the sub-list for method input_type
+	34, // [34:34] is the sub-list for extension type_name
+	34, // [34:34] is the sub-list for extension extendee
+	0,  // [0:34] is the sub-list for field type_name
 }
 
 func init() { file_innerwall_v1_agent_proto_init() }
@@ -1964,7 +2053,7 @@ func file_innerwall_v1_agent_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_innerwall_v1_agent_proto_rawDesc), len(file_innerwall_v1_agent_proto_rawDesc)),
-			NumEnums:      4,
+			NumEnums:      5,
 			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   2,

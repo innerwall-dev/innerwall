@@ -39,7 +39,19 @@ const (
 	// malformed, and it was dropped rather than retried. The record count
 	// is known.
 	GapWindowRejected GapKind = "window_rejected"
+	// GapTableRemoved: the owned table was gone from the kernel, and with
+	// it the observation and classification that depend on it. It stays
+	// open until the table is installed again, and is cut and shipped with
+	// every window that closes meanwhile, so a removal that lasts is never
+	// read as a quiet host (issue #64). No count.
+	GapTableRemoved GapKind = "table_removed"
 )
+
+// cutWhileOpen are the kinds whose open interval can last indefinitely,
+// so CutOpen ships it in pieces rather than holding it until it ends. A
+// source's restart interval ends at its next subscribe, within the
+// restart backoff, and is shipped whole.
+var cutWhileOpen = map[GapKind]bool{GapTableRemoved: true}
 
 // GapSource names the source that lost the evidence.
 type GapSource string
@@ -153,6 +165,28 @@ func (g *Gaps) Close(source GapSource, to time.Time) {
 	delete(g.open, source)
 	cur.To = to
 	g.add(cur)
+}
+
+// CutOpen records the part up to to of every open interval of a kind that
+// can last indefinitely, and keeps it open from to. The collector calls it
+// as each window closes, so the window carries the loss so far. A nil Gaps
+// records nothing.
+func (g *Gaps) CutOpen(to time.Time) {
+	if g == nil {
+		return
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for source, cur := range g.open {
+		if !cutWhileOpen[cur.Kind] || !to.After(cur.From) {
+			continue
+		}
+		part := cur
+		part.To = to
+		g.add(part)
+		cur.From = to
+		g.open[source] = cur
+	}
 }
 
 // Record records a closed interval.
@@ -288,6 +322,7 @@ var wireKinds = map[GapKind]innerwallv1.EvidenceGapKind{
 	GapDumpTruncated:  innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_DUMP_TRUNCATED,
 	GapWindowOverflow: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_WINDOW_OVERFLOW,
 	GapWindowRejected: innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_WINDOW_REJECTED,
+	GapTableRemoved:   innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_TABLE_REMOVED,
 }
 
 var wireSources = map[GapSource]innerwallv1.EvidenceSource{

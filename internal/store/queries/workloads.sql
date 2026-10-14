@@ -85,10 +85,19 @@ SELECT * FROM workload_listening_services
 WHERE workload_id = $1
 ORDER BY protocol, port;
 
+-- A heartbeat's counters, renewal status, and owned-table state (migration
+-- 00012). An unknown state leaves the stored one; the absent instant is the
+-- first heartbeat's that said absent, kept while the state stays absent.
 -- name: RecordWorkloadHeartbeat :execrows
 UPDATE workloads
-SET last_seen_at = $2, dropped_flow_records = $3, credential_renewal_error = $4, source_overruns = $5
-WHERE id = $1;
+SET last_seen_at = sqlc.arg(last_seen_at), dropped_flow_records = sqlc.arg(dropped_flow_records),
+    credential_renewal_error = sqlc.arg(credential_renewal_error), source_overruns = sqlc.arg(source_overruns),
+    owned_table_absent_since = CASE
+        WHEN sqlc.arg(owned_table_state)::smallint = 0 THEN owned_table_absent_since
+        WHEN sqlc.arg(owned_table_state)::smallint = 2 THEN coalesce(owned_table_absent_since, sqlc.arg(last_seen_at))
+        ELSE NULL END,
+    owned_table_state = CASE WHEN sqlc.arg(owned_table_state)::smallint = 0 THEN owned_table_state ELSE sqlc.arg(owned_table_state)::smallint END
+WHERE id = sqlc.arg(id);
 
 -- One flow report's reading of the agent's clock (migration 00010). A
 -- skewed reading records its offset and instant and marks the skew current;
@@ -101,16 +110,27 @@ SET clock_skew_offset_ms   = CASE WHEN sqlc.arg(skewed)::boolean THEN sqlc.arg(o
     clock_skew_current     = sqlc.arg(skewed)::boolean
 WHERE id = sqlc.arg(id) AND (sqlc.arg(skewed)::boolean OR clock_skew_current);
 
+-- The receipt of one flow report (migration 00013). Never moved backwards,
+-- so reports handled out of order across replicas leave the latest.
+-- name: RecordWorkloadFlowReport :exec
+UPDATE workloads
+SET last_flow_report_at = sqlc.arg(received_at)
+WHERE id = sqlc.arg(id) AND (last_flow_report_at IS NULL OR last_flow_report_at < sqlc.arg(received_at));
+
 -- name: SetWorkloadSyncState :execrows
 UPDATE workloads
 SET sync_state = $2, sync_error = $3, last_seen_at = $4
 WHERE id = $1;
 
 -- An APPLIED acknowledgement: the version, the resulting state, and the
--- instant. Nothing else writes last_acked_at (migration 00007).
+-- instant. Nothing else writes last_acked_at (migration 00007). An apply
+-- that succeeded installed the owned table, so a table recorded absent is
+-- present again (migration 00012).
 -- name: RecordWorkloadApplied :execrows
 UPDATE workloads
-SET applied_policy_version = $2, sync_state = $3, sync_error = '', last_seen_at = $4, last_acked_at = $4
+SET applied_policy_version = $2, sync_state = $3, sync_error = '', last_seen_at = $4, last_acked_at = $4,
+    owned_table_state = CASE WHEN owned_table_state = 2 THEN 1 ELSE owned_table_state END,
+    owned_table_absent_since = NULL
 WHERE id = $1;
 
 -- A FAILED acknowledgement: the degraded state, the agent's detail, and the
@@ -150,6 +170,7 @@ SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at,
        w.sync_state, w.applied_policy_version, w.sync_error, w.dropped_flow_records,
        w.credential_renewal_error, w.last_snapshot_sent_at, w.last_acked_at, w.last_apply_failed_at,
        w.source_overruns, w.clock_skew_offset_ms, w.clock_skew_observed_at, w.clock_skew_current,
+       w.owned_table_state, w.owned_table_absent_since, w.last_flow_report_at,
        w.sync_rank::integer AS sync_rank, w.seen_key::timestamptz AS seen_key,
        p.version AS latest_version, p.rendered_at AS latest_rendered_at
 FROM (
