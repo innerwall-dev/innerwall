@@ -36,3 +36,22 @@ timedatectl status                          # synchronized: yes, and the time is
 On a host that uses chrony, `sudo chronyc makestep` steps the clock at once. For a lab VM whose host sleeps, re-sync it after every resume before trusting its flow timelines, or enable the hypervisor's time synchronization for the guest so it catches up by itself. The agent needs no restart: its next report is stamped with the corrected clock.
 
 **After the fix.** The next report within tolerance clears the skew. The note above the flow table then says the clock *was* off, and when the last skewed report arrived, for as long as that report falls inside the table's range. Windows already stored keep the times they were reported with: a stored flow is history and is never rewritten (ADR-0019). Read the windows from before the fix as shifted by about the offset the note gives; they age out with flow retention.
+
+## Resend snapshot is accepted but the snapshot instant never moves
+
+**Symptom.** **Resend snapshot** on a workload (or `innerwall workload resend-snapshot`) answers that the reconnect was requested, but the workload's *last snapshot sent* instant stays where it was, and the agent's journal shows no `control plane directed a reconnect` line.
+
+**What the control plane logs.** Every request accepted on the operator surface logs `reconnect requested` with the workload's id. The replica that hears the directive then logs exactly one of these for it:
+
+```
+level=INFO msg="reconnect directed" workload_id=…
+level=WARN msg="reconnect directive not sent: this replica holds no stream for the workload" workload_id=…
+level=WARN msg="reconnect directive not sent" workload_id=… reason="…"
+```
+
+- **`reconnect directed`** means the directive was queued on the workload's stream. If the instant still does not move, read the agent's journal.
+- **`this replica holds no stream for the workload`** means the replica that heard the directive has no stream registered for that workload. With one replica, no stream was held at that moment: the agent is between streams (redialing after a failure, or waiting out its backoff), or its stream is on another control-plane process sharing the database, such as an outgoing process still running after a deploy. With several replicas, every replica that does not hold the stream logs this line, and the one that does logs `reconnect directed`.
+- **`reconnect directive not sent` with a reason** means the stream was held but the directive could not be queued on it: the stream ended first (the reason names why, for example that a newer stream from the same workload superseded it), or its send queue stayed full for ten seconds, which means the stream has stopped moving.
+- **`reconnect requested` with none of the three after it** means no replica heard the directive. The directive travels on the database's notification channel, and it is lost if the listener was down at that moment: look for `policy listener lost; reconnecting`. Otherwise check whether another control-plane process with a different log is serving the agent.
+
+**Remedy.** Press **Resend snapshot** again once the workload reads synced. Delivery is best-effort by design (ADR-0018): nothing records or retries a directive. If no replica holds the stream, restart the agent on the host instead. It re-applies its persisted policy before it dials, and its new stream begins with a snapshot.

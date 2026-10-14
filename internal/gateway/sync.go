@@ -35,6 +35,13 @@ func DefaultSyncConfig() *innerwallv1.SyncConfig {
 // cannot make the control plane retain unbounded state on its behalf.
 const sendQueueDepth = 64
 
+// directiveQueueTimeout bounds how long a directive waits for room in a
+// stream's send queue. The writer drains the queue as fast as the agent
+// reads, so a queue that stays full this long belongs to a stream that
+// has stopped moving; the directive is given up, with a warning, rather
+// than left waiting where nothing would ever report it.
+var directiveQueueTimeout = 10 * time.Second
+
 // offlineWriteTimeout bounds a status write that may run after a stream's
 // own context has already ended: the offline mark, and the snapshot
 // instant of a snapshot already sent.
@@ -72,6 +79,30 @@ func (s *session) enqueue(msg *innerwallv1.SyncResponse) bool {
 	}
 }
 
+// errQueueFull is why offer gave up on a stream that is still open.
+var errQueueFull = errors.New("the stream's send queue stayed full")
+
+// offer queues msg like enqueue, but waits at most d for room. It returns
+// nil once msg is queued, and otherwise why it was not: the cause the
+// stream ended with, or errQueueFull.
+func (s *session) offer(msg *innerwallv1.SyncResponse, d time.Duration) error {
+	if err := context.Cause(s.ctx); err != nil {
+		// A queue with room would otherwise take it, and the writer
+		// never send it.
+		return err
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case s.send <- msg:
+		return nil
+	case <-s.ctx.Done():
+		return context.Cause(s.ctx)
+	case <-timer.C:
+		return errQueueFull
+	}
+}
+
 // errSuperseded ends a stream when the same workload opens a newer one.
 var errSuperseded = errors.New("superseded by a newer stream from the same workload")
 
@@ -79,32 +110,65 @@ var errSuperseded = errors.New("superseded by a newer stream from the same workl
 type sessions struct {
 	mu   sync.Mutex
 	live map[identity.WorkloadID]*session
+	// marking holds, per workload, a stream that has left the registry
+	// and whose offline mark is still being written; the channel closes
+	// when it is written. A newer stream of the workload registers only
+	// after that, so the mark can never land on top of the newer stream's
+	// own state and record a live workload offline.
+	marking map[identity.WorkloadID]chan struct{}
+}
+
+func newSessions() *sessions {
+	return &sessions{live: map[identity.WorkloadID]*session{}, marking: map[identity.WorkloadID]chan struct{}{}}
 }
 
 // add registers sess, ending any earlier stream of the same workload. Two
 // live streams for one identity would each believe they hold the tip; the
 // newer wins because it is the one whose Hello the control plane just
-// answered.
-func (r *sessions) add(sess *session) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if old, ok := r.live[sess.id]; ok {
-		old.cancel(errSuperseded)
+// answered. It first waits out the offline mark of a stream of the
+// workload that has just left the registry, and returns the context's
+// error, registering nothing, if sess ends before that.
+func (r *sessions) add(sess *session) error {
+	for {
+		r.mu.Lock()
+		marked, ok := r.marking[sess.id]
+		if !ok {
+			if old, ok := r.live[sess.id]; ok {
+				old.cancel(errSuperseded)
+			}
+			r.live[sess.id] = sess
+			r.mu.Unlock()
+			return nil
+		}
+		r.mu.Unlock()
+		select {
+		case <-marked:
+		case <-sess.ctx.Done():
+			return context.Cause(sess.ctx)
+		}
 	}
-	r.live[sess.id] = sess
 }
 
 // remove drops sess if it is still the registered stream for its workload.
 // It reports whether it was, so a superseded stream does not mark a
-// workload offline while its replacement is live.
-func (r *sessions) remove(sess *session) bool {
+// workload offline while its replacement is live. When it was, the
+// workload is held for the offline mark: the caller writes it and then
+// calls marked, and no newer stream registers in between.
+func (r *sessions) remove(sess *session) (marked func(), ok bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.live[sess.id] != sess {
-		return false
+		return nil, false
 	}
 	delete(r.live, sess.id)
-	return true
+	done := make(chan struct{})
+	r.marking[sess.id] = done
+	return func() {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		delete(r.marking, sess.id)
+		close(done)
+	}, true
 }
 
 func (r *sessions) get(id identity.WorkloadID) *session {
@@ -169,10 +233,14 @@ func (s *Server) Sync(stream innerwallv1.AgentService_SyncServer) error {
 
 	sctx, cancel := context.WithCancelCause(ctx)
 	sess := &session{id: id, ctx: sctx, cancel: cancel, send: make(chan *innerwallv1.SyncResponse, sendQueueDepth)}
-	s.sessions.add(sess)
+	if err := s.sessions.add(sess); err != nil {
+		cancel(nil)
+		return status.FromContextError(err).Err()
+	}
 	defer func() {
 		cancel(nil)
-		if s.sessions.remove(sess) {
+		if marked, ok := s.sessions.remove(sess); ok {
+			defer marked()
 			octx, ocancel := context.WithTimeout(context.Background(), offlineWriteTimeout)
 			defer ocancel()
 			if err := s.registry.SetSyncState(octx, id, innerwallv1.SyncState_SYNC_STATE_OFFLINE, "", s.now()); err != nil {
@@ -420,15 +488,33 @@ func (s *Server) recordSnapshotSent(ctx context.Context, log *slog.Logger, id id
 	}
 }
 
+// directReconnect routes one reconnect directive to the stream of id. A
+// replica that does not hold the stream says so, naming the workload:
+// with one replica that is the whole answer to why nothing was sent, and
+// with several, the replica holding it logs that it directed the
+// reconnect.
+func (s *Server) directReconnect(id identity.WorkloadID) {
+	sess := s.sessions.get(id)
+	if sess == nil {
+		s.log.Warn("reconnect directive not sent: this replica holds no stream for the workload", "workload_id", id)
+		return
+	}
+	go s.sendReconnect(sess)
+}
+
 // sendReconnect sends sess a Reconnect directive. The agent ends the
 // stream and opens a new one, which begins with a snapshot by the stream
 // lifecycle (ADR-0015). Nothing waits for that: the directive is a
 // request, and its outcome is the workload's snapshot instant advancing.
+// A directive that cannot be queued is given up with a warning naming the
+// workload and why.
 func (s *Server) sendReconnect(sess *session) {
 	msg := &innerwallv1.SyncResponse{Msg: &innerwallv1.SyncResponse_Directive{Directive: &innerwallv1.Directive{Directive: &innerwallv1.Directive_Reconnect{Reconnect: &innerwallv1.Reconnect{}}}}}
-	if sess.enqueue(msg) {
-		s.log.Info("reconnect directed", "workload_id", sess.id)
+	if err := sess.offer(msg, directiveQueueTimeout); err != nil {
+		s.log.Warn("reconnect directive not sent", "workload_id", sess.id, "reason", err)
+		return
 	}
+	s.log.Info("reconnect directed", "workload_id", sess.id)
 }
 
 // pushLatest sends the persisted policy to sess as a delta from the tip of
@@ -469,8 +555,9 @@ func (s *Server) pushLatest(sess *session) {
 // pushes and directives to happen; without it, agents receive policy only
 // at connect. Whenever the listener (re)connects, every live stream is
 // reconciled against persisted state. A directive naming a workload whose
-// stream this replica does not hold is dropped here: another replica holds
-// it, or none does, and no replica can tell which.
+// stream this replica does not hold is dropped here, with a warning naming
+// the workload: another replica holds it, or none does, and no replica can
+// tell which.
 func (s *Server) Run(ctx context.Context) error {
 	if s.events == nil {
 		<-ctx.Done()
@@ -484,9 +571,5 @@ func (s *Server) Run(ctx context.Context) error {
 		if sess := s.sessions.get(c.ID); sess != nil {
 			go s.pushLatest(sess)
 		}
-	}, func(id identity.WorkloadID) {
-		if sess := s.sessions.get(id); sess != nil {
-			go s.sendReconnect(sess)
-		}
-	})
+	}, s.directReconnect)
 }

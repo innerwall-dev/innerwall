@@ -40,21 +40,22 @@ type harness struct {
 	engine       *compiler.Engine
 }
 
-func newHarness(t *testing.T, st enroll.Store) *harness {
+func newHarness(t *testing.T, st enroll.Store, opts ...func(*gateway.Deps)) *harness {
 	t.Helper()
 	dir := t.TempDir()
 	authority, err := fileca.Init(dir, fileca.InitOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := newHarnessWith(t, st, authority)
+	h := newHarnessWith(t, st, authority, opts...)
 	h.authorityDir = dir
 	return h
 }
 
 // newHarnessWith starts a control plane over an existing authority: a
-// restart, as far as enrolled agents can tell.
-func newHarnessWith(t *testing.T, st enroll.Store, authority *fileca.Authority) *harness {
+// restart, as far as enrolled agents can tell. Each opt adjusts the
+// gateway's dependencies before it is built.
+func newHarnessWith(t *testing.T, st enroll.Store, authority *fileca.Authority, opts ...func(*gateway.Deps)) *harness {
 	t.Helper()
 	bundle, _ := authority.Bundle(context.Background())
 	certPEM, keyPEM, err := authority.IssueServerCertificate([]string{"127.0.0.1"}, time.Hour)
@@ -76,6 +77,9 @@ func newHarnessWith(t *testing.T, st enroll.Store, authority *fileca.Authority) 
 		h.engine = &compiler.Engine{Store: pg}
 		deps.Registry, deps.Policies, deps.Engine, deps.Events = pg, pg, h.engine, pg
 		deps.Ingest = &ingest.Service{Directory: pg, Flows: pg.Flows(), Clock: pg, Reports: pg, FlowWindow: time.Minute}
+	}
+	for _, opt := range opts {
+		opt(&deps)
 	}
 	gw := gateway.New(deps)
 	srv := gateway.NewGRPCServer(tlsCfg, gw)
