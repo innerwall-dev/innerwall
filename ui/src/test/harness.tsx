@@ -148,11 +148,21 @@ export const freshInstall: Route[] = [
 ];
 
 // countsOf is the fleet counts read over the given workloads, as the
-// control plane counts them.
-export function countsOf(workloads: readonly { sync: { state: SyncState } }[]) {
+// control plane counts them: a workload whose owned table is absent in
+// removed alone, every other in its sync state.
+export function countsOf(
+	workloads: readonly {
+		sync: { state: SyncState };
+		health?: { owned_table: { state: string } };
+	}[],
+) {
 	const by_sync_state = { synced: 0, pending: 0, degraded: 0, offline: 0 };
-	for (const w of workloads) by_sync_state[w.sync.state] += 1;
-	return { total: workloads.length, by_sync_state };
+	let removed = 0;
+	for (const w of workloads) {
+		if (w.health?.owned_table.state === "absent") removed += 1;
+		else by_sync_state[w.sync.state] += 1;
+	}
+	return { total: workloads.length, by_sync_state, removed };
 }
 
 // gapsOf is a gaps read over the query's range returning gaps, the

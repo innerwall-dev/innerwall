@@ -126,7 +126,7 @@ describe("sidebar", () => {
 });
 
 describe("workloads badge", () => {
-	const withCounts = (by: Partial<Record<SyncState, number>>) => {
+	const withCounts = (by: Partial<Record<SyncState, number>>, removed = 0) => {
 		const by_sync_state = {
 			synced: 0,
 			pending: 0,
@@ -134,12 +134,13 @@ describe("workloads badge", () => {
 			offline: 0,
 			...by,
 		};
-		const total = Object.values(by_sync_state).reduce((a, b) => a + b, 0);
+		const total =
+			Object.values(by_sync_state).reduce((a, b) => a + b, 0) + removed;
 		return mockSurface([
 			{
 				method: "GET",
 				path: "/api/v1/workloads/counts",
-				reply: { status: 200, json: { total, by_sync_state } },
+				reply: { status: 200, json: { total, by_sync_state, removed } },
 			},
 			...freshInstall,
 		]);
@@ -152,12 +153,25 @@ describe("workloads badge", () => {
 		const badge = await screen.findByTestId("count-Workloads");
 		expect(badge).toHaveTextContent("4");
 		const hint =
-			"4 workloads need attention: 1 pending, 2 degraded, 1 offline. Counts workloads whose sync state is pending, degraded, or offline.";
+			"4 workloads need attention: 1 pending, 2 degraded, 1 offline. Counts workloads whose sync state is pending, degraded, or offline, and those whose enforcement was removed on the host.";
 		expect(badge).toHaveAttribute("aria-label", hint);
 		await user.hover(badge);
 		expect(await screen.findByRole("tooltip")).toHaveTextContent(hint);
 		// The fleet sync block is the fresh install's alone.
 		expect(screen.queryByText("no workloads")).not.toBeInTheDocument();
+	});
+
+	it("counts a workload whose enforcement was removed", async () => {
+		// Issue #96: the control plane counts a kill-switched host in
+		// removed and not in synced, so the badge adds it once.
+		withCounts({ synced: 11, degraded: 1 }, 2);
+		renderApp("/policy");
+		const badge = await screen.findByTestId("count-Workloads");
+		expect(badge).toHaveTextContent("3");
+		expect(badge).toHaveAttribute(
+			"aria-label",
+			"3 workloads need attention: 1 degraded, 2 enforcement removed. Counts workloads whose sync state is pending, degraded, or offline, and those whose enforcement was removed on the host.",
+		);
 	});
 
 	it("is hidden when no workload needs attention", async () => {

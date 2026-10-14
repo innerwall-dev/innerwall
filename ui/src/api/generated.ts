@@ -490,8 +490,11 @@ export interface paths {
         /**
          * One page of the fleet in fleet order.
          * @description Fleet order is the order the fleet screen shows: the workloads needing
-         *     attention first (degraded, offline, pending, synced), most recently
-         *     seen first within a state.
+         *     attention first (degraded or enforcement removed, offline, pending,
+         *     synced), most recently seen first within a rank. A workload whose
+         *     `health.owned_table.state` is `absent` ranks with the degraded ones
+         *     whatever its `sync.state`, so every such workload precedes the first
+         *     row that is neither degraded nor absent.
          */
         get: operations["listWorkloads"];
         put?: never;
@@ -611,11 +614,12 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * How many workloads the fleet holds, in total and in each sync state.
+         * How many workloads the fleet holds, in total, in each sync state, and with enforcement removed.
          * @description Counted in one statement over the fleet as it stands, so the totals
          *     agree with each other; no client pages through the fleet to count
-         *     it. Every sync state is present, zero included, and `total` is
-         *     their sum.
+         *     it. A workload whose `health.owned_table.state` is `absent` counts
+         *     in `removed` and in no sync state. Every sync state is present,
+         *     zero included, and `total` is their sum plus `removed`.
          */
         get: operations["countWorkloads"];
         put?: never;
@@ -1138,15 +1142,17 @@ export interface components {
                 state: components["schemas"]["SyncState"];
             };
         };
-        /** @description The fleet's size, in total and by sync state. */
+        /** @description The fleet's size, in total, by sync state, and with enforcement removed. */
         WorkloadCounts: {
-            /** @description How many workloads are in each sync state; every state is present. */
+            /** @description How many workloads are in each sync state, not counting those in `removed`; every state is present. */
             by_sync_state: {
                 degraded: number;
                 offline: number;
                 pending: number;
                 synced: number;
             };
+            /** @description How many workloads have their owned firewall table recorded absent (`health.owned_table.state` is `absent`). Removed is not a sync state; the stored sync state still records the version the agent acknowledged, but the host enforces and observes none of it. A removed workload is counted here and in no `by_sync_state` bucket. */
+            removed: number;
             total: number;
         };
         /**

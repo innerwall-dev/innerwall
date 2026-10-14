@@ -156,9 +156,11 @@ WHERE id = $1;
 -- --- operator read model (ADR-0007 as amended) -------------------------------
 
 -- One page of the fleet in the order the fleet screen shows it: the
--- workloads needing attention first (degraded, then offline, then
--- pending, then synced), most recently seen first within a state, then by
--- id. The cursor is the (rank, last seen, id) of the last row served; the
+-- workloads needing attention first (degraded or enforcement removed,
+-- then offline, then pending, then synced), most recently seen first
+-- within a rank, then by id. A workload whose owned table is recorded
+-- absent (migration 00012) ranks with the degraded ones whatever its
+-- stored sync state, which stays the agent's honest record (issue #96). The cursor is the (rank, last seen, id) of the last row served; the
 -- first page passes a rank below every row. A workload never seen sorts
 -- as if seen at the epoch. An empty id array means every workload; a zero
 -- mode or sync state means any. The latest rendered version rides along
@@ -175,7 +177,9 @@ SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at,
        p.version AS latest_version, p.rendered_at AS latest_rendered_at
 FROM (
     SELECT workloads.*,
-           CASE workloads.sync_state WHEN 3 THEN 0 WHEN 4 THEN 1 WHEN 2 THEN 2 WHEN 1 THEN 3 ELSE 4 END AS sync_rank,
+           CASE WHEN workloads.owned_table_state = 2 THEN 0
+                WHEN workloads.sync_state = 3 THEN 0 WHEN workloads.sync_state = 4 THEN 1
+                WHEN workloads.sync_state = 2 THEN 2 WHEN workloads.sync_state = 1 THEN 3 ELSE 4 END AS sync_rank,
            coalesce(workloads.last_seen_at, '1970-01-01 00:00:00+00'::timestamptz) AS seen_key
     FROM workloads
 ) AS w
@@ -213,10 +217,11 @@ SELECT * FROM workload_listening_services
 WHERE workload_id = ANY(sqlc.arg(workload_ids)::uuid[])
 ORDER BY workload_id, protocol, port;
 
--- How many workloads hold each sync state, in one statement so the
--- counts agree with each other. A state no workload holds has no row.
--- name: CountWorkloadsBySyncState :many
-SELECT sync_state, count(*)::bigint AS workloads
+-- How many workloads hold each sync state, split by whether their owned
+-- table is recorded absent (migration 00012), in one statement so the
+-- counts agree with each other. A pair no workload holds has no row.
+-- name: CountWorkloadsByStatus :many
+SELECT sync_state, (owned_table_state = 2)::boolean AS removed, count(*)::bigint AS workloads
 FROM workloads
-GROUP BY sync_state
-ORDER BY sync_state;
+GROUP BY 1, 2
+ORDER BY 1, 2;

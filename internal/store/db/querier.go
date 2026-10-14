@@ -34,9 +34,10 @@ type Querier interface {
 	CountFlowWindows(ctx context.Context) (int64, error)
 	CountRulesReferencingAddressGroup(ctx context.Context, addressGroupID *uuid.UUID) (int64, error)
 	CountRulesReferencingService(ctx context.Context, serviceID uuid.UUID) (int64, error)
-	// How many workloads hold each sync state, in one statement so the
-	// counts agree with each other. A state no workload holds has no row.
-	CountWorkloadsBySyncState(ctx context.Context) ([]CountWorkloadsBySyncStateRow, error)
+	// How many workloads hold each sync state, split by whether their owned
+	// table is recorded absent (migration 00012), in one statement so the
+	// counts agree with each other. A pair no workload holds has no row.
+	CountWorkloadsByStatus(ctx context.Context) ([]CountWorkloadsByStatusRow, error)
 	// Address groups: named CIDR sets for peers that are not managed workloads
 	// (ADR-0018).
 	CreateAddressGroup(ctx context.Context, arg CreateAddressGroupParams) error
@@ -155,9 +156,11 @@ type Querier interface {
 	ListWorkloadListeningServicesFor(ctx context.Context, workloadIds []uuid.UUID) ([]WorkloadListeningService, error)
 	// --- operator read model (ADR-0007 as amended) -------------------------------
 	// One page of the fleet in the order the fleet screen shows it: the
-	// workloads needing attention first (degraded, then offline, then
-	// pending, then synced), most recently seen first within a state, then by
-	// id. The cursor is the (rank, last seen, id) of the last row served; the
+	// workloads needing attention first (degraded or enforcement removed,
+	// then offline, then pending, then synced), most recently seen first
+	// within a rank, then by id. A workload whose owned table is recorded
+	// absent (migration 00012) ranks with the degraded ones whatever its
+	// stored sync state, which stays the agent's honest record (issue #96). The cursor is the (rank, last seen, id) of the last row served; the
 	// first page passes a rank below every row. A workload never seen sorts
 	// as if seen at the epoch. An empty id array means every workload; a zero
 	// mode or sync state means any. The latest rendered version rides along
