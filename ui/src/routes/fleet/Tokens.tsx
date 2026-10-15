@@ -45,7 +45,7 @@ const status: Record<
 };
 
 const th =
-	"h-row-header whitespace-nowrap border-b border-hairline bg-card px-3 text-left type-control text-tertiary";
+	"h-row-header whitespace-nowrap border-b border-hairline px-3 text-left type-meta-label text-tertiary";
 
 // Tokens is the provisioning-tokens tab: every token by its listing
 // prefix and metadata (the secret is never stored, so never listed),
@@ -62,7 +62,7 @@ export function Tokens({
 	const [revoking, setRevoking] = useState<ProvisioningToken | null>(null);
 
 	return (
-		<div className="flex flex-1 flex-col gap-5 overflow-auto px-6 pt-5 pb-8">
+		<div className="flex flex-1 flex-col gap-5 overflow-auto px-5 pt-5 pb-8">
 			<div className="flex items-center gap-3">
 				<p className="max-w-[620px] type-dense text-secondary">
 					A token enrolls any number of workloads within its label scope until
@@ -254,7 +254,7 @@ function RevokeDialog({
 					<DialogClose asChild>
 						<Button variant="secondary">Cancel</Button>
 					</DialogClose>
-					<Button disabled={submitting} onClick={revoke}>
+					<Button variant="destructive" disabled={submitting} onClick={revoke}>
 						{submitting ? "Revoking…" : "Revoke token"}
 					</Button>
 				</DialogFooter>

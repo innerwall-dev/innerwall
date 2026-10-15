@@ -114,7 +114,7 @@ export function FlowsTab({
 				<div className="overflow-hidden rounded-panel border border-hairline">
 					<table className="w-full border-separate border-spacing-0">
 						<thead>
-							<tr className="h-row-header bg-card">
+							<tr className="h-row-header">
 								<th className={th}>Decision</th>
 								<th className={th}>Source</th>
 								<th className={th}>Port</th>
@@ -219,7 +219,7 @@ export function FlowsTab({
 // The table's header and body cells.
 const th =
 	"border-b border-hairline px-3 text-left type-control whitespace-nowrap text-tertiary";
-const td = "border-b border-hairline px-3 py-2 text-primary";
+const td = "h-row-pitch border-b border-hairline px-3 py-2 text-primary";
 
 type ClockSkew = NonNullable<Workload["health"]["clock_skew"]>;
 

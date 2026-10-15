@@ -96,9 +96,9 @@ const cellFill = {
 // header band, dense rows on subtle hairlines.
 const panel = "overflow-x-auto rounded-panel border border-hairline";
 const th =
-	"h-row-header whitespace-nowrap border-b border-hairline bg-card px-2.5 text-left type-control text-tertiary first:pl-3 last:pr-3";
+	"h-row-header whitespace-nowrap border-b border-hairline px-2.5 text-left type-meta-label text-tertiary first:pl-3 last:pr-3";
 const td =
-	"border-b border-hairline px-2.5 py-2 type-dense first:pl-3 last:pr-3";
+	"h-row-pitch border-b border-hairline px-2.5 py-2 type-dense first:pl-3 last:pr-3";
 
 export function Grouped({
 	rows,
@@ -301,7 +301,7 @@ export function MatrixTake({ rows, range, selected, onSelect }: TakeProps) {
 							<th
 								className={cn(
 									cellBorder,
-									"h-row-header bg-card px-3 text-left type-control text-tertiary",
+									"h-row-header px-3 text-left type-meta-label text-tertiary",
 								)}
 							>
 								Peer ↓ · Service →
@@ -312,7 +312,7 @@ export function MatrixTake({ rows, range, selected, onSelect }: TakeProps) {
 									scope="col"
 									className={cn(
 										cellBorder,
-										"h-row-header bg-card px-3 text-left type-mono-sm font-medium text-secondary",
+										"h-row-header px-3 text-left type-mono-sm font-medium text-secondary",
 									)}
 								>
 									{s}

@@ -49,7 +49,7 @@ export function DryRunCard({
 	return (
 		<section
 			aria-label="Dry run"
-			className="flex flex-col gap-3 rounded-panel border border-hairline bg-canvas p-4"
+			className="flex flex-col gap-3 rounded-panel border border-hairline bg-card p-4"
 		>
 			<div className="flex items-center gap-3">
 				<Eyebrow>Dry run — what saving these changes would change</Eyebrow>

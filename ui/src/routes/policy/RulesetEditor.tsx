@@ -636,7 +636,7 @@ export function RulesetEditor({
 									setAbout({ ...about, name: ev.target.value });
 								}}
 								className={cn(
-									"h-control-md w-[320px] rounded-control border bg-canvas px-3 type-dialog-title font-mono text-primary placeholder:font-normal placeholder:text-tertiary",
+									"h-control-md w-[320px] rounded-control border bg-field-sunk px-3 type-dialog-title font-mono text-primary placeholder:font-normal placeholder:text-tertiary",
 									aboutAt("name").length > 0
 										? "border-status-critical-fg"
 										: "border-strong",

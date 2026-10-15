@@ -86,14 +86,14 @@ export function WorkloadDetail() {
 
 	if (wl.status === "loading") {
 		return (
-			<div className="px-6">
+			<div className="px-5">
 				<LoadingRow what="workload" />
 			</div>
 		);
 	}
 	if (wl.status === "error") {
 		return (
-			<div className="px-6 pt-6">
+			<div className="px-5 pt-6">
 				{wl.error.type === ProblemType.notFound ? (
 					<EmptyState title="No such workload" icon="server" width={480}>
 						No workload is enrolled with this identity.{" "}
@@ -151,7 +151,7 @@ export function WorkloadDetail() {
 						count={rendered ? rendered.rules.length : undefined}
 					/>
 				</TabList>
-				<div className="min-h-0 flex-1 overflow-auto px-6 pt-5 pb-6">
+				<div className="min-h-0 flex-1 overflow-auto px-5 pt-5 pb-6">
 					{tab === "flows" ? (
 						<FlowsTab
 							workload={w.id}

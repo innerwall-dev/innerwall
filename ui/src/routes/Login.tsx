@@ -84,7 +84,7 @@ export function Login() {
 	const noPassword = problem?.type === ProblemType.noPassword;
 
 	return (
-		<div className="flex min-h-dvh items-center justify-center bg-canvas px-6 py-12 text-primary">
+		<div className="flex min-h-dvh items-center justify-center bg-canvas px-5 py-12 text-primary">
 			<div className="w-full max-w-[380px] rounded-panel border border-hairline bg-popover p-6">
 				<div className="flex items-center gap-2.5">
 					<Lockup />
@@ -108,7 +108,7 @@ export function Login() {
 							onChange={(e) => setPassword(e.target.value)}
 							aria-invalid={problem ? true : undefined}
 							aria-describedby={problem ? problemId : undefined}
-							className="mt-2 font-mono"
+							className="mt-2 h-control-sm font-mono"
 						/>
 						{problem ? (
 							<p id={problemId} role="alert" className="mt-2.5">
@@ -172,7 +172,7 @@ function FreshInstall({ onRetry }: { onRetry: () => void }) {
 						This control plane is freshly installed. The password is set from
 						the command line on the control-plane host, and nowhere else:
 					</p>
-					<pre className="mt-3 overflow-x-auto rounded-control border border-strong bg-canvas px-3 py-2 type-mono-sm text-primary">
+					<pre className="mt-3 overflow-x-auto rounded-control border border-stronger bg-field-sunk px-3 py-2 type-mono-sm text-primary">
 						innerwall operator set-password
 					</pre>
 					<p className="mt-3 type-caption text-tertiary">

@@ -44,7 +44,7 @@ export function ScopeCard({
 	return (
 		<section
 			aria-label="Scope"
-			className="flex flex-col gap-3 rounded-panel border border-hairline bg-canvas p-4"
+			className="flex flex-col gap-3 rounded-panel border border-hairline bg-card p-4"
 		>
 			<Eyebrow>Scope — workloads this ruleset protects</Eyebrow>
 			<div className="flex flex-wrap gap-6">

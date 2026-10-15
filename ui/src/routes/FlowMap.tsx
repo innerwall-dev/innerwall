@@ -73,14 +73,14 @@ export function FlowMap() {
 
 	if (resource.status === "loading") {
 		return (
-			<div className="px-6">
+			<div className="px-5">
 				<LoadingRow what="the flow map" />
 			</div>
 		);
 	}
 	if (resource.status === "error") {
 		return (
-			<div className="px-6">
+			<div className="px-5">
 				<ProblemNotice
 					what="the flow map"
 					error={resource.error}
@@ -203,9 +203,9 @@ function MapView({
 // scope's requirements on the default hairline, the draft requirement
 // on an input's stronger one.
 const control =
-	"relative flex h-control items-center gap-1.5 rounded-control border border-hairline bg-canvas px-2 type-caption text-secondary hover:bg-wash-hover has-[:focus-visible]:focus-ring";
+	"relative flex h-control items-center gap-1.5 rounded-control border border-overlay bg-control-raised px-2 type-control text-secondary hover:border-control-hover has-[:focus-visible]:focus-ring";
 const requirement =
-	"flex h-control items-center gap-1 rounded-control border border-hairline bg-card pr-1 pl-2 type-mono-sm text-primary";
+	"flex h-control items-center gap-1 rounded-control border border-hairline bg-overlay pr-1 pl-2 type-mono-sm text-primary";
 
 function Toolbar({
 	model,
@@ -244,7 +244,7 @@ function Toolbar({
 	}
 
 	return (
-		<div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-hairline px-6 py-3">
+		<div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-hairline px-5 py-3">
 			<div className="flex flex-wrap items-center gap-2">
 				<label className={control}>
 					<span>group by:</span>
@@ -316,7 +316,7 @@ function Toolbar({
 								if (ev.key === "Escape") setAdding(false);
 							}}
 							className={cn(
-								"h-control w-[160px] rounded-control border bg-canvas px-2 type-mono-sm text-primary placeholder:text-tertiary",
+								"h-control w-[160px] rounded-control border bg-field-sunk px-2 type-mono-sm text-primary placeholder:text-tertiary",
 								invalid ? "border-status-critical-fg" : "border-strong",
 							)}
 						/>
@@ -333,7 +333,7 @@ function Toolbar({
 					</Button>
 				)}
 			</div>
-			<fieldset className="m-0 ml-2 flex h-control items-center gap-0.5 rounded-control border border-hairline bg-card p-0.5">
+			<fieldset className="m-0 ml-2 flex h-control items-center gap-0.5 rounded-control border border-overlay bg-field-sunk p-0.5">
 				<legend className="sr-only">Take</legend>
 				{(["graph", "matrix"] as const).map((t) => (
 					<button
@@ -347,10 +347,10 @@ function Toolbar({
 							})
 						}
 						className={cn(
-							"flex h-full cursor-pointer items-center rounded-inner px-2.5 type-caption",
+							"flex h-full cursor-pointer items-center rounded-inner border px-2.5 type-control",
 							take === t
-								? "bg-wash-selected font-medium text-primary"
-								: "text-secondary hover:bg-wash-hover hover:text-primary",
+								? "border-overlay bg-control-raised text-primary"
+								: "border-transparent text-secondary hover:text-primary",
 						)}
 					>
 						{t === "graph" ? "Graph" : "Matrix"}

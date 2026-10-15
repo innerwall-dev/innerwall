@@ -174,14 +174,14 @@ function MintForm({ onMinted }: { onMinted: (m: MintedToken) => void }) {
 						id={nameId}
 						value={name}
 						onChange={(e) => setName(e.target.value)}
-						className="h-control rounded-control border border-strong bg-canvas px-3 type-mono-data text-primary outline-none focus-visible:focus-ring"
+						className="h-control rounded-control border border-strong bg-field-sunk px-3 type-mono-data text-primary outline-none focus-visible:focus-ring"
 					/>
 				</label>
 				<div className="flex flex-col gap-1.5">
 					<span className="type-control text-secondary">Assigns labels</span>
 					<div
 						className={cn(
-							"flex min-h-control flex-wrap items-center gap-1 rounded-control border bg-canvas px-2 py-[5px] has-[input:focus-visible]:focus-ring",
+							"flex min-h-control flex-wrap items-center gap-1 rounded-control border bg-field-sunk px-2 py-[5px] has-[input:focus-visible]:focus-ring",
 							draftInvalid ? "border-status-critical-fg" : "border-strong",
 						)}
 					>
@@ -245,7 +245,7 @@ function MintForm({ onMinted }: { onMinted: (m: MintedToken) => void }) {
 									inputMode="numeric"
 									value={customDays}
 									onChange={(e) => setCustomDays(e.target.value)}
-									className="h-control w-14 rounded-control border border-strong bg-canvas px-2 text-right type-mono-data text-primary outline-none focus-visible:focus-ring"
+									className="h-control w-14 rounded-control border border-strong bg-field-sunk px-2 text-right type-mono-data text-primary outline-none focus-visible:focus-ring"
 								/>
 								days
 							</label>
@@ -304,12 +304,12 @@ function ShownOnce({ minted }: { minted: MintedToken }) {
 	return (
 		<>
 			<DialogHeader title="Token minted — copy it now">
-				<SeverityNote level="alert" className="type-dense">
+				<SeverityNote level="alert" prose className="type-dense">
 					This is the only time the plaintext is shown. Only its hash is stored.
 				</SeverityNote>
 			</DialogHeader>
 			<DialogBody className="gap-3">
-				<div className="flex items-center gap-2 rounded-control border border-strong bg-card py-2 pr-2 pl-3">
+				<div className="flex items-center gap-2 rounded-control border border-stronger bg-field-sunk py-2 pr-2 pl-3">
 					<span
 						className="min-w-0 flex-1 break-all type-mono-sm text-primary"
 						data-testid="minted-secret"
@@ -326,8 +326,8 @@ function ShownOnce({ minted }: { minted: MintedToken }) {
 					</Button>
 				</div>
 				<div className="flex flex-col gap-1.5">
-					<span className="type-control text-secondary">Enroll a host</span>
-					<pre className="rounded-control border border-hairline bg-card px-3 py-2 type-mono-sm whitespace-pre-wrap text-secondary">
+					<span className="type-meta-label text-tertiary">Enroll a host</span>
+					<pre className="rounded-control border border-hairline bg-field-sunk px-3 py-2 type-mono-sm whitespace-pre-wrap text-secondary">
 						{`innerwall-agent enroll --server ${gateway} \\\n  --token ${masked(minted.token)} --bootstrap-ca ./innerwall-ca.crt`}
 					</pre>
 					<span className="type-caption text-tertiary">

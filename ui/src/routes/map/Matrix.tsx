@@ -68,7 +68,7 @@ export function Matrix({
 	}, [selected]);
 
 	return (
-		<div className="flex min-h-0 flex-col px-6 py-5" data-testid="flow-matrix">
+		<div className="flex min-h-0 flex-col px-5 py-5" data-testid="flow-matrix">
 			<div className="mb-3">{range}</div>
 			<div ref={box} className="min-h-0 overflow-auto">
 				{/* The grid is the table's own spacing over the grid color, so

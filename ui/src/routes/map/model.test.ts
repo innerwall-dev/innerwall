@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { workload } from "@/test/fixtures";
 import { addressGroup, peer, rollupOf, row, wref } from "@/test/map";
@@ -6,17 +8,15 @@ import { shapeEdges } from "./geometry";
 import { layoutModel } from "./layout";
 import {
 	buildModel,
-	dashMetrics,
 	defaultKey,
+	edgeCap,
 	edgeDash,
-	edgeDashAt,
 	edgeEmphasis,
+	edgeWidth,
 	groupingKeys,
 	type MapModel,
 	nodeDimmed,
 	resolveSelection,
-	strokeWidth,
-	volumeScale,
 } from "./model";
 
 const checkout1 = wref("w-checkout-1", "checkout-prod-01", {
@@ -242,78 +242,35 @@ describe("rollup to graph model", () => {
 	});
 });
 
-describe("volume scaling", () => {
-	it("log-scales width by volume between the tokens' bounds, whatever the decision", () => {
-		expect(volumeScale(0, 100_000)).toBe(0);
-		expect(volumeScale(100_000, 100_000)).toBe(1);
-		const mid = volumeScale(1000, 100_000);
-		expect(mid).toBeGreaterThan(0);
-		expect(mid).toBeLessThan(1);
-		expect(mid).toBeCloseTo(Math.log1p(1000) / Math.log1p(100_000), 6);
-		// Nothing on the map: the minimum width.
-		expect(volumeScale(0, 0)).toBe(0);
-		expect(strokeWidth({ connections: 100_000 }, 100_000)).toBe(
-			"calc(var(--edge-width-min) + (var(--edge-width-max) - var(--edge-width-min)) * 1.0000)",
-		);
-		expect(strokeWidth({ connections: 0 }, 100_000)).toBe(
-			"calc(var(--edge-width-min) + (var(--edge-width-max) - var(--edge-width-min)) * 0.0000)",
-		);
-	});
-});
+describe("edge stroke", () => {
+	// tokens.css is the one source of the edge geometry.
+	const tokens = readFileSync(join(process.cwd(), "src/tokens.css"), "utf8");
+	const token = (name: string) =>
+		tokens.match(new RegExp(`--${name}:\\s*([^;]+);`))?.[1]?.trim() ?? "";
 
-describe("observed dash", () => {
-	const style = (tokens: Record<string, string>) => ({
-		getPropertyValue: (name: string) => tokens[name] ?? "",
-	});
-	const metrics = dashMetrics(
-		style({ "--edge-width-min": " 1.25px", "--edge-dash-observed": " 1 4" }),
-	);
-
-	it("reads the tokens it scales by, and nothing it cannot read", () => {
-		expect(metrics).toEqual({ widthMin: 1.25, observed: [1, 4] });
-		expect(
-			dashMetrics(
-				style({ "--edge-width-min": "1.25px", "--edge-dash-observed": "1, 4" }),
-			),
-		).toEqual({ widthMin: 1.25, observed: [1, 4] });
-		// Unstyled (the tokens are not loaded): no metrics.
-		expect(dashMetrics(style({}))).toBeNull();
-		expect(
-			dashMetrics(
-				style({ "--edge-width-min": "1.25px", "--edge-dash-observed": "none" }),
-			),
-		).toBeNull();
-	});
-
-	it("scales the observed pattern with the stroke so the round caps never close its gaps", () => {
-		// At the minimum width it is the token's own pattern.
-		expect(edgeDashAt("observed", "1.25px", metrics)).toBe(
-			"calc(1.25px * 0.8000) calc(1.25px * 3.2000)",
-		);
-		// At every width a round cap adds the stroke width to each dot and
-		// takes it from each gap; scaled, the gap stays open, in the same
-		// proportion to the dot as at the minimum.
-		const visible = (w: number) => {
-			const [dot, gap] = (metrics?.observed ?? []).map((n) => (n / 1.25) * w);
-			return { dot: dot + w, gap: gap - w };
-		};
-		for (const w of [1.25, 2, 4]) {
-			const { dot, gap } = visible(w);
-			expect(gap).toBeGreaterThan(0);
-			expect(gap / dot).toBeCloseTo(visible(1.25).gap / visible(1.25).dot, 6);
+	it("draws every edge at the one edge width, whatever its volume or decision", () => {
+		expect(edgeWidth).toBe("var(--edge-width)");
+		expect(token("edge-width")).toBe("2px");
+		for (const d of [
+			"observed",
+			"allowed",
+			"would_block",
+			"blocked",
+		] as const) {
+			expect(edgeDash[d]).toBe(
+				`var(--edge-dash-${d === "would_block" ? "would-block" : d})`,
+			);
 		}
-		const width = strokeWidth({ connections: 10 }, 10);
-		expect(edgeDashAt("observed", width, metrics)).toBe(
-			`calc(${width} * 0.8000) calc(${width} * 3.2000)`,
-		);
 	});
 
-	it("leaves the butt-capped patterns, and an unreadable token, as the tokens draw them", () => {
-		const width = strokeWidth({ connections: 10 }, 10);
-		for (const d of ["allowed", "would_block", "blocked"] as const) {
-			expect(edgeDashAt(d, width, metrics)).toBe(edgeDash[d]);
-		}
-		expect(edgeDashAt("observed", width, null)).toBe(edgeDash.observed);
+	it("keeps the round-capped observed dots apart at that width", () => {
+		const width = Number.parseFloat(token("edge-width"));
+		const [dot, gap] = token("edge-dash-observed").split(/\s+/).map(Number);
+		expect(edgeCap.observed).toBe("round");
+		// A round cap adds the stroke width to each dot and takes it from
+		// each gap.
+		expect((gap ?? 0) - width).toBeGreaterThan(0);
+		expect((dot ?? 0) + width).toBeGreaterThan(0);
 	});
 });
 

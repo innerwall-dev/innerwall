@@ -274,7 +274,7 @@ function Editor({ w, onSaved }: { w: Workload; onSaved: () => void }) {
 					<span className="type-control text-secondary">Labels</span>
 					<div
 						className={cn(
-							"flex min-h-control flex-wrap items-center gap-1 rounded-control border bg-canvas px-2 py-[5px] has-[input:focus-visible]:focus-ring",
+							"flex min-h-control flex-wrap items-center gap-1 rounded-control border bg-field-sunk px-2 py-[5px] has-[input:focus-visible]:focus-ring",
 							textError ? "border-status-critical-fg" : "border-strong",
 						)}
 					>

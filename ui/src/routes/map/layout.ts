@@ -1,8 +1,9 @@
 import dagre from "@dagrejs/dagre";
 import type { MapModel } from "./model";
 
-// The node box, in the design's geometry: 170 by 64 with a 6px radius.
-export const nodeWidth = 170;
+// The node box: 176 wide (the design's) by 64, for the third line the
+// console draws, at the 6px radius.
+export const nodeWidth = 176;
 export const nodeHeight = 64;
 
 const root = "\u0000root";

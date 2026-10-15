@@ -592,7 +592,7 @@ function Pairs({
 			<table className="w-full border-collapse">
 				<caption className="sr-only">Workload pairs behind this row</caption>
 				<thead>
-					<tr className="h-row-header bg-card">
+					<tr className="h-row-header">
 						<th className={pth}>Source</th>
 						<th className={pth}>Destination</th>
 						<th className={cn(pth, "text-right")}>Conns</th>
@@ -667,7 +667,7 @@ function Pairs({
 
 // The drawer's tables: the shared table pattern at the drawer's width.
 const pth =
-	"h-row-header whitespace-nowrap border-b border-hairline px-2 text-left type-control text-tertiary first:pl-2.5 last:pr-2.5";
+	"h-row-header whitespace-nowrap border-b border-hairline px-2 text-left type-meta-label text-tertiary first:pl-2.5 last:pr-2.5";
 const ptd =
 	"whitespace-nowrap border-t border-hairline px-2 py-2 first:pl-2.5 last:pr-2.5";
 

@@ -102,14 +102,14 @@ export function SimulationReview() {
 
 	if (resource.status === "loading") {
 		return (
-			<div className="px-6">
+			<div className="px-5">
 				<LoadingRow what="the simulation review" />
 			</div>
 		);
 	}
 	if (resource.status === "error") {
 		return (
-			<div className="px-6">
+			<div className="px-5">
 				<ProblemNotice
 					what="the simulation review"
 					error={resource.error}
@@ -196,7 +196,7 @@ function Review({
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-			<div className="flex shrink-0 flex-col gap-4 px-6 pt-5">
+			<div className="flex shrink-0 flex-col gap-4 px-5 pt-5">
 				<div className="flex flex-wrap items-start gap-x-4 gap-y-3">
 					<div className="flex min-w-0 flex-1 flex-col gap-2">
 						<RulesetTabs
@@ -221,7 +221,7 @@ function Review({
 				</div>
 				<VerdictBanner verdict={verdict} />
 				<div className="flex flex-wrap items-center gap-2">
-					<fieldset className="m-0 flex h-control overflow-hidden rounded-control border border-hairline p-0">
+					<fieldset className="m-0 flex h-control gap-0.5 rounded-control border border-overlay bg-field-sunk p-0.5">
 						<legend className="sr-only">Take</legend>
 						{takes.map((t) => (
 							<button
@@ -235,10 +235,10 @@ function Review({
 									})
 								}
 								className={cn(
-									"cursor-pointer border-l border-hairline px-3 type-caption first-of-type:border-l-0",
+									"cursor-pointer rounded-inner border px-2.5 type-control",
 									take === t.key
-										? "bg-wash-selected font-medium text-primary"
-										: "text-secondary hover:bg-wash-hover hover:text-primary",
+										? "border-overlay bg-control-raised text-primary"
+										: "border-transparent text-secondary hover:text-primary",
 								)}
 							>
 								{t.label}
@@ -280,7 +280,7 @@ function Review({
 				</div>
 			</div>
 			<div className="mt-4 flex min-h-0 flex-1 overflow-hidden border-t border-hairline">
-				<div className="min-w-0 flex-1 overflow-auto px-6 pt-4 pb-6">
+				<div className="min-w-0 flex-1 overflow-auto px-5 pt-4 pb-6">
 					{take === "grouped" ? (
 						<Grouped
 							rows={shown}
@@ -349,9 +349,11 @@ function RulesetTabs({
 	onPick: (name: string) => void;
 }) {
 	return (
-		<div className="flex flex-wrap items-center gap-2">
-			<span className="type-control text-tertiary">Ruleset</span>
-			<div className="flex flex-wrap gap-1" role="tablist">
+		<div className="flex flex-wrap items-end gap-4 border-b border-hairline">
+			<span className="flex h-tab-row items-center type-meta-label text-tertiary">
+				Ruleset
+			</span>
+			<div className="flex flex-wrap gap-x-5" role="tablist">
 				{rulesets.map((rs) => {
 					const on = rs.name === current.name;
 					const c = counts[rs.id ?? rs.name];
@@ -363,10 +365,10 @@ function RulesetTabs({
 							aria-selected={on}
 							onClick={() => onPick(rs.name)}
 							className={cn(
-								"inline-flex h-control cursor-pointer items-center gap-2 rounded-control border px-2.5 type-mono-sm",
+								"-mb-px inline-flex h-tab-row cursor-pointer items-center gap-2 border-b-2 px-0.5 type-mono-sm focus-visible:rounded-inner focus-visible:focus-ring-inset",
 								on
-									? "border-strong bg-wash-selected text-primary"
-									: "border-transparent text-secondary hover:bg-wash-hover hover:text-primary",
+									? "border-(--text-primary) text-primary"
+									: "border-transparent text-secondary hover:text-primary",
 							)}
 						>
 							<span>{rs.name}</span>
@@ -444,8 +446,7 @@ function ScopeLine({
 
 // VerdictBanner is the composed verdict: the headline, what it rests on,
 // the four numbers, and a line for every condition the scope fails and
-// every qualification. It is tinted with the verdict's tone; the
-// would-block pairs are the screen's one headline metric.
+// every qualification. It is tinted with the verdict's tone.
 function VerdictBanner({ verdict }: { verdict: ReviewVerdictResult }) {
 	const k = verdict.kpis;
 	const safe = verdict.safe;
@@ -464,22 +465,25 @@ function VerdictBanner({ verdict }: { verdict: ReviewVerdictResult }) {
 		>
 			<div className="flex flex-wrap items-start gap-x-8 gap-y-3">
 				<div className="flex min-w-0 flex-1 basis-80 items-start gap-2.5">
-					<StatusGlyph status={glyph} size="lg" className="mt-0.5" />
-					<div className="flex min-w-0 flex-col gap-0.5">
+					<StatusGlyph
+						status={glyph}
+						size="lg"
+						className="mt-1.5 size-[18px]"
+					/>
+					<div className="flex min-w-0 flex-col gap-1">
 						<h1
 							className={cn(
-								"type-dense-strong",
+								"type-page-title",
 								safe ? "text-status-ok-fg" : "text-status-critical-fg",
 							)}
 						>
 							{verdict.headline}
 						</h1>
-						<p className="type-dense text-secondary">{verdict.sub}</p>
+						<p className="type-dense text-primary">{verdict.sub}</p>
 					</div>
 				</div>
 				<dl className="flex max-w-full flex-wrap items-end gap-x-6 gap-y-3">
 					<Kpi
-						headline
 						value={count(k.pairs)}
 						label={
 							<>
@@ -524,32 +528,15 @@ function VerdictBanner({ verdict }: { verdict: ReviewVerdictResult }) {
 	);
 }
 
-// Kpi is one of the banner's numbers under its term. The term reads
-// first; the number is drawn above it.
-function Kpi({
-	value,
-	label,
-	headline = false,
-}: {
-	value: string;
-	label: React.ReactNode;
-	headline?: boolean;
-}) {
+// Kpi is one of the banner's numbers under its term, a mono 24/28 figure.
+// The term reads first; the number is drawn above it.
+function Kpi({ value, label }: { value: string; label: React.ReactNode }) {
 	return (
 		<div className="flex max-w-[160px] flex-col-reverse gap-0.5">
 			<dt className="flex items-start gap-1 type-caption text-secondary [&>svg]:mt-0.5">
 				{label}
 			</dt>
-			<dd
-				className={cn(
-					"m-0 text-primary",
-					headline
-						? "type-mono-figure"
-						: "type-dialog-title font-mono font-medium",
-				)}
-			>
-				{value}
-			</dd>
+			<dd className="m-0 type-mono-figure text-primary">{value}</dd>
 		</div>
 	);
 }

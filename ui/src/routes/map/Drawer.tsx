@@ -531,7 +531,7 @@ function EdgeDrawer({
 // sentence-case labels, dense body rows over subtle dividers.
 const th =
 	"border-b border-hairline px-3 text-left whitespace-nowrap type-control text-tertiary";
-const td = "border-b border-hairline px-3 py-2 type-dense";
+const td = "h-row-pitch border-b border-hairline px-3 py-2 type-dense";
 
 // PairRead is what an opened pair's windows say: the services the pair
 // reached, and the authored rule its admitted windows name, if any.
@@ -608,7 +608,7 @@ function PairFlows({
 				<table className="w-full border-collapse">
 					<caption className="sr-only">Stored windows of this pair</caption>
 					<thead>
-						<tr className="h-row-header bg-card">
+						<tr className="h-row-header">
 							<th className={th}>Service</th>
 							<th className={th}>Decision</th>
 							<th className={cn(th, "text-right")}>Conns</th>

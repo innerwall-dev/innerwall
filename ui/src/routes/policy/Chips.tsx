@@ -165,7 +165,7 @@ export function AddInput({
 				}}
 				onKeyDown={onKeyDown}
 				onBlur={commitOnBlur ? commit : undefined}
-				className="h-control min-w-[150px] rounded-control border border-strong bg-canvas px-2.5 type-mono-sm text-primary placeholder:text-tertiary aria-invalid:border-status-critical-fg"
+				className="h-control min-w-[150px] rounded-control border border-strong bg-field-sunk px-2.5 type-mono-sm text-primary placeholder:text-tertiary aria-invalid:border-status-critical-fg"
 			/>
 			{refusal ? (
 				<SeverityNote level="error" size="sm" className="type-caption">
