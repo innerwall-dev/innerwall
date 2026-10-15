@@ -151,7 +151,7 @@ The console scopes it in code:
 | E12 | **Strip title semantics.** Screens other than a workload's detail keep the breadcrumb in the strip and their own in-content `h1`. Making every strip title an `h1` would duplicate a ruleset's or a verdict's heading. On a workload's detail the name in the strip is the `h1`. | build |
 | E13 | **Flow map nodes and chips.** Nodes are 176 × 64: the console draws a third line (mode, or the unlabeled warning). The on-map chip keeps the repo's count; the package's count-in-chip proposal stays unapplied, and the chip is restyled only. | build |
 | E14 | **Overview cards.** Card titles are the repo's ("Status", "Labels", "Host facts"; the package's board said "Status and sync"). The agent version stays a host fact, not a status row. The Status card keeps the credential row and the apply error. The removed and degraded explanations move to their alert cards. | build |
-| E15 | **"Shown once" badge.** The package specifies a "shown once" warning badge before the mint dialog's sentence. The repo has no such string, so it is **not built** and is escalated as package-implied copy. The sentence is shown as prose with its glyph, and the secret sits in the sunk well. | escalated |
+| E15 | **"Shown once" badge.** The package specifies a "shown once" warning badge before the mint dialog's sentence. The repo has no such string, and the package implies the copy rather than specifying the repo's. It is **not built**: the repo's sentence stands, shown as prose with its glyph, and the secret sits in the sunk well. For a package revision. | lock: keep the repo sentence |
 | E16 | **Totals figures.** "Mono 24/28" has no package type style; the console keeps `type-mono-figure` locally in `index.css`. | build |
 | E17 | **Sign-in title.** The repo's sign-in has no page title (S3 placeholder; the repo owns the flow). `page-title` is used on the 404. | build |
 
@@ -174,6 +174,7 @@ Display and style only, within the package's rules. Wordings are as ruled.
 | P11 | The unmanaged-peer caption ("unmanaged · no address group") is set in the sans at 11px, and the node's side padding is 8px, so it fits the 176px node. It ellipsizes with a tooltip if it ever cannot. |
 | P12 | The map legend keeps short labels. "unmanaged peer" carries the full explanation as its tooltip, on hover and keyboard focus. |
 | P13 | The map's evidence warning is the short form **"evidence incomplete · N workload(s)"** (warn glyph and tone). The full sentence and every gap are its tooltip, on hover and keyboard focus. |
+| P13-a | *Ruled at lock, 2026-10-15.* The map's dropped-records warning takes the same short form: **"flow records dropped · N workload(s)"** (warn glyph and tone). The repo's sentence ("N workload(s) dropped flow records — map may be incomplete.") and each workload's dropped-record counter are its tooltip, on hover and keyboard focus. |
 | P14 | Policy section headers are the mono-upper label alone ("SCOPE", "INBOUND RULES"), each with a text-tertiary sentence-case line under it ("Workloads this ruleset protects", "Who may connect to scoped workloads, on what"). |
 
 ## Polish round 2 (ruled 2026-10-15)
@@ -208,5 +209,6 @@ These strings are new to the repository; every other rendered string is the repo
 - Polish round 1:
   - the stat-tile labels (P1);
   - "evidence incomplete · N workload(s)" (P13);
+  - "flow records dropped · N workload(s)" and the tooltip's "<host>: N dropped" lines (P13-a);
   - "unmanaged peer" as the legend's short label (P12);
   - the policy header split into "Scope" / "Inbound rules" with their sentence-case lines (P14).

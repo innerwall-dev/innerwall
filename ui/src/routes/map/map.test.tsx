@@ -579,11 +579,19 @@ describe("flow map", () => {
 			],
 		});
 		await openMap();
-		expect(
-			await screen.findByText(
-				/1 workload dropped flow records — map may be incomplete/,
-			),
-		).toBeInTheDocument();
+		// The toolbar holds the short form; the sentence and each
+		// workload's counter are its tooltip, on hover or keyboard focus.
+		const warning = await screen.findByRole("button", {
+			name: /flow records dropped · 1 workload/,
+		});
+		act(() => warning.focus());
+		const detail = await screen.findByTestId("dropped-detail");
+		expect(detail).toHaveTextContent(
+			"1 workload dropped flow records — map may be incomplete.",
+		);
+		expect(within(detail).getByRole("listitem")).toHaveTextContent(
+			"metrics-01: 212 dropped",
+		);
 	});
 
 	it("says the map is incomplete where agents lost evidence in the range, and reads the gaps over its range and scope", async () => {
@@ -626,7 +634,9 @@ describe("flow map", () => {
 		);
 		// The gaps place the dropped records; the live counter's hedge
 		// is not repeated for them.
-		expect(screen.queryByText(/dropped flow records/)).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: /flow records dropped/ }),
+		).not.toBeInTheDocument();
 		const read = calls
 			.filter((x) => x.path.startsWith("/api/v1/flows/gaps"))
 			.map((x) => new URL(x.path, "http://console.test").searchParams);

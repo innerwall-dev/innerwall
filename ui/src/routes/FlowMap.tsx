@@ -449,12 +449,39 @@ function Totals({ model }: { model: MapModel }) {
 				</span>
 			) : null}
 			{dropped > 0 ? (
-				<SeverityNote level="alert" role="status">
-					<span title={model.dropped.map((w) => w.hostname).join(", ")}>
-						{count(dropped)} {dropped === 1 ? "workload" : "workloads"} dropped
-						flow records — map may be incomplete
-					</span>
-				</SeverityNote>
+				// The same short form; the sentence and each workload's
+				// counter are its tooltip, on hover or keyboard focus.
+				<span role="status">
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<button
+								type="button"
+								className="cursor-default rounded-inner focus-visible:focus-ring"
+							>
+								<SeverityNote level="alert">
+									flow records dropped · {count(dropped)}{" "}
+									{dropped === 1 ? "workload" : "workloads"}
+								</SeverityNote>
+							</button>
+						</TooltipTrigger>
+						<TooltipContent
+							className="max-w-[420px]"
+							data-testid="dropped-detail"
+						>
+							<p className="text-primary">
+								{count(dropped)} {dropped === 1 ? "workload" : "workloads"}{" "}
+								dropped flow records — map may be incomplete.
+							</p>
+							<ul className="mt-1 flex flex-col gap-0.5 text-secondary">
+								{model.dropped.map((w) => (
+									<li key={w.id}>
+										{w.hostname}: {count(w.health.dropped_flow_records)} dropped
+									</li>
+								))}
+							</ul>
+						</TooltipContent>
+					</Tooltip>
+				</span>
 			) : null}
 			{model.truncated ? (
 				<SeverityNote level="alert" role="status">
