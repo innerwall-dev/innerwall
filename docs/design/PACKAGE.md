@@ -136,7 +136,7 @@ The console scopes it in code:
 | E2 | **Source Code Pro license.** The package's `OFL-SourceCodePro.txt` carried the wrong copyright line ("Google Inc."), while the font files embed "© 2023 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'". `ui/src/fonts/OFL-SourceCodePro.txt` is Adobe's upstream `LICENSE.md` (adobe-fonts/source-code-pro, `release` @ 803b7e2, sha256 `7c940e28a5388e9bba866cf0e408edda45fe0899ba98665b8f6ab31dc5e4b8ff`), and THIRD-PARTY-NOTICES.md follows. For a package revision. | 2: fixed here |
 | E3 | **Tabular numerals.** The package claims tabular figures, but its DM Sans files have proportional digits and no `tnum` feature. Numeric cells are set in Source Code Pro, which is fixed-width (existing practice), and the dead `tabular-nums` declarations are dropped. | 3 |
 | E4 | **Inbound flows columns.** The package specifies Time · Decision · Source · Port · Matched rule · Flows. The repo's columns win: Decision · Source · Port · Process · Matched rule · Conns · Last seen. Source draws the peer's labels as label chips. | 7 |
-| E5 | **Filtering over a paginated read.** "Client-side over served columns" sees only the loaded pages of the cursor-paged `/flows`. The panel's counts and result line are of the loaded rows and say so ("N of M loaded · more not loaded"), and the tab count stays the range total. Server-side filtering is INN-74. | 5 |
+| E5 | **Filtering over a paginated read.** "Client-side over served columns" sees only the loaded pages of the cursor-paged `/flows`. The panel's counts and result line are of the loaded rows and say so (as amended in polish round 1, P8), and the tab count stays the range total. Server-side filtering is INN-74. | 5 |
 | E6 | **Listening services groups.** Decision and Source are not columns of that table. Its panel has Port, Process, and Covered by rule ("— no rule covers it"). | 8 |
 | E7 | **Histogram (S5).** No time-bucketed flow read is served, so the Overview has no histogram and no reserved slot. The gap and `table_removed` history comes from `/flows/gaps`, and there is no credential event row (no event log is served). Follow-up INN-75 (ADR). | 14 |
 | E8 | **Workloads table.** The repo's columns and headers stay (Hostname, Labels, Mode, Sync, Applied, Credential, Agent, Last seen); Agent is new, from the served `agent.version`. The package's collapsible "Removed" bucket with no glyph misreads "removed": in the console it is *enforcement removed on host*, critical with the error glyph (issues #64, #96). | 15 |
@@ -149,6 +149,27 @@ The console scopes it in code:
 | E15 | **"Shown once" badge.** The package specifies a "shown once" warning badge before the mint dialog's sentence. The repo has no such string, so it is **not built** and is escalated as package-implied copy. The sentence is shown as prose with its glyph, and the secret sits in the sunk well. | escalated |
 | E16 | **Totals figures.** "Mono 24/28" has no package type style; the console keeps `type-mono-figure` locally in `index.css`. | build |
 | E17 | **Sign-in title.** The repo's sign-in has no page title (S3 placeholder; the repo owns the flow). `page-title` is used on the 404. | build |
+
+## Polish round 1 (live lab walkthrough, ruled 2026-10-15)
+
+Display and style only, within the package's rules. Wordings are as ruled.
+
+| # | Change |
+| --- | --- |
+| P1 | **Simulation review stat tiles.** The verdict banner holds only the headline, its sentence and the caveat lines. The four figures are a tile row under it: `surface-card` tiles, each a mono-uppercase label (`meta-label`) over a mono 24/28 figure. The labels: **WOULD-BLOCK · PAIRS** (would-block glyph), **CONNECTIONS**, **WORKLOADS AFFECTED** (with "/ N simulating" in text-tertiary), **ALLOWED** (allowed glyph). |
+| P2 | The scope line sits at the right of the ruleset row in text-tertiary, truncating, with a tooltip; one band fewer before the table. |
+| P3 | The UTC windows readout is the time-range control's tooltip, on Simulation review and Flow map. The text stays available to assistive technology. |
+| P4 | View switchers are underline tabs: views are places. This covers the review's Grouped by peer / Peer × service matrix / By recency and, by the same rule, the map's Graph / Matrix. The decision chips are the only boxed elements in the review toolbar. |
+| P5 | Review rows are one line: the peer, its kind tag, and its note, which truncates. The note "not managed, in no address group", the same on every row of the kind, is the `unknown` tag's tooltip. |
+| P6 | The review's connection mini-bars are **neutral and kept**: the `border-stronger` tone on the selected wash. They compare volume, and no status tone is used as decoration. |
+| P7 | When an alert card says a workload's state, the Status card keeps the facts but drops its health line (removed, offline or reconnecting, degraded). Beside the credential-expired card, its credential row is plain text. Each alarm is said once. |
+| P8 | **Inbound flows result line:** "*N* of *M* loaded", where *M* is the range's total (the tab's count, from the rollup). With a filter or search on, it leads with "*K* match ·". It ends with **"filter counts cover loaded rows"**. Replaces "N of M loaded · more not loaded". |
+| P9 | **Empty optional columns are hidden.** A column no loaded row has a value for (Inbound flows' Process; Listening services' Process and Path) is left out until one does. This is display logic, not a schema change. |
+| P10 | **Flow-map edge labels** keep clear of each other and of the nodes. A chip that would collide slides along its own edge to the nearest free place; only when its curve has none is it moved off it. |
+| P11 | The unmanaged-peer caption ("unmanaged · no address group") is set in the sans at 11px, and the node's side padding is 8px, so it fits the 176px node. It ellipsizes with a tooltip if it ever cannot. |
+| P12 | The map legend keeps short labels. "unmanaged peer" carries the full explanation as its tooltip, on hover and keyboard focus. |
+| P13 | The map's evidence warning is the short form **"evidence incomplete · N workload(s)"** (warn glyph and tone). The full sentence and every gap are its tooltip, on hover and keyboard focus. |
+| P14 | Policy section headers are the mono-upper label alone ("SCOPE", "INBOUND RULES"), each with a text-tertiary sentence-case line under it ("Workloads this ruleset protects", "Who may connect to scoped workloads, on what"). |
 
 ## Copy this build adds
 
@@ -165,7 +186,12 @@ These strings are new to the repository; every other rendered string is the repo
   - "— no rule covers it" (ruling 8);
   - "address group" as a Source annotation.
 - Result lines and empties:
-  - "N of M loaded", "· more not loaded";
+  - "N of M loaded", "K match ·", "filter counts cover loaded rows" (P8; "· more not loaded" is retired);
   - "N of M services";
   - "No loaded flows match these filters."
 - The Overview's history title, "Evidence gaps" (the repo's field name).
+- Polish round 1:
+  - the stat-tile labels (P1);
+  - "evidence incomplete · N workload(s)" (P13);
+  - "unmanaged peer" as the legend's short label (P12);
+  - the policy header split into "Scope" / "Inbound rules" with their sentence-case lines (P14).
