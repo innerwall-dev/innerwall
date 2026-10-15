@@ -29,7 +29,7 @@ const twMerge = extendTailwindMerge({
 				"glyph-lg",
 			],
 			radius: ["inner", "control", "panel"],
-			container: ["content", "page"],
+			container: ["content", "page", "page-inner"],
 		},
 	},
 });

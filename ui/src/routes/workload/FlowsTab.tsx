@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { listFlows } from "@/api/fleet";
 import type { Flow, FlowsPage, RenderedPolicy, Verdict } from "@/api/schema";
 import { LabelChip, VerdictPill, verdicts } from "@/components/fleet/status";
+import { page, pageBox } from "@/components/Page";
 import { LoadingRow, ProblemNotice } from "@/components/Problem";
 import { SeverityNote, StatusGlyph } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
@@ -187,42 +188,47 @@ export function FlowsTab({
 				]}
 			/>
 			<div className="flex min-w-0 flex-1 flex-col overflow-auto">
-				<div
-					className="flex h-row-pitch shrink-0 items-center gap-2 border-b border-hairline px-5 type-dense text-secondary"
-					data-testid="flows-result"
-				>
-					{filtering ? (
+				<div className="flex h-row-pitch shrink-0 border-b border-hairline">
+					<div
+						className={cn(
+							page,
+							"flex items-center gap-2 type-dense text-secondary",
+						)}
+						data-testid="flows-result"
+					>
+						{filtering ? (
+							<span>
+								<span className="type-mono-data text-primary">
+									{count(rows.length)}
+								</span>{" "}
+								match ·{" "}
+							</span>
+						) : null}
 						<span>
 							<span className="type-mono-data text-primary">
-								{count(rows.length)}
-							</span>{" "}
-							match ·{" "}
+								{count(loaded.length)}
+							</span>
+							{total !== undefined ? (
+								<>
+									{" "}
+									of{" "}
+									<span className="type-mono-data">
+										{count(Math.max(total, loaded.length))}
+									</span>
+								</>
+							) : null}{" "}
+							loaded
 						</span>
-					) : null}
-					<span>
-						<span className="type-mono-data text-primary">
-							{count(loaded.length)}
+						{chosenDecisions.map((v) => (
+							<VerdictPill key={v} verdict={v} />
+						))}
+						<span className="ml-auto type-caption text-tertiary">
+							filter counts cover loaded rows
 						</span>
-						{total !== undefined ? (
-							<>
-								{" "}
-								of{" "}
-								<span className="type-mono-data">
-									{count(Math.max(total, loaded.length))}
-								</span>
-							</>
-						) : null}{" "}
-						loaded
-					</span>
-					{chosenDecisions.map((v) => (
-						<VerdictPill key={v} verdict={v} />
-					))}
-					<span className="ml-auto type-caption text-tertiary">
-						filter counts cover loaded rows
-					</span>
+					</div>
 				</div>
 				{resource.status === "error" ? (
-					<div className="px-5">
+					<div className={page}>
 						<ProblemNotice
 							what="flows"
 							error={resource.error}
@@ -230,7 +236,12 @@ export function FlowsTab({
 						/>
 					</div>
 				) : (
-					<table className="w-full min-w-[724px] border-separate border-spacing-0">
+					<table
+						className={cn(
+							pageBox,
+							"min-w-[724px] border-separate border-spacing-0",
+						)}
+					>
 						<thead>
 							<tr>
 								<th className={cn(th, "pl-5")}>Decision</th>
@@ -250,24 +261,24 @@ export function FlowsTab({
 					</table>
 				)}
 				{resource.status === "loading" ? (
-					<div className="px-5">
+					<div className={page}>
 						<LoadingRow what="flows" />
 					</div>
 				) : null}
 				{resource.status === "ready" && loaded.length === 0 ? (
-					<p className="px-5 py-6 type-dense text-tertiary">
+					<p className={cn(page, "py-6 type-dense text-tertiary")}>
 						No inbound flows recorded in the last {range.text}.
 					</p>
 				) : null}
 				{resource.status === "ready" &&
 				loaded.length > 0 &&
 				rows.length === 0 ? (
-					<p className="px-5 py-6 type-dense text-tertiary">
+					<p className={cn(page, "py-6 type-dense text-tertiary")}>
 						No loaded flows match these filters.
 					</p>
 				) : null}
 				{cursor || more.error ? (
-					<div className="flex items-center gap-3 px-5 py-4">
+					<div className={cn(page, "flex items-center gap-3 py-4")}>
 						{cursor ? (
 							<Button
 								variant="secondary"

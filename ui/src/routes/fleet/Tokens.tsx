@@ -8,6 +8,7 @@ import {
 } from "@/api/schema";
 import { LabelChip } from "@/components/fleet/status";
 import { Icon, type IconName } from "@/components/Icon";
+import { page } from "@/components/Page";
 import { LoadingRow, ProblemNotice } from "@/components/Problem";
 import { SeverityNote } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
@@ -62,65 +63,75 @@ export function Tokens({
 	const [revoking, setRevoking] = useState<ProvisioningToken | null>(null);
 
 	return (
-		<div className="flex flex-1 flex-col gap-5 overflow-auto px-5 pt-5 pb-8">
-			<div className="flex items-center gap-3">
-				<p className="max-w-[620px] type-dense text-secondary">
-					A token enrolls any number of workloads within its label scope until
-					it expires or is revoked. The plaintext is shown exactly once, at
-					mint; only its hash is stored.
-				</p>
-				<Button className="ml-auto" onClick={() => setMinting(true)}>
-					Mint token
-				</Button>
-			</div>
-			{tokens.status === "loading" ? <LoadingRow what="tokens" /> : null}
-			{tokens.status === "error" ? (
-				<ProblemNotice what="tokens" error={tokens.error} onRetry={reload} />
-			) : null}
-			{tokens.status === "ready" && tokens.data.tokens.length === 0 ? (
-				<p className="rounded-panel border border-hairline bg-card px-4 py-5 type-dense text-secondary">
-					No tokens yet. Mint one to enroll your first workload.
-				</p>
-			) : null}
-			{tokens.status === "ready" && tokens.data.tokens.length > 0 ? (
-				<>
-					<div className="overflow-hidden rounded-panel border border-hairline">
-						<table className="w-full border-separate border-spacing-0">
-							<thead>
-								<tr>
-									<th className={th}>Name</th>
-									<th className={th}>Assigns labels</th>
-									<th className={th}>Status</th>
-									<th className={cn(th, "text-right")}>Enrollments</th>
-									<th className={cn(th, "text-right")}>Last used</th>
-									<th className={cn(th, "text-right")}>Expires</th>
-									<th className={th}>
-										<span className="sr-only">Actions</span>
-									</th>
-								</tr>
-							</thead>
-							<tbody>
-								{tokens.data.tokens.map((t) => (
-									<TokenRow key={t.id} t={t} onRevoke={() => setRevoking(t)} />
-								))}
-							</tbody>
-						</table>
-					</div>
-					<p className="-mt-2 type-caption text-tertiary">
-						Revoking stops future enrollments only — workloads already enrolled
-						keep their credentials and identity.
+		<div className="flex flex-1 flex-col overflow-auto pt-5 pb-8">
+			<div className={cn(page, "flex flex-col gap-5")}>
+				<div className="flex items-center gap-3">
+					<p className="max-w-[620px] type-dense text-secondary">
+						A token enrolls any number of workloads within its label scope until
+						it expires or is revoked. The plaintext is shown exactly once, at
+						mint; only its hash is stored.
 					</p>
-				</>
-			) : null}
-			<MintDialog open={minting} onOpenChange={setMinting} onMinted={reload} />
-			<RevokeDialog
-				token={revoking}
-				onClose={() => setRevoking(null)}
-				onRevoked={() => {
-					setRevoking(null);
-					reload();
-				}}
-			/>
+					<Button className="ml-auto" onClick={() => setMinting(true)}>
+						Mint token
+					</Button>
+				</div>
+				{tokens.status === "loading" ? <LoadingRow what="tokens" /> : null}
+				{tokens.status === "error" ? (
+					<ProblemNotice what="tokens" error={tokens.error} onRetry={reload} />
+				) : null}
+				{tokens.status === "ready" && tokens.data.tokens.length === 0 ? (
+					<p className="rounded-panel border border-hairline bg-card px-4 py-5 type-dense text-secondary">
+						No tokens yet. Mint one to enroll your first workload.
+					</p>
+				) : null}
+				{tokens.status === "ready" && tokens.data.tokens.length > 0 ? (
+					<>
+						<div className="overflow-hidden rounded-panel border border-hairline">
+							<table className="w-full border-separate border-spacing-0">
+								<thead>
+									<tr>
+										<th className={th}>Name</th>
+										<th className={th}>Assigns labels</th>
+										<th className={th}>Status</th>
+										<th className={cn(th, "text-right")}>Enrollments</th>
+										<th className={cn(th, "text-right")}>Last used</th>
+										<th className={cn(th, "text-right")}>Expires</th>
+										<th className={th}>
+											<span className="sr-only">Actions</span>
+										</th>
+									</tr>
+								</thead>
+								<tbody>
+									{tokens.data.tokens.map((t) => (
+										<TokenRow
+											key={t.id}
+											t={t}
+											onRevoke={() => setRevoking(t)}
+										/>
+									))}
+								</tbody>
+							</table>
+						</div>
+						<p className="-mt-2 type-caption text-tertiary">
+							Revoking stops future enrollments only — workloads already
+							enrolled keep their credentials and identity.
+						</p>
+					</>
+				) : null}
+				<MintDialog
+					open={minting}
+					onOpenChange={setMinting}
+					onMinted={reload}
+				/>
+				<RevokeDialog
+					token={revoking}
+					onClose={() => setRevoking(null)}
+					onRevoked={() => {
+						setRevoking(null);
+						reload();
+					}}
+				/>
+			</div>
 		</div>
 	);
 }

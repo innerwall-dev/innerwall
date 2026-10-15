@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router";
 import type { Ruleset, Workload } from "@/api/schema";
 import { Centered, EmptyState } from "@/components/EmptyState";
 import { FilterChip, verdicts } from "@/components/fleet/status";
+import { page, pageInner } from "@/components/Page";
 import { LoadingRow, ProblemNotice } from "@/components/Problem";
 import {
 	defaultRange,
@@ -102,14 +103,14 @@ export function SimulationReview() {
 
 	if (resource.status === "loading") {
 		return (
-			<div className="px-5">
+			<div className={page}>
 				<LoadingRow what="the simulation review" />
 			</div>
 		);
 	}
 	if (resource.status === "error") {
 		return (
-			<div className="px-5">
+			<div className={page}>
 				<ProblemNotice
 					what="the simulation review"
 					error={resource.error}
@@ -196,27 +197,36 @@ function Review({
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-			<div className="flex shrink-0 flex-col gap-4 px-5 pt-5">
-				<div className="flex items-end gap-x-4 border-b border-hairline">
-					<RulesetTabs
-						rulesets={data.rulesets}
-						counts={data.counts}
-						current={ruleset}
-						onPick={pick}
-					/>
-					<ScopeLine ruleset={ruleset} workloads={data.workloads} />
-					<div className="flex h-tab-row shrink-0 items-center gap-2">
-						<Button variant="secondary" asChild>
-							<Link to={editorPath(ruleset.name)}>Edit ruleset</Link>
-						</Button>
-						<Button variant="primary" onClick={() => setPromoting(true)}>
-							Promote to enforced…
-						</Button>
+			<div className="flex shrink-0 flex-col gap-4 pt-5">
+				{/* The ruleset row is chrome: its hairline spans the page,
+				    inset by the gutters, and its contents align to the page
+				    container. Everything under it is content. */}
+				<div className="px-5">
+					<div className="border-b border-hairline">
+						<div className={cn(pageInner, "flex items-end gap-x-4")}>
+							<RulesetTabs
+								rulesets={data.rulesets}
+								counts={data.counts}
+								current={ruleset}
+								onPick={pick}
+							/>
+							<ScopeLine ruleset={ruleset} workloads={data.workloads} />
+							<div className="flex h-tab-row shrink-0 items-center gap-2">
+								<Button variant="secondary" asChild>
+									<Link to={editorPath(ruleset.name)}>Edit ruleset</Link>
+								</Button>
+								<Button variant="primary" onClick={() => setPromoting(true)}>
+									Promote to enforced…
+								</Button>
+							</div>
+						</div>
 					</div>
 				</div>
-				<VerdictBanner verdict={verdict} />
-				<Totals verdict={verdict} />
-				<div className="flex flex-wrap items-center gap-2">
+				<div className={cn(page, "flex flex-col gap-4")}>
+					<VerdictBanner verdict={verdict} />
+					<Totals verdict={verdict} />
+				</div>
+				<div className={cn(page, "flex flex-wrap items-center gap-2")}>
 					<fieldset className="m-0 mr-2 flex h-control-sm gap-5 border-0 p-0">
 						<legend className="sr-only">Take</legend>
 						{takes.map((t) => (
@@ -276,32 +286,34 @@ function Review({
 				</div>
 			</div>
 			<div className="mt-4 flex min-h-0 flex-1 overflow-hidden border-t border-hairline">
-				<div className="min-w-0 flex-1 overflow-auto px-5 pt-4 pb-6">
-					{take === "grouped" ? (
-						<Grouped
-							rows={shown}
-							all={rows}
-							filter={filter}
-							simulating={verdict.kpis.simulating}
-							range={range}
-							selected={selected?.id ?? null}
-							onSelect={select}
-						/>
-					) : take === "matrix" ? (
-						<MatrixTake
-							rows={shown}
-							range={range}
-							selected={selected?.id ?? null}
-							onSelect={select}
-						/>
-					) : (
-						<Recency
-							rows={shown}
-							range={range}
-							selected={selected?.id ?? null}
-							onSelect={select}
-						/>
-					)}
+				<div className="min-w-0 flex-1 overflow-auto pt-4 pb-6">
+					<div className={page}>
+						{take === "grouped" ? (
+							<Grouped
+								rows={shown}
+								all={rows}
+								filter={filter}
+								simulating={verdict.kpis.simulating}
+								range={range}
+								selected={selected?.id ?? null}
+								onSelect={select}
+							/>
+						) : take === "matrix" ? (
+							<MatrixTake
+								rows={shown}
+								range={range}
+								selected={selected?.id ?? null}
+								onSelect={select}
+							/>
+						) : (
+							<Recency
+								rows={shown}
+								range={range}
+								selected={selected?.id ?? null}
+								onSelect={select}
+							/>
+						)}
+					</div>
 				</div>
 				{selected ? (
 					<ReviewDrawer

@@ -12,7 +12,6 @@ import type { SyncState } from "@/api/schema";
 import { useSession } from "@/auth/SessionProvider";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { useResource } from "@/lib/resource";
-import { cn } from "@/lib/utils";
 import { type Crumb, PageHeader } from "./PageHeader";
 import { attentionBadge, type Badge, Sidebar } from "./Sidebar";
 
@@ -90,8 +89,8 @@ function identityRoute(pathname: string): boolean {
 
 // bleedRoute says the screen at pathname runs the full width of the
 // content area: the Flow map, a spatial canvas that earns the width.
-// Every other screen sits in the page container (page-max, centered),
-// and the header strip's contents align to it (W5).
+// Every other screen contains its own content blocks (components/Page),
+// and the header strip's contents align to the page container (W5-a).
 function bleedRoute(pathname: string): boolean {
 	return matchPath("/map/*", pathname) !== null;
 }
@@ -168,15 +167,7 @@ function Frame() {
 					bleed={bleed}
 				/>
 				<main className="relative flex min-h-0 flex-1 flex-col overflow-auto">
-					<div
-						className={cn(
-							"flex min-h-0 w-full flex-1 flex-col",
-							!bleed && "mx-auto max-w-page",
-						)}
-						data-testid="page"
-					>
-						<Outlet context={context} />
-					</div>
+					<Outlet context={context} />
 				</main>
 			</div>
 		</SidebarProvider>

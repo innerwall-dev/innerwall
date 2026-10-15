@@ -10,10 +10,12 @@ import {
 import { ProblemType, type Workload } from "@/api/schema";
 import { EmptyState } from "@/components/EmptyState";
 import { ModePill, syncStates } from "@/components/fleet/status";
+import { page } from "@/components/Page";
 import { LoadingRow, ProblemNotice } from "@/components/Problem";
 import { StatusGlyph } from "@/components/StatusGlyph";
 import { TabList, UnderlineTab } from "@/components/Tabs";
 import { useResource } from "@/lib/resource";
+import { cn } from "@/lib/utils";
 import { useShell } from "@/shell/Shell";
 import { enforcementRemoved, lastSeen, reconnecting } from "../fleet/describe";
 import { ModeChangeDialog } from "../fleet/ModeChangeDialog";
@@ -89,14 +91,14 @@ export function WorkloadDetail() {
 
 	if (wl.status === "loading") {
 		return (
-			<div className="px-5">
+			<div className={page}>
 				<LoadingRow what="workload" />
 			</div>
 		);
 	}
 	if (wl.status === "error") {
 		return (
-			<div className="px-5 pt-5">
+			<div className={cn(page, "pt-5")}>
 				{wl.error.type === ProblemType.notFound ? (
 					<EmptyState title="No such workload" icon="server" width={480}>
 						No workload is enrolled with this identity.{" "}
@@ -172,8 +174,10 @@ export function WorkloadDetail() {
 				<ListeningTab w={w} range={range} onRange={onRange} policy={rendered} />
 			) : null}
 			{tab === "policy" ? (
-				<div className="min-h-0 flex-1 overflow-auto px-5 pt-5 pb-6">
-					<PolicyTab w={w} policy={policy} />
+				<div className="min-h-0 flex-1 overflow-auto pt-5 pb-6">
+					<div className={page}>
+						<PolicyTab w={w} policy={policy} />
+					</div>
 				</div>
 			) : null}
 			<LabelsDialog
