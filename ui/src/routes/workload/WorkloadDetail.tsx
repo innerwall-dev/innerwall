@@ -160,6 +160,11 @@ export function WorkloadDetail() {
 					workload={w.id}
 					range={range}
 					onRange={onRange}
+					total={
+						flowTotals.status === "ready"
+							? flowTotals.data.totals.flow_count
+							: undefined
+					}
 					policy={rendered}
 				/>
 			) : null}

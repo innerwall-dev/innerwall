@@ -17,7 +17,7 @@ import {
 	version,
 } from "../fleet/describe";
 import type { ScreenRange } from "./range";
-import { gapsShown } from "./states";
+import { type ExceptionalState, gapsShown } from "./states";
 
 type Outcome =
 	| { kind: "idle" }
@@ -30,17 +30,20 @@ type Outcome =
 // the instants the surface records, and the apply error when there is
 // one), the agent's channels and credential, the loss counters, the
 // evidence-gap summary over the screen's range, and the snapshot action.
-// It leads with the health line; what an exceptional state means is said
-// by its alert card above it.
+// It leads with the health line, unless an alert card above it already
+// says the workload's state; a fact an alert card carries (an expired
+// credential) is plain here, so the screen says each alarm once.
 export function StatusCard({
 	w,
 	gaps,
 	range,
+	alerts = [],
 	onReread,
 }: {
 	w: Workload;
 	gaps: Resource<EvidenceGaps>;
 	range: ScreenRange;
+	alerts?: readonly ExceptionalState["key"][];
 	onReread: () => void;
 }) {
 	const s = w.sync;
@@ -49,6 +52,10 @@ export function StatusCard({
 	// agent acknowledged, the host holds none of it (issue #64).
 	const removed = enforcementRemoved(w);
 	const cred = credential(w);
+	const stated = alerts.some(
+		(k) => k === "removed" || k === "offline" || k === "degraded",
+	);
+	const credStated = alerts.includes("credential");
 
 	return (
 		<section
@@ -59,18 +66,20 @@ export function StatusCard({
 				Status
 			</h2>
 			<div className="flex flex-col gap-3" data-testid="status-card">
-				<div
-					className={cn(
-						"flex items-center gap-2 type-dense-strong",
-						removed ? tone.error : syncStates[s.state].cls,
-					)}
-				>
-					<StatusGlyph
-						status={removed ? "error" : syncStates[s.state].status}
-						size="md"
-					/>
-					<span>{headline(w)}</span>
-				</div>
+				{stated ? null : (
+					<div
+						className={cn(
+							"flex items-center gap-2 type-dense-strong",
+							removed ? tone.error : syncStates[s.state].cls,
+						)}
+					>
+						<StatusGlyph
+							status={removed ? "error" : syncStates[s.state].status}
+							size="md"
+						/>
+						<span>{headline(w)}</span>
+					</div>
+				)}
 				<dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-4 gap-y-2">
 					<dt className={field}>applied</dt>
 					<dd className={value}>{version(s.applied_version)}</dd>
@@ -113,8 +122,10 @@ export function StatusCard({
 					<dd className={value}>{ago(w.enrolled_at)}</dd>
 					<dt className={field}>credential</dt>
 					<dd className={value}>
-						{cred.tone === "ok" ? (
-							<span className={credentialTone.ok}>{cred.text}</span>
+						{cred.tone === "ok" || credStated ? (
+							<span className={credStated ? "text-primary" : credentialTone.ok}>
+								{cred.text}
+							</span>
 						) : (
 							<SeverityNote
 								level={cred.tone === "bad" ? "error" : "alert"}

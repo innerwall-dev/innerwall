@@ -33,7 +33,13 @@ export function Overview({
 			<div className="mx-auto flex max-w-content flex-col gap-4 px-5 pt-5 pb-8">
 				<AlertCards states={states} />
 				<div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] items-start gap-4">
-					<StatusCard w={w} gaps={gaps} range={range} onReread={onReread} />
+					<StatusCard
+						w={w}
+						gaps={gaps}
+						range={range}
+						alerts={states.map((s) => s.key)}
+						onReread={onReread}
+					/>
 					<LabelsCard w={w} onEdit={onEditLabels} />
 					<HostFacts w={w} />
 				</div>

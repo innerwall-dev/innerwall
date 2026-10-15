@@ -58,18 +58,22 @@ function tally<T extends { key: string }>(
 // range, newest first, a page at a time. Each row is one reporting window
 // of one source and service as ingestion stored it. The filter panel
 // narrows the rows loaded so far, by decision, port, source, and matched
-// rule, and by text; its counts, like the result line, are of the loaded
-// rows, which the result line says. The tab's own count is the range's
-// total, from the rollup.
+// rule, and by text; its counts are of the loaded rows. The result line
+// says how many rows are loaded of the range's total (the rollup's, the
+// tab's own count), how many of them match when a filter is on, and that
+// the panel counts the loaded rows. A column no loaded row has a value
+// for (Process, where the agent reports none) is left out until one does.
 export function FlowsTab({
 	workload,
 	range,
 	onRange,
+	total,
 	policy,
 }: {
 	workload: string;
 	range: ScreenRange;
 	onRange: (key: ScreenRangeKey) => void;
+	total: number | undefined;
 	policy: RenderedPolicy | null;
 }) {
 	const [pages, setPages] = useState<FlowsPage[]>([]);
@@ -149,6 +153,8 @@ export function FlowsTab({
 		].some((t) => t.toLowerCase().includes(q));
 	});
 	const chosenDecisions = order.filter((v) => filters.decision?.has(v));
+	const filtering = q !== "" || Object.values(filters).some((c) => c.size > 0);
+	const process = loaded.some((f) => f.process_name);
 
 	return (
 		<div className="flex min-h-0 flex-1">
@@ -185,16 +191,35 @@ export function FlowsTab({
 					className="flex h-row-pitch shrink-0 items-center gap-2 border-b border-hairline px-5 type-dense text-secondary"
 					data-testid="flows-result"
 				>
+					{filtering ? (
+						<span>
+							<span className="type-mono-data text-primary">
+								{count(rows.length)}
+							</span>{" "}
+							match ·{" "}
+						</span>
+					) : null}
 					<span>
 						<span className="type-mono-data text-primary">
-							{count(rows.length)}
-						</span>{" "}
-						of {count(loaded.length)} loaded
-						{cursor ? " · more not loaded" : ""}
+							{count(loaded.length)}
+						</span>
+						{total !== undefined ? (
+							<>
+								{" "}
+								of{" "}
+								<span className="type-mono-data">
+									{count(Math.max(total, loaded.length))}
+								</span>
+							</>
+						) : null}{" "}
+						loaded
 					</span>
 					{chosenDecisions.map((v) => (
 						<VerdictPill key={v} verdict={v} />
 					))}
+					<span className="ml-auto type-caption text-tertiary">
+						filter counts cover loaded rows
+					</span>
 				</div>
 				{resource.status === "error" ? (
 					<div className="px-5">
@@ -211,7 +236,7 @@ export function FlowsTab({
 								<th className={cn(th, "pl-5")}>Decision</th>
 								<th className={th}>Source</th>
 								<th className={th}>Port</th>
-								<th className={th}>Process</th>
+								{process ? <th className={th}>Process</th> : null}
 								<th className={th}>Matched rule</th>
 								<th className={cn(th, "text-right")}>Conns</th>
 								<th className={cn(th, "pr-5 text-right")}>Last seen</th>
@@ -219,7 +244,7 @@ export function FlowsTab({
 						</thead>
 						<tbody>
 							{rows.map((f) => (
-								<Row key={f.id} f={f} rules={rules} />
+								<Row key={f.id} f={f} rules={rules} process={process} />
 							))}
 						</tbody>
 					</table>
@@ -270,7 +295,15 @@ export function FlowsTab({
 	);
 }
 
-function Row({ f, rules }: { f: Flow; rules: RuleIndex }) {
+function Row({
+	f,
+	rules,
+	process,
+}: {
+	f: Flow;
+	rules: RuleIndex;
+	process: boolean;
+}) {
 	const rule = matchedRule(f, rules);
 	const labels = f.peer.workload_id ? labelPairs(f.peer.labels) : [];
 	return (
@@ -301,9 +334,11 @@ function Row({ f, rules }: { f: Flow; rules: RuleIndex }) {
 				</div>
 			</td>
 			<td className={cn(td, "type-mono-data")}>{portOf(f)}</td>
-			<td className={cn(td, "type-mono-data text-secondary")}>
-				{f.process_name || "—"}
-			</td>
+			{process ? (
+				<td className={cn(td, "type-mono-data text-secondary")}>
+					{f.process_name || "—"}
+				</td>
+			) : null}
 			<td className={cn(td, "type-dense text-secondary")}>
 				{rule.text}
 				{rule.id ? (

@@ -96,6 +96,9 @@ export function ListeningTab({
 		process: (s) => [processOf(s)],
 		rule: rulesOf,
 	};
+	// A column no service has a value for is left out until one does.
+	const process = services.some((s) => s.process_name);
+	const path = services.some((s) => s.process_path);
 	const q = search.trim().toLowerCase();
 	const rows = services.filter((s) => {
 		for (const [g, chosen] of Object.entries(filters)) {
@@ -174,8 +177,8 @@ export function ListeningTab({
 						<thead>
 							<tr>
 								<th className={cn(th, "pl-5")}>Service</th>
-								<th className={th}>Process</th>
-								<th className={th}>Path</th>
+								{process ? <th className={th}>Process</th> : null}
+								{path ? <th className={th}>Path</th> : null}
 								<th className={th}>Inbound flows</th>
 								<th className={cn(th, "pr-5")}>Covered by rule</th>
 							</tr>
@@ -188,6 +191,8 @@ export function ListeningTab({
 									use={use.status === "ready" ? use.data : null}
 									rangeShort={range.short}
 									policy={policy}
+									process={process}
+									path={path}
 								/>
 							))}
 						</tbody>
@@ -203,11 +208,15 @@ function Row({
 	use,
 	rangeShort,
 	policy,
+	process,
+	path,
 }: {
 	s: Service;
 	use: { all: Map<string, number>; wb: Map<string, number> } | null;
 	rangeShort: string;
 	policy: RenderedPolicy | null;
+	process: boolean;
+	path: boolean;
 }) {
 	const key = `${s.protocol}/${s.port}`;
 	const conns = use?.all.get(key) ?? 0;
@@ -232,12 +241,16 @@ function Row({
 	return (
 		<tr className="hover:bg-wash-hover">
 			<td className={cn(td, "pl-5 type-mono-data text-primary")}>{key}</td>
-			<td className={cn(td, "type-mono-data text-primary")}>
-				{s.process_name || "—"}
-			</td>
-			<td className={cn(td, "type-mono-sm text-tertiary")}>
-				{s.process_path || "—"}
-			</td>
+			{process ? (
+				<td className={cn(td, "type-mono-data text-primary")}>
+					{s.process_name || "—"}
+				</td>
+			) : null}
+			{path ? (
+				<td className={cn(td, "type-mono-sm text-tertiary")}>
+					{s.process_path || "—"}
+				</td>
+			) : null}
 			<td className={cn(td, "type-dense")}>
 				{usage.status ? (
 					<span

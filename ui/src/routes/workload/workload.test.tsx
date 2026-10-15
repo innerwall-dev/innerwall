@@ -371,7 +371,8 @@ describe("workload detail", () => {
 		surface();
 		renderApp(`/workloads/${db.id}`);
 		const card = await screen.findByTestId("status-card");
-		expect(card).toHaveTextContent("Degraded — last apply failed");
+		// The alert card says the state; the card keeps the facts only.
+		expect(card).not.toHaveTextContent("Degraded — last apply failed");
 		expect(card).toHaveTextContent("appliedv41");
 		expect(card).toHaveTextContent("renderedv42 (not applied)");
 		expect(card).toHaveTextContent("last ack4m ago · FAILED");
@@ -438,8 +439,11 @@ describe("workload detail", () => {
 		});
 		renderApp(`/workloads/${db.id}`);
 		const card = await screen.findByTestId("status-card");
-		expect(card).toHaveTextContent(/^Enforcement removed on host/);
+		expect(card).not.toHaveTextContent("Enforcement removed on host");
 		expect(card).not.toHaveTextContent("Synced");
+		expect(
+			within(screen.getByTestId("state-chips")).getAllByRole("button")[0],
+		).toHaveTextContent("Enforcement removed");
 		expect(
 			within(screen.getByTestId("alert-removed")).getByTestId(
 				"enforcement-removed",
@@ -474,9 +478,10 @@ describe("workload detail", () => {
 		});
 		renderApp(`/workloads/${db.id}`);
 		const card = await screen.findByTestId("status-card");
-		expect(card).toHaveTextContent(
-			/^Reconnecting — control channel down, flow reports arriving/,
+		expect(screen.getByTestId("alert-offline")).toHaveTextContent(
+			"Reconnectingcontrol channel down · flow reports arriving",
 		);
+		expect(card).not.toHaveTextContent("Reconnecting");
 		expect(screen.getByTestId("last-flow-report")).toHaveTextContent("30s ago");
 	});
 
@@ -495,7 +500,60 @@ describe("workload detail", () => {
 		});
 		renderApp(`/workloads/${db.id}`);
 		const card = await screen.findByTestId("status-card");
-		expect(card).toHaveTextContent(/^Offline — no contact for 12m/);
+		expect(screen.getByTestId("alert-offline")).toHaveTextContent(
+			"Offlineno contact for 12m",
+		);
+		expect(card).not.toHaveTextContent("Offline");
+	});
+
+	it("says each alarm once: the status line only without an alert card, the credential plain beside its card", async () => {
+		const synced = {
+			...db,
+			sync: {
+				...db.sync,
+				state: "synced" as const,
+				applied_version: 42,
+				latest_version: 42,
+				error: "",
+			},
+			health: {
+				...db.health,
+				credential: {
+					...db.health.credential,
+					state: "renews" as const,
+					last_error: "",
+				},
+			},
+		};
+		surface({ workload: () => synced });
+		const { unmount } = renderApp(`/workloads/${db.id}`);
+		expect(await screen.findByTestId("status-card")).toHaveTextContent(
+			/^Synced — v42 applied/,
+		);
+		unmount();
+
+		surface({
+			workload: () => ({
+				...synced,
+				health: {
+					...synced.health,
+					credential: {
+						...synced.health.credential,
+						state: "expired" as const,
+						expires_at: minutesAgo(2 * 24 * 60),
+					},
+				},
+			}),
+		});
+		renderApp(`/workloads/${db.id}`);
+		const card = await screen.findByTestId("status-card");
+		expect(screen.getByTestId("alert-credential")).toHaveTextContent(
+			"Credential expiredexpired 2d ago",
+		);
+		const row = within(card).getByText("credential")
+			.nextElementSibling as HTMLElement;
+		expect(row).toHaveTextContent("expired 2d ago");
+		expect(row.querySelector("[data-slot=status-glyph]")).toBeNull();
 	});
 
 	it("chips its states on every page, critical first, each opening its popover", async () => {
@@ -634,9 +692,17 @@ describe("workload detail", () => {
 			"would block2",
 		);
 		expect(box(/^blocked/).closest("label")).toHaveTextContent("blocked0");
+		// Loaded of the range's total (the tab's count), and what the panel
+		// counts.
 		expect(screen.getByTestId("flows-result")).toHaveTextContent(
-			"3 of 3 loaded",
+			/^3 of 7 loaded/,
 		);
+		expect(screen.getByTestId("flows-result")).toHaveTextContent(
+			"filter counts cover loaded rows",
+		);
+		expect(
+			within(table).getByRole("columnheader", { name: "Process" }),
+		).toBeInTheDocument();
 		expect(within(panel).getByText("not managed")).toBeInTheDocument();
 		const rules = within(
 			within(panel).getByRole("group", { name: "Matched rule" }),
@@ -649,7 +715,7 @@ describe("workload detail", () => {
 		const reads = flowReads().length;
 		await user.click(box(/^would block/));
 		expect(screen.getByTestId("flows-result")).toHaveTextContent(
-			"2 of 3 loaded",
+			/^2 match · 3 of 7 loaded/,
 		);
 		expect(within(table).queryByText("10.0.0.10")).not.toBeInTheDocument();
 		await user.click(
@@ -659,14 +725,14 @@ describe("workload detail", () => {
 			),
 		);
 		expect(screen.getByTestId("flows-result")).toHaveTextContent(
-			"1 of 3 loaded",
+			/^1 match · 3 of 7 loaded/,
 		);
 		expect(within(table).getByText("198.51.100.7")).toBeInTheDocument();
 		expect(flowReads()).toHaveLength(reads);
 
 		await user.click(within(panel).getByRole("button", { name: "Reset" }));
 		expect(screen.getByTestId("flows-result")).toHaveTextContent(
-			"3 of 3 loaded",
+			/^3 of 7 loaded/,
 		);
 	});
 
@@ -706,19 +772,36 @@ describe("workload detail", () => {
 		renderApp(`/workloads/${db.id}/flows`);
 		const table = await screen.findByRole("table");
 		await within(table).findByText("192.0.2.7");
-		expect(screen.getByTestId("flows-result")).toHaveTextContent(
-			"2 of 2 loaded · more not loaded",
+		await waitFor(() =>
+			expect(screen.getByTestId("flows-result")).toHaveTextContent(
+				/^2 of 7 loaded/,
+			),
 		);
 		await user.click(screen.getByRole("button", { name: "Load more" }));
 		expect(await within(table).findByText("198.51.100.7")).toBeInTheDocument();
 		expect(screen.getByTestId("flows-result")).toHaveTextContent(
-			/^3 of 3 loaded$/,
+			/^3 of 7 loaded/,
 		);
 		const reads = calls
 			.filter((c) => c.path.startsWith("/api/v1/flows?"))
 			.map((c) => new URL(c.path, "http://x").searchParams);
 		expect(reads.at(-1)?.get("cursor")).toBe("f2");
 		expect(reads.at(-1)?.get("from")).toBe(reads[0]?.get("from"));
+	});
+
+	it("leaves out the Process column while no loaded row has a process", async () => {
+		surface({
+			flows: () => ({
+				flows: [stranger, { ...office, process_name: undefined }],
+				next_cursor: null,
+			}),
+		});
+		renderApp(`/workloads/${db.id}/flows`);
+		const table = await screen.findByRole("table");
+		await within(table).findByText("198.51.100.7");
+		expect(
+			within(table).queryByRole("columnheader", { name: "Process" }),
+		).not.toBeInTheDocument();
 	});
 
 	it("says so when the range holds no flows", async () => {
