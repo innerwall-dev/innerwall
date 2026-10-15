@@ -72,6 +72,7 @@ AA contrast holds on every shipped pair **except one dated, scoped waiver**.
   - chip 22;
   - filter panel 280;
   - `content-max` **1120**.
+  - `page-max` **1600** (amendment 6, W5).
 - **Flow map (W2):** `edge-width` **2px**, one width for every edge.
 - **Tabs:** underlined in **text-primary**. The pill marks primary navigation only.
 
@@ -118,6 +119,7 @@ Recorded by the console v3 build (INN-73), 2026-10-15. The package above is the 
   - The Status card keeps Resend in every state, as before.
 - **Amendment 4 (ruling 18): the search field in the W3 strip.** The header strip keeps the console's search field (INN-39) at its right, as a 26px sunk field.
 - **Amendment 5 (ruling 12): the popover sentence limit.** The one-sentence limit is waived for the clock-skew state, whose existing text is three sentences and is kept whole.
+- **Amendment 6 (W5): the `page-max` token.** `page-max: 1600px`, the page container, beside `content-max`. It is in `tokens.json` (`size`, and the amendments list) and `tokens.css` (`--page-max`). The rule it serves is under polish round 3.
 
 ## Accessibility
 
@@ -180,6 +182,25 @@ A deviation the build introduced, recorded once it was corrected against the pac
 | # | Deviation | Correction |
 | --- | --- | --- |
 | D1 | **Narrow plate mapping.** The build gave the primary plate to the review's **Promote to enforced…** only when the verdict was safe, and drew it as a secondary button otherwise. The promote dialog's confirm overrode the plate's disabled state with a class the v3 vocabulary does not define, so a held-back confirm looked live. This read the accent as a verdict. | Per the button spec (`components/Controls-Badges-Chips.md`): the accent marks the view's primary action, never a verdict. Severity is carried by the verdict banner, the acknowledgment, and the disabled gate. The Simulation strip's **Promote to enforced…** and the dialog's enabled confirm (**Enforce anyway…** included) take the plate whatever the verdict. A held-back confirm is the plate's own disabled state (`surface-overlay`, text-disabled) and stays focusable so its reason can be reached. The mint dialog's confirm was already the plate. **Edit ruleset**, **Add rule** and **Revoke** stay neutral. |
+
+## Polish round 3: wide-screen containment (W5, ruled 2026-10-15)
+
+On a 2560px display every full-bleed page stretched its tables across about 2,300px and the columns scattered. W5 supersedes R4.2's "data pages are full-bleed".
+
+**The rule.** Two containers, applied to the content area right of the primary sidebar:
+
+| Container | Width | Pages |
+| --- | --- | --- |
+| `content-max` (unchanged) | 1120px, including its padding | Reading and form pages: Workload detail's Overview. |
+| `page-max` (amendment 6) | 1600px, including the page's 20px gutters | Every other page: Simulation review, Workloads and Provisioning tokens, Workload detail's Inbound flows, Listening services and Applied policy (the filter panel and the table together), Policy, and Not found. |
+
+- **Behavior.** The page container is centered in the content area. Below 1600px of available width it is the full width, so 1280 and 1440 screens render exactly as before.
+- **Where it lives.** It is one wrapper in the shell around the routed screen, so a screen cannot opt in or out by accident. Its tables keep their column behavior; the container is what stops the scatter.
+- **Padding, as built.** The 40px x-padding is met as the page's own 20px gutter plus canvas: the content's clearance reaches 40px at 1640px of available width and grows from there. A 40px gutter at every width would have moved the 1280/1440 layouts the ruling keeps unchanged.
+- **The one exception: the Flow map.** Its canvas runs full-bleed, because a spatial canvas earns the width. Its toolbar row stays full-bleed with it (the call left to the build): the toolbar's controls act on the canvas, and aligned to `page-max` they would float mid-screen above a wider canvas. Nothing else is exempt.
+- **The header strip.** The 48px strip and its hairline span the content area (it is chrome). Its contents (breadcrumb or identity, and search) align to the page container, so the title sits over the page it names (the call left to the build). On the Flow map they run full width with the canvas.
+- **A considered deviation, not an erratum.** Record tables do not run full-bleed. A five-to-seven-column operations table has nothing to gain from 2,300px; holding it to `page-max` keeps its columns together.
+- **Composites.** They are captured at 1440, where no scene changes, so none are recaptured. The wide-screen pass is the lab's.
 
 ## Copy this build adds
 

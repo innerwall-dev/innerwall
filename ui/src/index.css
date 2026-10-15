@@ -139,6 +139,7 @@
 	--spacing-glyph-md: var(--glyph-md);
 	--spacing-glyph-lg: var(--glyph-lg);
 	--container-content: var(--content-max);
+	--container-page: var(--page-max);
 }
 
 /* The type roles are tokens.css's .type-* classes. The review's totals

@@ -12,6 +12,7 @@ import type { SyncState } from "@/api/schema";
 import { useSession } from "@/auth/SessionProvider";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { useResource } from "@/lib/resource";
+import { cn } from "@/lib/utils";
 import { type Crumb, PageHeader } from "./PageHeader";
 import { attentionBadge, type Badge, Sidebar } from "./Sidebar";
 
@@ -87,6 +88,14 @@ function identityRoute(pathname: string): boolean {
 	return detail !== null && detail.params.id !== "tokens";
 }
 
+// bleedRoute says the screen at pathname runs the full width of the
+// content area: the Flow map, a spatial canvas that earns the width.
+// Every other screen sits in the page container (page-max, centered),
+// and the header strip's contents align to it (W5).
+function bleedRoute(pathname: string): boolean {
+	return matchPath("/map/*", pathname) !== null;
+}
+
 // Shell is the authenticated frame: sidebar, page header, and the screen.
 // An anonymous session is sent to the login screen, remembering where
 // it was headed.
@@ -141,6 +150,7 @@ function Frame() {
 		[openWorkload, fleetChanged, policyChanged, strip],
 	);
 
+	const bleed = bleedRoute(location.pathname);
 	const counts: Partial<Record<string, Badge>> = {};
 	if (fleet.status === "ready") {
 		const b = attentionBadge(fleet.data);
@@ -155,9 +165,18 @@ function Frame() {
 				<PageHeader
 					crumbs={crumbsFor(location.pathname, location.search)}
 					identity={identityRoute(location.pathname) ? setStrip : undefined}
+					bleed={bleed}
 				/>
 				<main className="relative flex min-h-0 flex-1 flex-col overflow-auto">
-					<Outlet context={context} />
+					<div
+						className={cn(
+							"flex min-h-0 w-full flex-1 flex-col",
+							!bleed && "mx-auto max-w-page",
+						)}
+						data-testid="page"
+					>
+						<Outlet context={context} />
+					</div>
 				</main>
 			</div>
 		</SidebarProvider>

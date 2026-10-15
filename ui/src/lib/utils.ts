@@ -1,7 +1,7 @@
 import { type ClassValue, clsx } from "clsx";
 import { extendTailwindMerge } from "tailwind-merge";
 
-// The package's named sizes and radii (index.css maps them from
+// The package's named sizes, radii and containers (index.css maps them from
 // tokens.css), taught to the merge so that h-control-sm after h-control
 // replaces it instead of both reaching the cascade.
 const twMerge = extendTailwindMerge({
@@ -29,6 +29,7 @@ const twMerge = extendTailwindMerge({
 				"glyph-lg",
 			],
 			radius: ["inner", "control", "panel"],
+			container: ["content", "page"],
 		},
 	},
 });

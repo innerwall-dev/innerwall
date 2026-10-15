@@ -1,6 +1,6 @@
 /* Innerwall Console v3 (proposed) — generated from tokens.json. Do not edit by hand. */
 /* Design package v3 tokens.css as recorded in the repository: generated from tokens.json, with
-   .type-caption (amendment 1) and font URLs pointing at the self-hosted files in ui/src/fonts/. */
+   .type-caption (amendment 1), --page-max (amendment 6), and font URLs pointing at the self-hosted files in ui/src/fonts/. */
 
 @font-face {
   font-family: "DM Sans";
@@ -196,6 +196,7 @@
   --popover-width: 320px;
   --popover-account: 240px;
   --content-max: 1120px;
+  --page-max: 1600px;
   --icon-size: 14px;
   --icon-stroke: 2;
   --logo-size: 22px;

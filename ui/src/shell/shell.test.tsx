@@ -56,6 +56,27 @@ describe("shell", () => {
 		},
 	);
 
+	// W5: every screen sits in the page container and the strip's contents
+	// align to it; the Flow map's canvas runs the full width, its strip
+	// with it.
+	it.each([
+		["/simulation", true],
+		["/workloads", true],
+		["/workloads/tokens", true],
+		["/policy", true],
+		["/no/such/screen", true],
+		["/map", false],
+	])("contains %s in the page container: %s", async (path, contained) => {
+		signedIn();
+		renderApp(path);
+		const page = await screen.findByTestId("page");
+		const strip = screen.getByRole("banner").firstElementChild;
+		for (const el of [page, strip]) {
+			if (contained) expect(el).toHaveClass("max-w-page", "mx-auto");
+			else expect(el).not.toHaveClass("max-w-page");
+		}
+	});
+
 	it("renders every fresh-install state", async () => {
 		signedIn();
 		const user = userEvent.setup();
