@@ -49,7 +49,7 @@ export function ListeningTab({
 
 	return (
 		<div>
-			<p className="mb-4 max-w-[720px] type-ui text-secondary">
+			<p className="mb-4 max-w-[720px] type-dense text-secondary">
 				What is listening on this host, paired with whether anything actually
 				connects to it. Exposed-but-unused ports are candidates to leave out of
 				policy.
@@ -58,14 +58,14 @@ export function ListeningTab({
 				<ProblemNotice what="flow totals" error={use.error} onRetry={reload} />
 			) : null}
 			{w.listening_services.length === 0 ? (
-				<p className="py-6 type-ui text-tertiary">
+				<p className="py-6 type-dense text-tertiary">
 					The agent has reported no listening services.
 				</p>
 			) : (
-				<div className="overflow-hidden rounded-lg border border-default">
+				<div className="overflow-hidden rounded-panel border border-hairline">
 					<table className="w-full border-separate border-spacing-0">
 						<thead>
-							<tr className="h-row-header bg-subtle">
+							<tr className="h-row-header bg-card">
 								<th className={th}>Service</th>
 								<th className={th}>Process</th>
 								<th className={th}>Path</th>
@@ -123,15 +123,15 @@ function Row({
 			text: `no inbound flows in ${rangeDays}d`,
 		};
 	return (
-		<tr className="h-row-dense hover:bg-hover [&:last-child>td]:border-b-0">
-			<td className={cn(td, "type-mono-ui text-primary")}>{key}</td>
-			<td className={cn(td, "type-mono-ui text-primary")}>
+		<tr className="h-row-pitch hover:bg-wash-hover [&:last-child>td]:border-b-0">
+			<td className={cn(td, "type-mono-data text-primary")}>{key}</td>
+			<td className={cn(td, "type-mono-data text-primary")}>
 				{s.process_name || "—"}
 			</td>
 			<td className={cn(td, "type-mono-sm text-tertiary")}>
 				{s.process_path || "—"}
 			</td>
-			<td className={cn(td, "type-ui")}>
+			<td className={cn(td, "type-dense")}>
 				{usage.status ? (
 					<span
 						className={cn(
@@ -146,7 +146,7 @@ function Row({
 					<span className="text-tertiary">{usage.text}</span>
 				)}
 			</td>
-			<td className={cn(td, "type-ui text-secondary")}>
+			<td className={cn(td, "type-dense text-secondary")}>
 				{rules.length === 0
 					? "—"
 					: rules.map((r, i) => (
@@ -164,5 +164,5 @@ function Row({
 
 // The table's header and body cells.
 const th =
-	"border-b border-default px-3 text-left type-label whitespace-nowrap text-tertiary";
-const td = "border-b border-subtle px-3 py-2";
+	"border-b border-hairline px-3 text-left type-control whitespace-nowrap text-tertiary";
+const td = "border-b border-hairline px-3 py-2";

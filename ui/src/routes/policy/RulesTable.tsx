@@ -61,9 +61,9 @@ export interface PendingScope {
 }
 
 // A cell's padding: the table's outer columns carry the card's inset.
-const cell = "px-3 py-2 align-top type-ui first:pl-4 last:pr-4";
+const cell = "px-3 py-2 align-top type-dense first:pl-4 last:pr-4";
 const head =
-	"h-row-header whitespace-nowrap border-b border-default px-3 text-left type-label text-tertiary first:pl-4 last:pr-4";
+	"h-row-header whitespace-nowrap border-b border-hairline px-3 text-left type-control text-tertiary first:pl-4 last:pr-4";
 
 // RulesCard is the ruleset's inbound rules: who may connect to the
 // scoped workloads, on what, whether each rule is enabled, and what each
@@ -111,7 +111,7 @@ export function RulesCard({
 	return (
 		<section
 			aria-label="Inbound rules"
-			className="flex shrink-0 flex-col overflow-hidden rounded-lg border border-default bg-app"
+			className="flex shrink-0 flex-col overflow-hidden rounded-panel border border-hairline bg-canvas"
 		>
 			<div className="flex items-center gap-3 px-4 py-2.5">
 				<Eyebrow>
@@ -134,7 +134,7 @@ export function RulesCard({
 			{notice}
 			<table
 				aria-label="Rules"
-				className="w-full table-fixed border-collapse border-t border-default text-left"
+				className="w-full table-fixed border-collapse border-t border-hairline text-left"
 			>
 				<colgroup>
 					<col className="w-[84px]" />
@@ -144,7 +144,7 @@ export function RulesCard({
 					<col className="w-[190px]" />
 				</colgroup>
 				<thead>
-					<tr className="bg-subtle">
+					<tr className="bg-card">
 						<th className={head}>Enabled</th>
 						<th className={head}>Peers (may connect)</th>
 						<th className={head}>Services (on)</th>
@@ -155,7 +155,7 @@ export function RulesCard({
 				<tbody>
 					{rules.length === 0 && !row ? (
 						<tr>
-							<td colSpan={5} className="px-4 py-5 type-ui text-tertiary">
+							<td colSpan={5} className="px-4 py-5 type-dense text-tertiary">
 								No rules yet: nothing in this ruleset admits traffic to its
 								workloads.
 							</td>
@@ -194,7 +194,7 @@ export function RulesCard({
 				/>
 			) : null}
 			{traffic.status === "ready" && traffic.data.truncated ? (
-				<p className="border-t border-default px-4 py-2.5">
+				<p className="border-t border-hairline px-4 py-2.5">
 					<SeverityNote level="alert" size="sm" className="type-caption">
 						The day's rule rollup was truncated: a rule without a figure may
 						still have admitted traffic.
@@ -236,8 +236,8 @@ function RuleRow({
 			aria-current={highlighted || undefined}
 			data-highlighted={highlighted || undefined}
 			className={cn(
-				"h-row-dense border-b border-subtle last:border-b-0",
-				highlighted ? "bg-selection-bg" : "hover:bg-hover",
+				"h-row-pitch border-b border-hairline last:border-b-0",
+				highlighted ? "bg-wash-selected" : "hover:bg-wash-hover",
 			)}
 		>
 			<td className={cn(cell, "pt-[11px]")}>
@@ -288,7 +288,7 @@ function RuleRow({
 							type="button"
 							onClick={onEdit}
 							disabled={locked}
-							className="cursor-pointer type-caption text-link hover:underline disabled:cursor-default disabled:opacity-disabled"
+							className="cursor-pointer type-caption link disabled:cursor-default disabled:opacity-disabled"
 							aria-label={`Edit ${label}`}
 						>
 							Edit
@@ -346,7 +346,7 @@ function SimulationCell({
 		<span className="flex flex-col items-end gap-0.5">
 			<span
 				className={cn(
-					"inline-flex items-center gap-1.5 type-mono-ui",
+					"inline-flex items-center gap-1.5 type-mono-data",
 					verdicts.allowed.text,
 				)}
 			>
@@ -383,7 +383,7 @@ function EditRow({
 				aria-label={
 					id ? `Editing ${d.base?.description || shortRuleId(id)}` : "New rule"
 				}
-				className="border-b border-subtle bg-hover last:border-b-0"
+				className="border-b border-hairline bg-wash-hover last:border-b-0"
 			>
 				<td className={cn(cell, "pt-[13px]")}>
 					<Switch
@@ -495,7 +495,7 @@ function EditRow({
 							placeholder="What this rule is for"
 							value={d.description}
 							onChange={(ev) => onDraft({ ...d, description: ev.target.value })}
-							className="h-control-sm rounded-md border border-strong bg-app px-2.5 type-ui text-primary placeholder:text-tertiary"
+							className="h-control rounded-control border border-strong bg-canvas px-2.5 type-dense text-primary placeholder:text-tertiary"
 						/>
 						<FindingLines findings={f.columns.description} />
 						<span className="type-mono-sm text-tertiary">
@@ -515,7 +515,7 @@ function EditRow({
 				</td>
 			</tr>
 			{row.findings.row.length > 0 ? (
-				<tr className="border-b border-subtle bg-hover last:border-b-0">
+				<tr className="border-b border-hairline bg-wash-hover last:border-b-0">
 					<td colSpan={5} className="px-4 py-2">
 						<FindingLines findings={row.findings.row} />
 					</td>
@@ -555,10 +555,10 @@ function Footer({
 	const target = pendingScope ? pendingScope.count : inScope;
 	const what = pendingScope ? "Save rule and scope" : "Save";
 	return (
-		<div className="flex flex-wrap items-center gap-3 border-t border-default px-4 py-3">
+		<div className="flex flex-wrap items-center gap-3 border-t border-hairline px-4 py-3">
 			{pendingScope ? (
 				<p data-testid="pending-scope" className="basis-full">
-					<SeverityNote level="alert" className="type-ui">
+					<SeverityNote level="alert" className="type-dense">
 						The scope edit above is unsaved too. Saved on its own, this rule
 						would apply at once to the{" "}
 						{inScope === null ? "workloads" : n(inScope)} the saved scope
@@ -569,7 +569,7 @@ function Footer({
 			) : null}
 			<span data-testid="row-errors">
 				{errors > 0 ? (
-					<SeverityNote level="error" className="type-ui-strong">
+					<SeverityNote level="error" className="type-header-register">
 						{errors} {errors === 1 ? "error blocks" : "errors block"} saving
 					</SeverityNote>
 				) : null}

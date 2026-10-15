@@ -82,7 +82,7 @@ async function listRemoved(filter: WorkloadFilter): Promise<WorkloadsPage> {
 // th is the table's header cell: label type in sentence case on the
 // subtle band, held at the top while the rows scroll under it.
 const th =
-	"h-row-header whitespace-nowrap border-b border-default bg-subtle px-3 text-left type-label text-tertiary";
+	"h-row-header whitespace-nowrap border-b border-hairline bg-card px-3 text-left type-control text-tertiary";
 
 // labelRequirements reads typed or pasted filter text as `key=value`
 // requirements, one per label, through the console's one label parser
@@ -197,7 +197,7 @@ export function WorkloadList({
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
-			<div className="flex shrink-0 items-center gap-2 border-b border-default px-6 py-3">
+			<div className="flex shrink-0 items-center gap-2 border-b border-hairline px-6 py-3">
 				<fieldset className="m-0 flex min-w-0 gap-1 border-0 p-0">
 					<legend className="sr-only">Sync state</legend>
 					<FilterChip
@@ -288,11 +288,11 @@ export function WorkloadList({
 					</div>
 				) : null}
 				{resource.status === "ready" && rows.length === 0 ? (
-					<div className="flex flex-col items-start gap-2 px-6 py-6 type-ui text-tertiary">
+					<div className="flex flex-col items-start gap-2 px-6 py-6 type-dense text-tertiary">
 						<span>No workloads match these filters.</span>
 						<button
 							type="button"
-							className="cursor-pointer text-link hover:underline"
+							className="cursor-pointer link"
 							onClick={() => {
 								setChip(null);
 								setLabels([]);
@@ -362,7 +362,7 @@ function Row({
 	// row-dense is the row pitch including its hairline: the 22px mode
 	// pill, 7px above and 6px below it, and the 1px separator make 36.
 	const cell =
-		"h-row-dense border-b border-subtle px-3 pt-[7px] pb-[6px] type-ui [&>*]:align-middle";
+		"h-row-pitch border-b border-hairline px-3 pt-[7px] pb-[6px] type-dense [&>*]:align-middle";
 	return (
 		// The whole row opens the workload for a pointer; the hostname link
 		// is the keyboard's way in, and the checkbox selects without opening.
@@ -373,7 +373,7 @@ function Row({
 			}}
 			className={cn(
 				"cursor-pointer",
-				selected ? "bg-selection-bg" : "hover:bg-hover",
+				selected ? "bg-wash-selected" : "hover:bg-wash-hover",
 			)}
 		>
 			<td className={cn(cell, "pr-1 pl-6")}>
@@ -386,7 +386,7 @@ function Row({
 			<td className={cn(cell, "whitespace-nowrap")}>
 				<Link
 					to={`/workloads/${w.id}`}
-					className="type-mono-ui font-medium text-primary hover:underline"
+					className="type-mono-data font-medium text-primary hover:underline"
 				>
 					{w.hostname}
 				</Link>
@@ -424,7 +424,7 @@ function Row({
 					<span className="ml-2 type-caption text-tertiary">{note}</span>
 				) : null}
 			</td>
-			<td className={cn(cell, "text-right type-mono-ui")}>
+			<td className={cn(cell, "text-right type-mono-data")}>
 				{version(w.sync.applied_version)}
 			</td>
 			<td className={cn(cell, "whitespace-nowrap")}>
@@ -439,7 +439,7 @@ function Row({
 			<td
 				className={cn(
 					cell,
-					"whitespace-nowrap pr-6 text-right type-mono-ui text-secondary",
+					"whitespace-nowrap pr-6 text-right type-mono-data text-secondary",
 				)}
 			>
 				{lastSeen(w)}
@@ -532,7 +532,7 @@ function LabelFilter({
 						title={`Remove ${l}`}
 						aria-label={`Remove ${l}`}
 						onClick={() => onChange(labels.filter((x) => x !== l))}
-						className="inline-flex h-control-sm cursor-pointer items-center gap-1 rounded-md px-1 hover:bg-hover"
+						className="inline-flex h-control cursor-pointer items-center gap-1 rounded-control px-1 hover:bg-wash-hover"
 					>
 						<LabelChip k={k ?? ""} v={v.join("=")} />
 						<Icon name="x" className="size-3.5" />
@@ -555,14 +555,14 @@ function LabelFilter({
 						}}
 						onKeyDown={key}
 						onBlur={() => add()}
-						className="h-control-sm w-[150px] rounded-md border border-strong bg-app px-2.5 type-mono-sm text-primary outline-none placeholder:text-tertiary focus-visible:focus-ring aria-invalid:border-status-critical-fg"
+						className="h-control w-[150px] rounded-control border border-strong bg-canvas px-2.5 type-mono-sm text-primary outline-none placeholder:text-tertiary focus-visible:focus-ring aria-invalid:border-status-critical-fg"
 					/>
 				</form>
 			) : (
 				<button
 					type="button"
 					onClick={() => setEditing(true)}
-					className="inline-flex h-control-sm cursor-pointer items-center gap-1.5 rounded-md border border-dashed border-strong px-2.5 type-caption text-secondary hover:bg-hover hover:text-primary"
+					className="inline-flex h-control cursor-pointer items-center gap-1.5 rounded-control border border-dashed border-strong px-2.5 type-caption text-secondary hover:bg-wash-hover hover:text-primary"
 				>
 					<Icon name="plus" className="size-3.5" />
 					label filter

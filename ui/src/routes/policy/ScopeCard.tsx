@@ -44,7 +44,7 @@ export function ScopeCard({
 	return (
 		<section
 			aria-label="Scope"
-			className="flex flex-col gap-3 rounded-lg border border-default bg-app p-4"
+			className="flex flex-col gap-3 rounded-panel border border-hairline bg-canvas p-4"
 		>
 			<Eyebrow>Scope — workloads this ruleset protects</Eyebrow>
 			<div className="flex flex-wrap gap-6">
@@ -53,7 +53,7 @@ export function ScopeCard({
 						{keys.map((k, i) => (
 							<Fragment key={k}>
 								{i > 0 ? (
-									<span className="type-label text-tertiary">AND</span>
+									<span className="type-control text-tertiary">AND</span>
 								) : null}
 								<Requirement
 									k={k}
@@ -64,7 +64,7 @@ export function ScopeCard({
 							</Fragment>
 						))}
 						{keys.length > 0 ? (
-							<span className="type-label text-tertiary">AND</span>
+							<span className="type-control text-tertiary">AND</span>
 						) : null}
 						<AddInput
 							label="Add a scope requirement"
@@ -95,7 +95,7 @@ export function ScopeCard({
 						matches nothing.
 					</p>
 				</div>
-				<div className="flex w-[300px] shrink-0 flex-col gap-1.5 border-l border-subtle pl-5">
+				<div className="flex w-[300px] shrink-0 flex-col gap-1.5 border-l border-hairline pl-5">
 					<Matches match={match} edited={edited} />
 				</div>
 			</div>
@@ -118,7 +118,7 @@ function Requirement({
 	return (
 		<span
 			className={cn(
-				"inline-flex h-6 items-center gap-1.5 rounded-sm border bg-subtle px-1.5 type-mono-sm text-primary",
+				"inline-flex h-6 items-center gap-1.5 rounded-inner border bg-card px-1.5 type-mono-sm text-primary",
 				failed ? "border-dashed border-status-critical-fg" : "border-strong",
 			)}
 			data-testid="requirement"
@@ -139,7 +139,7 @@ function Requirement({
 				type="button"
 				aria-label={`Remove ${k}`}
 				onClick={onRemove}
-				className="group/rm -mr-0.5 inline-flex cursor-pointer items-center rounded-sm"
+				className="group/rm -mr-0.5 inline-flex cursor-pointer items-center rounded-inner"
 			>
 				<Icon name="x" className="size-3.5 group-hover/rm:text-icon-active" />
 			</button>
@@ -195,10 +195,8 @@ function Matches({
 	return (
 		<>
 			<div className="flex items-baseline gap-2" data-testid="match-count">
-				<span className="type-title-page font-mono tabular-nums">
-					{count(m.count)}
-				</span>
-				<span className="type-ui text-secondary">
+				<span className="type-section font-mono">{count(m.count)}</span>
+				<span className="type-dense text-secondary">
 					{m.count === 1 ? "workload matches" : "workloads match"}{" "}
 					{edited ? "this scope" : "right now"}
 				</span>
@@ -232,7 +230,7 @@ function Matches({
 							<button
 								type="button"
 								onClick={() => setAll(true)}
-								className="cursor-pointer text-link hover:underline"
+								className="cursor-pointer link"
 							>
 								+{count(hosts.length - shownHosts)} more
 							</button>
@@ -251,7 +249,7 @@ function Host({ h }: { h: MatchedHost }) {
 	return (
 		<Link
 			to={`/workloads/${encodeURIComponent(h.id)}`}
-			className="text-link hover:underline"
+			className="link"
 			title={syncStates[h.issue].label}
 		>
 			{h.hostname}

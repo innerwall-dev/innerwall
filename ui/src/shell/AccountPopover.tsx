@@ -12,11 +12,11 @@ import { cn } from "@/lib/utils";
 import { type Theme, useTheme } from "@/theme/ThemeProvider";
 
 // Avatar is the operator's disc: the user icon in an avatar-sized
-// circle on bg-active behind the default hairline.
+// circle on bg-wash-selected behind the default hairline.
 function Avatar() {
 	return (
 		<span
-			className="flex size-avatar shrink-0 items-center justify-center rounded-full border border-default bg-active"
+			className="flex size-avatar shrink-0 items-center justify-center rounded-full border border-hairline bg-wash-selected"
 			aria-hidden="true"
 		>
 			<Icon name="user" />
@@ -63,7 +63,7 @@ export function AccountPopover() {
 					type="button"
 					aria-label="Account"
 					className={cn(
-						"flex h-11 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-left hover:bg-sidebar-item-hover aria-expanded:bg-sidebar-item-hover",
+						"flex h-11 w-full cursor-pointer items-center gap-2 rounded-control px-2 text-left hover:bg-wash-hover aria-expanded:bg-wash-hover",
 						"group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:px-1.5",
 					)}
 				>
@@ -94,7 +94,7 @@ export function AccountPopover() {
 				sideOffset={collapsed ? 12 : 4}
 				aria-label="Account"
 			>
-				<div className="mb-1 flex flex-col border-b border-subtle p-2">
+				<div className="mb-1 flex flex-col border-b border-hairline p-2">
 					<div className="truncate text-[13px] leading-4 font-medium">
 						{name}
 					</div>
@@ -114,13 +114,13 @@ export function AccountPopover() {
 						</div>
 					) : null}
 				</div>
-				<div className="flex min-h-control-md items-center justify-between gap-2 px-2 type-ui text-secondary">
+				<div className="flex min-h-control items-center justify-between gap-2 px-2 type-dense text-secondary">
 					<span>Theme</span>
 					<ThemeToggle theme={theme} onChange={setTheme} />
 				</div>
 				<button
 					type="button"
-					className="mt-1 flex h-control-md cursor-pointer items-center gap-2 rounded-b-md border-t border-subtle px-2 text-left type-ui text-primary hover:bg-hover disabled:cursor-default disabled:opacity-disabled"
+					className="mt-1 flex h-control cursor-pointer items-center gap-2 rounded-b-control border-t border-hairline px-2 text-left type-dense text-primary hover:bg-wash-hover disabled:cursor-default disabled:opacity-disabled"
 					onClick={signOut}
 					disabled={signingOut}
 				>
@@ -141,7 +141,7 @@ export function AccountPopover() {
 }
 
 // The segmented control: native radio inputs, two segments in one
-// hairline group on bg-subtle, the checked one the pressed fill with its
+// hairline group on bg-card, the checked one the pressed fill with its
 // icon at icon-active.
 function ThemeToggle({
 	theme,
@@ -155,15 +155,15 @@ function ThemeToggle({
 		{ value: "dark", label: "Dark", icon: "moon" },
 	];
 	return (
-		<fieldset className="flex gap-0.5 rounded-md border border-default bg-subtle p-0.5">
+		<fieldset className="flex gap-0.5 rounded-control border border-hairline bg-card p-0.5">
 			<legend className="sr-only">Theme</legend>
 			{options.map((o) => (
 				<label
 					key={o.value}
 					className={cn(
-						"inline-flex h-6 cursor-pointer items-center gap-1 rounded-sm px-2 type-caption has-[:focus-visible]:focus-ring",
+						"inline-flex h-6 cursor-pointer items-center gap-1 rounded-inner px-2 type-caption has-[:focus-visible]:focus-ring",
 						theme === o.value
-							? "bg-active font-medium text-primary [&_[data-slot=icon]]:text-icon-active"
+							? "bg-wash-selected font-medium text-primary [&_[data-slot=icon]]:text-icon-active"
 							: "text-secondary hover:text-primary",
 					)}
 				>

@@ -40,7 +40,7 @@ export function PeerKind({ peer }: { peer: PeerGroup }) {
 	return (
 		<span
 			className={cn(
-				"inline-flex h-5 shrink-0 items-center whitespace-nowrap rounded-sm border border-strong px-1.5 type-label text-secondary",
+				"inline-flex h-5 shrink-0 items-center whitespace-nowrap rounded-inner border border-strong px-1.5 type-control text-secondary",
 				managed ? "border-solid" : "border-dashed",
 			)}
 		>
@@ -94,10 +94,11 @@ const cellFill = {
 
 // The table pattern every take shares: a bordered panel, a subtle
 // header band, dense rows on subtle hairlines.
-const panel = "overflow-x-auto rounded-lg border border-default";
+const panel = "overflow-x-auto rounded-panel border border-hairline";
 const th =
-	"h-row-header whitespace-nowrap border-b border-default bg-subtle px-2.5 text-left type-label text-tertiary first:pl-3 last:pr-3";
-const td = "border-b border-subtle px-2.5 py-2 type-ui first:pl-3 last:pr-3";
+	"h-row-header whitespace-nowrap border-b border-hairline bg-card px-2.5 text-left type-control text-tertiary first:pl-3 last:pr-3";
+const td =
+	"border-b border-hairline px-2.5 py-2 type-dense first:pl-3 last:pr-3";
 
 export function Grouped({
 	rows,
@@ -141,8 +142,8 @@ export function Grouped({
 								key={r.id}
 								onClick={() => onSelect(on ? null : r.id)}
 								className={cn(
-									"h-row-dense cursor-pointer [&:last-child>td]:border-b-0",
-									on ? "bg-selection-bg" : "hover:bg-hover",
+									"h-row-pitch cursor-pointer [&:last-child>td]:border-b-0",
+									on ? "bg-wash-selected" : "hover:bg-wash-hover",
 								)}
 							>
 								<td className={td}>
@@ -163,7 +164,7 @@ export function Grouped({
 												onSelect(on ? null : r.id);
 											}}
 											title={r.peer.full ?? r.peer.title}
-											className="col-span-2 col-start-1 row-start-1 cursor-pointer justify-self-start whitespace-nowrap text-left type-mono-ui font-medium text-primary"
+											className="col-span-2 col-start-1 row-start-1 cursor-pointer justify-self-start whitespace-nowrap text-left type-mono-data font-medium text-primary"
 										>
 											{r.peer.title}
 										</button>
@@ -172,7 +173,7 @@ export function Grouped({
 										</span>
 									</div>
 								</td>
-								<td className={cn(td, "type-mono-ui whitespace-nowrap")}>
+								<td className={cn(td, "type-mono-data whitespace-nowrap")}>
 									{r.service}
 								</td>
 								<td className={cn(td, "text-secondary")}>
@@ -181,7 +182,7 @@ export function Grouped({
 										: "matched a rule"}
 								</td>
 								<td
-									className={cn(td, "text-right type-mono-ui")}
+									className={cn(td, "text-right type-mono-data")}
 									title={
 										r.workloadsExact
 											? undefined
@@ -193,7 +194,7 @@ export function Grouped({
 								<td className={td}>
 									<div className="flex items-center justify-end gap-2">
 										<div
-											className="h-1 w-12 shrink-0 overflow-hidden rounded-full bg-active"
+											className="h-1 w-12 shrink-0 overflow-hidden rounded-full bg-wash-selected"
 											aria-hidden="true"
 										>
 											<div
@@ -206,7 +207,7 @@ export function Grouped({
 												}}
 											/>
 										</div>
-										<span className="min-w-[48px] text-right type-mono-ui">
+										<span className="min-w-[48px] text-right type-mono-data">
 											{count(r.connections)}
 										</span>
 									</div>
@@ -214,7 +215,7 @@ export function Grouped({
 								<td
 									className={cn(
 										td,
-										"whitespace-nowrap text-right type-mono-ui text-secondary",
+										"whitespace-nowrap text-right type-mono-data text-secondary",
 									)}
 								>
 									{since(r.lastSeen)}
@@ -245,10 +246,10 @@ function NoRows({
 		return (
 			<div className="flex flex-col items-center gap-2 py-10 text-secondary">
 				<StatusGlyph status="allowed" size="lg" className="size-6" />
-				<div className="type-title-section text-primary">
+				<div className="type-dialog-title text-primary">
 					No would-block flows
 				</div>
-				<p className="max-w-[440px] text-center type-body">
+				<p className="max-w-[440px] text-center type-dense">
 					Every inbound connection observed on the {simulating} simulating{" "}
 					{simulating === 1 ? "workload" : "workloads"} in the last {range}{" "}
 					matched an enabled rule. Enforcing now changes nothing for the traffic
@@ -258,7 +259,7 @@ function NoRows({
 		);
 	}
 	return (
-		<p className="py-10 text-center type-body text-secondary">
+		<p className="py-10 text-center type-dense text-secondary">
 			{all.length === 0
 				? `No inbound flows into this scope's simulating workloads were stored in the last ${range}. Widen the range, or give the scope time in simulation.`
 				: `No allowed flows in the last ${range}.`}
@@ -269,7 +270,7 @@ function NoRows({
 export function MatrixTake({ rows, range, selected, onSelect }: TakeProps) {
 	if (rows.length === 0) {
 		return (
-			<p className="py-10 text-center type-body text-secondary">
+			<p className="py-10 text-center type-dense text-secondary">
 				No peer and service pairs in the last {range}.
 			</p>
 		);
@@ -283,7 +284,7 @@ export function MatrixTake({ rows, range, selected, onSelect }: TakeProps) {
 		).size;
 	// border-hidden suppresses the cells' outer hairlines, so the panel's
 	// own border is the only frame.
-	const cellBorder = "border border-subtle";
+	const cellBorder = "border border-hairline";
 	return (
 		<>
 			<div className={panel}>
@@ -300,7 +301,7 @@ export function MatrixTake({ rows, range, selected, onSelect }: TakeProps) {
 							<th
 								className={cn(
 									cellBorder,
-									"h-row-header bg-subtle px-3 text-left type-label text-tertiary",
+									"h-row-header bg-card px-3 text-left type-control text-tertiary",
 								)}
 							>
 								Peer ↓ · Service →
@@ -311,7 +312,7 @@ export function MatrixTake({ rows, range, selected, onSelect }: TakeProps) {
 									scope="col"
 									className={cn(
 										cellBorder,
-										"h-row-header bg-subtle px-3 text-left type-mono-sm font-medium text-secondary",
+										"h-row-header bg-card px-3 text-left type-mono-sm font-medium text-secondary",
 									)}
 								>
 									{s}
@@ -326,15 +327,15 @@ export function MatrixTake({ rows, range, selected, onSelect }: TakeProps) {
 									scope="row"
 									className={cn(
 										cellBorder,
-										"bg-subtle px-3 py-2 text-left font-normal",
+										"bg-card px-3 py-2 text-left font-normal",
 									)}
 								>
 									<div className="flex min-w-0 flex-col gap-0.5">
-										<span className="type-label text-tertiary">
+										<span className="type-control text-tertiary">
 											{kindLabel[p.kind]}
 										</span>
 										<span
-											className="truncate type-mono-ui font-medium text-primary"
+											className="truncate type-mono-data font-medium text-primary"
 											title={p.full ?? p.title}
 										>
 											{p.title}
@@ -347,7 +348,9 @@ export function MatrixTake({ rows, range, selected, onSelect }: TakeProps) {
 								{m.services.map((s) => {
 									const cell = m.cells.get(cellKey(p.id, s));
 									if (!cell) {
-										return <td key={s} className={cn(cellBorder, "bg-app")} />;
+										return (
+											<td key={s} className={cn(cellBorder, "bg-canvas")} />
+										);
 									}
 									const r = cell.row;
 									const v = verdicts[r.verdict];
@@ -366,10 +369,10 @@ export function MatrixTake({ rows, range, selected, onSelect }: TakeProps) {
 													.join("; ")}
 												className={cn(
 													"flex w-full cursor-pointer flex-col gap-0.5 px-3 py-2 text-left",
-													on ? "bg-selection-bg" : cellFill[r.verdict],
+													on ? "bg-wash-selected" : cellFill[r.verdict],
 												)}
 											>
-												<span className="inline-flex items-center gap-1.5 type-mono-ui text-primary">
+												<span className="inline-flex items-center gap-1.5 type-mono-data text-primary">
 													<StatusGlyph status={v.status} size="md" />
 													{count(r.connections)}
 													<span className="sr-only"> {v.label}</span>
@@ -402,7 +405,7 @@ export function MatrixTake({ rows, range, selected, onSelect }: TakeProps) {
 export function Recency({ rows, range, selected, onSelect }: TakeProps) {
 	if (rows.length === 0) {
 		return (
-			<p className="py-10 text-center type-body text-secondary">
+			<p className="py-10 text-center type-dense text-secondary">
 				No peer and service pairs in the last {range}.
 			</p>
 		);
@@ -414,13 +417,13 @@ export function Recency({ rows, range, selected, onSelect }: TakeProps) {
 				{groups.map((g) => (
 					<li
 						key={g.bucket}
-						className="grid grid-cols-[140px_1fr] border-b border-default last:border-b-0"
+						className="grid grid-cols-[140px_1fr] border-b border-hairline last:border-b-0"
 					>
-						<span className="border-r border-subtle bg-subtle px-3 py-2.5 type-label text-secondary">
+						<span className="border-r border-hairline bg-card px-3 py-2.5 type-control text-secondary">
 							{g.bucket}
 						</span>
 						{g.rows.length === 0 ? (
-							<span className="flex h-row-dense items-center px-3 type-ui text-disabled">
+							<span className="flex h-row-pitch items-center px-3 type-dense text-disabled">
 								—
 							</span>
 						) : (
@@ -430,28 +433,28 @@ export function Recency({ rows, range, selected, onSelect }: TakeProps) {
 									return (
 										<li
 											key={r.id}
-											className="border-b border-subtle last:border-b-0"
+											className="border-b border-hairline last:border-b-0"
 										>
 											<button
 												type="button"
 												aria-pressed={on}
 												onClick={() => onSelect(on ? null : r.id)}
 												className={cn(
-													"flex min-h-row-dense w-full cursor-pointer flex-wrap items-center gap-x-2.5 gap-y-0.5 px-3 py-2 text-left type-ui",
-													on ? "bg-selection-bg" : "hover:bg-hover",
+													"flex min-h-row-pitch w-full cursor-pointer flex-wrap items-center gap-x-2.5 gap-y-0.5 px-3 py-2 text-left type-dense",
+													on ? "bg-wash-selected" : "hover:bg-wash-hover",
 												)}
 											>
 												<span className="w-[104px] shrink-0">
 													<VerdictPill verdict={r.verdict} />
 												</span>
-												<span className="type-mono-ui font-medium text-primary">
+												<span className="type-mono-data font-medium text-primary">
 													{r.peer.title}
 												</span>
 												<span className="text-tertiary" aria-hidden="true">
 													→
 												</span>
 												<span className="sr-only">on</span>
-												<span className="type-mono-ui">{r.service}</span>
+												<span className="type-mono-data">{r.service}</span>
 												<span className="ml-auto type-caption text-tertiary">
 													{count(r.connections)} conns · {workloadsText(r)}{" "}
 													workloads · {since(r.lastSeen)}

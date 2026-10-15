@@ -97,7 +97,7 @@ export function WorkloadDetail() {
 				{wl.error.type === ProblemType.notFound ? (
 					<EmptyState title="No such workload" width={480}>
 						No workload is enrolled with this identity.{" "}
-						<Link to="/workloads" className="text-link hover:underline">
+						<Link to="/workloads" className="link">
 							Back to the fleet
 						</Link>
 					</EmptyState>
@@ -182,7 +182,7 @@ export function WorkloadDetail() {
 
 // The rail's field rows: a sentence-case label beside a mono value, and
 // the caption that explains a value under it.
-const field = "type-label text-tertiary";
+const field = "type-control text-tertiary";
 const value = "min-w-0 type-mono-sm break-words text-primary";
 const note = "mt-0.5 type-caption text-tertiary";
 // A severity note in the rail's 16px lines centres its glyph on them.
@@ -221,9 +221,9 @@ function Rail({
 	const labels = labelPairs(w.labels);
 	const os = w.os;
 	return (
-		<aside className="flex w-[320px] shrink-0 flex-col gap-6 overflow-auto border-r border-default bg-subtle px-5 pt-5 pb-6">
+		<aside className="flex w-[320px] shrink-0 flex-col gap-6 overflow-auto border-r border-hairline bg-card px-5 pt-5 pb-6">
 			<div className="flex flex-col gap-1">
-				<h1 className="type-title-page font-mono break-all text-primary">
+				<h1 className="type-section font-mono break-all text-primary">
 					{w.hostname}
 				</h1>
 				<div className="type-mono-xs break-all text-tertiary">{w.id}</div>
@@ -242,7 +242,7 @@ function Rail({
 						<button
 							type="button"
 							onClick={() => setChanging(true)}
-							className="cursor-pointer type-caption text-link hover:underline"
+							className="cursor-pointer type-caption link"
 						>
 							change…
 						</button>
@@ -311,7 +311,7 @@ function Rail({
 						type="button"
 						onClick={() => setEditingLabels(true)}
 						aria-label="Edit labels"
-						className="ml-auto cursor-pointer type-caption text-link hover:underline"
+						className="ml-auto cursor-pointer type-caption link"
 					>
 						edit
 					</button>

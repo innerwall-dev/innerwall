@@ -45,7 +45,7 @@ const status: Record<
 };
 
 const th =
-	"h-row-header whitespace-nowrap border-b border-default bg-subtle px-3 text-left type-label text-tertiary";
+	"h-row-header whitespace-nowrap border-b border-hairline bg-card px-3 text-left type-control text-tertiary";
 
 // Tokens is the provisioning-tokens tab: every token by its listing
 // prefix and metadata (the secret is never stored, so never listed),
@@ -64,7 +64,7 @@ export function Tokens({
 	return (
 		<div className="flex flex-1 flex-col gap-5 overflow-auto px-6 pt-5 pb-8">
 			<div className="flex items-center gap-3">
-				<p className="max-w-[620px] type-ui text-secondary">
+				<p className="max-w-[620px] type-dense text-secondary">
 					A token enrolls any number of workloads within its label scope until
 					it expires or is revoked. The plaintext is shown exactly once, at
 					mint; only its hash is stored.
@@ -78,13 +78,13 @@ export function Tokens({
 				<ProblemNotice what="tokens" error={tokens.error} onRetry={reload} />
 			) : null}
 			{tokens.status === "ready" && tokens.data.tokens.length === 0 ? (
-				<p className="rounded-lg border border-default bg-subtle px-4 py-5 type-ui text-secondary">
+				<p className="rounded-panel border border-hairline bg-card px-4 py-5 type-dense text-secondary">
 					No tokens yet. Mint one to enroll your first workload.
 				</p>
 			) : null}
 			{tokens.status === "ready" && tokens.data.tokens.length > 0 ? (
 				<>
-					<div className="overflow-hidden rounded-lg border border-default">
+					<div className="overflow-hidden rounded-panel border border-hairline">
 						<table className="w-full border-separate border-spacing-0">
 							<thead>
 								<tr>
@@ -133,12 +133,14 @@ function TokenRow({
 	onRevoke: () => void;
 }) {
 	const cell =
-		"h-row-dense border-b border-subtle px-3 py-2 type-ui group-last:border-b-0";
+		"h-row-pitch border-b border-hairline px-3 py-2 type-dense group-last:border-b-0";
 	const s = status[t.state];
 	return (
-		<tr className="group hover:bg-hover">
+		<tr className="group hover:bg-wash-hover">
 			<td className={cell}>
-				<span className="type-mono-ui font-medium text-primary">{t.name}</span>
+				<span className="type-mono-data font-medium text-primary">
+					{t.name}
+				</span>
 				{t.prefix ? (
 					<div className="type-mono-sm text-tertiary">{t.prefix}…</div>
 				) : null}
@@ -151,18 +153,18 @@ function TokenRow({
 				</div>
 			</td>
 			<td className={cell}>
-				<span className="flex items-center gap-1.5 whitespace-nowrap type-label">
+				<span className="flex items-center gap-1.5 whitespace-nowrap type-control">
 					<Icon name={s.icon} className="size-3.5" />
 					<span className={s.cls}>{s.label}</span>
 				</span>
 			</td>
-			<td className={cn(cell, "text-right type-mono-ui")}>
+			<td className={cn(cell, "text-right type-mono-data")}>
 				{count(t.use_count)}
 			</td>
 			<td
 				className={cn(
 					cell,
-					"whitespace-nowrap text-right type-mono-ui text-secondary",
+					"whitespace-nowrap text-right type-mono-data text-secondary",
 				)}
 			>
 				{t.last_used_at ? ago(t.last_used_at) : "never"}
@@ -170,7 +172,7 @@ function TokenRow({
 			<td
 				className={cn(
 					cell,
-					"whitespace-nowrap text-right type-mono-ui text-secondary",
+					"whitespace-nowrap text-right type-mono-data text-secondary",
 				)}
 			>
 				{t.state === "revoked" ? "—" : relative(t.expires_at)}
@@ -235,7 +237,7 @@ function RevokeDialog({
 		>
 			<DialogContent width={480}>
 				<DialogHeader title="Revoke this token?">
-					<p className="type-body text-secondary">
+					<p className="type-dense text-secondary">
 						<span className="font-mono text-primary">{token?.name}</span> will
 						refuse every future enrollment. Workloads it already enrolled keep
 						their credentials and identity. Revocation cannot be undone.
@@ -243,7 +245,7 @@ function RevokeDialog({
 				</DialogHeader>
 				{problem ? (
 					<DialogBody>
-						<SeverityNote level="error" role="alert" className="type-ui">
+						<SeverityNote level="error" role="alert" className="type-dense">
 							{problem.problem.detail ?? problem.problem.title}
 						</SeverityNote>
 					</DialogBody>

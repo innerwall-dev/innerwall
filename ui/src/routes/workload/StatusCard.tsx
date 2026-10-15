@@ -41,19 +41,22 @@ export function StatusCard({
 		? "border-status-critical-border bg-status-critical-bg"
 		: {
 				degraded: "border-status-warn-border bg-status-warn-bg",
-				pending: "border-strong bg-app",
-				synced: "border-default bg-app",
-				offline: "border-default bg-app",
+				pending: "border-strong bg-canvas",
+				synced: "border-hairline bg-canvas",
+				offline: "border-hairline bg-canvas",
 			}[s.state];
 
 	return (
 		<div
-			className={cn("flex flex-col gap-2.5 rounded-lg border px-3 py-3", frame)}
+			className={cn(
+				"flex flex-col gap-2.5 rounded-panel border px-3 py-3",
+				frame,
+			)}
 			data-testid="status-card"
 		>
 			<div
 				className={cn(
-					"flex items-center gap-2 type-ui-strong",
+					"flex items-center gap-2 type-header-register",
 					removed ? tone.error : syncStates[s.state].cls,
 				)}
 			>
@@ -97,7 +100,7 @@ export function StatusCard({
 				</dd>
 			</dl>
 			{s.error ? (
-				<div className="rounded-md border border-default bg-app px-2.5 py-2 type-mono-xs break-words whitespace-pre-wrap text-status-warn-fg">
+				<div className="rounded-control border border-hairline bg-canvas px-2.5 py-2 type-mono-xs break-words whitespace-pre-wrap text-status-warn-fg">
 					{s.error}
 				</div>
 			) : null}
@@ -162,7 +165,7 @@ function LastAck({ s }: { s: Workload["sync"] }) {
 }
 
 // The card's field rows: a sentence-case label beside a mono value.
-const field = "type-label text-tertiary";
+const field = "type-control text-tertiary";
 const value = "min-w-0 type-mono-sm text-primary";
 
 function headline(w: Workload): string {
@@ -228,7 +231,7 @@ function Resend({ w, onReread }: { w: Workload; onReread: () => void }) {
 	}
 
 	return (
-		<div className="flex flex-col gap-2 border-t border-subtle pt-3">
+		<div className="flex flex-col gap-2 border-t border-hairline pt-3">
 			<div className="flex items-center gap-2">
 				<Button variant="secondary" size="sm" disabled={sending} onClick={send}>
 					{sending ? "Sending…" : "Resend snapshot"}
@@ -237,7 +240,7 @@ function Resend({ w, onReread }: { w: Workload; onReread: () => void }) {
 					<button
 						type="button"
 						onClick={onReread}
-						className="cursor-pointer type-caption text-link hover:underline"
+						className="cursor-pointer type-caption link"
 					>
 						Read again
 					</button>

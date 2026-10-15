@@ -111,10 +111,10 @@ export function FlowsTab({
 			{resource.status === "error" ? (
 				<ProblemNotice what="flows" error={resource.error} onRetry={reload} />
 			) : (
-				<div className="overflow-hidden rounded-lg border border-default">
+				<div className="overflow-hidden rounded-panel border border-hairline">
 					<table className="w-full border-separate border-spacing-0">
 						<thead>
-							<tr className="h-row-header bg-subtle">
+							<tr className="h-row-header bg-card">
 								<th className={th}>Decision</th>
 								<th className={th}>Source</th>
 								<th className={th}>Port</th>
@@ -131,14 +131,14 @@ export function FlowsTab({
 									<tr
 										key={f.id}
 										title={`window ${f.window_start} – ${f.window_end}`}
-										className="h-row-dense hover:bg-hover [&:last-child>td]:border-b-0"
+										className="h-row-pitch hover:bg-wash-hover [&:last-child>td]:border-b-0"
 									>
 										<td className={td}>
 											<VerdictPill verdict={f.verdict} />
 										</td>
-										<td className={cn(td, "type-ui")}>
+										<td className={cn(td, "type-dense")}>
 											<div className="flex flex-wrap items-baseline gap-x-2">
-												<span className="type-mono-ui text-primary">
+												<span className="type-mono-data text-primary">
 													{f.src_address}
 												</span>
 												<span className="type-caption text-tertiary">
@@ -146,15 +146,15 @@ export function FlowsTab({
 												</span>
 											</div>
 										</td>
-										<td className={cn(td, "type-mono-ui")}>
+										<td className={cn(td, "type-mono-data")}>
 											{f.service.protocol === "icmp"
 												? "icmp"
 												: `${f.service.protocol}/${f.service.port}`}
 										</td>
-										<td className={cn(td, "type-mono-ui text-secondary")}>
+										<td className={cn(td, "type-mono-data text-secondary")}>
 											{f.process_name || "—"}
 										</td>
-										<td className={cn(td, "type-ui text-secondary")}>
+										<td className={cn(td, "type-dense text-secondary")}>
 											{rule.text}
 											{rule.id ? (
 												<span
@@ -167,13 +167,13 @@ export function FlowsTab({
 												</span>
 											) : null}
 										</td>
-										<td className={cn(td, "text-right type-mono-ui")}>
+										<td className={cn(td, "text-right type-mono-data")}>
 											{count(f.connection_count)}
 										</td>
 										<td
 											className={cn(
 												td,
-												"text-right type-mono-ui text-secondary",
+												"text-right type-mono-data text-secondary",
 											)}
 										>
 											{since(f.last_seen)}
@@ -187,7 +187,7 @@ export function FlowsTab({
 			)}
 			{resource.status === "loading" ? <LoadingRow what="flows" /> : null}
 			{resource.status === "ready" && rows.length === 0 ? (
-				<p className="py-6 type-ui text-tertiary">
+				<p className="py-6 type-dense text-tertiary">
 					{verdict
 						? `No ${verdicts[verdict].label} flows in the last 14 days.`
 						: "No inbound flows recorded in the last 14 days."}
@@ -206,7 +206,7 @@ export function FlowsTab({
 						</Button>
 					) : null}
 					{more.error ? (
-						<SeverityNote level="error" role="alert" className="type-ui">
+						<SeverityNote level="error" role="alert" className="type-dense">
 							{more.error}
 						</SeverityNote>
 					) : null}
@@ -218,8 +218,8 @@ export function FlowsTab({
 
 // The table's header and body cells.
 const th =
-	"border-b border-default px-3 text-left type-label whitespace-nowrap text-tertiary";
-const td = "border-b border-subtle px-3 py-2 text-primary";
+	"border-b border-hairline px-3 text-left type-control whitespace-nowrap text-tertiary";
+const td = "border-b border-hairline px-3 py-2 text-primary";
 
 type ClockSkew = NonNullable<Workload["health"]["clock_skew"]>;
 
@@ -244,14 +244,14 @@ function ClockSkewNote({
 	const way = skew.offset_seconds < 0 ? "behind" : "ahead of";
 	return (
 		<p className="mb-4" data-testid="clock-skew">
-			<SeverityNote level="alert" className="type-ui">
+			<SeverityNote level="alert" className="type-dense">
 				{skew.current ? (
 					<span>
 						This agent's clock is {by} {way} the control plane's, as of its
 						latest flow report {ago(skew.observed_at)}. It stamps its windows
 						with its own clock, so the times below are off by about that much.
 						Re-sync the host's clock, for example with{" "}
-						<code className="type-mono-ui">
+						<code className="type-mono-data">
 							systemctl restart systemd-timesyncd
 						</code>
 						.

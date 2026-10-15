@@ -1,13 +1,18 @@
 /* The console's stylesheet. tokens.css is the palette, its token names
-   and values adopted verbatim from the design package (v2) and never
+   and values adopted verbatim from the design package (v3) and never
    restyled here; this file maps its custom properties onto utility names
    and sets the base typography. Every color mapping is a plain var()
    reference: the theme block below is inline so that the utilities read
    the token at runtime (the data-theme attribute switches every color)
-   and no token is converted. */
+   and no token is converted.
+
+   tokens.css is imported into the base layer. Its custom properties then
+   outrank the theme layer's restatements below, and its type classes
+   (.type-page-title … .type-mono-xs) sit under the utilities, so a
+   utility such as font-medium or text-secondary beside one still wins. */
 
 @import "tailwindcss";
-@import "./tokens.css";
+@import "./tokens.css" layer(base);
 
 /* The theme is the data-theme attribute on the root element, which
    tokens.css keys on; the .dark class mirrors it for the dark variant.
@@ -20,49 +25,63 @@
 	--color-*: initial;
 
 	/* Tokens that share their utility's name: the theme layer restates
-	   each as a reference to itself. That restatement is layered and the
-	   tokens are not, so the token always wins the cascade. */
+	   each as a reference to itself, and the token in the base layer
+	   wins the cascade. */
 	--font-sans: var(--font-sans);
 	--font-mono: var(--font-mono);
-	--radius-sm: var(--radius-sm);
-	--radius-md: var(--radius-md);
-	--radius-lg: var(--radius-lg);
-	--radius-xl: var(--radius-xl);
+	--radius-inner: var(--radius-inner);
+	--radius-control: var(--radius-control);
+	--radius-panel: var(--radius-panel);
 	--radius-full: var(--radius-full);
 	--opacity-dimmed: var(--opacity-dimmed);
-	--opacity-disabled: var(--opacity-disabled);
 
-	/* Canvas and surfaces: bg-app, bg-subtle, bg-raised, bg-hover,
-	   bg-active, bg-scrim. */
-	--background-color-app: var(--bg-app);
-	--background-color-subtle: var(--bg-subtle);
-	--background-color-raised: var(--bg-raised);
-	--background-color-hover: var(--bg-hover);
-	--background-color-active: var(--bg-active);
+	/* Grounds, by elevation (higher is lighter in both themes): bg-canvas,
+	   bg-card, bg-popover, bg-overlay, bg-top. Washes carry hover and
+	   selection on borderless items; fields are sunk, choosers raised. */
+	--background-color-canvas: var(--surface-canvas);
+	--background-color-card: var(--surface-card);
+	--background-color-popover: var(--surface-popover);
+	--background-color-overlay: var(--surface-overlay);
+	--background-color-top: var(--surface-top);
+	--background-color-wash-hover: var(--wash-hover);
+	--background-color-wash-selected: var(--wash-selected);
+	--background-color-field-sunk: var(--field-sunk);
+	--background-color-control-raised: var(--control-raised);
 	--background-color-scrim: var(--scrim);
+	--background-color-accent-tint: var(--accent-tint);
+	--background-color-plate: var(--plate);
+	--background-color-plate-hover: var(--plate-hover);
+	--background-color-plate-pressed: var(--plate-pressed);
+	--background-color-destructive: var(--destructive);
+	--background-color-destructive-hover: var(--destructive-hover);
+	--background-color-checkbox-on: var(--checkbox-on);
 
-	/* Separators: border-subtle (rows), border-default (cards, panels,
-	   controls), border-strong (inputs, external nodes). */
-	--border-color-subtle: var(--border-subtle);
-	--border-color-default: var(--border-default);
+	/* Border tiers, the foreground at fixed alphas: border-hairline (rows,
+	   cards), border-overlay (popovers, dialogs, pills, raised controls),
+	   border-strong (inputs), border-stronger (unchecked boxes, the secret
+	   well), border-control-hover (hover on a bordered control). */
+	--border-color-hairline: var(--border-hairline);
+	--border-color-overlay: var(--border-overlay);
 	--border-color-strong: var(--border-strong);
-	--divide-color-subtle: var(--border-subtle);
-	--divide-color-default: var(--border-default);
+	--border-color-stronger: var(--border-stronger);
+	--border-color-control-hover: var(--border-control-hover);
+	--border-color-accent-edge: var(--accent-edge);
+	--border-color-checkbox-on: var(--checkbox-on);
+	--divide-color-hairline: var(--border-hairline);
 
-	/* Text: text-primary, text-secondary, text-tertiary, text-disabled. */
+	/* Text: text-primary, text-secondary, text-tertiary, text-disabled,
+	   and the inks on plates. */
 	--text-color-primary: var(--text-primary);
 	--text-color-secondary: var(--text-secondary);
 	--text-color-tertiary: var(--text-tertiary);
 	--text-color-disabled: var(--text-disabled);
+	--text-color-plate-ink: var(--plate-ink);
+	--text-color-destructive-ink: var(--destructive-ink);
+	--text-color-checkbox-ink: var(--checkbox-ink);
 
 	/* Every other role, under its token's own name. */
-	--color-action-primary-bg: var(--action-primary-bg);
-	--color-action-primary-fg: var(--action-primary-fg);
-	--color-action-primary-hover: var(--action-primary-hover);
-	--color-link: var(--link);
-	--color-selection-bg: var(--selection-bg);
-	--color-selection-border: var(--selection-border);
-	--color-selection-fg: var(--selection-fg);
+	--color-accent: var(--accent);
+	--color-accent-ring: var(--accent-ring);
 	--color-icon-default: var(--icon-default);
 	--color-icon-active: var(--icon-active);
 	--color-logo-outline: var(--logo-outline);
@@ -87,135 +106,95 @@
 	--color-health-pending: var(--health-pending);
 	--color-health-degraded: var(--health-degraded);
 	--color-health-offline: var(--health-offline);
+	--color-severity-alert: var(--severity-alert);
+	--color-severity-error: var(--severity-error);
 
 	/* The sidebar component's color names, each a package token: the
-	   rail on sidebar-bg behind a sidebar-border hairline, entries in
-	   text-secondary, hover on sidebar-item-hover. */
-	--color-sidebar: var(--sidebar-bg);
+	   rail flat with the canvas behind a hairline, entries in
+	   text-secondary, hover on the hover wash. */
+	--color-sidebar: var(--surface-canvas);
 	--color-sidebar-foreground: var(--text-secondary);
-	--color-sidebar-accent: var(--sidebar-item-hover);
+	--color-sidebar-accent: var(--wash-hover);
 	--color-sidebar-accent-foreground: var(--text-primary);
-	--color-sidebar-border: var(--sidebar-border);
-	--color-sidebar-item-hover: var(--sidebar-item-hover);
-	--color-sidebar-item-active: var(--sidebar-item-active);
+	--color-sidebar-border: var(--border-hairline);
 
-	/* Fixed heights and sizes: h-control-md, h-row-dense, size-avatar… */
+	/* Fixed heights and sizes: h-control, h-row-pitch, size-avatar… */
+	--spacing-control: var(--control);
 	--spacing-control-sm: var(--control-sm);
 	--spacing-control-md: var(--control-md);
-	--spacing-control-lg: var(--control-lg);
-	--spacing-row-dense: var(--row-dense);
+	--spacing-chip: var(--chip);
+	--spacing-label-chip: var(--label-chip);
+	--spacing-row-pitch: var(--row-pitch);
 	--spacing-row-header: var(--row-header);
-	--spacing-topbar: var(--topbar);
+	--spacing-header-strip: var(--header-strip);
+	--spacing-tab-row: var(--tab-row);
 	--spacing-sidebar-item: var(--sidebar-item);
+	--spacing-filter-panel: var(--filter-panel);
+	--spacing-popover: var(--popover-width);
+	--spacing-popover-account: var(--popover-account);
 	--spacing-avatar: var(--avatar);
 	--spacing-icon: var(--icon-size);
 	--spacing-logo: var(--logo-size);
-	--spacing-popover: var(--popover-width);
 	--spacing-glyph-sm: var(--glyph-sm);
 	--spacing-glyph-md: var(--glyph-md);
 	--spacing-glyph-lg: var(--glyph-lg);
+	--container-content: var(--content-max);
 }
 
-/* The type scale, one utility per named style (tokens.json, type). */
-@utility type-title-page {
-	font-family: var(--font-sans);
-	font-size: 20px;
-	line-height: 28px;
-	font-weight: 600;
-	letter-spacing: -0.01em;
-}
-@utility type-title-section {
-	font-family: var(--font-sans);
-	font-size: 16px;
-	line-height: 24px;
-	font-weight: 600;
-}
-@utility type-body {
-	font-family: var(--font-sans);
-	font-size: 14px;
-	line-height: 20px;
-	font-weight: 400;
-}
-@utility type-body-strong {
-	font-family: var(--font-sans);
-	font-size: 14px;
-	line-height: 20px;
-	font-weight: 500;
-}
-@utility type-ui {
-	font-family: var(--font-sans);
-	font-size: 13px;
-	line-height: 20px;
-	font-weight: 400;
-}
-@utility type-ui-strong {
-	font-family: var(--font-sans);
-	font-size: 13px;
-	line-height: 20px;
-	font-weight: 500;
-}
-@utility type-label {
-	font-family: var(--font-sans);
-	font-size: 12px;
-	line-height: 16px;
-	font-weight: 500;
-}
-@utility type-caption {
-	font-family: var(--font-sans);
-	font-size: 12px;
-	line-height: 16px;
-	font-weight: 400;
-}
-@utility type-mono-kpi {
+/* The type roles are tokens.css's .type-* classes. The review's totals
+   figures (Pages-and-Patterns: "mono 24/28") have no package style; this
+   one is kept on the record (design package v3 errata). */
+@utility type-mono-figure {
 	font-family: var(--font-mono);
-	font-size: 32px;
-	line-height: 36px;
+	font-size: 24px;
+	line-height: 28px;
 	font-weight: 500;
 	letter-spacing: -0.02em;
-	font-variant-numeric: tabular-nums;
-}
-@utility type-mono-ui {
-	font-family: var(--font-mono);
-	font-size: 13px;
-	line-height: 20px;
-	font-weight: 400;
-	font-variant-numeric: tabular-nums;
-}
-@utility type-mono-sm {
-	font-family: var(--font-mono);
-	font-size: 12px;
-	line-height: 16px;
-	font-weight: 400;
-	font-variant-numeric: tabular-nums;
-}
-@utility type-mono-xs {
-	font-family: var(--font-mono);
-	font-size: 11px;
-	line-height: 16px;
-	font-weight: 400;
-	font-variant-numeric: tabular-nums;
 }
 
-/* The one shadow: keyboard focus on every interactive element. */
+/* Keyboard focus: the accent ring, 2px at a 1px offset; inset where the
+   element is clipped by its container (rows, tabs). */
 @utility focus-ring {
-	outline: none;
-	box-shadow: var(--focus-ring);
+	outline: 2px solid var(--accent-ring);
+	outline-offset: 1px;
+}
+@utility focus-ring-inset {
+	outline: 2px solid var(--accent-ring);
+	outline-offset: -2px;
+}
+
+/* A link: underlined at a 4px offset, text-secondary to text-primary on
+   hover. Blue retired with v2. */
+@utility link {
+	color: var(--text-secondary);
+	text-decoration-line: underline;
+	text-underline-offset: 4px;
+	text-decoration-thickness: 1px;
+	cursor: pointer;
+	&:hover {
+		color: var(--text-primary);
+	}
 }
 
 @layer base {
 	body {
-		@apply bg-app text-primary type-ui antialiased;
+		@apply bg-canvas text-primary antialiased;
+		font-family: var(--font-sans);
+		font-size: 14px;
+		line-height: 20px;
 	}
 	* {
-		scrollbar-color: var(--border-strong) transparent;
+		scrollbar-color: var(--border-stronger) transparent;
 	}
 	:focus-visible {
-		outline: none;
-		box-shadow: var(--focus-ring);
+		outline: 2px solid var(--accent-ring);
+		outline-offset: 1px;
 	}
+	/* Checked is inverted monochrome: the text-primary fill, the canvas
+	   ink. No color stands in for the retired blue. */
 	input[type="checkbox"],
 	input[type="radio"] {
-		accent-color: var(--selection-fg);
+		accent-color: var(--checkbox-on);
 	}
 	a {
 		color: inherit;

@@ -27,14 +27,14 @@ function SheetContent({
 			<SheetPrimitive.Content
 				data-slot="sheet-content"
 				className={cn(
-					"fixed inset-y-0 z-50 flex h-full flex-col gap-4 border-default bg-app",
+					"fixed inset-y-0 z-50 flex h-full flex-col gap-4 border-hairline bg-canvas",
 					side === "right" ? "right-0 border-l" : "left-0 border-r",
 					className,
 				)}
 				{...props}
 			>
 				{children}
-				<SheetPrimitive.Close className="absolute top-3 right-3 rounded-md p-1 hover:bg-hover">
+				<SheetPrimitive.Close className="absolute top-3 right-3 rounded-control p-1 hover:bg-wash-hover">
 					<Icon name="x" label="Close" />
 				</SheetPrimitive.Close>
 			</SheetPrimitive.Content>
@@ -59,7 +59,7 @@ function SheetTitle({
 	return (
 		<SheetPrimitive.Title
 			data-slot="sheet-title"
-			className={cn("type-title-section", className)}
+			className={cn("type-dialog-title", className)}
 			{...props}
 		/>
 	);

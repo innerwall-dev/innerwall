@@ -177,7 +177,7 @@ export function Graph({
 			>
 				<Refit layout={layout} />
 			</ReactFlow>
-			<div className="absolute top-3 left-4 rounded-lg border border-default bg-raised p-1.5 pr-2.5">
+			<div className="absolute top-3 left-4 rounded-panel border border-hairline bg-popover p-1.5 pr-2.5">
 				{range}
 			</div>
 			<Legend metrics={metrics} />
@@ -275,10 +275,10 @@ const unmanagedKinds = new Set(["address-group", "unknown"]);
 // the unlabeled workloads outlined in the warning tone; selection is
 // blue in every kind.
 function frame(n: MapNode, selected: boolean): string {
-	if (selected) return "bg-selection-bg border-selection-fg";
-	if (unmanagedKinds.has(n.kind)) return "bg-app border-strong";
-	if (n.kind === "unlabeled") return "bg-raised border-status-warn-border";
-	return "bg-raised border-default";
+	if (selected) return "bg-wash-selected border-selection-fg";
+	if (unmanagedKinds.has(n.kind)) return "bg-canvas border-strong";
+	if (n.kind === "unlabeled") return "bg-popover border-status-warn-border";
+	return "bg-popover border-hairline";
 }
 
 // subtitle is a node's second line: how many workloads, or what the
@@ -370,7 +370,7 @@ function GroupNodeView({ data }: NodeProps<GroupNode>) {
 				onSelect(selected ? null : { kind: "node", id: n.id });
 			}}
 			className={cn(
-				"nodrag nopan relative flex cursor-pointer flex-col justify-center rounded-md border px-2.5 text-left",
+				"nodrag nopan relative flex cursor-pointer flex-col justify-center rounded-control border px-2.5 text-left",
 				frame(n, selected),
 			)}
 			style={{
@@ -384,7 +384,9 @@ function GroupNodeView({ data }: NodeProps<GroupNode>) {
 					name={unmanagedKinds.has(n.kind) ? "globe" : "boxes"}
 					className="size-3.5"
 				/>
-				<span className="truncate type-ui-strong text-primary">{n.title}</span>
+				<span className="truncate type-header-register text-primary">
+					{n.title}
+				</span>
 			</span>
 			<span className="truncate type-mono-xs text-tertiary">{subtitle(n)}</span>
 			<span className="flex min-w-0 truncate type-mono-xs">
@@ -433,7 +435,7 @@ function FlowEdgeView({ data }: EdgeProps<FlowEdge>) {
 					style={{
 						pointerEvents: "none",
 						fill: "none",
-						stroke: "var(--selection-border)",
+						stroke: "var(--border-control-hover)",
 						strokeWidth: `calc(${width} + 5px)`,
 						strokeLinecap: "round",
 					}}
@@ -462,8 +464,8 @@ function FlowEdgeView({ data }: EdgeProps<FlowEdge>) {
 						data-edge={e.id}
 						onClick={select}
 						className={cn(
-							"nodrag nopan pointer-events-auto absolute flex h-[18px] cursor-pointer items-center gap-1 rounded-sm border px-1 type-mono-xs text-primary",
-							selected ? "border-selection-fg bg-selection-bg" : "bg-app",
+							"nodrag nopan pointer-events-auto absolute flex h-[18px] cursor-pointer items-center gap-1 rounded-inner border px-1 type-mono-xs text-primary",
+							selected ? "border-selection-fg bg-wash-selected" : "bg-canvas",
 						)}
 						style={{
 							transform: `translate(-50%, -50%) translate(${lx}px, ${ly}px)`,
@@ -510,7 +512,7 @@ function Legend({ metrics }: { metrics: DashMetrics | null }) {
 	);
 	return (
 		<div
-			className="pointer-events-none absolute bottom-3.5 left-4 flex flex-col gap-2 rounded-lg border border-default bg-raised px-3 py-2.5 type-caption"
+			className="pointer-events-none absolute bottom-3.5 left-4 flex flex-col gap-2 rounded-panel border border-hairline bg-popover px-3 py-2.5 type-caption"
 			data-testid="map-legend"
 		>
 			<div className="flex flex-wrap gap-x-4 gap-y-1.5 text-secondary">

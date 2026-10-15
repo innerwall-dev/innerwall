@@ -280,7 +280,7 @@ function SidebarTrigger({
 				data-slot="sidebar-trigger"
 				aria-label={label}
 				className={cn(
-					"inline-flex size-control-md shrink-0 cursor-pointer items-center justify-center rounded-md hover:bg-hover",
+					"inline-flex size-control-md shrink-0 cursor-pointer items-center justify-center rounded-control hover:bg-wash-hover",
 					className,
 				)}
 				onClick={(event) => {
@@ -388,7 +388,7 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
 // selection). Collapsed, the entry is the rail's 40px hit area with the
 // icon centered and the label clipped.
 const sidebarMenuButtonClass =
-	"peer/menu-button flex h-sidebar-item w-full cursor-pointer items-center gap-2 overflow-hidden rounded-md px-2 text-left type-ui text-secondary outline-hidden transition-[width,height,padding] hover:bg-sidebar-item-hover hover:text-primary focus-visible:focus-ring disabled:pointer-events-none disabled:opacity-disabled aria-disabled:pointer-events-none aria-disabled:opacity-disabled data-[active=true]:bg-sidebar-item-active data-[active=true]:font-medium data-[active=true]:text-primary data-[active=true]:[&_[data-slot=icon]]:text-icon-active data-[state=open]:bg-sidebar-item-hover group-has-data-[sidebar=menu-badge]/menu-item:pr-8 group-data-[collapsible=icon]:w-10! group-data-[collapsible=icon]:px-3! [&>span:last-child]:truncate";
+	"peer/menu-button flex h-sidebar-item w-full cursor-pointer items-center gap-2 overflow-hidden rounded-control px-2 text-left type-dense text-secondary outline-hidden transition-[width,height,padding] hover:bg-wash-hover hover:text-primary focus-visible:focus-ring disabled:pointer-events-none disabled:opacity-disabled aria-disabled:pointer-events-none aria-disabled:opacity-disabled data-[active=true]:bg-wash-selected data-[active=true]:font-medium data-[active=true]:text-primary data-[active=true]:[&_[data-slot=icon]]:text-icon-active data-[state=open]:bg-wash-hover group-has-data-[sidebar=menu-badge]/menu-item:pr-8 group-data-[collapsible=icon]:w-10! group-data-[collapsible=icon]:px-3! [&>span:last-child]:truncate";
 
 function SidebarMenuButton({
 	asChild = false,
@@ -446,7 +446,7 @@ function SidebarMenuBadge({
 			data-slot="sidebar-menu-badge"
 			data-sidebar="menu-badge"
 			className={cn(
-				"pointer-events-none absolute top-1.5 right-1 flex h-5 min-w-5 items-center justify-center rounded-md px-1 type-mono-xs text-tertiary select-none",
+				"pointer-events-none absolute top-1.5 right-1 flex h-5 min-w-5 items-center justify-center rounded-control px-1 type-mono-xs text-tertiary select-none",
 				"group-data-[collapsible=icon]:hidden",
 				className,
 			)}

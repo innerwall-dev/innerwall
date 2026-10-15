@@ -48,7 +48,7 @@ export function extent(from: string, to: string): string {
 // The range picker is a toolbar control: control-sm tall on the default
 // hairline, the clock icon, the word, the value, and the caret.
 const control =
-	"relative flex h-control-sm items-center gap-1.5 rounded-md border border-default bg-app pr-2 pl-2 type-caption text-secondary hover:bg-hover has-[:focus-visible]:focus-ring";
+	"relative flex h-control items-center gap-1.5 rounded-control border border-hairline bg-canvas pr-2 pl-2 type-caption text-secondary hover:bg-wash-hover has-[:focus-visible]:focus-ring";
 
 // RangeControl picks the range and says what it covers. A rollup counts
 // whole stored windows inside the range, so the extent shown is the

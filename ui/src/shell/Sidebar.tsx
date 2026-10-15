@@ -179,7 +179,7 @@ export function Sidebar({
 				</SidebarGroup>
 			</SidebarContent>
 			{fleetEmpty ? <FleetSync /> : null}
-			<SidebarFooter className="border-t border-subtle">
+			<SidebarFooter className="border-t border-hairline">
 				<SidebarMenu>
 					<SidebarMenuItem>
 						<SidebarTrigger />
@@ -199,10 +199,10 @@ export function Sidebar({
 // no room for it.
 function FleetSync() {
 	return (
-		<div className="flex flex-col gap-1.5 border-t border-subtle px-4 py-3 group-data-[collapsible=icon]:hidden">
-			<div className="type-label text-tertiary">Fleet sync</div>
+		<div className="flex flex-col gap-1.5 border-t border-hairline px-4 py-3 group-data-[collapsible=icon]:hidden">
+			<div className="type-control text-tertiary">Fleet sync</div>
 			<div
-				className="flex h-1.5 overflow-hidden rounded-full bg-active"
+				className="flex h-1.5 overflow-hidden rounded-full bg-wash-selected"
 				role="presentation"
 			/>
 			<div className="type-mono-xs text-secondary">no workloads</div>

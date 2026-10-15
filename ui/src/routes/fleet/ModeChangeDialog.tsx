@@ -83,7 +83,7 @@ export function ModeChangeDialog({
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent width={560}>
 				<DialogHeader title={title}>
-					<p className="type-body text-secondary">
+					<p className="type-dense text-secondary">
 						Sets the enforcement mode of{" "}
 						{workloads.length === 1
 							? "this workload"
@@ -94,7 +94,7 @@ export function ModeChangeDialog({
 				</DialogHeader>
 				<DialogBody>
 					<div className="flex flex-col gap-1.5">
-						<span className="type-label text-secondary">Workloads</span>
+						<span className="type-control text-secondary">Workloads</span>
 						<ul className="flex flex-wrap gap-x-3 gap-y-1 type-mono-sm text-primary">
 							{workloads.slice(0, shown).map((w) => (
 								<li key={w.id} className="flex items-center gap-1.5">
@@ -112,7 +112,7 @@ export function ModeChangeDialog({
 						</ul>
 					</div>
 					<div className="flex flex-col gap-1.5">
-						<span className="type-label text-secondary">Target mode</span>
+						<span className="type-control text-secondary">Target mode</span>
 						<ChoiceChips
 							legend="Target mode"
 							name="target-mode"
@@ -139,13 +139,13 @@ export function ModeChangeDialog({
 					{mismatch ? (
 						<div
 							role="alert"
-							className="flex flex-col gap-1 rounded-lg border border-status-warn-border bg-status-warn-bg px-4 py-3"
+							className="flex flex-col gap-1 rounded-panel border border-status-warn-border bg-status-warn-bg px-4 py-3"
 						>
-							<span className="flex items-center gap-2 type-body-strong text-status-warn-fg">
+							<span className="flex items-center gap-2 type-dense-strong text-status-warn-fg">
 								<StatusGlyph status="alert" size="lg" />
 								The selection no longer matches
 							</span>
-							<span className="type-ui text-secondary">
+							<span className="type-dense text-secondary">
 								You selected{" "}
 								<span className="font-mono">{mismatch.expected}</span>{" "}
 								workloads; the control plane resolved{" "}
@@ -163,7 +163,7 @@ export function ModeChangeDialog({
 							</Button>
 						</div>
 					) : problem ? (
-						<SeverityNote level="error" role="alert" className="type-ui">
+						<SeverityNote level="error" role="alert" className="type-dense">
 							{problem.problem.errors?.map((f) => f.message).join(" ") ||
 								problem.problem.detail ||
 								problem.problem.title}

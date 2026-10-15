@@ -146,7 +146,7 @@ function Frame() {
 	if (rulesets.status === "ready") counts["/policy"] = { n: rulesets.data };
 
 	return (
-		<SidebarProvider className="h-dvh overflow-hidden bg-app text-primary">
+		<SidebarProvider className="h-dvh overflow-hidden bg-canvas text-primary">
 			<Sidebar counts={counts} fleetEmpty={fleetEmpty} open={open} />
 			<div className="flex min-w-0 flex-1 flex-col">
 				<PageHeader
@@ -163,7 +163,7 @@ function Frame() {
 function Loading() {
 	return (
 		<div
-			className="flex h-dvh items-center justify-center bg-app text-tertiary"
+			className="flex h-dvh items-center justify-center bg-canvas text-tertiary"
 			aria-busy="true"
 		>
 			<span className="type-mono-sm">…</span>

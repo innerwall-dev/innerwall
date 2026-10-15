@@ -373,7 +373,7 @@ describe("simulation review", () => {
 		// Not safe: promotion is the secondary action.
 		expect(
 			screen.getByRole("button", { name: "Promote to enforced…" }),
-		).toHaveClass("border-default");
+		).toHaveClass("border-hairline");
 	});
 
 	it("switches rulesets by tab, to a safe verdict", async () => {
@@ -395,7 +395,7 @@ describe("simulation review", () => {
 		);
 		expect(
 			screen.getByRole("button", { name: "Promote to enforced…" }),
-		).toHaveClass("bg-action-primary-bg");
+		).toHaveClass("bg-plate");
 		expect(
 			screen.getByRole("navigation", { name: "Breadcrumb" }),
 		).toHaveTextContent("ledger-inbound");

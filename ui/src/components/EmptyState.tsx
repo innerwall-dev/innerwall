@@ -31,18 +31,18 @@ export function EmptyState({
 			)}
 			style={{ maxWidth: width }}
 		>
-			<h1 className="type-title-section">{title}</h1>
-			<p className="type-body text-secondary">{children}</p>
+			<h1 className="type-dialog-title">{title}</h1>
+			<p className="type-dense text-secondary">{children}</p>
 			{steps ? (
-				<ol className="mt-1.5 grid grid-cols-[24px_1fr] gap-2.5 type-ui">
+				<ol className="mt-1.5 grid grid-cols-[24px_1fr] gap-2.5 type-dense">
 					{steps.map((s, i) => (
 						<li key={s.lead} className="contents">
 							<span
 								className={cn(
 									"flex size-[22px] items-center justify-center rounded-full border type-mono-xs",
 									i === 0
-										? "border-strong bg-active text-primary"
-										: "border-default text-tertiary",
+										? "border-strong bg-wash-selected text-primary"
+										: "border-hairline text-tertiary",
 								)}
 								aria-hidden="true"
 							>

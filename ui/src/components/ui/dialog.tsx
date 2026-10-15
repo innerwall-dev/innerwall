@@ -25,7 +25,7 @@ export function DialogContent({
 					data-slot="dialog-content"
 					aria-describedby={undefined}
 					className={cn(
-						"pointer-events-auto flex max-h-[88vh] flex-col overflow-hidden rounded-xl border border-default bg-raised text-primary outline-none",
+						"pointer-events-auto flex max-h-[88vh] flex-col overflow-hidden rounded-panel border border-hairline bg-popover text-primary outline-none",
 						className,
 					)}
 					style={{ width }}
@@ -47,7 +47,7 @@ export function DialogHeader({
 }) {
 	return (
 		<div className="flex shrink-0 flex-col gap-1 px-6 pt-5 pb-3">
-			<DialogPrimitive.Title className="type-title-section">
+			<DialogPrimitive.Title className="type-dialog-title">
 				{title}
 			</DialogPrimitive.Title>
 			{children}
@@ -62,7 +62,7 @@ export function DialogBody({
 	return (
 		<div
 			className={cn(
-				"flex min-h-0 flex-col gap-4 overflow-auto px-6 pb-5 type-body [&>*]:shrink-0",
+				"flex min-h-0 flex-col gap-4 overflow-auto px-6 pb-5 type-dense [&>*]:shrink-0",
 				className,
 			)}
 			{...props}
@@ -77,7 +77,7 @@ export function DialogFooter({
 	return (
 		<div
 			className={cn(
-				"flex shrink-0 items-center justify-end gap-2 border-t border-default px-6 py-4",
+				"flex shrink-0 items-center justify-end gap-2 border-t border-hairline px-6 py-4",
 				className,
 			)}
 			{...props}

@@ -31,7 +31,7 @@ export function PolicyTab({
 
 	if (p.version === 0) {
 		return (
-			<p className="py-6 type-ui text-tertiary">
+			<p className="py-6 type-dense text-tertiary">
 				No policy has been rendered for this workload yet.
 			</p>
 		);
@@ -40,14 +40,14 @@ export function PolicyTab({
 	return (
 		<div>
 			<div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-				<span className="type-ui text-secondary">
+				<span className="type-dense text-secondary">
 					{behind ? "Rendered policy" : "Rendered policy applied on host"}
 				</span>
-				<span className="inline-flex h-[22px] items-center rounded-sm border border-strong bg-app px-2 type-mono-sm text-primary">
+				<span className="inline-flex h-[22px] items-center rounded-inner border border-strong bg-canvas px-2 type-mono-sm text-primary">
 					v{p.version}
 				</span>
 				{behind ? (
-					<SeverityNote level="alert" className="type-ui">
+					<SeverityNote level="alert" className="type-dense">
 						rendered{p.rendered_at ? ` ${ago(p.rendered_at)}` : ""}, not applied
 						—{" "}
 						{applied === 0
@@ -57,7 +57,7 @@ export function PolicyTab({
 				) : null}
 			</div>
 			{p.rules.length === 0 ? (
-				<p className="py-4 type-ui text-tertiary">
+				<p className="py-4 type-dense text-tertiary">
 					No rule admits traffic to this workload.
 				</p>
 			) : (
@@ -73,7 +73,7 @@ export function PolicyTab({
 				provenance. Traffic no rule admits is{" "}
 				<span
 					className={cn(
-						"inline-flex items-center gap-1 align-top type-label",
+						"inline-flex items-center gap-1 align-top type-control",
 						verdicts[p.terminal_verdict].text,
 					)}
 				>
@@ -89,15 +89,15 @@ export function PolicyTab({
 function RuleCard({ r }: { r: RenderedRule }) {
 	return (
 		<article
-			className="grid grid-cols-[1fr_auto] items-baseline gap-x-4 gap-y-1 rounded-lg border border-default bg-subtle px-4 py-3"
+			className="grid grid-cols-[1fr_auto] items-baseline gap-x-4 gap-y-1 rounded-panel border border-hairline bg-card px-4 py-3"
 			aria-label={r.description || ruleId(r)}
 		>
 			<div className="flex items-center gap-2">
-				<span className="type-mono-ui text-primary">{ruleId(r)}</span>
+				<span className="type-mono-data text-primary">{ruleId(r)}</span>
 				{r.ruleset ? (
 					<>
 						<span className="type-caption text-tertiary">from ruleset</span>
-						<Link to="/policy" className="type-ui text-link hover:underline">
+						<Link to="/policy" className="type-dense link">
 							{r.ruleset.name}
 						</Link>
 					</>
@@ -107,8 +107,10 @@ function RuleCard({ r }: { r: RenderedRule }) {
 					</span>
 				)}
 			</div>
-			<div className="text-right type-mono-ui text-primary">{portsText(r)}</div>
-			<div className="type-ui text-secondary">{r.description || "—"}</div>
+			<div className="text-right type-mono-data text-primary">
+				{portsText(r)}
+			</div>
+			<div className="type-dense text-secondary">{r.description || "—"}</div>
 			<div className="text-right type-mono-xs text-tertiary">
 				{peersText(r)}
 			</div>

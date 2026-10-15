@@ -21,7 +21,7 @@ export function UnderlineTab({
 			role="tab"
 			className={({ isActive }) =>
 				cn(
-					"-mb-px flex h-10 items-center border-b-2 px-3 type-ui",
+					"-mb-px flex h-10 items-center border-b-2 px-3 type-dense",
 					isActive
 						? "border-(--text-primary) font-medium text-primary"
 						: "border-transparent text-secondary hover:text-primary",
@@ -39,7 +39,7 @@ export function UnderlineTab({
 export function TabList({ children }: { children: React.ReactNode }) {
 	return (
 		<div
-			className="flex shrink-0 gap-0.5 border-b border-default px-6"
+			className="flex shrink-0 gap-0.5 border-b border-hairline px-6"
 			role="tablist"
 		>
 			{children}

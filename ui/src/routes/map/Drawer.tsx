@@ -66,7 +66,7 @@ export function Drawer({
 			aria-label={
 				selection.kind === "edge" ? "Traffic between groups" : "Group"
 			}
-			className="flex w-[380px] shrink-0 flex-col overflow-hidden border-l border-default bg-raised"
+			className="flex w-[380px] shrink-0 flex-col overflow-hidden border-l border-hairline bg-popover"
 		>
 			{selection.kind === "edge" ? (
 				<EdgeDrawer
@@ -104,7 +104,7 @@ function Header({
 	children: React.ReactNode;
 }) {
 	return (
-		<div className="flex flex-col gap-2.5 border-b border-subtle px-4 pt-3 pb-4">
+		<div className="flex flex-col gap-2.5 border-b border-hairline px-4 pt-3 pb-4">
 			<div className="flex items-center gap-2">
 				<Eyebrow>{eyebrow}</Eyebrow>
 				<Button
@@ -371,7 +371,7 @@ function EdgeDrawer({
 	return (
 		<>
 			<Header eyebrow="Traffic between groups" onClose={onClose}>
-				<div className="flex items-center gap-2 type-title-section font-mono">
+				<div className="flex items-center gap-2 type-dialog-title font-mono">
 					<span>{src.title}</span>
 					<span className="text-disabled" aria-hidden="true">
 						→
@@ -390,13 +390,13 @@ function EdgeDrawer({
 							/>
 						))}
 				</div>
-				<p className="type-ui text-secondary">{note(e, dst)}</p>
+				<p className="type-dense text-secondary">{note(e, dst)}</p>
 			</Header>
-			<div className="flex flex-col gap-2 border-b border-subtle px-4 py-4">
+			<div className="flex flex-col gap-2 border-b border-hairline px-4 py-4">
 				<Eyebrow>Draw a rule from this</Eyebrow>
-				<dl className="flex flex-col gap-1.5 rounded-lg border border-default bg-app px-3 py-2.5 type-ui">
+				<dl className="flex flex-col gap-1.5 rounded-panel border border-hairline bg-canvas px-3 py-2.5 type-dense">
 					<div className="flex gap-2">
-						<dt className="w-[60px] shrink-0 type-label text-tertiary">
+						<dt className="w-[60px] shrink-0 type-control text-tertiary">
 							ruleset
 						</dt>
 						<dd className="type-mono-sm break-words" data-testid="rule-ruleset">
@@ -428,7 +428,7 @@ function EdgeDrawer({
 						</dd>
 					</div>
 					<div className="flex gap-2">
-						<dt className="w-[60px] shrink-0 type-label text-tertiary">
+						<dt className="w-[60px] shrink-0 type-control text-tertiary">
 							peers
 						</dt>
 						<dd className="type-mono-sm break-words" data-testid="rule-peers">
@@ -436,7 +436,7 @@ function EdgeDrawer({
 						</dd>
 					</div>
 					<div className="flex gap-2">
-						<dt className="w-[60px] shrink-0 type-label text-tertiary">
+						<dt className="w-[60px] shrink-0 type-control text-tertiary">
 							services
 						</dt>
 						<dd className="type-mono-sm" data-testid="rule-services">
@@ -483,7 +483,7 @@ function EdgeDrawer({
 						const isOpen = k === open;
 						const v = verdicts[p.verdict];
 						return (
-							<li key={k} className="border-t border-subtle">
+							<li key={k} className="border-t border-hairline">
 								<button
 									type="button"
 									aria-expanded={isOpen}
@@ -492,8 +492,8 @@ function EdgeDrawer({
 										setRead(null);
 									}}
 									className={cn(
-										"grid h-row-dense w-full cursor-pointer grid-cols-[1fr_auto_auto] items-center gap-x-3 px-2 text-left type-mono-sm",
-										isOpen ? "bg-selection-bg" : "hover:bg-hover",
+										"grid h-row-pitch w-full cursor-pointer grid-cols-[1fr_auto_auto] items-center gap-x-3 px-2 text-left type-mono-sm",
+										isOpen ? "bg-wash-selected" : "hover:bg-wash-hover",
 									)}
 								>
 									<span className="min-w-0 truncate">
@@ -527,11 +527,11 @@ function EdgeDrawer({
 	);
 }
 
-// The pair flows table, in the table pattern: a bg-subtle header row of
+// The pair flows table, in the table pattern: a bg-card header row of
 // sentence-case labels, dense body rows over subtle dividers.
 const th =
-	"border-b border-default px-3 text-left whitespace-nowrap type-label text-tertiary";
-const td = "border-b border-subtle px-3 py-2 type-ui";
+	"border-b border-hairline px-3 text-left whitespace-nowrap type-control text-tertiary";
+const td = "border-b border-hairline px-3 py-2 type-dense";
 
 // PairRead is what an opened pair's windows say: the services the pair
 // reached, and the authored rule its admitted windows name, if any.
@@ -604,11 +604,11 @@ function PairFlows({
 	}
 	return (
 		<div className="flex flex-col gap-2 pt-1 pb-3" data-testid="pair-flows">
-			<div className="overflow-hidden rounded-lg border border-default">
+			<div className="overflow-hidden rounded-panel border border-hairline">
 				<table className="w-full border-collapse">
 					<caption className="sr-only">Stored windows of this pair</caption>
 					<thead>
-						<tr className="h-row-header bg-subtle">
+						<tr className="h-row-header bg-card">
 							<th className={th}>Service</th>
 							<th className={th}>Decision</th>
 							<th className={cn(th, "text-right")}>Conns</th>
@@ -619,17 +619,17 @@ function PairFlows({
 						{rows.map((f) => (
 							<tr
 								key={f.id}
-								className="h-row-dense [&:last-child>td]:border-b-0"
+								className="h-row-pitch [&:last-child>td]:border-b-0"
 							>
-								<td className={cn(td, "type-mono-ui")}>{service(f)}</td>
+								<td className={cn(td, "type-mono-data")}>{service(f)}</td>
 								<td className={td}>
 									<VerdictPill verdict={f.verdict} />
 								</td>
-								<td className={cn(td, "text-right type-mono-ui")}>
+								<td className={cn(td, "text-right type-mono-data")}>
 									{count(f.connection_count)}
 								</td>
 								<td
-									className={cn(td, "text-right type-mono-ui text-secondary")}
+									className={cn(td, "text-right type-mono-data text-secondary")}
 								>
 									{since(f.last_seen)}
 								</td>
@@ -639,10 +639,7 @@ function PairFlows({
 				</table>
 			</div>
 			<div className="flex items-center gap-3 type-caption">
-				<Link
-					to={`/workloads/${pair.dst.id}`}
-					className="text-link hover:underline"
-				>
+				<Link to={`/workloads/${pair.dst.id}`} className="link">
 					Open {pair.dst.hostname}
 				</Link>
 				{cursor ? (
@@ -650,7 +647,7 @@ function PairFlows({
 						type="button"
 						onClick={loadMore}
 						disabled={more.loading}
-						className="cursor-pointer text-link hover:underline"
+						className="cursor-pointer link"
 					>
 						{more.loading ? "Loading…" : "Load more windows"}
 					</button>
@@ -706,11 +703,11 @@ function NodeDrawer({
 		const other = nodes.get(dir === "in" ? e.source : e.target);
 		const v = verdicts[e.decision];
 		return (
-			<li key={e.id} className="border-t border-subtle">
+			<li key={e.id} className="border-t border-hairline">
 				<button
 					type="button"
 					onClick={() => onSelect({ kind: "edge", id: e.id })}
-					className="grid h-row-dense w-full cursor-pointer grid-cols-[1fr_auto] items-center gap-x-3 px-2 text-left type-mono-sm hover:bg-hover"
+					className="grid h-row-pitch w-full cursor-pointer grid-cols-[1fr_auto] items-center gap-x-3 px-2 text-left type-mono-sm hover:bg-wash-hover"
 				>
 					<span className="truncate">
 						<span className="text-tertiary">{dir === "in" ? "← " : "→ "}</span>
@@ -728,7 +725,7 @@ function NodeDrawer({
 	return (
 		<>
 			<Header eyebrow={eyebrow} onClose={() => onSelect(null)}>
-				<div className="type-title-section font-mono">{n.title}</div>
+				<div className="type-dialog-title font-mono">{n.title}</div>
 				{n.selector ? (
 					<div>
 						<LabelChip
@@ -742,13 +739,13 @@ function NodeDrawer({
 					<ModeLine n={n} />
 				</div>
 				{n.id === unlabeledId ? (
-					<p className="type-ui text-secondary">
+					<p className="type-dense text-secondary">
 						These workloads carry no labels, so no ruleset's scope selects them
 						and no rule can name them as peers.
 					</p>
 				) : null}
 				{n.id === keylessId ? (
-					<p className="type-ui text-secondary">
+					<p className="type-dense text-secondary">
 						These workloads carry labels, but none under {groupKey}.
 					</p>
 				) : null}
@@ -777,11 +774,11 @@ function NodeDrawer({
 								return (
 									<li
 										key={id}
-										className="flex h-row-dense items-center gap-2 border-t border-subtle px-2"
+										className="flex h-row-pitch items-center gap-2 border-t border-hairline px-2"
 									>
 										<Link
 											to={`/workloads/${id}`}
-											className="min-w-0 flex-1 truncate type-mono-sm text-link hover:underline"
+											className="min-w-0 flex-1 truncate type-mono-sm link"
 										>
 											{w?.hostname ?? sourceNames.get(id) ?? id}
 										</Link>
@@ -812,7 +809,7 @@ function NodeDrawer({
 							{(n.cidrs ?? []).map((c) => (
 								<li
 									key={c}
-									className="flex h-row-dense items-center border-t border-subtle px-2"
+									className="flex h-row-pitch items-center border-t border-hairline px-2"
 								>
 									{c}
 								</li>
@@ -827,7 +824,7 @@ function NodeDrawer({
 							{n.addresses.map((a) => (
 								<li
 									key={a}
-									className="flex h-row-dense items-center border-t border-subtle px-2"
+									className="flex h-row-pitch items-center border-t border-hairline px-2"
 								>
 									{a}
 								</li>
@@ -835,7 +832,7 @@ function NodeDrawer({
 							{n.unrecognized.map((a) => (
 								<li
 									key={`u:${a}`}
-									className="flex items-center gap-2 border-t border-subtle px-2 py-2"
+									className="flex items-center gap-2 border-t border-hairline px-2 py-2"
 								>
 									<span>{a}</span>
 									<span className="type-caption text-tertiary">

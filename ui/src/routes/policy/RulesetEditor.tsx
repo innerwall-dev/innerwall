@@ -636,7 +636,7 @@ export function RulesetEditor({
 									setAbout({ ...about, name: ev.target.value });
 								}}
 								className={cn(
-									"h-control-lg w-[320px] rounded-md border bg-app px-3 type-title-section font-mono text-primary placeholder:font-normal placeholder:text-tertiary",
+									"h-control-md w-[320px] rounded-control border bg-canvas px-3 type-dialog-title font-mono text-primary placeholder:font-normal placeholder:text-tertiary",
 									aboutAt("name").length > 0
 										? "border-status-critical-fg"
 										: "border-strong",
@@ -646,7 +646,7 @@ export function RulesetEditor({
 						</div>
 					) : (
 						<span className="flex items-baseline gap-3">
-							<h1 className="type-title-page font-mono">{ruleset.name}</h1>
+							<h1 className="type-section font-mono">{ruleset.name}</h1>
 							<button
 								type="button"
 								onClick={() => {
@@ -657,14 +657,14 @@ export function RulesetEditor({
 										description: ruleset.description ?? "",
 									});
 								}}
-								className="cursor-pointer type-caption text-link hover:underline"
+								className="cursor-pointer type-caption link"
 								aria-label="Edit name and description"
 							>
 								Edit
 							</button>
 						</span>
 					)}
-					<span className="flex items-center gap-2 type-ui text-secondary">
+					<span className="flex items-center gap-2 type-dense text-secondary">
 						<Switch
 							size="header"
 							on={enabled}
@@ -724,13 +724,13 @@ export function RulesetEditor({
 						</div>
 					</div>
 				) : ruleset.description ? (
-					<p className="type-ui text-secondary">{ruleset.description}</p>
+					<p className="type-dense text-secondary">{ruleset.description}</p>
 				) : null}
 			</header>
 			{headNotice ? <NoticeLine notice={headNotice} /> : null}
 			<div
 				role="note"
-				className="flex gap-2.5 rounded-lg border border-default bg-subtle px-4 py-3 type-body text-secondary"
+				className="flex gap-2.5 rounded-panel border border-hairline bg-card px-4 py-3 type-dense text-secondary"
 				data-testid="banner"
 			>
 				<Icon name="info" className="mt-0.5" />
@@ -754,7 +754,7 @@ export function RulesetEditor({
 				}}
 				footer={
 					edited ? (
-						<div className="flex items-center gap-2 border-t border-subtle pt-3">
+						<div className="flex items-center gap-2 border-t border-hairline pt-3">
 							<span className="type-caption text-tertiary">
 								The scope is not saved; the rules still apply to the{" "}
 								{inScope ?? "…"} workloads it matches now.
@@ -846,7 +846,7 @@ function PairNote({
 		<div
 			role="note"
 			data-testid="pair-context"
-			className="flex gap-2.5 rounded-lg border border-default bg-subtle px-4 py-3 type-ui text-secondary"
+			className="flex gap-2.5 rounded-panel border border-hairline bg-card px-4 py-3 type-dense text-secondary"
 		>
 			<Icon name="info" className="mt-0.5 shrink-0" />
 			<div className="flex min-w-0 flex-col gap-1.5">
@@ -905,10 +905,10 @@ export function NoticeLine({
 			role={notice.tone === "ok" ? "status" : "alert"}
 			data-testid="notice"
 			className={cn(
-				"flex flex-wrap items-center gap-x-3 gap-y-1.5 type-ui",
+				"flex flex-wrap items-center gap-x-3 gap-y-1.5 type-dense",
 				inset ? "mx-4 mb-3" : "",
 				notice.tone === "conflict" &&
-					"rounded-lg border border-status-critical-border bg-status-critical-bg px-3 py-2.5 text-primary",
+					"rounded-panel border border-status-critical-border bg-status-critical-bg px-3 py-2.5 text-primary",
 			)}
 		>
 			{notice.tone === "failed" ? (

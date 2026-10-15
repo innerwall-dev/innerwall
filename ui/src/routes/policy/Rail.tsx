@@ -4,7 +4,7 @@ import { Icon } from "@/components/Icon";
 import { cn } from "@/lib/utils";
 import { editorPath } from "./link";
 
-const railHeading = "type-label text-tertiary";
+const railHeading = "type-control text-tertiary";
 
 // Rail lists the rulesets, each with whether it is enabled and how many
 // rules it holds, and below them the definitions rules reference. The
@@ -25,14 +25,14 @@ export function Rail({
 }) {
 	return (
 		<aside
-			className="flex w-[220px] shrink-0 flex-col gap-0.5 overflow-auto border-r border-default bg-subtle px-2 py-3"
+			className="flex w-[220px] shrink-0 flex-col gap-0.5 overflow-auto border-r border-hairline bg-card px-2 py-3"
 			aria-label="Rulesets"
 		>
 			<div className="flex items-center pb-1.5 pl-2">
 				<span className={railHeading}>Rulesets</span>
 				<Link
 					to="/policy?new=1"
-					className="group/new ml-auto inline-flex h-6 items-center gap-1 rounded-md px-1.5 type-caption text-secondary hover:bg-hover hover:text-primary"
+					className="group/new ml-auto inline-flex h-6 items-center gap-1 rounded-control px-1.5 type-caption text-secondary hover:bg-wash-hover hover:text-primary"
 					aria-label="Start a new ruleset"
 				>
 					<Icon
@@ -55,10 +55,10 @@ export function Rail({
 								to={editorPath(rs.name)}
 								aria-current={selected ? "page" : undefined}
 								className={cn(
-									"flex h-8 items-center gap-2 rounded-md px-2 type-mono-ui",
+									"flex h-8 items-center gap-2 rounded-control px-2 type-mono-data",
 									selected
-										? "bg-active font-medium text-primary"
-										: "text-secondary hover:bg-hover hover:text-primary",
+										? "bg-wash-selected font-medium text-primary"
+										: "text-secondary hover:bg-wash-hover hover:text-primary",
 								)}
 							>
 								<span
@@ -82,7 +82,7 @@ export function Rail({
 					{creating ? (
 						<span
 							aria-current="page"
-							className="flex h-8 items-center gap-2 rounded-md bg-active px-2 type-ui-strong text-primary"
+							className="flex h-8 items-center gap-2 rounded-control bg-wash-selected px-2 type-header-register text-primary"
 						>
 							<span
 								aria-hidden="true"
@@ -102,7 +102,7 @@ export function Rail({
 
 function Definition({ label, n }: { label: string; n: number | null }) {
 	return (
-		<div className="flex h-8 items-center gap-2 rounded-md px-2 type-ui text-secondary">
+		<div className="flex h-8 items-center gap-2 rounded-control px-2 type-dense text-secondary">
 			<span className="flex-1">{label}</span>
 			<span className="type-mono-xs text-tertiary">{n ?? "…"}</span>
 		</div>

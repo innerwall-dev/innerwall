@@ -31,14 +31,14 @@ export function Switch({
 			className={cn(
 				"relative inline-flex shrink-0 cursor-pointer items-center rounded-full transition-colors disabled:cursor-default disabled:opacity-disabled",
 				size === "header" ? "h-[16px] w-[30px]" : "h-[14px] w-[26px]",
-				on ? "bg-selection-fg" : "bg-(--border-strong)",
+				on ? "bg-checkbox-on" : "bg-(--border-strong)",
 				className,
 			)}
 		>
 			<span
 				aria-hidden="true"
 				className={cn(
-					"absolute rounded-full bg-app transition-[left]",
+					"absolute rounded-full bg-canvas transition-[left]",
 					size === "header" ? "size-[10px]" : "size-[9px]",
 					on
 						? size === "header"

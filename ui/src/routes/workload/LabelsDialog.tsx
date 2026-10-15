@@ -187,9 +187,9 @@ function Editor({ w, onSaved }: { w: Workload; onSaved: () => void }) {
 		return (
 			<>
 				<DialogHeader title="Save these labels?">
-					<p className="type-body text-secondary">
+					<p className="type-dense text-secondary">
 						The labels of{" "}
-						<span className="type-mono-ui text-primary">{w.hostname}</span>{" "}
+						<span className="type-mono-data text-primary">{w.hostname}</span>{" "}
 						change as follows. Nothing is written until you save.
 					</p>
 				</DialogHeader>
@@ -198,7 +198,7 @@ function Editor({ w, onSaved }: { w: Workload; onSaved: () => void }) {
 					<div
 						role="note"
 						data-testid="label-effect"
-						className="flex gap-2.5 rounded-lg border border-default bg-subtle px-4 py-3 type-body text-secondary"
+						className="flex gap-2.5 rounded-panel border border-hairline bg-card px-4 py-3 type-dense text-secondary"
 					>
 						<Icon name="info" className="mt-0.5 shrink-0" />
 						<span>
@@ -237,9 +237,9 @@ function Editor({ w, onSaved }: { w: Workload; onSaved: () => void }) {
 	return (
 		<>
 			<DialogHeader title={`Edit labels of ${w.hostname}`}>
-				<p className="type-body text-secondary">
+				<p className="type-dense text-secondary">
 					Labels are what ruleset scopes and peers select. Type{" "}
-					<span className="type-mono-ui">key=value</span>; a key carries one
+					<span className="type-mono-data">key=value</span>; a key carries one
 					value, so a new value replaces the old.
 				</p>
 			</DialogHeader>
@@ -247,14 +247,14 @@ function Editor({ w, onSaved }: { w: Workload; onSaved: () => void }) {
 				{conflict ? (
 					<div
 						role="alert"
-						className="flex flex-col gap-1.5 rounded-lg border border-status-warn-border bg-status-warn-bg px-3 py-2.5 type-ui"
+						className="flex flex-col gap-1.5 rounded-panel border border-status-warn-border bg-status-warn-bg px-3 py-2.5 type-dense"
 					>
 						<SeverityNote level="alert" className="font-medium">
 							The labels changed since this editor read them; nothing was saved
 						</SeverityNote>
 						<span className="text-secondary">
 							As stored now, at version{" "}
-							<span className="type-mono-ui">{conflict.version}</span>:
+							<span className="type-mono-data">{conflict.version}</span>:
 						</span>
 						<div className="flex flex-wrap gap-1">
 							{labelPairs(conflict.stored).length === 0 ? (
@@ -271,10 +271,10 @@ function Editor({ w, onSaved }: { w: Workload; onSaved: () => void }) {
 					</div>
 				) : null}
 				<div className="flex flex-col gap-1.5">
-					<span className="type-label text-secondary">Labels</span>
+					<span className="type-control text-secondary">Labels</span>
 					<div
 						className={cn(
-							"flex min-h-control-md flex-wrap items-center gap-1 rounded-md border bg-app px-2 py-[5px] has-[input:focus-visible]:focus-ring",
+							"flex min-h-control flex-wrap items-center gap-1 rounded-control border bg-canvas px-2 py-[5px] has-[input:focus-visible]:focus-ring",
 							textError ? "border-status-critical-fg" : "border-strong",
 						)}
 					>
@@ -329,7 +329,7 @@ function Editor({ w, onSaved }: { w: Workload; onSaved: () => void }) {
 					) : null}
 				</div>
 				{refusal ? (
-					<SeverityNote level="error" role="alert" className="type-ui">
+					<SeverityNote level="error" role="alert" className="type-dense">
 						{refusal}
 					</SeverityNote>
 				) : null}
@@ -362,8 +362,11 @@ function Changes({ changes }: { changes: LabelChange[] }) {
 	return (
 		<ul className="flex flex-col gap-1.5" aria-label="Label changes">
 			{changes.map((c) => (
-				<li key={c.key} className="flex flex-wrap items-center gap-2 type-ui">
-					<span className="w-[60px] type-label text-tertiary">{c.kind}</span>
+				<li
+					key={c.key}
+					className="flex flex-wrap items-center gap-2 type-dense"
+				>
+					<span className="w-[60px] type-control text-tertiary">{c.kind}</span>
 					{c.kind === "changed" ? (
 						<>
 							<LabelChip k={c.key} v={c.before ?? ""} />

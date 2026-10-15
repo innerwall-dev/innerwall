@@ -2,7 +2,7 @@
 
 Innerwall's own source code is licensed under Apache-2.0 (see [LICENSE](LICENSE)). The control-plane binary also embeds the built console, which contains code and font files from third-party packages, each under its own license:
 
-- **Fonts.** The console carries its two font families, Geist and Geist Mono 1.7.2, as variable font files vendored from the design package in `ui/src/fonts/`, beside their license (`ui/src/fonts/OFL.txt`). They are licensed under the [SIL Open Font License 1.1](https://openfontlicense.org/open-font-license-official-text/), not Apache-2.0.
+- **Fonts.** The console carries two font families as variable font files vendored from the design package in `ui/src/fonts/`, each beside its own license: DM Sans 4.004, © 2014 The DM Sans Project Authors (`ui/src/fonts/OFL-DMSans.txt`), and Source Code Pro 1.026, © 2023 Adobe, with Reserved Font Name 'Source' (`ui/src/fonts/OFL-SourceCodePro.txt`, Adobe's upstream license). Both are licensed under the [SIL Open Font License 1.1](https://openfontlicense.org/open-font-license-official-text/), not Apache-2.0.
 - **Code.** The console's production dependency tree (`ui/package.json` and what it pulls in) is under permissive licenses: MIT, ISC, BSD-3-Clause, 0BSD, and Apache-2.0.
 
 The full license text of every one of those packages and font families is written into the built console on every build, read from the installed packages and the vendored license file so it cannot fall behind the lockfile or the fonts (`ui/scripts/notices.ts`):

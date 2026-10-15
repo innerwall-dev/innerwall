@@ -178,10 +178,10 @@ export function StatusBadge({
 	return (
 		<span
 			className={cn(
-				"inline-flex items-center gap-1.5 whitespace-nowrap type-label",
+				"inline-flex items-center gap-1.5 whitespace-nowrap type-control",
 				tone[status],
 				variant === "tinted" && [
-					"h-[22px] rounded-sm border px-2",
+					"h-[22px] rounded-inner border px-2",
 					tint[status],
 				],
 				className,

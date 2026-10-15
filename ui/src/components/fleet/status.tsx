@@ -24,7 +24,7 @@ export const modes: Record<
 		icon: "eye",
 		glyph: <Icon name="eye" className="size-3.5" />,
 		label: "Visibility",
-		cls: "text-secondary border-default",
+		cls: "text-secondary border-hairline",
 	},
 	simulation: {
 		icon: "flask-conical",
@@ -88,7 +88,7 @@ export function ModePill({ mode }: { mode: Mode }) {
 	return (
 		<span
 			className={cn(
-				"inline-flex h-[22px] items-center gap-1.5 whitespace-nowrap rounded-sm border px-2 type-label",
+				"inline-flex h-[22px] items-center gap-1.5 whitespace-nowrap rounded-inner border px-2 type-control",
 				m.cls,
 			)}
 		>
@@ -123,7 +123,7 @@ export function VerdictPill({
 
 // LabelChip is one `key=value` label, always mono and never truncated
 // mid-key: the key in text-tertiary, the value in text-primary, on
-// bg-subtle behind a hairline. The input form sits inside an editable
+// bg-card behind a hairline. The input form sits inside an editable
 // field, on its stronger border. A label outside the label grammar
 // (ADR-0022), which only one stored before it can be, is drawn quoted on
 // the warning tone and says why, so a value holding a space or an "="
@@ -151,12 +151,12 @@ export function LabelChip({
 					: undefined
 			}
 			className={cn(
-				"inline-flex h-5 items-center whitespace-nowrap rounded-sm border px-1.5 type-mono-sm text-primary",
+				"inline-flex h-5 items-center whitespace-nowrap rounded-inner border px-1.5 type-mono-sm text-primary",
 				outside
 					? "border-dashed border-status-warn-border bg-status-warn-bg"
 					: cn(
-							"bg-subtle",
-							size === "input" ? "border-strong" : "border-default",
+							"bg-card",
+							size === "input" ? "border-strong" : "border-hairline",
 						),
 			)}
 		>
@@ -193,10 +193,10 @@ export function FilterChip({
 			aria-pressed={on}
 			onClick={onClick}
 			className={cn(
-				"inline-flex h-control-sm cursor-pointer items-center gap-1.5 rounded-md border px-2.5 type-caption",
+				"inline-flex h-control cursor-pointer items-center gap-1.5 rounded-control border px-2.5 type-caption",
 				on
-					? "border-strong bg-active font-medium text-primary"
-					: "border-default text-secondary hover:bg-hover hover:text-primary",
+					? "border-strong bg-wash-selected font-medium text-primary"
+					: "border-hairline text-secondary hover:bg-wash-hover hover:text-primary",
 			)}
 		>
 			{glyph}
@@ -217,7 +217,9 @@ export function Eyebrow({
 	className?: string;
 }) {
 	return (
-		<div className={cn("type-label text-tertiary", className)}>{children}</div>
+		<div className={cn("type-control text-tertiary", className)}>
+			{children}
+		</div>
 	);
 }
 
@@ -247,10 +249,10 @@ export function ChoiceChips<T extends string>({
 				<label
 					key={o.value}
 					className={cn(
-						"inline-flex h-control-sm cursor-pointer items-center gap-1.5 rounded-md border px-2.5 type-caption has-[:focus-visible]:focus-ring",
+						"inline-flex h-control cursor-pointer items-center gap-1.5 rounded-control border px-2.5 type-caption has-[:focus-visible]:focus-ring",
 						value === o.value
-							? "border-strong bg-active font-medium text-primary"
-							: "border-default text-secondary hover:bg-hover hover:text-primary",
+							? "border-strong bg-wash-selected font-medium text-primary"
+							: "border-hairline text-secondary hover:bg-wash-hover hover:text-primary",
 					)}
 				>
 					<input

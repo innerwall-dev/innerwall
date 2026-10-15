@@ -162,26 +162,26 @@ function MintForm({ onMinted }: { onMinted: (m: MintedToken) => void }) {
 	return (
 		<>
 			<DialogHeader title="Mint a provisioning token">
-				<p className="type-body text-secondary">
+				<p className="type-dense text-secondary">
 					Workloads enrolling with this token receive exactly these labels. They
 					cannot choose their own.
 				</p>
 			</DialogHeader>
 			<DialogBody>
 				<label htmlFor={nameId} className="flex flex-col gap-1.5">
-					<span className="type-label text-secondary">Name</span>
+					<span className="type-control text-secondary">Name</span>
 					<input
 						id={nameId}
 						value={name}
 						onChange={(e) => setName(e.target.value)}
-						className="h-control-md rounded-md border border-strong bg-app px-3 type-mono-ui text-primary outline-none focus-visible:focus-ring"
+						className="h-control rounded-control border border-strong bg-canvas px-3 type-mono-data text-primary outline-none focus-visible:focus-ring"
 					/>
 				</label>
 				<div className="flex flex-col gap-1.5">
-					<span className="type-label text-secondary">Assigns labels</span>
+					<span className="type-control text-secondary">Assigns labels</span>
 					<div
 						className={cn(
-							"flex min-h-control-md flex-wrap items-center gap-1 rounded-md border bg-app px-2 py-[5px] has-[input:focus-visible]:focus-ring",
+							"flex min-h-control flex-wrap items-center gap-1 rounded-control border bg-canvas px-2 py-[5px] has-[input:focus-visible]:focus-ring",
 							draftInvalid ? "border-status-critical-fg" : "border-strong",
 						)}
 					>
@@ -226,7 +226,7 @@ function MintForm({ onMinted }: { onMinted: (m: MintedToken) => void }) {
 					) : null}
 				</div>
 				<div className="flex flex-col gap-1.5">
-					<span className="type-label text-secondary">Expires</span>
+					<span className="type-control text-secondary">Expires</span>
 					<div className="flex items-center gap-1.5">
 						<ChoiceChips<Lifetime>
 							legend="Expires"
@@ -239,13 +239,13 @@ function MintForm({ onMinted }: { onMinted: (m: MintedToken) => void }) {
 							]}
 						/>
 						{lifetime === "custom" ? (
-							<label className="ml-1 flex items-center gap-1.5 type-ui text-secondary">
+							<label className="ml-1 flex items-center gap-1.5 type-dense text-secondary">
 								<input
 									aria-label="Days"
 									inputMode="numeric"
 									value={customDays}
 									onChange={(e) => setCustomDays(e.target.value)}
-									className="h-control-sm w-14 rounded-md border border-strong bg-app px-2 text-right type-mono-ui text-primary outline-none focus-visible:focus-ring"
+									className="h-control w-14 rounded-control border border-strong bg-canvas px-2 text-right type-mono-data text-primary outline-none focus-visible:focus-ring"
 								/>
 								days
 							</label>
@@ -253,7 +253,7 @@ function MintForm({ onMinted }: { onMinted: (m: MintedToken) => void }) {
 					</div>
 				</div>
 				{problem ? (
-					<SeverityNote level="error" role="alert" className="type-ui">
+					<SeverityNote level="error" role="alert" className="type-dense">
 						{problem.problem.errors?.map((f) => f.message).join(" ") ||
 							problem.problem.detail ||
 							problem.problem.title}
@@ -304,12 +304,12 @@ function ShownOnce({ minted }: { minted: MintedToken }) {
 	return (
 		<>
 			<DialogHeader title="Token minted — copy it now">
-				<SeverityNote level="alert" className="type-ui">
+				<SeverityNote level="alert" className="type-dense">
 					This is the only time the plaintext is shown. Only its hash is stored.
 				</SeverityNote>
 			</DialogHeader>
 			<DialogBody className="gap-3">
-				<div className="flex items-center gap-2 rounded-md border border-strong bg-subtle py-2 pr-2 pl-3">
+				<div className="flex items-center gap-2 rounded-control border border-strong bg-card py-2 pr-2 pl-3">
 					<span
 						className="min-w-0 flex-1 break-all type-mono-sm text-primary"
 						data-testid="minted-secret"
@@ -326,8 +326,8 @@ function ShownOnce({ minted }: { minted: MintedToken }) {
 					</Button>
 				</div>
 				<div className="flex flex-col gap-1.5">
-					<span className="type-label text-secondary">Enroll a host</span>
-					<pre className="rounded-md border border-default bg-subtle px-3 py-2 type-mono-sm whitespace-pre-wrap text-secondary">
+					<span className="type-control text-secondary">Enroll a host</span>
+					<pre className="rounded-control border border-hairline bg-card px-3 py-2 type-mono-sm whitespace-pre-wrap text-secondary">
 						{`innerwall-agent enroll --server ${gateway} \\\n  --token ${masked(minted.token)} --bootstrap-ca ./innerwall-ca.crt`}
 					</pre>
 					<span className="type-caption text-tertiary">
