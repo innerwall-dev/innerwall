@@ -17,6 +17,11 @@ import { memo, type ReactNode, useEffect, useMemo } from "react";
 import { modes, verdicts } from "@/components/fleet/status";
 import { Icon } from "@/components/Icon";
 import { SeverityNote, StatusGlyph } from "@/components/StatusGlyph";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { short } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { type EdgeShape, shapeEdges } from "./geometry";
@@ -305,11 +310,21 @@ export function ModeLine({ n }: { n: MapNode }) {
 			</SeverityNote>
 		);
 	}
-	if (n.kind === "address-group") {
-		return <span className="text-tertiary">unmanaged · address group</span>;
-	}
-	if (n.kind === "unknown") {
-		return <span className="text-tertiary">unmanaged · no address group</span>;
+	// What kind of unmanaged peer a node is reads as words, set in the
+	// sans so the line fits the node, and never clipped mid-word.
+	if (n.kind === "address-group" || n.kind === "unknown") {
+		const text =
+			n.kind === "unknown"
+				? "unmanaged · no address group"
+				: "unmanaged · address group";
+		return (
+			<span
+				className="block min-w-0 truncate font-sans text-[11px] leading-4 text-tertiary"
+				title={text}
+			>
+				{text}
+			</span>
+		);
 	}
 	const m = modeSummary(n);
 	if (!m) {
@@ -354,7 +369,7 @@ function GroupNodeView({ data }: NodeProps<GroupNode>) {
 				onSelect(selected ? null : { kind: "node", id: n.id });
 			}}
 			className={cn(
-				"nodrag nopan relative flex cursor-pointer flex-col justify-center rounded-control border px-2.5 text-left",
+				"nodrag nopan relative flex cursor-pointer flex-col justify-center rounded-control border px-2 text-left",
 				frame(n, selected),
 			)}
 			style={{
@@ -468,8 +483,9 @@ function FlowEdgeView({ data }: EdgeProps<FlowEdge>) {
 
 // Legend is the floating key on the popover surface: each decision with
 // its glyph and a line sample in the tokens' own color, dash and width,
-// and the node kinds by their icons. Volume has no line in it: every
-// edge is one width.
+// and the node kinds by their icons, in short labels; what an unmanaged
+// peer is, is that entry's tooltip. Volume has no line in it: every edge
+// is one width.
 function Legend() {
 	const sample = (d: keyof typeof edgeDash) => (
 		<svg width="32" height="8" aria-hidden="true" className="shrink-0">
@@ -510,11 +526,22 @@ function Legend() {
 					<Icon name="boxes" className="size-3.5" />
 					managed label group
 				</span>
-				<span className="flex items-center gap-1.5">
-					<Icon name="globe" className="size-3.5" />
-					unmanaged peer (address group / unknown) — appears only as a source;
-					no agent observes traffic into it
-				</span>
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<span
+							// biome-ignore lint/a11y/noNoninteractiveTabindex: the entry's explanation is its tooltip, reached by keyboard too
+							tabIndex={0}
+							className="pointer-events-auto flex cursor-default items-center gap-1.5 rounded-inner focus-visible:focus-ring"
+						>
+							<Icon name="globe" className="size-3.5" />
+							unmanaged peer
+						</span>
+					</TooltipTrigger>
+					<TooltipContent side="top" className="max-w-[320px]">
+						unmanaged peer (address group / unknown) — appears only as a source;
+						no agent observes traffic into it
+					</TooltipContent>
+				</Tooltip>
 			</div>
 		</div>
 	);

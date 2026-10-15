@@ -114,9 +114,12 @@ export function RulesCard({
 			className="flex shrink-0 flex-col overflow-hidden rounded-panel border border-hairline bg-card"
 		>
 			<div className="flex items-center gap-3 px-4 py-2.5">
-				<Eyebrow>
-					Inbound rules — who may connect to scoped workloads, on what
-				</Eyebrow>
+				<div className="flex min-w-0 flex-col gap-0.5">
+					<Eyebrow>Inbound rules</Eyebrow>
+					<span className="type-caption text-tertiary">
+						Who may connect to scoped workloads, on what
+					</span>
+				</div>
 				<Button
 					variant="secondary"
 					size="sm"

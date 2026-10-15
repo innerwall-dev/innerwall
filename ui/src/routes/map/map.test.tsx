@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { EvidenceGap, Rollup, Verdict, Workload } from "@/api/schema";
@@ -169,9 +169,12 @@ function surface(
 	]);
 }
 
+// openMap renders the map and waits for its totals line. The map is a
+// lazily loaded chunk, which on a loaded machine can take longer than a
+// query's default second to arrive.
 async function openMap(path = "/map") {
 	renderApp(path);
-	return screen.findByText("connections");
+	return screen.findByText("connections", undefined, { timeout: 5000 });
 }
 
 describe("flow map", () => {
@@ -604,14 +607,22 @@ describe("flow map", () => {
 			],
 		});
 		await openMap("/map?label=env%3Dprod");
-		const warning = await screen.findByText(
-			/1 workload lost evidence in this range — map is incomplete/,
+		// The toolbar holds the short form; the sentence and each gap are
+		// its tooltip, on hover or keyboard focus.
+		const warning = await screen.findByRole("button", {
+			name: /evidence incomplete · 1 workload/,
+		});
+		act(() => warning.focus());
+		const detail = await screen.findByTestId("evidence-detail");
+		expect(detail).toHaveTextContent(
+			"1 workload lost evidence in this range — map is incomplete.",
 		);
-		expect(warning).toHaveAttribute(
-			"title",
-			expect.stringMatching(
-				/^metrics-01: the agent dropped buffered windows between .* UTC\nmetrics-01: the kernel dropped events between .* UTC$/,
-			),
+		const gaps = within(detail).getAllByRole("listitem");
+		expect(gaps[0]).toHaveTextContent(
+			/^metrics-01: the agent dropped buffered windows between .* UTC$/,
+		);
+		expect(gaps[1]).toHaveTextContent(
+			/^metrics-01: the kernel dropped events between .* UTC$/,
 		);
 		// The gaps place the dropped records; the live counter's hedge
 		// is not repeated for them.

@@ -6,6 +6,11 @@ import { LoadingRow, ProblemNotice } from "@/components/Problem";
 import { RangeControl } from "@/components/RangeControl";
 import { SeverityNote } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { count, headline } from "@/lib/format";
 import { between, kindText } from "@/lib/gaps";
 import { labelFormHint, shownLabelText } from "@/lib/labels";
@@ -333,7 +338,7 @@ function Toolbar({
 					</Button>
 				)}
 			</div>
-			<fieldset className="m-0 ml-2 flex h-control items-center gap-0.5 rounded-control border border-overlay bg-field-sunk p-0.5">
+			<fieldset className="m-0 ml-3 flex h-control-sm items-stretch gap-5 border-0 p-0">
 				<legend className="sr-only">Take</legend>
 				{(["graph", "matrix"] as const).map((t) => (
 					<button
@@ -347,9 +352,9 @@ function Toolbar({
 							})
 						}
 						className={cn(
-							"flex h-full cursor-pointer items-center rounded-inner border px-2.5 type-control",
+							"flex cursor-pointer items-center border-b-2 px-0.5 type-header-register focus-visible:rounded-inner focus-visible:focus-ring-inset",
 							take === t
-								? "border-overlay bg-control-raised text-primary"
+								? "border-(--text-primary) text-primary"
 								: "border-transparent text-secondary hover:text-primary",
 						)}
 					>
@@ -408,19 +413,40 @@ function Totals({ model }: { model: MapModel }) {
 				{model.reporting === 1 ? "workload" : "workloads"} reporting
 			</span>
 			{gapped > 0 ? (
-				<SeverityNote level="alert" role="status">
-					<span
-						title={model.gaps
-							.map(
-								(g) =>
-									`${g.workload.hostname}: ${kindText(g.kind)} between ${between(g.from, g.to)}`,
-							)
-							.join("\n")}
-					>
-						{count(gapped)} {gapped === 1 ? "workload" : "workloads"} lost
-						evidence in this range — map is incomplete
-					</span>
-				</SeverityNote>
+				// The short form holds the toolbar; the sentence and every
+				// gap are its tooltip, on hover or keyboard focus.
+				<span role="status">
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<button
+								type="button"
+								className="cursor-default rounded-inner focus-visible:focus-ring"
+							>
+								<SeverityNote level="alert">
+									evidence incomplete · {count(gapped)}{" "}
+									{gapped === 1 ? "workload" : "workloads"}
+								</SeverityNote>
+							</button>
+						</TooltipTrigger>
+						<TooltipContent
+							className="max-w-[420px]"
+							data-testid="evidence-detail"
+						>
+							<p className="text-primary">
+								{count(gapped)} {gapped === 1 ? "workload" : "workloads"} lost
+								evidence in this range — map is incomplete.
+							</p>
+							<ul className="mt-1 flex flex-col gap-0.5 text-secondary">
+								{model.gaps.map((g) => (
+									<li key={`${g.workload.id}|${g.kind}|${g.from}|${g.to}`}>
+										{g.workload.hostname}: {kindText(g.kind)} between{" "}
+										{between(g.from, g.to)}
+									</li>
+								))}
+							</ul>
+						</TooltipContent>
+					</Tooltip>
+				</span>
 			) : null}
 			{dropped > 0 ? (
 				<SeverityNote level="alert" role="status">

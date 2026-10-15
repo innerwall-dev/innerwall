@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 import { workload } from "@/test/fixtures";
 import { addressGroup, peer, rollupOf, row, wref } from "@/test/map";
 import { peerSelector } from "./Drawer";
-import { shapeEdges } from "./geometry";
-import { layoutModel } from "./layout";
+import { chipWidth, type EdgeShape, shapeEdges } from "./geometry";
+import { layoutModel, nodeHeight, nodeWidth } from "./layout";
 import {
 	buildModel,
 	defaultKey,
@@ -403,6 +403,61 @@ describe("edge labels", () => {
 				const apart =
 					Math.abs(a.ly - b.ly) >= 16 || Math.abs(a.lx - b.lx) >= 60;
 				expect(apart).toBe(true);
+			}
+		}
+	});
+});
+
+describe("edge labels where edges crowd", () => {
+	it("keep clear of each other and of the nodes, on their own curve", () => {
+		const hub = wref("ops1", "ops-1", { app: "ops" });
+		const srcs = ["a", "b", "c", "d", "e", "f"].map((x) =>
+			wref(`${x}1`, `${x}-1`, { app: x }),
+		);
+		const m = buildModel(
+			{
+				would_block: rollupOf(
+					srcs.map((s, i) => row(peer.workload(s), hub, 10 * (i + 1))),
+				),
+				blocked: rollupOf([
+					row(peer.workload(srcs[0] ?? hub), srcs[1] ?? hub, 3),
+				]),
+				observed: rollupOf(
+					srcs.slice(2).map((s) => row(peer.workload(hub), s, 7)),
+				),
+			},
+			[],
+			[],
+			"app",
+		);
+		const layout = layoutModel(m);
+		const shapes = shapeEdges(m, layout);
+		const boxes = m.edges.map((e) => {
+			const s = shapes.get(e.id) as EdgeShape;
+			return { e, s, w: chipWidth(e) };
+		});
+		for (const [i, a] of boxes.entries()) {
+			for (const b of boxes.slice(i + 1)) {
+				const apart =
+					Math.abs(a.s.lx - b.s.lx) >= (a.w + b.w) / 2 ||
+					Math.abs(a.s.ly - b.s.ly) >= 18;
+				expect(apart).toBe(true);
+			}
+			for (const n of layout.positions.values()) {
+				const inside =
+					a.s.lx + a.w / 2 > n.x &&
+					a.s.lx - a.w / 2 < n.x + nodeWidth &&
+					a.s.ly + 9 > n.y &&
+					a.s.ly - 9 < n.y + nodeHeight;
+				expect(inside).toBe(false);
+			}
+			// On its own curve: some point of it is where the chip is.
+			const at = a.s.at;
+			if (at) {
+				const near = Array.from({ length: 201 }, (_, k) => at(k / 200)).some(
+					(p) => Math.hypot(p.x - a.s.lx, p.y - a.s.ly) < 1.5,
+				);
+				expect(near).toBe(true);
 			}
 		}
 	});

@@ -11,6 +11,10 @@ export interface EdgeShape {
 	// The label chip's centre.
 	lx: number;
 	ly: number;
+	// The point on the edge's curve at t in [0, 1], and the t the label
+	// was first placed at; absent for a loop.
+	at?: (t: number) => { x: number; y: number };
+	t?: number;
 }
 
 const chipHeight = 18;
@@ -74,17 +78,29 @@ export function flowPath(
 		}
 		t = lo;
 	}
+	const at = (u: number) => ({
+		x: bezier(u, sx, c1x, c2x, tx),
+		y: bezier(u, sy, sy, ty, ty),
+	});
+	const p = at(t);
 	return {
 		path: `M${sx} ${sy} C${c1x} ${sy} ${c2x} ${ty} ${tx} ${ty}`,
-		lx: bezier(t, sx, c1x, c2x, tx),
-		ly: bezier(t, sy, sy, ty, ty),
+		lx: p.x,
+		ly: p.y,
+		at,
+		t,
 	};
 }
 
+// Where a label may slide along its edge from its first place, nearest
+// first: either side of it, out to the ends' margins.
+const slides = [0.06, -0.06, 0.12, -0.12, 0.18, -0.18, 0.26, -0.26, 0.34];
+
 // shapeEdges computes every edge's path and label place from the layout,
-// then moves labels that would overlap apart vertically, busiest edge
-// first, so no chip hides another's count. A moved chip stays beside its
-// curve, and its border and text carry the edge's color.
+// then keeps every chip clear of the others and of the nodes, busiest
+// edge first. A chip that would collide slides along its own edge to the
+// nearest free place, so it always sits on its curve; only when the curve
+// has no free place is it moved off it, alternately below and above.
 export function shapeEdges(
 	model: MapModel,
 	layout: Layout,
@@ -116,6 +132,7 @@ export function shapeEdges(
 	}
 
 	const placed: { x: number; y: number; w: number }[] = [];
+	const nodes = [...layout.positions.values()];
 	const order = [...model.edges].sort(
 		(a, b) => b.connections - a.connections || a.id.localeCompare(b.id),
 	);
@@ -123,20 +140,41 @@ export function shapeEdges(
 		const shape = shapes.get(e.id);
 		if (!shape) continue;
 		const w = chipWidth(e);
-		const clashes = (y: number) =>
-			placed.some(
+		const free = (x: number, y: number) =>
+			!placed.some(
 				(p) =>
-					Math.abs(p.x - shape.lx) < (p.w + w) / 2 + chipGap &&
+					Math.abs(p.x - x) < (p.w + w) / 2 + chipGap &&
 					Math.abs(p.y - y) < chipHeight + chipGap,
+			) &&
+			!nodes.some(
+				(n) =>
+					x + w / 2 > n.x - chipGap &&
+					x - w / 2 < n.x + nodeWidth + chipGap &&
+					y + chipHeight / 2 > n.y - chipGap &&
+					y - chipHeight / 2 < n.y + nodeHeight + chipGap,
 			);
+		let x = shape.lx;
 		let y = shape.ly;
-		// Try the place on the curve, then alternately below and above it.
-		for (let step = 1; clashes(y) && step < 12; step++) {
+		if (!free(x, y) && shape.at && shape.t !== undefined) {
+			for (const d of slides) {
+				const u = shape.t + d;
+				if (u < 0.08 || u > 0.92) continue;
+				const p = shape.at(u);
+				if (free(p.x, p.y)) {
+					x = p.x;
+					y = p.y;
+					break;
+				}
+			}
+		}
+		// No free place on the curve: off it, alternately below and above.
+		for (let step = 1; !free(x, y) && step < 12; step++) {
 			const d = Math.ceil(step / 2) * (chipHeight + chipGap);
 			y = shape.ly + (step % 2 === 1 ? d : -d);
 		}
+		shape.lx = x;
 		shape.ly = y;
-		placed.push({ x: shape.lx, y, w });
+		placed.push({ x, y, w });
 	}
 	return shapes;
 }
