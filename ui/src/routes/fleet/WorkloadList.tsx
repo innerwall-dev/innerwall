@@ -18,7 +18,6 @@ import {
 	syncStates,
 } from "@/components/fleet/status";
 import { Icon } from "@/components/Icon";
-import { page, pageBox } from "@/components/Page";
 import { LoadingRow, ProblemNotice } from "@/components/Problem";
 import {
 	SeverityNote,
@@ -199,47 +198,45 @@ export function WorkloadList({
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
-			<div className="shrink-0 border-b border-hairline py-3">
-				<div className={cn(page, "flex items-center gap-2")}>
-					<fieldset className="m-0 flex min-w-0 gap-1 border-0 p-0">
-						<legend className="sr-only">Sync state</legend>
+			<div className="flex shrink-0 items-center gap-2 border-b border-hairline px-5 py-3">
+				<fieldset className="m-0 flex min-w-0 gap-1 border-0 p-0">
+					<legend className="sr-only">Sync state</legend>
+					<FilterChip
+						on={chip === null}
+						label="all"
+						onClick={() => setChip(null)}
+					/>
+					{states.map((s) => (
 						<FilterChip
-							on={chip === null}
-							label="all"
-							onClick={() => setChip(null)}
+							key={s}
+							on={chip === s}
+							glyph={syncStates[s].glyph}
+							label={s}
+							onClick={() => setChip(chip === s ? null : s)}
 						/>
-						{states.map((s) => (
-							<FilterChip
-								key={s}
-								on={chip === s}
-								glyph={syncStates[s].glyph}
-								label={s}
-								onClick={() => setChip(chip === s ? null : s)}
-							/>
-						))}
-						<FilterChip
-							on={removed}
-							glyph={<StatusGlyph status="error" size="sm" />}
-							label="removed"
-							onClick={() => setChip(removed ? null : "removed")}
-						/>
-					</fieldset>
-					<div className="ml-auto flex items-center gap-2">
-						<LabelFilter labels={labels} onChange={setLabels} />
-						<Button
-							variant="secondary"
-							size="sm"
-							disabled={selection.length === 0}
-							onClick={() => setChanging(true)}
-						>
-							Change mode for selected…
-						</Button>
-					</div>
+					))}
+					<FilterChip
+						on={removed}
+						glyph={<StatusGlyph status="error" size="sm" />}
+						label="removed"
+						onClick={() => setChip(removed ? null : "removed")}
+					/>
+				</fieldset>
+				<div className="ml-auto flex items-center gap-2">
+					<LabelFilter labels={labels} onChange={setLabels} />
+					<Button
+						variant="secondary"
+						size="sm"
+						disabled={selection.length === 0}
+						onClick={() => setChanging(true)}
+					>
+						Change mode for selected…
+					</Button>
 				</div>
 			</div>
 			<div className="min-h-0 flex-1 overflow-auto pb-6">
 				{resource.status === "error" ? (
-					<div className={page}>
+					<div className="px-5">
 						<ProblemNotice
 							what="workloads"
 							error={resource.error}
@@ -247,7 +244,7 @@ export function WorkloadList({
 						/>
 					</div>
 				) : (
-					<table className={cn(pageBox, "border-separate border-spacing-0")}>
+					<table className="w-full border-separate border-spacing-0">
 						<thead className="sticky top-0 z-10">
 							<tr>
 								<th className={cn(th, "w-px pr-1 pl-5")}>
@@ -288,17 +285,12 @@ export function WorkloadList({
 					</table>
 				)}
 				{resource.status === "loading" ? (
-					<div className={page}>
+					<div className="px-5">
 						<LoadingRow what="workloads" />
 					</div>
 				) : null}
 				{resource.status === "ready" && rows.length === 0 ? (
-					<div
-						className={cn(
-							page,
-							"flex flex-col items-start gap-2 py-6 type-dense text-tertiary",
-						)}
-					>
+					<div className="flex flex-col items-start gap-2 px-5 py-6 type-dense text-tertiary">
 						<span>No workloads match these filters.</span>
 						<button
 							type="button"
@@ -313,12 +305,7 @@ export function WorkloadList({
 					</div>
 				) : null}
 				{resource.status === "ready" && rows.length > 0 ? (
-					<div
-						className={cn(
-							page,
-							"flex items-center gap-3 py-3 type-caption text-tertiary",
-						)}
-					>
+					<div className="flex items-center gap-3 px-5 py-3 type-caption text-tertiary">
 						<span>
 							Showing {rows.length} · sorted by sync state, then last seen
 						</span>

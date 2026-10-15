@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { getRollup } from "@/api/fleet";
 import type { RenderedPolicy, Rollup, Workload } from "@/api/schema";
-import { page, pageBox } from "@/components/Page";
 import { ProblemNotice } from "@/components/Problem";
 import { type FlowStatus, StatusGlyph, tone } from "@/components/StatusGlyph";
 import { compact, count } from "@/lib/format";
@@ -147,27 +146,21 @@ export function ListeningTab({
 				]}
 			/>
 			<div className="flex min-w-0 flex-1 flex-col overflow-auto">
-				<div className="flex h-row-pitch shrink-0 border-b border-hairline">
-					<div
-						className={cn(page, "flex items-center type-dense text-secondary")}
-					>
-						<span>
-							<span className="type-mono-data text-primary">
-								{count(rows.length)}
-							</span>{" "}
-							of {count(services.length)} services
-						</span>
-					</div>
+				<div className="flex h-row-pitch shrink-0 items-center border-b border-hairline px-5 type-dense text-secondary">
+					<span>
+						<span className="type-mono-data text-primary">
+							{count(rows.length)}
+						</span>{" "}
+						of {count(services.length)} services
+					</span>
 				</div>
-				<div className={cn(page, "pt-4 pb-3")}>
-					<p className="max-w-[680px] type-dense text-secondary">
-						What is listening on this host, paired with whether anything
-						actually connects to it. Exposed-but-unused ports are candidates to
-						leave out of policy.
-					</p>
-				</div>
+				<p className="max-w-[720px] px-5 pt-4 pb-3 type-dense text-secondary">
+					What is listening on this host, paired with whether anything actually
+					connects to it. Exposed-but-unused ports are candidates to leave out
+					of policy.
+				</p>
 				{use.status === "error" ? (
-					<div className={page}>
+					<div className="px-5">
 						<ProblemNotice
 							what="flow totals"
 							error={use.error}
@@ -176,16 +169,11 @@ export function ListeningTab({
 					</div>
 				) : null}
 				{services.length === 0 ? (
-					<p className={cn(page, "py-6 type-dense text-tertiary")}>
+					<p className="px-5 py-6 type-dense text-tertiary">
 						The agent has reported no listening services.
 					</p>
 				) : (
-					<table
-						className={cn(
-							pageBox,
-							"min-w-[724px] border-separate border-spacing-0 border-t border-hairline",
-						)}
-					>
+					<table className="w-full min-w-[724px] border-separate border-spacing-0 border-t border-hairline">
 						<thead>
 							<tr>
 								<th className={cn(th, "pl-5")}>Service</th>

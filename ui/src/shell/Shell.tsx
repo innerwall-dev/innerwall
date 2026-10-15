@@ -87,14 +87,6 @@ function identityRoute(pathname: string): boolean {
 	return detail !== null && detail.params.id !== "tokens";
 }
 
-// bleedRoute says the screen at pathname runs the full width of the
-// content area: the Flow map, a spatial canvas that earns the width.
-// Every other screen contains its own content blocks (components/Page),
-// and the header strip's contents align to the page container (W5-a).
-function bleedRoute(pathname: string): boolean {
-	return matchPath("/map/*", pathname) !== null;
-}
-
 // Shell is the authenticated frame: sidebar, page header, and the screen.
 // An anonymous session is sent to the login screen, remembering where
 // it was headed.
@@ -149,7 +141,6 @@ function Frame() {
 		[openWorkload, fleetChanged, policyChanged, strip],
 	);
 
-	const bleed = bleedRoute(location.pathname);
 	const counts: Partial<Record<string, Badge>> = {};
 	if (fleet.status === "ready") {
 		const b = attentionBadge(fleet.data);
@@ -164,7 +155,6 @@ function Frame() {
 				<PageHeader
 					crumbs={crumbsFor(location.pathname, location.search)}
 					identity={identityRoute(location.pathname) ? setStrip : undefined}
-					bleed={bleed}
 				/>
 				<main className="relative flex min-h-0 flex-1 flex-col overflow-auto">
 					<Outlet context={context} />

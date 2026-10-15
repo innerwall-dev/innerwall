@@ -72,7 +72,6 @@ AA contrast holds on every shipped pair **except one dated, scoped waiver**.
   - chip 22;
   - filter panel 280;
   - `content-max` **1120**.
-  - `page-max` **1600** (amendment 6, W5).
 - **Flow map (W2):** `edge-width` **2px**, one width for every edge.
 - **Tabs:** underlined in **text-primary**. The pill marks primary navigation only.
 
@@ -119,8 +118,11 @@ Recorded by the console v3 build (INN-73), 2026-10-15. The package above is the 
   - The Status card keeps Resend in every state, as before.
 - **Amendment 4 (ruling 18): the search field in the W3 strip.** The header strip keeps the console's search field (INN-39) at its right, as a 26px sunk field.
 - **Amendment 5 (ruling 12): the popover sentence limit.** The one-sentence limit is waived for the clock-skew state, whose existing text is three sentences and is kept whole.
-- **Amendment 6 (W5, amended by W5-a): the `page-max` token.** `page-max: 1600px`, the page container, beside `content-max`. It is in `tokens.json` (`size`, and the amendments list) and `tokens.css` (`--page-max`). The rule it serves is under polish round 3.
-  - *Amended 2026-10-15 (W5-a):* the container holds **content blocks only**. Chrome rows span their region, with their contents aligned to the container, and rails dock against the primary sidebar. This split replaces W5's whole-page container.
+- **Amendment 6 (W5, W5-a): wide-screen page containment. Withdrawn 2026-10-15 (W5-b).** Both variants were judged on a 2560px preview and reverted. Every page is full-bleed again, as R4.2 has it, and the `page-max` token is removed. `content-max` (1120) on the Overview column is unaffected.
+  - *W5, a whole-page container* (`page-max` 1600, centered): rejected. Structural chrome and the filter rail went into a floating island, and hairlines stopped mid-screen.
+  - *W5-a, docked rails with centered content*: rejected. It left a dead gutter between the rail and the table (about 220px on Inbound flows) that reads worse than a full-width table.
+  - Full-bleed record tables at wide sizes are also the measured behavior of the reference the package was drawn against [origin withheld].
+  - **The recorded seam, unexplored:** if wide-screen density comes back, the next attempt should be column-width caps inside full-bleed tables, not page containers.
 
 ## Accessibility
 
@@ -183,40 +185,6 @@ A deviation the build introduced, recorded once it was corrected against the pac
 | # | Deviation | Correction |
 | --- | --- | --- |
 | D1 | **Narrow plate mapping.** The build gave the primary plate to the review's **Promote to enforced…** only when the verdict was safe, and drew it as a secondary button otherwise. The promote dialog's confirm overrode the plate's disabled state with a class the v3 vocabulary does not define, so a held-back confirm looked live. This read the accent as a verdict. | Per the button spec (`components/Controls-Badges-Chips.md`): the accent marks the view's primary action, never a verdict. Severity is carried by the verdict banner, the acknowledgment, and the disabled gate. The Simulation strip's **Promote to enforced…** and the dialog's enabled confirm (**Enforce anyway…** included) take the plate whatever the verdict. A held-back confirm is the plate's own disabled state (`surface-overlay`, text-disabled) and stays focusable so its reason can be reached. The mint dialog's confirm was already the plate. **Edit ruleset**, **Add rule** and **Revoke** stay neutral. |
-
-## Polish round 3: wide-screen containment (W5, ruled 2026-10-15; corrected by W5-a the same day)
-
-On a 2560px display every full-bleed page stretched its tables across about 2,300px and the columns scattered. W5 supersedes R4.2's "data pages are full-bleed".
-
-**As first built (W5).** One container in the shell held the whole routed page. That over-contained it: structural chrome and the filter rail went into the centered island. On Simulation review, the ruleset row's hairline stopped mid-screen. The filter panel drifted away from the primary sidebar, leaving a void.
-
-**The corrected model (W5-a).** Chrome and rails are structural: they span or dock. Only content blocks are contained.
-
-1. **Chrome rows span; their contents align.** The 48px strip, every tab row and every toolbar row spans the region it sits over, background and hairline. Its contents align to the page container: left-side controls at its left edge, right-side controls at its right, so controls sit over the content they act on. This covers:
-   - Workload detail's tab row, chips included;
-   - Simulation review's ruleset row (RULESET tabs on the left; the scope line, Edit ruleset and Promote on the right), and its view-tabs and filters toolbar;
-   - the Workloads tab row and filter-chip row;
-   - the result rows of Inbound flows and Listening services.
-2. **Second rails dock, never center.** These rails sit flush against the primary sidebar at full height, keeping their right hairline. A rail is navigation, not content.
-   - The filter panel (Inbound flows, Listening services) docks below its tab row.
-   - Policy's rulesets and definitions rail docks below the strip.
-   - Simulation review's row-detail drawer docks the same way, against the right edge.
-3. **Content blocks are contained.** Banners, stat tiles, tables, cards, forms, loading and error rows, and empty states sit in `page-max` (1600px, including the page's 20px gutters). The container is centered in the space beside any docked rail, not in the full content area. The Overview keeps its `content-max` (1120) column inside it.
-4. **The Flow map** is unchanged: full-bleed, with its toolbar. Its toolbar row follows the same rule; at full bleed its contents run the full width.
-5. **At 1640px of available width or less nothing changes.** The page container is the full width there, and the pages render as they did before containment. This was checked pixel for pixel against the pre-W5 build at 1280 and 1440, in both themes, on every page.
-
-As built:
-
-- **Containers.**
-  - `page-max` is the content box: centered, with its 20px gutters.
-  - A row that already sits within the page gutters uses `page-max` less the gutters, so it has the same content edges.
-  - Tables whose edge cells carry the gutter use the box without padding, so their row hairlines run the container's width.
-  - The classes live in `ui/src/components/Page.ts`.
-- **Simulation review's ruleset row** keeps its hairline inset by the page gutters, as before containment, so 1280 and 1440 are unchanged. Its hairline now runs the full content area, not the container.
-- **Which container a row aligns to.** A row's contents align to the page container centered in the region the row itself spans. The strip and Workload detail's tab row span the full content area above any rail, so they align to the full-area container on every tab and do not move when a tab with a rail opens. Content beside a rail centers in the narrower space. Above 1640px, on Inbound flows, Listening services and Policy, the title row's contents therefore sit to the left of the content's edges (about 140px at 2560). Aligning those rows to the content beside the rail instead would move the tab row whenever a rail tab opens, and would change the layout at 1440.
-- **Padding.** The 40px x-padding is met as the page's own 20px gutter plus canvas: the content's clearance reaches 40px at 1640px of available width and grows from there. A 40px gutter at every width would move the 1280/1440 layouts.
-- **A considered deviation, not an erratum.** Record tables do not run full-bleed. A five-to-seven-column operations table has nothing to gain from 2,300px; holding it to `page-max` keeps its columns together.
-- **Composites.** They are captured at 1440, where no scene changes, so none are recaptured. The wide-screen pass is the lab's.
 
 ## Copy this build adds
 

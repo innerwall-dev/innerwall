@@ -56,33 +56,6 @@ describe("shell", () => {
 		},
 	);
 
-	// W5-a: chrome spans and its contents align to the page container;
-	// the Flow map runs full-bleed, its strip with it.
-	it.each([
-		["/simulation", true],
-		["/workloads", true],
-		["/policy", true],
-		["/no/such/screen", true],
-		["/map", false],
-	])("aligns %s's strip to the page container: %s", async (path, contained) => {
-		signedIn();
-		renderApp(path);
-		const strip = (await screen.findByRole("banner")).firstElementChild;
-		expect(screen.getByRole("banner")).not.toHaveClass("max-w-page");
-		if (contained) expect(strip).toHaveClass("max-w-page", "mx-auto");
-		else expect(strip).not.toHaveClass("max-w-page");
-	});
-
-	it("spans a tab row's hairline and contains its tabs", async () => {
-		signedIn();
-		renderApp("/workloads");
-		const tabs = (await screen.findAllByRole("tablist"))[0];
-		const contents = tabs.parentElement;
-		expect(contents).toHaveClass("max-w-page", "mx-auto", "px-5");
-		expect(contents?.parentElement).toHaveClass("border-b");
-		expect(contents?.parentElement).not.toHaveClass("max-w-page");
-	});
-
 	it("renders every fresh-install state", async () => {
 		signedIn();
 		const user = userEvent.setup();

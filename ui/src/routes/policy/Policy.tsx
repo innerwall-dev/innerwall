@@ -2,11 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import type { Ruleset } from "@/api/schema";
 import { EmptyState } from "@/components/EmptyState";
-import { page } from "@/components/Page";
 import { LoadingRow, ProblemNotice } from "@/components/Problem";
 import { Button } from "@/components/ui/button";
 import { useResource } from "@/lib/resource";
-import { cn } from "@/lib/utils";
 import { useShell } from "@/shell/Shell";
 import { type EditorData, loadEditor } from "./data";
 import { carried, pairSuggestion, suggestedScope } from "./link";
@@ -85,54 +83,52 @@ export function Policy() {
 				services={data?.services.length ?? null}
 				groups={data?.groups.length ?? null}
 			/>
-			<div className="min-w-0 flex-1 overflow-auto pt-5 pb-8">
-				<div className={cn(page, "flex flex-col gap-5")}>
-					{resource.status === "loading" ? (
-						<LoadingRow what="the policy" />
-					) : resource.status === "error" ? (
-						<ProblemNotice
-							what="the policy"
-							error={resource.error}
-							onRetry={reload}
-						/>
-					) : current && data ? (
-						<RulesetEditor
-							key={current.id}
-							data={data}
-							ruleset={current}
-							reload={reload}
-							onChanged={shell.policyChanged}
-							suggestion={suggestion}
-							onSuggestionDone={() =>
-								setParams({ ruleset: current.name }, { replace: true })
+			<div className="flex min-w-0 flex-1 flex-col gap-5 overflow-auto px-5 pt-5 pb-8">
+				{resource.status === "loading" ? (
+					<LoadingRow what="the policy" />
+				) : resource.status === "error" ? (
+					<ProblemNotice
+						what="the policy"
+						error={resource.error}
+						onRetry={reload}
+					/>
+				) : current && data ? (
+					<RulesetEditor
+						key={current.id}
+						data={data}
+						ruleset={current}
+						reload={reload}
+						onChanged={shell.policyChanged}
+						suggestion={suggestion}
+						onSuggestionDone={() =>
+							setParams({ ruleset: current.name }, { replace: true })
+						}
+						onRenamed={(saved) => {
+							if (data && saved.id) {
+								setFollowing({ id: saved.id, from: name, listing: data });
 							}
-							onRenamed={(saved) => {
-								if (data && saved.id) {
-									setFollowing({ id: saved.id, from: name, listing: data });
-								}
-							}}
-						/>
-					) : settling ? (
-						<LoadingRow what="the new ruleset" />
-					) : creating && data ? (
-						<NewRuleset
-							data={data}
-							scope={suggestedScope(params)}
-							suggestion={suggestion}
-							onCreated={(rs) => {
-								shell.policyChanged();
-								reload();
-								if (rs.id) {
-									setFollowing({ id: rs.id, from: name, listing: data });
-								} else {
-									setParams({ ruleset: rs.name });
-								}
-							}}
-						/>
-					) : (
-						<FirstRuleset />
-					)}
-				</div>
+						}}
+					/>
+				) : settling ? (
+					<LoadingRow what="the new ruleset" />
+				) : creating && data ? (
+					<NewRuleset
+						data={data}
+						scope={suggestedScope(params)}
+						suggestion={suggestion}
+						onCreated={(rs) => {
+							shell.policyChanged();
+							reload();
+							if (rs.id) {
+								setFollowing({ id: rs.id, from: name, listing: data });
+							} else {
+								setParams({ ruleset: rs.name });
+							}
+						}}
+					/>
+				) : (
+					<FirstRuleset />
+				)}
 			</div>
 		</div>
 	);
