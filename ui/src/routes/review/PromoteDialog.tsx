@@ -312,14 +312,13 @@ export function PromoteDialog({
 					<DialogClose asChild>
 						<Button variant="secondary">Cancel</Button>
 					</DialogClose>
+					{/* The confirm is the view's primary action, the plate whatever
+					    the verdict; a confirm held back (an unchecked
+					    acknowledgment, nothing to enforce) is the plate's disabled
+					    state, kept focusable so its reason can be reached. */}
 					<Button
 						variant="primary"
 						aria-disabled={!canSubmit || undefined}
-						className={
-							canSubmit
-								? undefined
-								: "opacity-disabled hover:border-action-primary-bg hover:bg-plate"
-						}
 						onClick={submit}
 					>
 						{submitting

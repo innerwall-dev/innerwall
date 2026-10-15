@@ -171,6 +171,16 @@ Display and style only, within the package's rules. Wordings are as ruled.
 | P13 | The map's evidence warning is the short form **"evidence incomplete · N workload(s)"** (warn glyph and tone). The full sentence and every gap are its tooltip, on hover and keyboard focus. |
 | P14 | Policy section headers are the mono-upper label alone ("SCOPE", "INBOUND RULES"), each with a text-tertiary sentence-case line under it ("Workloads this ruleset protects", "Who may connect to scoped workloads, on what"). |
 
+## Polish round 2 (ruled 2026-10-15)
+
+### Corrected deviations
+
+A deviation the build introduced, recorded once it was corrected against the package. It is not a package erratum.
+
+| # | Deviation | Correction |
+| --- | --- | --- |
+| D1 | **Narrow plate mapping.** The build gave the primary plate to the review's **Promote to enforced…** only when the verdict was safe, and drew it as a secondary button otherwise. The promote dialog's confirm overrode the plate's disabled state with a class the v3 vocabulary does not define, so a held-back confirm looked live. This read the accent as a verdict. | Per the button spec (`components/Controls-Badges-Chips.md`): the accent marks the view's primary action, never a verdict. Severity is carried by the verdict banner, the acknowledgment, and the disabled gate. The Simulation strip's **Promote to enforced…** and the dialog's enabled confirm (**Enforce anyway…** included) take the plate whatever the verdict. A held-back confirm is the plate's own disabled state (`surface-overlay`, text-disabled) and stays focusable so its reason can be reached. The mint dialog's confirm was already the plate. **Edit ruleset**, **Add rule** and **Revoke** stay neutral. |
+
 ## Copy this build adds
 
 These strings are new to the repository; every other rendered string is the repo's.

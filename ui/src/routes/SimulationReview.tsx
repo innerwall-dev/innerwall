@@ -209,10 +209,7 @@ function Review({
 						<Button variant="secondary" asChild>
 							<Link to={editorPath(ruleset.name)}>Edit ruleset</Link>
 						</Button>
-						<Button
-							variant={verdict.safe ? "primary" : "secondary"}
-							onClick={() => setPromoting(true)}
-						>
+						<Button variant="primary" onClick={() => setPromoting(true)}>
 							Promote to enforced…
 						</Button>
 					</div>

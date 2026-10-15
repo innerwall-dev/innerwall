@@ -150,9 +150,11 @@ export function Grouped({
 									<VerdictPill verdict={r.verdict} />
 								</td>
 								<td className={cn(td, "w-full max-w-0")}>
-									{/* One line: the peer, its kind tag, and its note, which
-									    truncates; a note the same on every row of a kind (an
-									    unknown address) is the tag's tooltip. */}
+									{/* One line: the peer, its kind tag, and its note; a note
+									    the same on every row of a kind (an unknown address) is
+									    the tag's tooltip. The note gives way first, then the
+									    peer truncates (its tooltip is the whole of it); the tag
+									    is never cut and nothing crosses into the next column. */}
 									<div className="flex min-w-0 items-center gap-2">
 										<button
 											type="button"
@@ -162,7 +164,7 @@ export function Grouped({
 												onSelect(on ? null : r.id);
 											}}
 											title={r.peer.full ?? r.peer.title}
-											className="shrink-0 cursor-pointer whitespace-nowrap text-left type-mono-data font-medium text-primary"
+											className="min-w-0 cursor-pointer truncate text-left type-mono-data font-medium text-primary"
 										>
 											{r.peer.title}
 										</button>
@@ -176,7 +178,7 @@ export function Grouped({
 										/>
 										{r.peer.kind === "address" ? null : (
 											<span
-												className="min-w-0 truncate type-caption text-tertiary"
+												className="min-w-0 flex-1 basis-0 truncate type-caption text-tertiary"
 												title={peerNote(r.peer, r.members.length)}
 											>
 												{peerNote(r.peer, r.members.length)}

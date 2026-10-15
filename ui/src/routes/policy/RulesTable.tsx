@@ -291,7 +291,7 @@ function RuleRow({
 							type="button"
 							onClick={onEdit}
 							disabled={locked}
-							className="cursor-pointer type-caption link disabled:cursor-default disabled:opacity-disabled"
+							className="cursor-pointer type-caption link disabled:cursor-default disabled:text-disabled disabled:no-underline"
 							aria-label={`Edit ${label}`}
 						>
 							Edit
