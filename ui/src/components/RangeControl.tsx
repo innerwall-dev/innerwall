@@ -51,9 +51,11 @@ export function extent(from: string, to: string): string {
 const control =
 	"relative flex h-control items-center gap-1.5 rounded-control border border-overlay bg-control-raised pr-2 pl-2 type-control text-secondary hover:border-control-hover has-[:focus-visible]:focus-ring";
 
-// RangeControl picks the range and says what it covers. A rollup counts
-// whole stored windows inside the range, so the extent shown is the
-// first and last window actually counted, never the range asked.
+// RangeControl picks the range. What it covers is provenance, not
+// working text: a rollup counts whole stored windows inside the range,
+// so the first and last window actually counted (never the range asked)
+// is the control's tooltip, and is read to assistive technology beside
+// it.
 export function RangeControl({
 	range,
 	effectiveFrom,
@@ -70,9 +72,16 @@ export function RangeControl({
 	// what the counts are of, for the explanation on hover.
 	what: string;
 }) {
+	const covered =
+		effectiveFrom && effectiveTo
+			? extent(effectiveFrom, effectiveTo)
+			: "no windows in range";
 	return (
 		<div className="flex items-center gap-2">
-			<label className={control}>
+			<label
+				className={control}
+				title={`${covered}. Flows are stored in reporting windows; ${what} count the windows that lie wholly inside the range.`}
+			>
 				<Icon name="clock" />
 				<span>last</span>
 				<select
@@ -92,14 +101,8 @@ export function RangeControl({
 					className="pointer-events-none absolute right-2"
 				/>
 			</label>
-			<span
-				className="type-mono-xs text-tertiary"
-				data-testid={testId}
-				title={`Flows are stored in reporting windows; ${what} count the windows that lie wholly inside the range.`}
-			>
-				{effectiveFrom && effectiveTo
-					? extent(effectiveFrom, effectiveTo)
-					: "no windows in range"}
+			<span className="sr-only" data-testid={testId}>
+				{covered}
 			</span>
 		</div>
 	);

@@ -33,12 +33,14 @@ const kindLabel: Record<PeerGroup["kind"], string> = {
 	unrecognized: "unrecognized",
 };
 
-// PeerKind is the tag before a peer: solid for workloads the scope's
-// policy can name by label, dashed for peers that are not workloads.
-export function PeerKind({ peer }: { peer: PeerGroup }) {
+// PeerKind is the tag beside a peer: solid for workloads the scope's
+// policy can name by label, dashed for peers that are not workloads. A
+// note the tag says on every row of its kind is its tooltip instead.
+export function PeerKind({ peer, note }: { peer: PeerGroup; note?: string }) {
 	const managed = peer.kind === "workloads" || peer.kind === "unlabeled";
 	return (
 		<span
+			title={note || undefined}
 			className={cn(
 				"inline-flex h-5 shrink-0 items-center whitespace-nowrap rounded-inner border border-strong px-1.5 type-control text-secondary",
 				managed ? "border-solid" : "border-dashed",
@@ -80,12 +82,10 @@ export function workloadsText(r: ReviewRow): string {
 	return `${count(r.workloads)}${r.workloadsExact ? "" : "+"}`;
 }
 
-// The connection-volume bar: the track is the pressed surface, the fill
-// the decision's flow tone.
-const barFill = {
-	would_block: "bg-flow-would-block",
-	allowed: "bg-flow-allowed",
-} as const;
+// The connection-volume bar: neutral, the stronger border tone on the
+// selected wash. It compares rows' volume; the decision is the row's
+// glyph and word, never decoration.
+const barFill = "bg-(--border-stronger)";
 
 const cellFill = {
 	would_block: "bg-status-warn-bg",
@@ -149,13 +149,11 @@ export function Grouped({
 								<td className={td}>
 									<VerdictPill verdict={r.verdict} />
 								</td>
-								<td className={td}>
-									{/* The kind tag reads first but sits on the second line,
-									    beside the note, so the identifier keeps the width. */}
-									<div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1">
-										<span className="col-start-1 row-start-2 flex">
-											<PeerKind peer={r.peer} />
-										</span>
+								<td className={cn(td, "w-full max-w-0")}>
+									{/* One line: the peer, its kind tag, and its note, which
+									    truncates; a note the same on every row of a kind (an
+									    unknown address) is the tag's tooltip. */}
+									<div className="flex min-w-0 items-center gap-2">
 										<button
 											type="button"
 											aria-pressed={on}
@@ -164,19 +162,32 @@ export function Grouped({
 												onSelect(on ? null : r.id);
 											}}
 											title={r.peer.full ?? r.peer.title}
-											className="col-span-2 col-start-1 row-start-1 cursor-pointer justify-self-start whitespace-nowrap text-left type-mono-data font-medium text-primary"
+											className="shrink-0 cursor-pointer whitespace-nowrap text-left type-mono-data font-medium text-primary"
 										>
 											{r.peer.title}
 										</button>
-										<span className="col-start-2 row-start-2 type-caption text-tertiary">
-											{peerNote(r.peer, r.members.length)}
-										</span>
+										<PeerKind
+											peer={r.peer}
+											note={
+												r.peer.kind === "address"
+													? peerNote(r.peer, r.members.length)
+													: undefined
+											}
+										/>
+										{r.peer.kind === "address" ? null : (
+											<span
+												className="min-w-0 truncate type-caption text-tertiary"
+												title={peerNote(r.peer, r.members.length)}
+											>
+												{peerNote(r.peer, r.members.length)}
+											</span>
+										)}
 									</div>
 								</td>
 								<td className={cn(td, "type-mono-data whitespace-nowrap")}>
 									{r.service}
 								</td>
-								<td className={cn(td, "text-secondary")}>
+								<td className={cn(td, "whitespace-nowrap text-secondary")}>
 									{r.verdict === "would_block"
 										? "no rule matched"
 										: "matched a rule"}
@@ -198,10 +209,7 @@ export function Grouped({
 											aria-hidden="true"
 										>
 											<div
-												className={cn(
-													"h-full rounded-full",
-													barFill[r.verdict],
-												)}
+												className={cn("h-full rounded-full", barFill)}
 												style={{
 													width: `${barWidth(r.connections, busiest)}%`,
 												}}

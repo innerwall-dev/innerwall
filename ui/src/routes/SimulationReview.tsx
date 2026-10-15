@@ -197,17 +197,15 @@ function Review({
 	return (
 		<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
 			<div className="flex shrink-0 flex-col gap-4 px-5 pt-5">
-				<div className="flex flex-wrap items-start gap-x-4 gap-y-3">
-					<div className="flex min-w-0 flex-1 flex-col gap-2">
-						<RulesetTabs
-							rulesets={data.rulesets}
-							counts={data.counts}
-							current={ruleset}
-							onPick={pick}
-						/>
-						<ScopeLine ruleset={ruleset} workloads={data.workloads} />
-					</div>
-					<div className="ml-auto flex shrink-0 items-center gap-2">
+				<div className="flex items-end gap-x-4 border-b border-hairline">
+					<RulesetTabs
+						rulesets={data.rulesets}
+						counts={data.counts}
+						current={ruleset}
+						onPick={pick}
+					/>
+					<ScopeLine ruleset={ruleset} workloads={data.workloads} />
+					<div className="flex h-tab-row shrink-0 items-center gap-2">
 						<Button variant="secondary" asChild>
 							<Link to={editorPath(ruleset.name)}>Edit ruleset</Link>
 						</Button>
@@ -220,8 +218,9 @@ function Review({
 					</div>
 				</div>
 				<VerdictBanner verdict={verdict} />
+				<Totals verdict={verdict} />
 				<div className="flex flex-wrap items-center gap-2">
-					<fieldset className="m-0 flex h-control gap-0.5 rounded-control border border-overlay bg-field-sunk p-0.5">
+					<fieldset className="m-0 mr-2 flex h-control-sm gap-5 border-0 p-0">
 						<legend className="sr-only">Take</legend>
 						{takes.map((t) => (
 							<button
@@ -235,9 +234,9 @@ function Review({
 									})
 								}
 								className={cn(
-									"cursor-pointer rounded-inner border px-2.5 type-control",
+									"cursor-pointer border-b-2 px-0.5 type-header-register focus-visible:rounded-inner focus-visible:focus-ring-inset",
 									take === t.key
-										? "border-overlay bg-control-raised text-primary"
+										? "border-(--text-primary) text-primary"
 										: "border-transparent text-secondary hover:text-primary",
 								)}
 							>
@@ -349,7 +348,7 @@ function RulesetTabs({
 	onPick: (name: string) => void;
 }) {
 	return (
-		<div className="flex flex-wrap items-end gap-4 border-b border-hairline">
+		<div className="flex min-w-0 shrink flex-wrap items-end gap-4">
 			<span className="flex h-tab-row items-center type-meta-label text-tertiary">
 				Ruleset
 			</span>
@@ -395,7 +394,8 @@ function RulesetTabs({
 }
 
 // ScopeLine is the ruleset's scope, how many workloads it holds now, and
-// how they divide by mode and by what keeps any from its latest policy.
+// how they divide by mode and by what keeps any from its latest policy:
+// one quiet line at the right of the ruleset row.
 function ScopeLine({
 	ruleset,
 	workloads,
@@ -414,12 +414,11 @@ function ScopeLine({
 	] as const;
 	return (
 		<div
-			className="flex flex-wrap items-center gap-x-2 gap-y-1 type-caption text-secondary"
+			className="h-tab-row min-w-0 flex-1 basis-0 truncate text-right type-caption leading-10 text-tertiary [&>span]:ml-2 [&>span:first-child]:ml-0"
 			data-testid="scope-line"
+			title={`${scopeText(ruleset.scope)} · ${count(workloads.length)} in scope`}
 		>
-			<span className="type-mono-sm text-secondary">
-				{scopeText(ruleset.scope)}
-			</span>
+			<span className="truncate type-mono-sm">{scopeText(ruleset.scope)}</span>
 			<span className="text-disabled" aria-hidden="true">
 				·
 			</span>
@@ -445,10 +444,10 @@ function ScopeLine({
 }
 
 // VerdictBanner is the composed verdict: the headline, what it rests on,
-// the four numbers, and a line for every condition the scope fails and
-// every qualification. It is tinted with the verdict's tone.
+// and a line for every condition the scope fails and every
+// qualification. It is tinted with the verdict's tone; its figures are
+// the tile row under it (Totals).
 function VerdictBanner({ verdict }: { verdict: ReviewVerdictResult }) {
-	const k = verdict.kpis;
 	const safe = verdict.safe;
 	// The headline's glyph agrees with the banner's tone: allowed when safe,
 	// the error severity when not; the reasons carry their own glyphs.
@@ -482,31 +481,6 @@ function VerdictBanner({ verdict }: { verdict: ReviewVerdictResult }) {
 						<p className="type-dense text-primary">{verdict.sub}</p>
 					</div>
 				</div>
-				<dl className="flex max-w-full flex-wrap items-end gap-x-6 gap-y-3">
-					<Kpi
-						value={count(k.pairs)}
-						label={
-							<>
-								<StatusGlyph status="would-block" size="sm" />
-								<span>would block · peer/service</span>
-							</>
-						}
-					/>
-					<Kpi value={short(k.connections)} label="connections in range" />
-					<Kpi
-						value={`${count(k.affected)}${k.affectedLowerBound ? "+" : ""}`}
-						label={`of ${count(k.simulating)} simulating ${k.simulating === 1 ? "workload" : "workloads"} affected`}
-					/>
-					<Kpi
-						value={count(k.allowedPairs)}
-						label={
-							<>
-								<StatusGlyph status="allowed" size="sm" />
-								<span>allowed · matched a rule</span>
-							</>
-						}
-					/>
-				</dl>
 			</div>
 			{verdict.caveats.length > 0 ? (
 				<ul
@@ -528,15 +502,62 @@ function VerdictBanner({ verdict }: { verdict: ReviewVerdictResult }) {
 	);
 }
 
-// Kpi is one of the banner's numbers under its term, a mono 24/28 figure.
-// The term reads first; the number is drawn above it.
-function Kpi({ value, label }: { value: string; label: React.ReactNode }) {
+// Totals are the verdict's four figures in a row of tiles under the
+// banner: each a short mono label (with its glyph where the figure is a
+// decision) over a mono 24/28 figure.
+function Totals({ verdict }: { verdict: ReviewVerdictResult }) {
+	const k = verdict.kpis;
 	return (
-		<div className="flex max-w-[160px] flex-col-reverse gap-0.5">
-			<dt className="flex items-start gap-1 type-caption text-secondary [&>svg]:mt-0.5">
+		<dl
+			className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3"
+			aria-label="Totals"
+		>
+			<Tile
+				label={
+					<>
+						<StatusGlyph status="would-block" size="sm" />
+						<span>would-block · pairs</span>
+					</>
+				}
+				value={count(k.pairs)}
+			/>
+			<Tile label="connections" value={short(k.connections)} />
+			<Tile
+				label="workloads affected"
+				value={`${count(k.affected)}${k.affectedLowerBound ? "+" : ""}`}
+				of={`/ ${count(k.simulating)} simulating`}
+			/>
+			<Tile
+				label={
+					<>
+						<StatusGlyph status="allowed" size="sm" />
+						<span>allowed</span>
+					</>
+				}
+				value={count(k.allowedPairs)}
+			/>
+		</dl>
+	);
+}
+
+function Tile({
+	label,
+	value,
+	of,
+}: {
+	label: React.ReactNode;
+	value: string;
+	of?: string;
+}) {
+	return (
+		<div className="flex flex-col-reverse gap-1 rounded-panel border border-hairline bg-card px-4 py-3">
+			<dt className="flex items-center gap-1.5 type-meta-label text-tertiary">
 				{label}
 			</dt>
-			<dd className="m-0 type-mono-figure text-primary">{value}</dd>
+			<dd className="m-0 flex items-baseline gap-2">
+				<span className="type-mono-figure text-primary">{value}</span>
+				{of ? <span className="type-mono-sm text-tertiary">{of}</span> : null}
+			</dd>
 		</div>
 	);
 }
