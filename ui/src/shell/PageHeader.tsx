@@ -14,9 +14,17 @@ export interface Crumb {
 // its title, the screen in text-primary after its section in
 // text-secondary, and the search field is on the right,
 // which opens the search palette, as ⌘K (Ctrl+K) does from anywhere.
+// A screen that draws its own identity in the strip (a workload's
+// detail) gets a slot in place of the breadcrumb: identity receives it.
 // Where the sidebar is a sheet, the strip carries the control that
 // opens it.
-export function PageHeader({ crumbs }: { crumbs: Crumb[] }) {
+export function PageHeader({
+	crumbs,
+	identity,
+}: {
+	crumbs: Crumb[];
+	identity?: (slot: HTMLElement | null) => void;
+}) {
 	const [searching, setSearching] = useState(false);
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
@@ -31,27 +39,31 @@ export function PageHeader({ crumbs }: { crumbs: Crumb[] }) {
 	return (
 		<header className="flex h-header-strip shrink-0 items-center gap-3 border-b border-hairline bg-canvas px-5 type-header-register max-md:px-4">
 			<SidebarTrigger compact className="-ml-1.5" />
-			<nav
-				aria-label="Breadcrumb"
-				className="flex min-w-0 items-center gap-1.5 text-secondary"
-			>
-				{crumbs.map((c, i) => (
-					<Fragment key={c.label}>
-						{i > 0 ? (
-							<span className="text-tertiary" aria-hidden="true">
-								/
+			{identity ? (
+				<div ref={identity} className="flex min-w-0 flex-1 items-center" />
+			) : (
+				<nav
+					aria-label="Breadcrumb"
+					className="flex min-w-0 items-center gap-1.5 text-secondary"
+				>
+					{crumbs.map((c, i) => (
+						<Fragment key={c.label}>
+							{i > 0 ? (
+								<span className="text-tertiary" aria-hidden="true">
+									/
+								</span>
+							) : null}
+							<span
+								className={
+									i === crumbs.length - 1 ? "truncate text-primary" : undefined
+								}
+							>
+								{c.label}
 							</span>
-						) : null}
-						<span
-							className={
-								i === crumbs.length - 1 ? "truncate text-primary" : undefined
-							}
-						>
-							{c.label}
-						</span>
-					</Fragment>
-				))}
-			</nav>
+						</Fragment>
+					))}
+				</nav>
+			)}
 			<button
 				type="button"
 				onClick={() => setSearching(true)}

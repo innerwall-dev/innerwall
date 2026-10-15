@@ -380,7 +380,15 @@ describe("workload detail", () => {
 		expect(card).toHaveTextContent(
 			"set innerwall_peers_r7 exceeds element limit (4096)",
 		);
-		expect(card).toHaveTextContent("Host stays on v41 (its last good policy).");
+		// What the state means is its alert card's, above the status card.
+		expect(screen.getByTestId("alert-degraded")).toHaveTextContent(
+			"Host stays on v41 (its last good policy). The control plane resends a full snapshot on the next attempt.",
+		);
+		expect(
+			within(screen.getByTestId("state-chips")).getByRole("button", {
+				name: "Degraded",
+			}),
+		).toBeInTheDocument();
 
 		expect(screen.getByRole("heading", { name: "db-1" })).toBeInTheDocument();
 		expect(screen.getByText(db.id)).toBeInTheDocument();
@@ -432,7 +440,11 @@ describe("workload detail", () => {
 		const card = await screen.findByTestId("status-card");
 		expect(card).toHaveTextContent(/^Enforcement removed on host/);
 		expect(card).not.toHaveTextContent("Synced");
-		expect(within(card).getByTestId("enforcement-removed")).toHaveTextContent(
+		expect(
+			within(screen.getByTestId("alert-removed")).getByTestId(
+				"enforcement-removed",
+			),
+		).toHaveTextContent(
 			"The agent reports its firewall table gone from the host since 6m ago, so nothing here is enforced or observed, and the blind interval is recorded as an evidence gap. v41 stays acknowledged",
 		);
 		const cell = await screen.findByTestId("evidence-gaps");
@@ -486,57 +498,200 @@ describe("workload detail", () => {
 		expect(card).toHaveTextContent(/^Offline — no contact for 12m/);
 	});
 
-	it("lists flow windows by the required workload filter, with counts per decision", async () => {
+	it("chips its states on every page, critical first, each opening its popover", async () => {
+		const { calls } = surface({
+			workload: () => ({
+				...db,
+				sync: { ...db.sync, state: "offline", error: "" },
+				health: {
+					...db.health,
+					last_seen_at: minutesAgo(30),
+					last_flow_report_at: minutesAgo(30),
+					telemetry_live: false,
+					clock_skew: {
+						offset_seconds: -72 * 60,
+						observed_at: minutesAgo(40),
+						current: true,
+					},
+				},
+			}),
+		});
+		const user = userEvent.setup();
+		renderApp(`/workloads/${db.id}/services`);
+		const chips = await screen.findByTestId("state-chips");
+		expect(
+			within(chips)
+				.getAllByRole("button")
+				.map((b) => b.textContent),
+		).toEqual(["Offline", "Clock skew"]);
+
+		// Enter opens the popover: the sentence, and the resend held back
+		// with the reason the control plane would refuse it.
+		within(chips).getByRole("button", { name: "Offline" }).focus();
+		await user.keyboard("{Enter}");
+		const pop = await screen.findByRole("dialog", { name: "Offline" });
+		expect(pop).toHaveTextContent("no contact for 30m");
+		const resend = within(pop).getByRole("button", { name: "Resend snapshot" });
+		expect(resend).toHaveAttribute("aria-disabled", "true");
+		expect(resend).toHaveAccessibleDescription(
+			"Refused while the agent is offline; it is sent a fresh snapshot whenever it next connects.",
+		);
+		await user.click(resend);
+		expect(calls.filter((c) => c.method === "POST")).toHaveLength(0);
+
+		// One popover at a time; Escape closes it.
+		await user.click(within(chips).getByRole("button", { name: "Clock skew" }));
+		expect(
+			screen.queryByRole("dialog", { name: "Offline" }),
+		).not.toBeInTheDocument();
+		expect(
+			await screen.findByRole("dialog", { name: "Clock skew" }),
+		).toHaveTextContent(
+			"This agent's clock is 1h 12m behind the control plane's",
+		);
+		await user.keyboard("{Escape}");
+		expect(
+			screen.queryByRole("dialog", { name: "Clock skew" }),
+		).not.toBeInTheDocument();
+	});
+
+	it("lands on the Overview, the states inline as alert cards above the status card", async () => {
+		surface();
+		renderApp(`/workloads/${db.id}`);
+		await screen.findByTestId("status-card");
+		expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute(
+			"aria-current",
+			"page",
+		);
+		const alert = screen.getByTestId("alert-degraded");
+		expect(
+			alert.compareDocumentPosition(screen.getByTestId("status-card")) &
+				Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBeTruthy();
+		// Identity is the strip's: the way back, the name, the mode.
+		const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
+		expect(
+			within(crumbs).getByRole("link", { name: "Workloads" }),
+		).toHaveAttribute("href", "/workloads");
+		expect(within(crumbs).getByRole("heading", { level: 1 })).toHaveTextContent(
+			"db-1",
+		);
+		expect(
+			screen.getByText(
+				"Identity is assigned at enrollment and cannot be edited.",
+			),
+		).toBeInTheDocument();
+	});
+
+	it("lists flow windows by the required workload filter, and filters the loaded rows in its panel", async () => {
 		const { calls } = surface();
 		const user = userEvent.setup();
-		renderApp(`/workloads/${db.id}`);
-		await screen.findByText("192.0.2.7");
-		// The counts are their own reads; wait for them to land.
-		await screen.findByRole("button", { name: /would block/ });
+		renderApp(`/workloads/${db.id}/flows`);
+		const table = await screen.findByRole("table");
+		await within(table).findByText("192.0.2.7");
+		// The tab counts the range's stored records, from the rollup.
 		await waitFor(() =>
 			expect(
 				screen.getByRole("tab", { name: /Inbound flows/ }),
 			).toHaveTextContent("Inbound flows7"),
 		);
-		expect(
-			screen.getByRole("button", { name: /^all\s*\d*$/ }),
-		).toHaveTextContent("all7");
-		expect(screen.getByRole("button", { name: /allowed/ })).toHaveTextContent(
-			"allowed4",
-		);
-		expect(
-			screen.getByRole("button", { name: /would block/ }),
-		).toHaveTextContent("would block2");
-		expect(
-			screen.queryByRole("button", { name: /blocked 0/ }),
-		).not.toBeInTheDocument();
 
-		const first = screen.getByText("10.0.0.10").closest("tr") as HTMLElement;
-		expect(within(first).getByText("web-1 · role=web")).toBeInTheDocument();
+		const first = within(table)
+			.getByText("10.0.0.10")
+			.closest("tr") as HTMLElement;
+		expect(within(first).getByText("web-1")).toBeInTheDocument();
+		expect(within(first).getByText(chip("role=web"))).toBeInTheDocument();
 		expect(within(first).getByText("postgres from web")).toBeInTheDocument();
 		expect(within(first).getByText("aa5b70e7/tcp")).toBeInTheDocument();
 		expect(within(first).getByText("22,910")).toBeInTheDocument();
 		expect(within(first).getByText("1m")).toBeInTheDocument();
-		const group = screen.getByText("192.0.2.7").closest("tr") as HTMLElement;
+		const group = within(table)
+			.getByText("192.0.2.7")
+			.closest("tr") as HTMLElement;
 		expect(within(group).getByText("address group office")).toBeInTheDocument();
 		expect(within(group).getByText("— (no rule matched)")).toBeInTheDocument();
-		const bare = screen.getByText("198.51.100.7").closest("tr") as HTMLElement;
+		const bare = within(table)
+			.getByText("198.51.100.7")
+			.closest("tr") as HTMLElement;
 		expect(within(bare).getByText("not managed")).toBeInTheDocument();
 		expect(within(bare).getByText("tcp/22")).toBeInTheDocument();
 
-		const flowReads = calls.filter((c) => c.path.startsWith("/api/v1/flows?"));
-		const q = new URL(flowReads[0]?.path ?? "", "http://x").searchParams;
-		expect(q.get("workload")).toBe(db.id);
-		expect(q.get("from")).not.toBeNull();
-
-		await user.click(screen.getByRole("button", { name: /would block/ }));
-		await waitFor(() => {
-			const last = calls
+		const flowReads = () =>
+			calls
 				.filter((c) => c.path.startsWith("/api/v1/flows?"))
-				.at(-1);
-			expect(
-				new URL(last?.path ?? "", "http://x").searchParams.get("verdict"),
-			).toBe("would_block");
+				.map((c) => new URL(c.path, "http://x").searchParams);
+		expect(flowReads()[0]?.get("workload")).toBe(db.id);
+		expect(flowReads()[0]?.get("from")).not.toBeNull();
+		expect(flowReads()[0]?.get("verdict")).toBeNull();
+
+		// The panel counts the loaded rows, and the result line says so.
+		const panel = screen.getByRole("complementary", {
+			name: "Filter inbound flows",
+		});
+		const box = (name: RegExp) => within(panel).getByRole("checkbox", { name });
+		expect(box(/^allowed/).closest("label")).toHaveTextContent("allowed1");
+		expect(box(/^would block/).closest("label")).toHaveTextContent(
+			"would block2",
+		);
+		expect(box(/^blocked/).closest("label")).toHaveTextContent("blocked0");
+		expect(screen.getByTestId("flows-result")).toHaveTextContent(
+			"3 of 3 loaded",
+		);
+		expect(within(panel).getByText("not managed")).toBeInTheDocument();
+		const rules = within(
+			within(panel).getByRole("group", { name: "Matched rule" }),
+		).getAllByRole("checkbox");
+		expect(rules[0]?.closest("label")).toHaveTextContent(
+			"— (no rule matched)2",
+		);
+
+		// Filtering narrows the loaded rows; it reads nothing again.
+		const reads = flowReads().length;
+		await user.click(box(/^would block/));
+		expect(screen.getByTestId("flows-result")).toHaveTextContent(
+			"2 of 3 loaded",
+		);
+		expect(within(table).queryByText("10.0.0.10")).not.toBeInTheDocument();
+		await user.click(
+			within(within(panel).getByRole("group", { name: "Port" })).getByRole(
+				"checkbox",
+				{ name: /^tcp\/22/ },
+			),
+		);
+		expect(screen.getByTestId("flows-result")).toHaveTextContent(
+			"1 of 3 loaded",
+		);
+		expect(within(table).getByText("198.51.100.7")).toBeInTheDocument();
+		expect(flowReads()).toHaveLength(reads);
+
+		await user.click(within(panel).getByRole("button", { name: "Reset" }));
+		expect(screen.getByTestId("flows-result")).toHaveTextContent(
+			"3 of 3 loaded",
+		);
+	});
+
+	it("resets the screen's one range from the panel, for every read", async () => {
+		const { calls } = surface();
+		const user = userEvent.setup();
+		renderApp(`/workloads/${db.id}/flows`);
+		await within(await screen.findByRole("table")).findByText("192.0.2.7");
+		const froms = (prefix: string) =>
+			calls
+				.filter((c) => c.path.startsWith(prefix))
+				.map((c) => new URL(c.path, "http://x").searchParams.get("from"));
+		const before = froms("/api/v1/flows?").at(-1);
+		await user.selectOptions(screen.getByLabelText("Time range"), "24h");
+		await waitFor(() =>
+			expect(froms("/api/v1/flows?").at(-1)).not.toBe(before),
+		);
+		const from = froms("/api/v1/flows?").at(-1) as string;
+		expect(Date.now() - Date.parse(from)).toBeLessThan(24 * 3_600_000 + 60_000);
+		expect(Date.now() - Date.parse(from)).toBeGreaterThan(
+			24 * 3_600_000 - 60_000,
+		);
+		await waitFor(() => {
+			expect(froms("/api/v1/flows/gaps").at(-1)).toBe(from);
+			expect(froms("/api/v1/flows/rollup").at(-1)).toBe(from);
 		});
 	});
 
@@ -548,10 +703,17 @@ describe("workload detail", () => {
 					: { flows: [allowed, office], next_cursor: "f2" },
 		});
 		const user = userEvent.setup();
-		renderApp(`/workloads/${db.id}`);
-		await screen.findByText("192.0.2.7");
+		renderApp(`/workloads/${db.id}/flows`);
+		const table = await screen.findByRole("table");
+		await within(table).findByText("192.0.2.7");
+		expect(screen.getByTestId("flows-result")).toHaveTextContent(
+			"2 of 2 loaded · more not loaded",
+		);
 		await user.click(screen.getByRole("button", { name: "Load more" }));
-		expect(await screen.findByText("198.51.100.7")).toBeInTheDocument();
+		expect(await within(table).findByText("198.51.100.7")).toBeInTheDocument();
+		expect(screen.getByTestId("flows-result")).toHaveTextContent(
+			/^3 of 3 loaded$/,
+		);
 		const reads = calls
 			.filter((c) => c.path.startsWith("/api/v1/flows?"))
 			.map((c) => new URL(c.path, "http://x").searchParams);
@@ -561,7 +723,7 @@ describe("workload detail", () => {
 
 	it("says so when the range holds no flows", async () => {
 		surface({ flows: () => ({ flows: [], next_cursor: null }) });
-		renderApp(`/workloads/${db.id}`);
+		renderApp(`/workloads/${db.id}/flows`);
 		expect(
 			await screen.findByText("No inbound flows recorded in the last 14 days."),
 		).toBeInTheDocument();
@@ -570,18 +732,23 @@ describe("workload detail", () => {
 	it("pairs each listening service with what connects to it and the rules that admit it", async () => {
 		surface();
 		renderApp(`/workloads/${db.id}/services`);
-		const pg = (await screen.findByText("tcp/5432")).closest(
+		const table = await screen.findByRole("table");
+		const pg = (await within(table).findByText("tcp/5432")).closest(
 			"tr",
 		) as HTMLElement;
 		expect(await within(pg).findByText("435k conns")).toBeInTheDocument();
 		expect(within(pg).getByText("postgres from web")).toBeInTheDocument();
-		const exporter = screen.getByText("tcp/9100").closest("tr") as HTMLElement;
+		const exporter = within(table)
+			.getByText("tcp/9100")
+			.closest("tr") as HTMLElement;
 		expect(
 			within(exporter).getByText("1,190 conns · would block"),
 		).toBeInTheDocument();
 		// A rule with no ports admits every port of its protocol.
 		expect(within(exporter).getByText("0d9c11aa/tcp")).toBeInTheDocument();
-		const avahi = screen.getByText("udp/5353").closest("tr") as HTMLElement;
+		const avahi = within(table)
+			.getByText("udp/5353")
+			.closest("tr") as HTMLElement;
 		expect(
 			within(avahi).getByText("no inbound flows in 14d"),
 		).toBeInTheDocument();
@@ -589,6 +756,18 @@ describe("workload detail", () => {
 		expect(
 			screen.getByRole("tab", { name: /Listening services/ }),
 		).toHaveTextContent("Listening services3");
+		// The panel's rule group leads with the services no rule covers.
+		const panel = screen.getByRole("complementary", {
+			name: "Filter listening services",
+		});
+		const covering = within(
+			within(panel).getByRole("group", { name: "Covered by rule" }),
+		).getAllByRole("checkbox");
+		expect(covering[0]?.closest("label")).toHaveTextContent(
+			"— no rule covers it1",
+		);
+		await userEvent.click(covering[0] as HTMLElement);
+		expect(within(table).getAllByRole("row")).toHaveLength(2);
 	});
 
 	it("shows the rendered policy with each rule's provenance and instants", async () => {

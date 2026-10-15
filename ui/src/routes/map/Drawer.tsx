@@ -527,10 +527,10 @@ function EdgeDrawer({
 	);
 }
 
-// The pair flows table, in the table pattern: a bg-card header row of
-// sentence-case labels, dense body rows over subtle dividers.
+// The pair flows table, in the table pattern: a header row in the mono
+// meta label, 40px body rows over hairlines.
 const th =
-	"border-b border-hairline px-3 text-left whitespace-nowrap type-control text-tertiary";
+	"h-row-header border-b border-hairline px-3 text-left whitespace-nowrap type-meta-label text-tertiary";
 const td = "h-row-pitch border-b border-hairline px-3 py-2 type-dense";
 
 // PairRead is what an opened pair's windows say: the services the pair
