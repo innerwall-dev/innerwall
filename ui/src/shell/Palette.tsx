@@ -144,7 +144,7 @@ function Search({ onDone }: { onDone: () => void }) {
 								aria-label={g.label}
 								className="pb-1"
 							>
-								<div className="px-2 pt-2 pb-1 type-control text-tertiary">
+								<div className="px-2 pt-2 pb-1 type-meta-label text-tertiary">
 									{g.label}
 								</div>
 								{g.all.slice(0, shown).map((hit) => {

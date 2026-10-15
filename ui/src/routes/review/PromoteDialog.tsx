@@ -268,7 +268,7 @@ export function PromoteDialog({
 							</label>
 							{nudged && !acknowledged ? (
 								<div id={ackHintId} role="status">
-									<SeverityNote level="alert" className="type-caption">
+									<SeverityNote level="alert" prose className="type-caption">
 										Nothing was enforced. Check the acknowledgment above to
 										enforce anyway.
 									</SeverityNote>
@@ -296,7 +296,12 @@ export function PromoteDialog({
 							changed.
 						</StaleSet>
 					) : problem ? (
-						<SeverityNote level="error" role="alert" className="type-dense">
+						<SeverityNote
+							level="error"
+							role="alert"
+							prose
+							className="type-dense"
+						>
 							{problem.problem.errors?.map((f) => f.message).join(" ") ||
 								problem.problem.detail ||
 								problem.problem.title}
@@ -463,7 +468,7 @@ function StaleSet({
 			role="alert"
 			className="flex flex-col gap-1.5 rounded-panel border border-status-warn-border bg-status-warn-bg px-3 py-2.5 type-dense"
 		>
-			<SeverityNote level="alert" className="font-medium">
+			<SeverityNote level="alert" prose className="font-medium">
 				{title}
 			</SeverityNote>
 			<span className="text-secondary">{children}</span>

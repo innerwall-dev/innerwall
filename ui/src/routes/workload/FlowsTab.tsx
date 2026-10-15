@@ -244,7 +244,7 @@ function ClockSkewNote({
 	const way = skew.offset_seconds < 0 ? "behind" : "ahead of";
 	return (
 		<p className="mb-4" data-testid="clock-skew">
-			<SeverityNote level="alert" className="type-dense">
+			<SeverityNote level="alert" prose className="type-dense">
 				{skew.current ? (
 					<span>
 						This agent's clock is {by} {way} the control plane's, as of its

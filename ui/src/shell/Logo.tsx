@@ -43,15 +43,11 @@ export function Lockup() {
 	);
 }
 
-// Wordmark is the console's name as the lockup sets it.
+// Wordmark is the console's name as the lockup sets it: the header
+// register, 13/20 at 500, in text-primary.
 export function Wordmark({ className }: { className?: string }) {
 	return (
-		<span
-			className={cn(
-				"font-sans text-[14px] leading-5 font-semibold tracking-[-0.01em] text-primary",
-				className,
-			)}
-		>
+		<span className={cn("type-header-register text-primary", className)}>
 			Innerwall
 		</span>
 	);

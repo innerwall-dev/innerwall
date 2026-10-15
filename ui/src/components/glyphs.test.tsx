@@ -46,11 +46,11 @@ describe("status glyphs", () => {
 });
 
 describe("chrome icons", () => {
-	it("are Lucide at 16px and stroke 2, in icon-default, never a status color", () => {
+	it("are Lucide at 14px and stroke 2, in icon-default, never a status color", () => {
 		const { container } = render(<Icon name="server" />);
 		const svg = container.querySelector("svg");
 		expect(svg).toHaveClass("lucide", "text-icon-default");
-		expect(svg).toHaveAttribute("width", "16");
+		expect(svg).toHaveAttribute("width", "14");
 		expect(svg).toHaveAttribute("stroke-width", "2");
 		expect(svg?.getAttribute("class")).not.toMatch(
 			/text-(status|flow|health)-/,

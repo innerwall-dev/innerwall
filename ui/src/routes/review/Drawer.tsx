@@ -482,7 +482,7 @@ function Candidates({
 					role="alert"
 					className="flex flex-col gap-1.5 rounded-panel border border-status-warn-border bg-status-warn-bg px-3 py-2.5 type-dense"
 				>
-					<SeverityNote level="alert" className="font-medium">
+					<SeverityNote level="alert" prose className="font-medium">
 						{outcome.rule} changed since this review read it
 					</SeverityNote>
 					<span className="text-secondary">
@@ -506,7 +506,7 @@ function Candidates({
 					</Button>
 				</div>
 			) : outcome?.kind === "failed" ? (
-				<SeverityNote level="error" role="alert" className="type-dense">
+				<SeverityNote level="error" role="alert" prose className="type-dense">
 					{outcome.message}
 				</SeverityNote>
 			) : null}

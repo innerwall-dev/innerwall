@@ -76,14 +76,14 @@ export function DryRunCard({
 				</p>
 			) : state.status === "refused" ? (
 				<div className="flex flex-col gap-1.5" role="alert">
-					<SeverityNote level="error" className="type-dense">
+					<SeverityNote level="error" prose className="type-dense">
 						The control plane refused this set as a write would: the findings
 						are shown at the fields they name.
 					</SeverityNote>
 					<FindingLines findings={state.findings} />
 				</div>
 			) : state.status === "failed" ? (
-				<SeverityNote level="error" role="alert" className="type-dense">
+				<SeverityNote level="error" role="alert" prose className="type-dense">
 					The dry run failed: {state.message}
 				</SeverityNote>
 			) : (

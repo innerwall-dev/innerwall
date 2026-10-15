@@ -195,7 +195,7 @@ export function RulesCard({
 			) : null}
 			{traffic.status === "ready" && traffic.data.truncated ? (
 				<p className="border-t border-hairline px-4 py-2.5">
-					<SeverityNote level="alert" size="sm" className="type-caption">
+					<SeverityNote level="alert" size="sm" prose className="type-caption">
 						The day's rule rollup was truncated: a rule without a figure may
 						still have admitted traffic.
 					</SeverityNote>
@@ -558,7 +558,7 @@ function Footer({
 		<div className="flex flex-wrap items-center gap-3 border-t border-hairline px-4 py-3">
 			{pendingScope ? (
 				<p data-testid="pending-scope" className="basis-full">
-					<SeverityNote level="alert" className="type-dense">
+					<SeverityNote level="alert" prose className="type-dense">
 						The scope edit above is unsaved too. Saved on its own, this rule
 						would apply at once to the{" "}
 						{inScope === null ? "workloads" : n(inScope)} the saved scope

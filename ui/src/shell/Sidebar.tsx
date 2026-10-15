@@ -103,7 +103,7 @@ export function Sidebar({
 	return (
 		<SidebarRail collapsible="icon">
 			<SidebarHeader>
-				<div className="mb-1 flex h-sidebar-item items-center gap-2 px-2 group-data-[collapsible=icon]:px-[9px]">
+				<div className="flex items-center gap-2 px-[9px]">
 					<LogoMark />
 					<Wordmark className="truncate group-data-[collapsible=icon]:hidden" />
 				</div>
@@ -166,7 +166,7 @@ export function Sidebar({
 												status={
 													open.removed ? "error" : syncStates[open.state].status
 												}
-												size="lg"
+												size="md"
 												label={openLabel(open)}
 											/>
 											<span>{open.hostname}</span>
@@ -179,7 +179,7 @@ export function Sidebar({
 				</SidebarGroup>
 			</SidebarContent>
 			{fleetEmpty ? <FleetSync /> : null}
-			<SidebarFooter className="border-t border-hairline">
+			<SidebarFooter>
 				<SidebarMenu>
 					<SidebarMenuItem>
 						<SidebarTrigger />

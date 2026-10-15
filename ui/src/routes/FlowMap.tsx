@@ -453,6 +453,7 @@ function NoFlows({
 		<Centered>
 			<EmptyState
 				title="No flows in this range"
+				icon="network"
 				width={480}
 				actions={<div className="self-start">{control}</div>}
 			>
@@ -471,6 +472,7 @@ function FreshMap() {
 		<Centered>
 			<EmptyState
 				title="No flows observed yet"
+				icon="network"
 				width={480}
 				actions={
 					<Button asChild className="self-start">

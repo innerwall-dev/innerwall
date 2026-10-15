@@ -8,7 +8,7 @@ export function NotFound() {
 	const { pathname } = useLocation();
 	return (
 		<div className="px-6 pt-6">
-			<EmptyState title="No such page" width={480}>
+			<EmptyState title="No such page" page width={480}>
 				The console has no screen at{" "}
 				<span className="type-mono-data break-all">{pathname}</span>.{" "}
 				<Link to="/workloads" className="link">

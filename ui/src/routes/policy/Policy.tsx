@@ -140,6 +140,7 @@ function FirstRuleset() {
 	return (
 		<EmptyState
 			title="Create your first ruleset"
+			icon="scroll-text"
 			width={560}
 			className="mx-auto my-10"
 			actions={

@@ -258,6 +258,7 @@ function Resend({ w, onReread }: { w: Workload; onReread: () => void }) {
 					level="alert"
 					role="alert"
 					size="sm"
+					prose
 					className="type-caption"
 				>
 					The agent is offline, so nothing was sent.{" "}
@@ -280,6 +281,7 @@ function Resend({ w, onReread }: { w: Workload; onReread: () => void }) {
 					level="error"
 					role="alert"
 					size="sm"
+					prose
 					className="type-caption"
 				>
 					{outcome.message}

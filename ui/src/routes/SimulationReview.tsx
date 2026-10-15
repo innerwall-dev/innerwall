@@ -560,6 +560,7 @@ function FreshReview() {
 		<Centered>
 			<EmptyState
 				title="Nothing to review yet"
+				icon="flask-conical"
 				width={520}
 				gap={14}
 				steps={[
@@ -602,6 +603,7 @@ function NoEnabledRuleset() {
 		<Centered>
 			<EmptyState
 				title="No enabled ruleset"
+				icon="flask-conical"
 				width={480}
 				actions={
 					<Button variant="secondary" asChild className="self-start">

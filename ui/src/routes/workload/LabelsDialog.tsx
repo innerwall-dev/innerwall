@@ -249,7 +249,7 @@ function Editor({ w, onSaved }: { w: Workload; onSaved: () => void }) {
 						role="alert"
 						className="flex flex-col gap-1.5 rounded-panel border border-status-warn-border bg-status-warn-bg px-3 py-2.5 type-dense"
 					>
-						<SeverityNote level="alert" className="font-medium">
+						<SeverityNote level="alert" prose className="font-medium">
 							The labels changed since this editor read them; nothing was saved
 						</SeverityNote>
 						<span className="text-secondary">

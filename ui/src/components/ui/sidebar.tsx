@@ -23,10 +23,11 @@ import { cn } from "@/lib/utils";
 // Ctrl+B shortcut, tooltips on collapsed entries), trimmed to the parts
 // the console uses. Every color and dimension is a design token: the
 // widths are the package's sidebar-width (inherited from tokens.css, so
-// it is never set here) and sidebar-width-collapsed, the rail sits on
-// sidebar-bg behind a sidebar-border hairline, and entries are
-// sidebar-item tall at radius-md, sidebar-item-hover on hover and
-// sidebar-item-active when current.
+// it is never set here), sidebar-width-collapsed, and sidebar-sheet for
+// the mobile sheet; the rail is flat with the canvas behind a hairline,
+// and entries are sidebar-item tall at radius-control, on the hover wash
+// on hover and in the accent pill when current. Collapse is the
+// operator's alone: nothing here collapses the rail on its own.
 
 export const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
@@ -193,7 +194,7 @@ function Sidebar({
 					data-sidebar="sidebar"
 					data-slot="sidebar"
 					data-mobile="true"
-					className="w-(--sidebar-width) gap-0 bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+					className="w-(--sidebar-sheet) gap-0 bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
 					side={side}
 				>
 					<SheetHeader className="sr-only">
@@ -280,7 +281,7 @@ function SidebarTrigger({
 				data-slot="sidebar-trigger"
 				aria-label={label}
 				className={cn(
-					"inline-flex size-control-md shrink-0 cursor-pointer items-center justify-center rounded-control hover:bg-wash-hover",
+					"inline-flex size-control shrink-0 cursor-pointer items-center justify-center rounded-control text-secondary hover:bg-wash-hover hover:text-primary",
 					className,
 				)}
 				onClick={(event) => {
@@ -318,7 +319,10 @@ function SidebarHeader({ className, ...props }: React.ComponentProps<"div">) {
 		<div
 			data-slot="sidebar-header"
 			data-sidebar="header"
-			className={cn("flex flex-col gap-2 px-2 pt-3", className)}
+			className={cn(
+				"flex h-header-strip shrink-0 flex-row items-center px-2",
+				className,
+			)}
 			{...props}
 		/>
 	);
@@ -329,7 +333,10 @@ function SidebarFooter({ className, ...props }: React.ComponentProps<"div">) {
 		<div
 			data-slot="sidebar-footer"
 			data-sidebar="footer"
-			className={cn("flex flex-col gap-0.5 p-2", className)}
+			className={cn(
+				"flex flex-col gap-0.5 border-t border-hairline p-2",
+				className,
+			)}
 			{...props}
 		/>
 	);
@@ -354,7 +361,10 @@ function SidebarGroup({ className, ...props }: React.ComponentProps<"div">) {
 		<div
 			data-slot="sidebar-group"
 			data-sidebar="group"
-			className={cn("relative flex w-full min-w-0 flex-col p-2", className)}
+			className={cn(
+				"relative flex w-full min-w-0 flex-col px-2 py-1",
+				className,
+			)}
 			{...props}
 		/>
 	);
@@ -382,13 +392,15 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
 	);
 }
 
-// An entry: icon-gap between the 16px icon and its ui label, the label
-// in text-secondary; the current entry on sidebar-item-active in
-// ui-strong with its icon at icon-active (never blue: location is not
-// selection). Collapsed, the entry is the rail's 40px hit area with the
-// icon centered and the label clipped.
+// An entry: the 14px icon 10px from its dense label, 10px in from the
+// pill's edge, the label in text-secondary; hover is the wash. The
+// current entry is the accent pill (the accent edge on the accent tint),
+// its label in text-primary at 500 and its icon at icon-active: the pill
+// marks primary navigation only, and tabs are underlined. Collapsed, the
+// entry is a 40px hit area with the icon centered and the label clipped;
+// the pill stays.
 const sidebarMenuButtonClass =
-	"peer/menu-button flex h-sidebar-item w-full cursor-pointer items-center gap-2 overflow-hidden rounded-control px-2 text-left type-dense text-secondary outline-hidden transition-[width,height,padding] hover:bg-wash-hover hover:text-primary focus-visible:focus-ring disabled:pointer-events-none disabled:opacity-disabled aria-disabled:pointer-events-none aria-disabled:opacity-disabled data-[active=true]:bg-wash-selected data-[active=true]:font-medium data-[active=true]:text-primary data-[active=true]:[&_[data-slot=icon]]:text-icon-active data-[state=open]:bg-wash-hover group-has-data-[sidebar=menu-badge]/menu-item:pr-8 group-data-[collapsible=icon]:w-10! group-data-[collapsible=icon]:px-3! [&>span:last-child]:truncate";
+	"peer/menu-button flex h-sidebar-item w-full cursor-pointer items-center gap-2.5 overflow-hidden rounded-control border border-transparent px-[9px] text-left type-dense text-secondary outline-hidden transition-[width,height,padding] hover:bg-wash-hover hover:text-primary focus-visible:focus-ring disabled:pointer-events-none disabled:text-disabled aria-disabled:pointer-events-none aria-disabled:text-disabled data-[active=true]:border-accent-edge data-[active=true]:bg-accent-tint data-[active=true]:font-medium data-[active=true]:text-primary data-[active=true]:[&_[data-slot=icon]]:text-icon-active data-[state=open]:bg-wash-hover group-has-data-[sidebar=menu-badge]/menu-item:pr-9 group-data-[collapsible=icon]:w-10! group-data-[collapsible=icon]:px-[12px]! [&>span:last-child]:truncate";
 
 function SidebarMenuButton({
 	asChild = false,
@@ -446,7 +458,7 @@ function SidebarMenuBadge({
 			data-slot="sidebar-menu-badge"
 			data-sidebar="menu-badge"
 			className={cn(
-				"pointer-events-none absolute top-1.5 right-1 flex h-5 min-w-5 items-center justify-center rounded-control px-1 type-mono-xs text-tertiary select-none",
+				"pointer-events-none absolute top-1.5 right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border border-overlay px-1.5 type-mono-sm text-secondary select-none",
 				"group-data-[collapsible=icon]:hidden",
 				className,
 			)}

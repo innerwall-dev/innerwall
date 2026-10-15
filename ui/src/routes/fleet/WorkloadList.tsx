@@ -181,6 +181,7 @@ export function WorkloadList({
 			<Centered>
 				<EmptyState
 					title="No workloads enrolled"
+					icon="server"
 					width={560}
 					actions={
 						<Button asChild className="self-start">

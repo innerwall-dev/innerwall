@@ -95,7 +95,7 @@ export function WorkloadDetail() {
 		return (
 			<div className="px-6 pt-6">
 				{wl.error.type === ProblemType.notFound ? (
-					<EmptyState title="No such workload" width={480}>
+					<EmptyState title="No such workload" icon="server" width={480}>
 						No workload is enrolled with this identity.{" "}
 						<Link to="/workloads" className="link">
 							Back to the fleet

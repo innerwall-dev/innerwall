@@ -190,9 +190,55 @@
 		outline: 2px solid var(--accent-ring);
 		outline-offset: 1px;
 	}
-	/* Checked is inverted monochrome: the text-primary fill, the canvas
-	   ink. No color stands in for the retired blue. */
-	input[type="checkbox"],
+	/* A checkbox is 14px at the inner radius: sunk behind the stronger
+	   border when unchecked; checked is inverted monochrome, the
+	   text-primary fill with the check (Lucide) in the canvas ink. No
+	   color stands in for the retired blue. */
+	input[type="checkbox"] {
+		appearance: none;
+		display: inline-grid;
+		place-content: center;
+		width: 14px;
+		height: 14px;
+		margin: 0;
+		flex-shrink: 0;
+		border: 1px solid var(--border-stronger);
+		border-radius: var(--radius-inner);
+		background: var(--field-sunk);
+		cursor: pointer;
+	}
+	input[type="checkbox"]:hover {
+		border-color: var(--border-control-hover);
+	}
+	input[type="checkbox"]:checked,
+	input[type="checkbox"]:indeterminate {
+		border-color: var(--checkbox-on);
+		background: var(--checkbox-on);
+	}
+	input[type="checkbox"]::before {
+		content: "";
+		width: 10px;
+		height: 10px;
+		background: var(--checkbox-ink);
+		mask:
+			url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E")
+			center / contain no-repeat;
+		visibility: hidden;
+	}
+	input[type="checkbox"]:checked::before {
+		visibility: visible;
+	}
+	input[type="checkbox"]:indeterminate::before {
+		visibility: visible;
+		mask: none;
+		height: 2px;
+		border-radius: 1px;
+	}
+	input[type="checkbox"]:disabled {
+		cursor: default;
+		border-color: var(--border-hairline);
+		background: transparent;
+	}
 	input[type="radio"] {
 		accent-color: var(--checkbox-on);
 	}
