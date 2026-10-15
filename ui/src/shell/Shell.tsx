@@ -16,7 +16,7 @@ import { type Crumb, PageHeader } from "./PageHeader";
 import { attentionBadge, type Badge, Sidebar } from "./Sidebar";
 
 // OpenWorkload is the workload a detail screen last showed: the sidebar
-// keeps it one click away, and the breadcrumb names it.
+// keeps it one click away.
 export interface OpenWorkload {
 	id: string;
 	hostname: string;
@@ -31,11 +31,14 @@ export interface OpenWorkload {
 
 // ShellContext is what the screens tell the frame: the workload they
 // show, and that the fleet or the policy changed so the frame's own
-// reads refresh.
+// reads refresh. strip is the header strip's identity slot on a screen
+// that draws its own identity there (a workload's detail), null
+// elsewhere and until the strip has mounted.
 export interface ShellContext {
 	openWorkload: (w: OpenWorkload) => void;
 	fleetChanged: () => void;
 	policyChanged: () => void;
+	strip: HTMLElement | null;
 }
 
 export function useShell(): ShellContext {
@@ -43,11 +46,7 @@ export function useShell(): ShellContext {
 }
 
 // crumbsFor names the screen for the page header.
-function crumbsFor(
-	pathname: string,
-	search: string,
-	open: OpenWorkload | null,
-): Crumb[] {
+function crumbsFor(pathname: string, search: string): Crumb[] {
 	if (pathname.startsWith("/simulation")) {
 		// The ruleset under review, which the review names in the address.
 		const ruleset = new URLSearchParams(search).get("ruleset");
@@ -64,12 +63,8 @@ function crumbsFor(
 	}
 	if (pathname.startsWith("/workloads/tokens"))
 		return [{ label: "Workloads" }, { label: "Provisioning tokens" }];
-	const detail = matchPath("/workloads/:id/*", pathname);
-	if (detail) {
-		const name =
-			open && open.id === detail.params.id ? open.hostname : "Workload";
-		return [{ label: "Workloads" }, { label: name }];
-	}
+	// A workload's detail draws its own identity into the strip.
+	if (identityRoute(pathname)) return [];
 	if (pathname.startsWith("/workloads"))
 		return [{ label: "Workloads" }, { label: "Fleet" }];
 	if (pathname.startsWith("/policy")) {
@@ -83,6 +78,13 @@ function crumbsFor(
 	}
 	// Every address with a screen is named above; the rest have none.
 	return [{ label: "Not found" }];
+}
+
+// identityRoute says the screen at pathname draws its identity in the
+// header strip: a workload's detail, whose identity is the workload.
+function identityRoute(pathname: string): boolean {
+	const detail = matchPath("/workloads/:id/*", pathname);
+	return detail !== null && detail.params.id !== "tokens";
 }
 
 // Shell is the authenticated frame: sidebar, page header, and the screen.
@@ -105,6 +107,7 @@ function Frame() {
 	const [open, setOpen] = useState<OpenWorkload | null>(null);
 	const [generation, setGeneration] = useState(0);
 	const [policyGeneration, setPolicyGeneration] = useState(0);
+	const [strip, setStrip] = useState<HTMLElement | null>(null);
 
 	// The frame reports only what it can state exactly: the fleet's
 	// counts are the control plane's, read in one request, and the
@@ -134,8 +137,8 @@ function Frame() {
 		[],
 	);
 	const context = useMemo<ShellContext>(
-		() => ({ openWorkload, fleetChanged, policyChanged }),
-		[openWorkload, fleetChanged, policyChanged],
+		() => ({ openWorkload, fleetChanged, policyChanged, strip }),
+		[openWorkload, fleetChanged, policyChanged, strip],
 	);
 
 	const counts: Partial<Record<string, Badge>> = {};
@@ -146,11 +149,12 @@ function Frame() {
 	if (rulesets.status === "ready") counts["/policy"] = { n: rulesets.data };
 
 	return (
-		<SidebarProvider className="h-dvh overflow-hidden bg-app text-primary">
+		<SidebarProvider className="h-dvh overflow-hidden bg-canvas text-primary">
 			<Sidebar counts={counts} fleetEmpty={fleetEmpty} open={open} />
 			<div className="flex min-w-0 flex-1 flex-col">
 				<PageHeader
-					crumbs={crumbsFor(location.pathname, location.search, open)}
+					crumbs={crumbsFor(location.pathname, location.search)}
+					identity={identityRoute(location.pathname) ? setStrip : undefined}
 				/>
 				<main className="relative flex min-h-0 flex-1 flex-col overflow-auto">
 					<Outlet context={context} />
@@ -163,7 +167,7 @@ function Frame() {
 function Loading() {
 	return (
 		<div
-			className="flex h-dvh items-center justify-center bg-app text-tertiary"
+			className="flex h-dvh items-center justify-center bg-canvas text-tertiary"
 			aria-busy="true"
 		>
 			<span className="type-mono-sm">…</span>

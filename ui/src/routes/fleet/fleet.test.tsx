@@ -83,6 +83,7 @@ const auth = workload({
 const legacy = workload({
 	hostname: "legacy-vm-0117",
 	labels: {},
+	agent: { version: "", capabilities: [] },
 	sync: { state: "offline", applied_version: 1, latest_version: 1 },
 	health: {
 		last_seen_at: minutesAgo(3 * 24 * 60),
@@ -129,6 +130,8 @@ describe("fleet workloads", () => {
 		expect(c.getByText("v41 · v42 failed")).toBeInTheDocument();
 		expect(c.getByText("v41")).toBeInTheDocument();
 		expect(c.getByText("renewal due in 9h")).toBeInTheDocument();
+		// The agent column is the version the agent reports.
+		expect(c.getByText("0.3.0")).toBeInTheDocument();
 		expect(c.getByText("20s")).toBeInTheDocument();
 
 		const a = within(rowOf("auth-prod-11"));
@@ -139,6 +142,8 @@ describe("fleet workloads", () => {
 		expect(l.getByText("no labels — matches no scope")).toBeInTheDocument();
 		expect(l.getByText("no contact for 3d")).toBeInTheDocument();
 		expect(l.getByText("expired 2d ago")).toBeInTheDocument();
+		// An agent that reports no version is a dash, named on hover.
+		expect(l.getByTitle("not reported")).toHaveTextContent("—");
 
 		expect(
 			within(rowOf("bastion-01")).getByText("renewal failed · retrying"),

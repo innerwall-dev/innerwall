@@ -1,22 +1,22 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { workload } from "@/test/fixtures";
 import { addressGroup, peer, rollupOf, row, wref } from "@/test/map";
 import { peerSelector } from "./Drawer";
-import { shapeEdges } from "./geometry";
-import { layoutModel } from "./layout";
+import { chipWidth, type EdgeShape, shapeEdges } from "./geometry";
+import { layoutModel, nodeHeight, nodeWidth } from "./layout";
 import {
 	buildModel,
-	dashMetrics,
 	defaultKey,
+	edgeCap,
 	edgeDash,
-	edgeDashAt,
 	edgeEmphasis,
+	edgeWidth,
 	groupingKeys,
 	type MapModel,
 	nodeDimmed,
 	resolveSelection,
-	strokeWidth,
-	volumeScale,
 } from "./model";
 
 const checkout1 = wref("w-checkout-1", "checkout-prod-01", {
@@ -242,78 +242,35 @@ describe("rollup to graph model", () => {
 	});
 });
 
-describe("volume scaling", () => {
-	it("log-scales width by volume between the tokens' bounds, whatever the decision", () => {
-		expect(volumeScale(0, 100_000)).toBe(0);
-		expect(volumeScale(100_000, 100_000)).toBe(1);
-		const mid = volumeScale(1000, 100_000);
-		expect(mid).toBeGreaterThan(0);
-		expect(mid).toBeLessThan(1);
-		expect(mid).toBeCloseTo(Math.log1p(1000) / Math.log1p(100_000), 6);
-		// Nothing on the map: the minimum width.
-		expect(volumeScale(0, 0)).toBe(0);
-		expect(strokeWidth({ connections: 100_000 }, 100_000)).toBe(
-			"calc(var(--edge-width-min) + (var(--edge-width-max) - var(--edge-width-min)) * 1.0000)",
-		);
-		expect(strokeWidth({ connections: 0 }, 100_000)).toBe(
-			"calc(var(--edge-width-min) + (var(--edge-width-max) - var(--edge-width-min)) * 0.0000)",
-		);
-	});
-});
+describe("edge stroke", () => {
+	// tokens.css is the one source of the edge geometry.
+	const tokens = readFileSync(join(process.cwd(), "src/tokens.css"), "utf8");
+	const token = (name: string) =>
+		tokens.match(new RegExp(`--${name}:\\s*([^;]+);`))?.[1]?.trim() ?? "";
 
-describe("observed dash", () => {
-	const style = (tokens: Record<string, string>) => ({
-		getPropertyValue: (name: string) => tokens[name] ?? "",
-	});
-	const metrics = dashMetrics(
-		style({ "--edge-width-min": " 1.25px", "--edge-dash-observed": " 1 4" }),
-	);
-
-	it("reads the tokens it scales by, and nothing it cannot read", () => {
-		expect(metrics).toEqual({ widthMin: 1.25, observed: [1, 4] });
-		expect(
-			dashMetrics(
-				style({ "--edge-width-min": "1.25px", "--edge-dash-observed": "1, 4" }),
-			),
-		).toEqual({ widthMin: 1.25, observed: [1, 4] });
-		// Unstyled (the tokens are not loaded): no metrics.
-		expect(dashMetrics(style({}))).toBeNull();
-		expect(
-			dashMetrics(
-				style({ "--edge-width-min": "1.25px", "--edge-dash-observed": "none" }),
-			),
-		).toBeNull();
-	});
-
-	it("scales the observed pattern with the stroke so the round caps never close its gaps", () => {
-		// At the minimum width it is the token's own pattern.
-		expect(edgeDashAt("observed", "1.25px", metrics)).toBe(
-			"calc(1.25px * 0.8000) calc(1.25px * 3.2000)",
-		);
-		// At every width a round cap adds the stroke width to each dot and
-		// takes it from each gap; scaled, the gap stays open, in the same
-		// proportion to the dot as at the minimum.
-		const visible = (w: number) => {
-			const [dot, gap] = (metrics?.observed ?? []).map((n) => (n / 1.25) * w);
-			return { dot: dot + w, gap: gap - w };
-		};
-		for (const w of [1.25, 2, 4]) {
-			const { dot, gap } = visible(w);
-			expect(gap).toBeGreaterThan(0);
-			expect(gap / dot).toBeCloseTo(visible(1.25).gap / visible(1.25).dot, 6);
+	it("draws every edge at the one edge width, whatever its volume or decision", () => {
+		expect(edgeWidth).toBe("var(--edge-width)");
+		expect(token("edge-width")).toBe("2px");
+		for (const d of [
+			"observed",
+			"allowed",
+			"would_block",
+			"blocked",
+		] as const) {
+			expect(edgeDash[d]).toBe(
+				`var(--edge-dash-${d === "would_block" ? "would-block" : d})`,
+			);
 		}
-		const width = strokeWidth({ connections: 10 }, 10);
-		expect(edgeDashAt("observed", width, metrics)).toBe(
-			`calc(${width} * 0.8000) calc(${width} * 3.2000)`,
-		);
 	});
 
-	it("leaves the butt-capped patterns, and an unreadable token, as the tokens draw them", () => {
-		const width = strokeWidth({ connections: 10 }, 10);
-		for (const d of ["allowed", "would_block", "blocked"] as const) {
-			expect(edgeDashAt(d, width, metrics)).toBe(edgeDash[d]);
-		}
-		expect(edgeDashAt("observed", width, null)).toBe(edgeDash.observed);
+	it("keeps the round-capped observed dots apart at that width", () => {
+		const width = Number.parseFloat(token("edge-width"));
+		const [dot, gap] = token("edge-dash-observed").split(/\s+/).map(Number);
+		expect(edgeCap.observed).toBe("round");
+		// A round cap adds the stroke width to each dot and takes it from
+		// each gap.
+		expect((gap ?? 0) - width).toBeGreaterThan(0);
+		expect((dot ?? 0) + width).toBeGreaterThan(0);
 	});
 });
 
@@ -446,6 +403,61 @@ describe("edge labels", () => {
 				const apart =
 					Math.abs(a.ly - b.ly) >= 16 || Math.abs(a.lx - b.lx) >= 60;
 				expect(apart).toBe(true);
+			}
+		}
+	});
+});
+
+describe("edge labels where edges crowd", () => {
+	it("keep clear of each other and of the nodes, on their own curve", () => {
+		const hub = wref("ops1", "ops-1", { app: "ops" });
+		const srcs = ["a", "b", "c", "d", "e", "f"].map((x) =>
+			wref(`${x}1`, `${x}-1`, { app: x }),
+		);
+		const m = buildModel(
+			{
+				would_block: rollupOf(
+					srcs.map((s, i) => row(peer.workload(s), hub, 10 * (i + 1))),
+				),
+				blocked: rollupOf([
+					row(peer.workload(srcs[0] ?? hub), srcs[1] ?? hub, 3),
+				]),
+				observed: rollupOf(
+					srcs.slice(2).map((s) => row(peer.workload(hub), s, 7)),
+				),
+			},
+			[],
+			[],
+			"app",
+		);
+		const layout = layoutModel(m);
+		const shapes = shapeEdges(m, layout);
+		const boxes = m.edges.map((e) => {
+			const s = shapes.get(e.id) as EdgeShape;
+			return { e, s, w: chipWidth(e) };
+		});
+		for (const [i, a] of boxes.entries()) {
+			for (const b of boxes.slice(i + 1)) {
+				const apart =
+					Math.abs(a.s.lx - b.s.lx) >= (a.w + b.w) / 2 ||
+					Math.abs(a.s.ly - b.s.ly) >= 18;
+				expect(apart).toBe(true);
+			}
+			for (const n of layout.positions.values()) {
+				const inside =
+					a.s.lx + a.w / 2 > n.x &&
+					a.s.lx - a.w / 2 < n.x + nodeWidth &&
+					a.s.ly + 9 > n.y &&
+					a.s.ly - 9 < n.y + nodeHeight;
+				expect(inside).toBe(false);
+			}
+			// On its own curve: some point of it is where the chip is.
+			const at = a.s.at;
+			if (at) {
+				const near = Array.from({ length: 201 }, (_, k) => at(k / 200)).some(
+					(p) => Math.hypot(p.x - a.s.lx, p.y - a.s.ly) < 1.5,
+				);
+				expect(near).toBe(true);
 			}
 		}
 	});

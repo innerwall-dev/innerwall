@@ -113,19 +113,21 @@ export type VendoredFont = {
 };
 
 // vendoredFonts are the font families the console carries in src/fonts,
-// from the design package; Geist and Geist Mono share one license file.
+// from the design package (v3); each family has its own license file.
+// Source Code Pro's is Adobe's upstream license (design package v3
+// errata).
 export const vendoredFonts: VendoredFont[] = [
 	{
-		name: "Geist",
-		version: "1.7.2",
+		name: "DM Sans",
+		version: "4.004",
 		license: "OFL-1.1",
-		licenseFile: "src/fonts/OFL.txt",
+		licenseFile: "src/fonts/OFL-DMSans.txt",
 	},
 	{
-		name: "Geist Mono",
-		version: "1.7.2",
+		name: "Source Code Pro",
+		version: "1.026",
 		license: "OFL-1.1",
-		licenseFile: "src/fonts/OFL.txt",
+		licenseFile: "src/fonts/OFL-SourceCodePro.txt",
 	},
 ];
 

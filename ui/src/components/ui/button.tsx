@@ -3,28 +3,31 @@ import { cva, type VariantProps } from "class-variance-authority";
 import type * as React from "react";
 import { cn } from "@/lib/utils";
 
-// The design's button forms: the primary, inverted monochrome and one
-// per view, whose icon takes its label color; the secondary, a hairline
-// control on the canvas; and ghost, for popover items and text-like
-// controls. Heights are the control sizes: control-md by default,
-// control-sm in toolbars, control-lg for a dialog's primary action.
+// The design's button forms (Controls spec): the primary plate, one per
+// view, whose icon takes the plate ink; the secondary, a raised control
+// whose hover strengthens its border; ghost, for popover items and
+// text-like controls; and destructive, the critical plate for an
+// irreversible confirm. A control is 26px with 12px text at 500; block
+// is the 34px standalone-form size (sign-in). Disabled and aria-disabled
+// look alike: a confirm held disabled for a reason stays focusable.
 const buttonVariants = cva(
-	"inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-md border type-ui-strong transition-colors disabled:pointer-events-none disabled:opacity-disabled aria-disabled:cursor-default",
+	"inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-control border type-control transition-colors disabled:pointer-events-none aria-disabled:cursor-default",
 	{
 		variants: {
 			variant: {
 				primary:
-					"border-action-primary-bg bg-action-primary-bg text-action-primary-fg hover:border-action-primary-hover hover:bg-action-primary-hover [&_[data-slot=icon]]:text-action-primary-fg",
+					"border-transparent bg-plate font-semibold text-plate-ink hover:bg-plate-hover active:bg-plate-pressed disabled:border-hairline disabled:bg-overlay disabled:text-disabled aria-disabled:border-hairline aria-disabled:bg-overlay aria-disabled:text-disabled [&_[data-slot=icon]]:text-current",
 				secondary:
-					"border-default bg-app text-primary hover:border-strong hover:bg-hover",
+					"border-overlay bg-control-raised text-primary hover:border-control-hover active:border-control-hover active:bg-wash-selected disabled:border-hairline disabled:bg-transparent disabled:text-disabled aria-disabled:border-hairline aria-disabled:bg-transparent aria-disabled:text-disabled",
 				ghost:
-					"border-transparent bg-transparent text-secondary hover:bg-hover hover:text-primary",
+					"border-transparent bg-transparent text-secondary hover:bg-wash-hover hover:text-primary active:bg-wash-selected disabled:text-disabled aria-disabled:text-disabled",
+				destructive:
+					"border-transparent bg-destructive text-destructive-ink hover:bg-destructive-hover active:bg-destructive-hover disabled:border-hairline disabled:bg-overlay disabled:text-disabled aria-disabled:border-hairline aria-disabled:bg-overlay aria-disabled:text-disabled [&_[data-slot=icon]]:text-current",
 			},
 			size: {
-				default: "h-control-md px-3",
-				sm: "h-control-sm px-2.5 text-[12px]",
-				lg: "h-control-lg px-4",
-				block: "h-control-md w-full px-3",
+				default: "h-control px-2.5",
+				sm: "h-control px-2.5",
+				block: "h-control-sm w-full px-3",
 			},
 		},
 		defaultVariants: { variant: "primary", size: "default" },

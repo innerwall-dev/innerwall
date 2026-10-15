@@ -30,7 +30,7 @@ export function ChipView({
 			type="button"
 			aria-label={`Remove ${chip.tag.toLowerCase()} ${chip.text}`.trim()}
 			onClick={onRemove}
-			className="group/rm -mr-0.5 inline-flex cursor-pointer items-center rounded-sm"
+			className="group/rm -mr-0.5 inline-flex cursor-pointer items-center rounded-inner"
 		>
 			<Icon name="x" className="size-3.5 group-hover/rm:text-icon-active" />
 		</button>
@@ -41,7 +41,7 @@ export function ChipView({
 		return (
 			<span
 				className={cn(
-					"inline-flex max-w-full flex-wrap items-center gap-1 rounded-sm border",
+					"inline-flex max-w-full flex-wrap items-center gap-1 rounded-inner border",
 					chip.reference || failed ? "border-dashed" : "border-solid",
 					failed
 						? "border-status-critical-fg px-1 py-0.5"
@@ -68,13 +68,13 @@ export function ChipView({
 	return (
 		<span
 			className={cn(
-				"inline-flex min-h-5 max-w-full items-center gap-1.5 rounded-sm border bg-subtle px-1.5 type-mono-sm",
+				"inline-flex min-h-5 max-w-full items-center gap-1.5 rounded-inner border bg-card px-1.5 type-mono-sm",
 				chip.reference || failed ? "border-dashed" : "border-solid",
 				failed
 					? "border-status-critical-fg"
 					: input
 						? "border-strong"
-						: "border-default",
+						: "border-hairline",
 			)}
 			data-testid="chip"
 			data-failed={failed || undefined}
@@ -165,7 +165,7 @@ export function AddInput({
 				}}
 				onKeyDown={onKeyDown}
 				onBlur={commitOnBlur ? commit : undefined}
-				className="h-control-sm min-w-[150px] rounded-md border border-strong bg-app px-2.5 type-mono-sm text-primary placeholder:text-tertiary aria-invalid:border-status-critical-fg"
+				className="h-control min-w-[150px] rounded-control border border-strong bg-field-sunk px-2.5 type-mono-sm text-primary placeholder:text-tertiary aria-invalid:border-status-critical-fg"
 			/>
 			{refusal ? (
 				<SeverityNote level="error" size="sm" className="type-caption">

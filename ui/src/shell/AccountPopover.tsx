@@ -12,11 +12,11 @@ import { cn } from "@/lib/utils";
 import { type Theme, useTheme } from "@/theme/ThemeProvider";
 
 // Avatar is the operator's disc: the user icon in an avatar-sized
-// circle on bg-active behind the default hairline.
+// circle on the overlay surface behind the overlay border.
 function Avatar() {
 	return (
 		<span
-			className="flex size-avatar shrink-0 items-center justify-center rounded-full border border-default bg-active"
+			className="flex size-avatar shrink-0 items-center justify-center rounded-full border border-overlay bg-overlay"
 			aria-hidden="true"
 		>
 			<Icon name="user" />
@@ -63,13 +63,13 @@ export function AccountPopover() {
 					type="button"
 					aria-label="Account"
 					className={cn(
-						"flex h-11 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-left hover:bg-sidebar-item-hover aria-expanded:bg-sidebar-item-hover",
-						"group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:px-1.5",
+						"flex h-11 w-full cursor-pointer items-center gap-2 rounded-control px-[6px] text-left hover:bg-wash-hover aria-expanded:bg-wash-hover",
+						"group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:px-[5px]",
 					)}
 				>
 					<Avatar />
 					<span className="flex min-w-0 flex-1 flex-col group-data-[collapsible=icon]:hidden">
-						<span className="truncate text-[13px] leading-4 font-medium text-primary">
+						<span className="truncate type-header-register text-primary">
 							{name}
 						</span>
 						{me.site ? (
@@ -88,14 +88,14 @@ export function AccountPopover() {
 				</button>
 			</PopoverTrigger>
 			<PopoverContent
-				className="flex w-popover flex-col p-1"
+				className="flex w-popover-account flex-col p-1"
 				side={collapsed ? "right" : "top"}
 				align={collapsed ? "end" : "start"}
 				sideOffset={collapsed ? 12 : 4}
 				aria-label="Account"
 			>
-				<div className="mb-1 flex flex-col border-b border-subtle p-2">
-					<div className="truncate text-[13px] leading-4 font-medium">
+				<div className="mb-1 flex flex-col border-b border-hairline p-2">
+					<div className="truncate type-header-register text-primary">
 						{name}
 					</div>
 					<div
@@ -114,13 +114,13 @@ export function AccountPopover() {
 						</div>
 					) : null}
 				</div>
-				<div className="flex min-h-control-md items-center justify-between gap-2 px-2 type-ui text-secondary">
+				<div className="flex min-h-control-sm items-center justify-between gap-2 px-2 type-dense text-secondary">
 					<span>Theme</span>
 					<ThemeToggle theme={theme} onChange={setTheme} />
 				</div>
 				<button
 					type="button"
-					className="mt-1 flex h-control-md cursor-pointer items-center gap-2 rounded-b-md border-t border-subtle px-2 text-left type-ui text-primary hover:bg-hover disabled:cursor-default disabled:opacity-disabled"
+					className="mt-1 flex h-control-sm cursor-pointer items-center gap-2 rounded-control border-t border-hairline px-2 text-left type-dense text-primary hover:bg-wash-hover disabled:cursor-default disabled:text-disabled"
 					onClick={signOut}
 					disabled={signingOut}
 				>
@@ -140,9 +140,9 @@ export function AccountPopover() {
 	);
 }
 
-// The segmented control: native radio inputs, two segments in one
-// hairline group on bg-subtle, the checked one the pressed fill with its
-// icon at icon-active.
+// The segmented control: native radio inputs, two segments on a sunk
+// track behind the overlay border, the checked one raised (the raised
+// control on the overlay border) with its icon at icon-active.
 function ThemeToggle({
 	theme,
 	onChange,
@@ -155,16 +155,16 @@ function ThemeToggle({
 		{ value: "dark", label: "Dark", icon: "moon" },
 	];
 	return (
-		<fieldset className="flex gap-0.5 rounded-md border border-default bg-subtle p-0.5">
+		<fieldset className="flex gap-0.5 rounded-control border border-overlay bg-field-sunk p-0.5">
 			<legend className="sr-only">Theme</legend>
 			{options.map((o) => (
 				<label
 					key={o.value}
 					className={cn(
-						"inline-flex h-6 cursor-pointer items-center gap-1 rounded-sm px-2 type-caption has-[:focus-visible]:focus-ring",
+						"inline-flex h-5.5 cursor-pointer items-center gap-1 rounded-inner border px-2 type-control has-[:focus-visible]:focus-ring",
 						theme === o.value
-							? "bg-active font-medium text-primary [&_[data-slot=icon]]:text-icon-active"
-							: "text-secondary hover:text-primary",
+							? "border-overlay bg-control-raised text-primary [&_[data-slot=icon]]:text-icon-active"
+							: "border-transparent text-secondary hover:text-primary",
 					)}
 				>
 					<input
@@ -175,7 +175,7 @@ function ThemeToggle({
 						onChange={() => onChange(o.value)}
 						className="sr-only"
 					/>
-					<Icon name={o.icon} className="size-3.5" />
+					<Icon name={o.icon} />
 					{o.label}
 				</label>
 			))}

@@ -2,8 +2,8 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import type * as React from "react";
 import { cn } from "@/lib/utils";
 
-// The design's dialog: the scrim behind a raised panel on the default
-// hairline at the dialog radius, flat (no shadow), and header, body,
+// The design's dialog: the scrim behind a panel at the popover level on
+// the overlay border at the panel radius, flat (no shadow), and header, body,
 // and footer bands. Focus is held in the dialog while it is open and Escape
 // closes it. On a viewport too short for the whole panel, only the body
 // scrolls: the header and the footer's actions stay in view, so no part
@@ -25,7 +25,7 @@ export function DialogContent({
 					data-slot="dialog-content"
 					aria-describedby={undefined}
 					className={cn(
-						"pointer-events-auto flex max-h-[88vh] flex-col overflow-hidden rounded-xl border border-default bg-raised text-primary outline-none",
+						"pointer-events-auto flex max-h-[88vh] flex-col overflow-hidden rounded-panel border border-overlay bg-popover text-primary outline-none",
 						className,
 					)}
 					style={{ width }}
@@ -46,8 +46,8 @@ export function DialogHeader({
 	children?: React.ReactNode;
 }) {
 	return (
-		<div className="flex shrink-0 flex-col gap-1 px-6 pt-5 pb-3">
-			<DialogPrimitive.Title className="type-title-section">
+		<div className="flex shrink-0 flex-col gap-1 px-5 pt-4 pb-3">
+			<DialogPrimitive.Title className="type-dialog-title">
 				{title}
 			</DialogPrimitive.Title>
 			{children}
@@ -62,7 +62,7 @@ export function DialogBody({
 	return (
 		<div
 			className={cn(
-				"flex min-h-0 flex-col gap-4 overflow-auto px-6 pb-5 type-body [&>*]:shrink-0",
+				"flex min-h-0 flex-col gap-4 overflow-auto px-5 pb-4 type-dense [&>*]:shrink-0",
 				className,
 			)}
 			{...props}
@@ -77,7 +77,7 @@ export function DialogFooter({
 	return (
 		<div
 			className={cn(
-				"flex shrink-0 items-center justify-end gap-2 border-t border-default px-6 py-4",
+				"flex shrink-0 items-center justify-end gap-2 border-t border-hairline px-5 py-3",
 				className,
 			)}
 			{...props}

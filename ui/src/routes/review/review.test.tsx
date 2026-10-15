@@ -356,11 +356,14 @@ describe("simulation review", () => {
 		expect(b).toHaveTextContent(
 			"2 peer/service pairs carrying 18,245 connections would be dropped.",
 		);
-		// Each number follows its term, which reads first.
-		expect(b).toHaveTextContent("would block · peer/service2");
-		expect(b).toHaveTextContent("connections in range18.2k");
-		expect(b).toHaveTextContent("of 4 simulating workloads affected3");
-		expect(b).toHaveTextContent("allowed · matched a rule1");
+		// The figures are the tile row under the banner; each number
+		// follows its term, which reads first.
+		const totals = screen.getByLabelText("Totals");
+		expect(totals).toHaveTextContent("would-block · pairs2");
+		expect(totals).toHaveTextContent("connections18.2k");
+		expect(totals).toHaveTextContent("workloads affected3/ 4 simulating");
+		expect(totals).toHaveTextContent("allowed1");
+		expect(b).not.toHaveTextContent("workloads affected");
 		const caveats = within(b).getByRole("list", { name: "Caveats" });
 		expect(
 			within(caveats)
@@ -370,10 +373,11 @@ describe("simulation review", () => {
 			"checkout-prod-07 is degraded (applied v41, rendered v42) — its flows were evaluated against stale policy",
 			"1 workload in scope is still in visibility mode and produced no verdict",
 		]);
-		// Not safe: promotion is the secondary action.
+		// Promotion is the view's primary action whatever the verdict: the
+		// verdict's severity is the banner's, not the button's.
 		expect(
 			screen.getByRole("button", { name: "Promote to enforced…" }),
-		).toHaveClass("border-default");
+		).toHaveClass("bg-plate");
 	});
 
 	it("switches rulesets by tab, to a safe verdict", async () => {
@@ -395,7 +399,7 @@ describe("simulation review", () => {
 		);
 		expect(
 			screen.getByRole("button", { name: "Promote to enforced…" }),
-		).toHaveClass("bg-action-primary-bg");
+		).toHaveClass("bg-plate");
 		expect(
 			screen.getByRole("navigation", { name: "Breadcrumb" }),
 		).toHaveTextContent("ledger-inbound");
@@ -456,10 +460,10 @@ describe("simulation review", () => {
 		const table = await screen.findByRole("table", { name: /grouped by peer/ });
 		const [, metrics, officeRow] = within(table).getAllByRole("row");
 		expect(metrics).toHaveTextContent(
-			"labelsapp=metrics-collector2 workloads, env=prodtcp/9100no rule matched218,204",
+			"app=metrics-collectorlabels2 workloads, env=prodtcp/9100no rule matched218,204",
 		);
 		expect(officeRow).toHaveTextContent(
-			"address groupoffice172.16.0.0/12tcp/22no rule matched141",
+			"officeaddress group172.16.0.0/12tcp/22no rule matched141",
 		);
 	});
 

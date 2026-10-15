@@ -90,7 +90,7 @@ function Search({ onDone }: { onDone: () => void }) {
 	return (
 		<>
 			<DialogTitle className="sr-only">Search</DialogTitle>
-			<div className="flex h-control-lg shrink-0 items-center gap-2 border-b border-default px-4 text-tertiary">
+			<div className="flex h-control-md shrink-0 items-center gap-2 border-b border-hairline px-4 text-tertiary">
 				<Icon name="search" />
 				<input
 					// biome-ignore lint/a11y/noAutofocus: the palette opens to type into
@@ -106,7 +106,7 @@ function Search({ onDone }: { onDone: () => void }) {
 					value={query}
 					onChange={(e) => setQuery(e.target.value)}
 					onKeyDown={onKey}
-					className="min-w-0 flex-1 bg-transparent p-0 type-ui text-primary placeholder:text-tertiary focus:outline-none"
+					className="min-w-0 flex-1 bg-transparent p-0 type-dense text-primary placeholder:text-tertiary focus:outline-none"
 				/>
 			</div>
 			<div className="min-h-0 overflow-auto px-2 py-2">
@@ -128,9 +128,9 @@ function Search({ onDone }: { onDone: () => void }) {
 						highlighted one; Escape closes.
 					</p>
 				) : groups.length === 0 ? (
-					<p className="px-2 py-3 type-ui text-secondary">
-						Nothing matches <span className="type-mono-ui">{query.trim()}</span>
-						.
+					<p className="px-2 py-3 type-dense text-secondary">
+						Nothing matches{" "}
+						<span className="type-mono-data">{query.trim()}</span>.
 					</p>
 				) : (
 					<div id={listId} role="listbox" aria-label="Results">
@@ -144,7 +144,7 @@ function Search({ onDone }: { onDone: () => void }) {
 								aria-label={g.label}
 								className="pb-1"
 							>
-								<div className="px-2 pt-2 pb-1 type-label text-tertiary">
+								<div className="px-2 pt-2 pb-1 type-meta-label text-tertiary">
 									{g.label}
 								</div>
 								{g.all.slice(0, shown).map((hit) => {
@@ -163,8 +163,8 @@ function Search({ onDone }: { onDone: () => void }) {
 											// options itself (aria-activedescendant).
 											onKeyDown={() => undefined}
 											className={cn(
-												"flex h-row-dense cursor-pointer items-center gap-2 rounded-md px-2",
-												on ? "bg-active" : "hover:bg-hover",
+												"flex h-row-pitch cursor-pointer items-center gap-2 rounded-control px-2",
+												on ? "bg-wash-selected" : "hover:bg-wash-hover",
 											)}
 										>
 											<Icon
@@ -173,7 +173,7 @@ function Search({ onDone }: { onDone: () => void }) {
 												}
 												className="text-tertiary"
 											/>
-											<span className="min-w-0 truncate type-mono-ui text-primary">
+											<span className="min-w-0 truncate type-mono-data text-primary">
 												{hit.title}
 											</span>
 											{hit.detail ? (

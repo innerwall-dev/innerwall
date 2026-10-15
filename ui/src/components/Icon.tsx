@@ -1,5 +1,6 @@
 import {
 	Boxes,
+	Check,
 	ChevronDown,
 	ChevronsUpDown,
 	CircleMinus,
@@ -28,9 +29,10 @@ import {
 import { cn } from "@/lib/utils";
 
 // The console's chrome icons: Lucide (ISC), bundled from the pinned
-// lucide-react, for exactly the names the design package lists (its
-// Icon spec) plus the two this console adds on the record, `info` for
-// the policy editor's notes and `search` for the header's search field.
+// lucide-react, for exactly the design package v3 subset (24 names,
+// `search` and `check` among them) plus `info`, which the policy
+// editor's notes use and the console registers on the record (design
+// package v3 errata).
 // Status never travels on these: flow decisions, workload health, and
 // severity are StatusGlyph's.
 const icons = {
@@ -58,11 +60,12 @@ const icons = {
 	globe: Globe,
 	info: Info,
 	search: Search,
+	check: Check,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof icons;
 
-// Icon is one chrome icon at icon-size (16px), stroke 2 on Lucide's 24
+// Icon is one chrome icon at icon-size (14px), stroke 2 on Lucide's 24
 // grid, in currentColor at icon-default unless the caller's class sets
 // another icon color (icon-active in the current sidebar entry or a
 // pressed segment; the label color inside a primary button). It is
@@ -82,7 +85,7 @@ export function Icon({
 		<Glyph
 			data-slot="icon"
 			data-icon={name}
-			size={16}
+			size={14}
 			strokeWidth={2}
 			className={cn("size-icon shrink-0 text-icon-default", className)}
 			aria-hidden={label ? undefined : true}

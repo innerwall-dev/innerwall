@@ -1,19 +1,23 @@
 import { useState } from "react";
 import type { ProblemError } from "@/api/client";
 import { resendSnapshot } from "@/api/fleet";
-import { ProblemType, type Workload } from "@/api/schema";
+import { type EvidenceGaps, ProblemType, type Workload } from "@/api/schema";
 import { syncStates } from "@/components/fleet/status";
 import { SeverityNote, StatusGlyph, tone } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
-import { ago, since } from "@/lib/format";
-import { useWrite } from "@/lib/resource";
+import { ago, count, since } from "@/lib/format";
+import { type Resource, useWrite } from "@/lib/resource";
 import { cn } from "@/lib/utils";
 import {
+	credential,
+	credentialTone,
 	enforcementRemoved,
 	lastContact,
 	reconnecting,
 	version,
 } from "../fleet/describe";
+import type { ScreenRange } from "./range";
+import { type ExceptionalState, gapsShown } from "./states";
 
 type Outcome =
 	| { kind: "idle" }
@@ -21,15 +25,25 @@ type Outcome =
 	| { kind: "offline"; lastSeen: string | null }
 	| { kind: "failed"; message: string };
 
-// StatusCard is the workload's convergence with its rendered policy: the
-// applied version against the latest with the instants the surface
-// records, the apply error when there is one, and the snapshot action.
-// The degraded form is the design's; the others are drawn from it.
+// StatusCard is the Overview's Status card: the workload's convergence
+// with its rendered policy (the applied version against the latest with
+// the instants the surface records, and the apply error when there is
+// one), the agent's channels and credential, the loss counters, the
+// evidence-gap summary over the screen's range, and the snapshot action.
+// It leads with the health line, unless an alert card above it already
+// says the workload's state; a fact an alert card carries (an expired
+// credential) is plain here, so the screen says each alarm once.
 export function StatusCard({
 	w,
+	gaps,
+	range,
+	alerts = [],
 	onReread,
 }: {
 	w: Workload;
+	gaps: Resource<EvidenceGaps>;
+	range: ScreenRange;
+	alerts?: readonly ExceptionalState["key"][];
 	onReread: () => void;
 }) {
 	const s = w.sync;
@@ -37,101 +51,165 @@ export function StatusCard({
 	// A removed table outranks every sync state: whatever version the
 	// agent acknowledged, the host holds none of it (issue #64).
 	const removed = enforcementRemoved(w);
-	const frame = removed
-		? "border-status-critical-border bg-status-critical-bg"
-		: {
-				degraded: "border-status-warn-border bg-status-warn-bg",
-				pending: "border-strong bg-app",
-				synced: "border-default bg-app",
-				offline: "border-default bg-app",
-			}[s.state];
+	const cred = credential(w);
+	const stated = alerts.some(
+		(k) => k === "removed" || k === "offline" || k === "degraded",
+	);
+	const credStated = alerts.includes("credential");
 
 	return (
-		<div
-			className={cn("flex flex-col gap-2.5 rounded-lg border px-3 py-3", frame)}
-			data-testid="status-card"
+		<section
+			aria-labelledby="status-card-title"
+			className="flex flex-col gap-3 rounded-panel border border-hairline bg-card p-4"
 		>
-			<div
-				className={cn(
-					"flex items-center gap-2 type-ui-strong",
-					removed ? tone.error : syncStates[s.state].cls,
+			<h2 id="status-card-title" className="type-card-title text-primary">
+				Status
+			</h2>
+			<div className="flex flex-col gap-3" data-testid="status-card">
+				{stated ? null : (
+					<div
+						className={cn(
+							"flex items-center gap-2 type-dense-strong",
+							removed ? tone.error : syncStates[s.state].cls,
+						)}
+					>
+						<StatusGlyph
+							status={removed ? "error" : syncStates[s.state].status}
+							size="md"
+						/>
+						<span>{headline(w)}</span>
+					</div>
 				)}
-			>
-				<StatusGlyph
-					status={removed ? "error" : syncStates[s.state].status}
-					size="md"
-				/>
-				<span>{headline(w)}</span>
-			</div>
-			<dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-4 gap-y-1">
-				<dt className={field}>applied</dt>
-				<dd className={value}>{version(s.applied_version)}</dd>
-				<dt className={field}>rendered</dt>
-				<dd className={value}>
-					{version(s.latest_version)}
-					{lag ? <span className="text-tertiary"> (not applied)</span> : null}
-				</dd>
-				<dt className={field}>last ack</dt>
-				<dd className={value} data-testid="ack-instant">
-					<LastAck s={s} />
-				</dd>
-				{s.latest_rendered_at ? (
-					<>
-						<dt className={field}>rendered at</dt>
-						<dd className={value}>
-							<time dateTime={s.latest_rendered_at}>
-								{ago(s.latest_rendered_at)}
-							</time>
-						</dd>
-					</>
-				) : null}
-				<dt className={field}>last snapshot</dt>
-				<dd className={value} data-testid="snapshot-instant">
-					{s.last_snapshot_sent_at ? (
-						<time dateTime={s.last_snapshot_sent_at}>
-							{ago(s.last_snapshot_sent_at)}
-						</time>
-					) : (
-						<span className="text-tertiary">none recorded</span>
-					)}
-				</dd>
-			</dl>
-			{s.error ? (
-				<div className="rounded-md border border-default bg-app px-2.5 py-2 type-mono-xs break-words whitespace-pre-wrap text-status-warn-fg">
-					{s.error}
-				</div>
-			) : null}
-			{removed ? (
-				<p
-					className="type-caption text-secondary"
-					data-testid="enforcement-removed"
-				>
-					The agent reports its firewall table gone from the host
-					{w.health.owned_table.absent_since ? (
+				<dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-4 gap-y-2">
+					<dt className={field}>applied</dt>
+					<dd className={value}>{version(s.applied_version)}</dd>
+					<dt className={field}>rendered</dt>
+					<dd className={value}>
+						{version(s.latest_version)}
+						{lag ? <span className="text-tertiary"> (not applied)</span> : null}
+					</dd>
+					<dt className={field}>last ack</dt>
+					<dd className={value} data-testid="ack-instant">
+						<LastAck s={s} />
+					</dd>
+					{s.latest_rendered_at ? (
 						<>
-							{" "}
-							since{" "}
-							<time dateTime={w.health.owned_table.absent_since}>
-								{ago(w.health.owned_table.absent_since)}
-							</time>
+							<dt className={field}>rendered at</dt>
+							<dd className={value}>
+								<time dateTime={s.latest_rendered_at}>
+									{ago(s.latest_rendered_at)}
+								</time>
+							</dd>
 						</>
 					) : null}
-					, so nothing here is enforced or observed, and the blind interval is
-					recorded as an evidence gap. {version(s.applied_version)} stays
-					acknowledged and on the host's disk: the agent reinstalls it on its
-					next policy update or restart, and a resent snapshot is one.
-				</p>
-			) : null}
-			{s.state === "degraded" ? (
-				<p className="type-caption text-secondary">
-					{s.applied_version > 0
-						? `Host stays on ${version(s.applied_version)} (its last good policy).`
-						: "Host keeps the policy it had before; it has applied none from this control plane."}{" "}
-					The control plane resends a full snapshot on the next attempt.
-				</p>
-			) : null}
-			<Resend w={w} onReread={onReread} />
-		</div>
+					<dt className={field}>last snapshot</dt>
+					<dd className={value} data-testid="snapshot-instant">
+						{s.last_snapshot_sent_at ? (
+							<time dateTime={s.last_snapshot_sent_at}>
+								{ago(s.last_snapshot_sent_at)}
+							</time>
+						) : (
+							<span className="text-tertiary">none recorded</span>
+						)}
+					</dd>
+					<dt className={field}>flow report</dt>
+					<dd className={value} data-testid="last-flow-report">
+						{w.health.last_flow_report_at
+							? ago(w.health.last_flow_report_at)
+							: "none received"}
+					</dd>
+					<dt className={field}>enrolled</dt>
+					<dd className={value}>{ago(w.enrolled_at)}</dd>
+					<dt className={field}>credential</dt>
+					<dd className={value}>
+						{cred.tone === "ok" || credStated ? (
+							<span className={credStated ? "text-primary" : credentialTone.ok}>
+								{cred.text}
+							</span>
+						) : (
+							<SeverityNote
+								level={cred.tone === "bad" ? "error" : "alert"}
+								size="sm"
+								className={dense}
+							>
+								{cred.text}
+							</SeverityNote>
+						)}
+						{w.health.credential.last_error ? (
+							<div className={note}>{w.health.credential.last_error}</div>
+						) : null}
+					</dd>
+					<dt className={field}>dropped flows</dt>
+					<dd className={value}>
+						<Counted n={w.health.dropped_flow_records} />
+						{w.health.dropped_flow_records > 0 ? (
+							<div className={note}>
+								Records the agent could not deliver; the flows shown are
+								incomplete.
+							</div>
+						) : null}
+					</dd>
+					<dt className={field}>overruns</dt>
+					<dd className={value}>
+						<Counted n={w.health.source_overruns} />
+						{w.health.source_overruns > 0 ? (
+							<div className={note}>
+								Times the kernel dropped events because a flow source fell
+								behind, since the agent started.
+							</div>
+						) : null}
+					</dd>
+					<dt className={field}>evidence gaps</dt>
+					<dd className={value}>
+						<GapSummary gaps={gaps} range={range} />
+					</dd>
+				</dl>
+				{s.error ? (
+					<div className="rounded-control border border-hairline bg-field-sunk px-2.5 py-2 type-mono-xs break-words whitespace-pre-wrap text-primary">
+						{s.error}
+					</div>
+				) : null}
+				<Resend w={w} onReread={onReread} />
+			</div>
+		</section>
+	);
+}
+
+// GapSummary is the evidence-gap fact: how many intervals in the
+// screen's range the agent knows it lost evidence in, the Overview's
+// history listing them.
+function GapSummary({
+	gaps,
+	range,
+}: {
+	gaps: Resource<EvidenceGaps>;
+	range: ScreenRange;
+}) {
+	if (gaps.status === "loading") {
+		return <span className="text-tertiary">…</span>;
+	}
+	if (gaps.status === "error") {
+		return (
+			<span className="type-caption text-tertiary">could not be read</span>
+		);
+	}
+	const n = gaps.data.gaps.length;
+	const more = gaps.data.truncated || n > gapsShown;
+	return (
+		<span>
+			{n === 0 ? "none" : `${count(n)}${more ? "+" : ""}`}{" "}
+			<span className="type-caption text-tertiary">in {range.text}</span>
+		</span>
+	);
+}
+
+// Counted is a loss counter: plain at zero, an alert past it.
+function Counted({ n }: { n: number }) {
+	if (n === 0) return <span>{count(n)}</span>;
+	return (
+		<SeverityNote level="alert" size="sm" className={dense}>
+			{count(n)}
+		</SeverityNote>
 	);
 }
 
@@ -161,9 +239,13 @@ function LastAck({ s }: { s: Workload["sync"] }) {
 	);
 }
 
-// The card's field rows: a sentence-case label beside a mono value.
-const field = "type-label text-tertiary";
-const value = "min-w-0 type-mono-sm text-primary";
+// The card's field rows: the meta label beside a mono value, and the
+// caption that explains a value under it.
+const field = "type-meta-label text-tertiary";
+const value = "min-w-0 type-mono-sm break-words text-primary";
+const note = "mt-0.5 type-caption text-tertiary";
+// A severity note in the card's 16px lines centres its glyph on them.
+const dense = "type-mono-sm";
 
 function headline(w: Workload): string {
 	const s = w.sync;
@@ -228,7 +310,7 @@ function Resend({ w, onReread }: { w: Workload; onReread: () => void }) {
 	}
 
 	return (
-		<div className="flex flex-col gap-2 border-t border-subtle pt-3">
+		<div className="flex flex-col gap-2 border-t border-hairline pt-3">
 			<div className="flex items-center gap-2">
 				<Button variant="secondary" size="sm" disabled={sending} onClick={send}>
 					{sending ? "Sending…" : "Resend snapshot"}
@@ -237,7 +319,7 @@ function Resend({ w, onReread }: { w: Workload; onReread: () => void }) {
 					<button
 						type="button"
 						onClick={onReread}
-						className="cursor-pointer type-caption text-link hover:underline"
+						className="cursor-pointer type-caption link"
 					>
 						Read again
 					</button>
@@ -255,6 +337,7 @@ function Resend({ w, onReread }: { w: Workload; onReread: () => void }) {
 					level="alert"
 					role="alert"
 					size="sm"
+					prose
 					className="type-caption"
 				>
 					The agent is offline, so nothing was sent.{" "}
@@ -277,6 +360,7 @@ function Resend({ w, onReread }: { w: Workload; onReread: () => void }) {
 					level="error"
 					role="alert"
 					size="sm"
+					prose
 					className="type-caption"
 				>
 					{outcome.message}

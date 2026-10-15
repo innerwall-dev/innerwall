@@ -6,6 +6,11 @@ import { LoadingRow, ProblemNotice } from "@/components/Problem";
 import { RangeControl } from "@/components/RangeControl";
 import { SeverityNote } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { count, headline } from "@/lib/format";
 import { between, kindText } from "@/lib/gaps";
 import { labelFormHint, shownLabelText } from "@/lib/labels";
@@ -73,14 +78,14 @@ export function FlowMap() {
 
 	if (resource.status === "loading") {
 		return (
-			<div className="px-6">
+			<div className="px-5">
 				<LoadingRow what="the flow map" />
 			</div>
 		);
 	}
 	if (resource.status === "error") {
 		return (
-			<div className="px-6">
+			<div className="px-5">
 				<ProblemNotice
 					what="the flow map"
 					error={resource.error}
@@ -203,9 +208,9 @@ function MapView({
 // scope's requirements on the default hairline, the draft requirement
 // on an input's stronger one.
 const control =
-	"relative flex h-control-sm items-center gap-1.5 rounded-md border border-default bg-app px-2 type-caption text-secondary hover:bg-hover has-[:focus-visible]:focus-ring";
+	"relative flex h-control items-center gap-1.5 rounded-control border border-overlay bg-control-raised px-2 type-control text-secondary hover:border-control-hover has-[:focus-visible]:focus-ring";
 const requirement =
-	"flex h-control-sm items-center gap-1 rounded-md border border-default bg-subtle pr-1 pl-2 type-mono-sm text-primary";
+	"flex h-control items-center gap-1 rounded-control border border-hairline bg-overlay pr-1 pl-2 type-mono-sm text-primary";
 
 function Toolbar({
 	model,
@@ -244,7 +249,7 @@ function Toolbar({
 	}
 
 	return (
-		<div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-default px-6 py-3">
+		<div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-hairline px-5 py-3">
 			<div className="flex flex-wrap items-center gap-2">
 				<label className={control}>
 					<span>group by:</span>
@@ -288,7 +293,7 @@ function Toolbar({
 										for (const l of rest) p.append("label", l);
 									})
 								}
-								className="flex size-5 cursor-pointer items-center justify-center rounded-sm hover:bg-hover"
+								className="flex size-5 cursor-pointer items-center justify-center rounded-inner hover:bg-wash-hover"
 							>
 								<Icon name="x" className="size-3.5" />
 							</button>
@@ -316,7 +321,7 @@ function Toolbar({
 								if (ev.key === "Escape") setAdding(false);
 							}}
 							className={cn(
-								"h-control-sm w-[160px] rounded-md border bg-app px-2 type-mono-sm text-primary placeholder:text-tertiary",
+								"h-control w-[160px] rounded-control border bg-field-sunk px-2 type-mono-sm text-primary placeholder:text-tertiary",
 								invalid ? "border-status-critical-fg" : "border-strong",
 							)}
 						/>
@@ -333,7 +338,7 @@ function Toolbar({
 					</Button>
 				)}
 			</div>
-			<fieldset className="m-0 ml-2 flex h-control-sm items-center gap-0.5 rounded-md border border-default bg-subtle p-0.5">
+			<fieldset className="m-0 ml-3 flex h-control-sm items-stretch gap-5 border-0 p-0">
 				<legend className="sr-only">Take</legend>
 				{(["graph", "matrix"] as const).map((t) => (
 					<button
@@ -347,10 +352,10 @@ function Toolbar({
 							})
 						}
 						className={cn(
-							"flex h-full cursor-pointer items-center rounded-sm px-2.5 type-caption",
+							"flex cursor-pointer items-center border-b-2 px-0.5 type-header-register focus-visible:rounded-inner focus-visible:focus-ring-inset",
 							take === t
-								? "bg-active font-medium text-primary"
-								: "text-secondary hover:bg-hover hover:text-primary",
+								? "border-(--text-primary) text-primary"
+								: "border-transparent text-secondary hover:text-primary",
 						)}
 					>
 						{t === "graph" ? "Graph" : "Matrix"}
@@ -408,27 +413,75 @@ function Totals({ model }: { model: MapModel }) {
 				{model.reporting === 1 ? "workload" : "workloads"} reporting
 			</span>
 			{gapped > 0 ? (
-				<SeverityNote level="alert" role="status">
-					<span
-						title={model.gaps
-							.map(
-								(g) =>
-									`${g.workload.hostname}: ${kindText(g.kind)} between ${between(g.from, g.to)}`,
-							)
-							.join("\n")}
-					>
-						{count(gapped)} {gapped === 1 ? "workload" : "workloads"} lost
-						evidence in this range — map is incomplete
-					</span>
-				</SeverityNote>
+				// The short form holds the toolbar; the sentence and every
+				// gap are its tooltip, on hover or keyboard focus.
+				<span role="status">
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<button
+								type="button"
+								className="cursor-default rounded-inner focus-visible:focus-ring"
+							>
+								<SeverityNote level="alert">
+									evidence incomplete · {count(gapped)}{" "}
+									{gapped === 1 ? "workload" : "workloads"}
+								</SeverityNote>
+							</button>
+						</TooltipTrigger>
+						<TooltipContent
+							className="max-w-[420px]"
+							data-testid="evidence-detail"
+						>
+							<p className="text-primary">
+								{count(gapped)} {gapped === 1 ? "workload" : "workloads"} lost
+								evidence in this range — map is incomplete.
+							</p>
+							<ul className="mt-1 flex flex-col gap-0.5 text-secondary">
+								{model.gaps.map((g) => (
+									<li key={`${g.workload.id}|${g.kind}|${g.from}|${g.to}`}>
+										{g.workload.hostname}: {kindText(g.kind)} between{" "}
+										{between(g.from, g.to)}
+									</li>
+								))}
+							</ul>
+						</TooltipContent>
+					</Tooltip>
+				</span>
 			) : null}
 			{dropped > 0 ? (
-				<SeverityNote level="alert" role="status">
-					<span title={model.dropped.map((w) => w.hostname).join(", ")}>
-						{count(dropped)} {dropped === 1 ? "workload" : "workloads"} dropped
-						flow records — map may be incomplete
-					</span>
-				</SeverityNote>
+				// The same short form; the sentence and each workload's
+				// counter are its tooltip, on hover or keyboard focus.
+				<span role="status">
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<button
+								type="button"
+								className="cursor-default rounded-inner focus-visible:focus-ring"
+							>
+								<SeverityNote level="alert">
+									flow records dropped · {count(dropped)}{" "}
+									{dropped === 1 ? "workload" : "workloads"}
+								</SeverityNote>
+							</button>
+						</TooltipTrigger>
+						<TooltipContent
+							className="max-w-[420px]"
+							data-testid="dropped-detail"
+						>
+							<p className="text-primary">
+								{count(dropped)} {dropped === 1 ? "workload" : "workloads"}{" "}
+								dropped flow records — map may be incomplete.
+							</p>
+							<ul className="mt-1 flex flex-col gap-0.5 text-secondary">
+								{model.dropped.map((w) => (
+									<li key={w.id}>
+										{w.hostname}: {count(w.health.dropped_flow_records)} dropped
+									</li>
+								))}
+							</ul>
+						</TooltipContent>
+					</Tooltip>
+				</span>
 			) : null}
 			{model.truncated ? (
 				<SeverityNote level="alert" role="status">
@@ -453,6 +506,7 @@ function NoFlows({
 		<Centered>
 			<EmptyState
 				title="No flows in this range"
+				icon="network"
 				width={480}
 				actions={<div className="self-start">{control}</div>}
 			>
@@ -471,6 +525,7 @@ function FreshMap() {
 		<Centered>
 			<EmptyState
 				title="No flows observed yet"
+				icon="network"
 				width={480}
 				actions={
 					<Button asChild className="self-start">

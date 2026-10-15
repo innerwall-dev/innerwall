@@ -165,7 +165,7 @@ export function PromoteDialog({
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent width={600}>
 				<DialogHeader title="Switch scope to enforced">
-					<p className="type-body text-secondary">
+					<p className="type-dense text-secondary">
 						Denied inbound traffic on these workloads will be dropped, starting
 						with the next policy version each agent applies.
 					</p>
@@ -173,7 +173,7 @@ export function PromoteDialog({
 				<DialogBody className="gap-4">
 					<div
 						className={cn(
-							"flex items-start gap-2.5 rounded-lg border px-4 py-3",
+							"flex items-start gap-2.5 rounded-panel border px-4 py-3",
 							verdict.safe
 								? "border-status-ok-border bg-status-ok-bg"
 								: "border-status-critical-border bg-status-critical-bg",
@@ -187,7 +187,7 @@ export function PromoteDialog({
 						<div className="flex min-w-0 flex-col gap-0.5">
 							<div
 								className={cn(
-									"type-body-strong",
+									"type-dense-strong",
 									verdict.safe
 										? "text-status-ok-fg"
 										: "text-status-critical-fg",
@@ -195,7 +195,7 @@ export function PromoteDialog({
 							>
 								{verdict.headline}
 							</div>
-							<div className="type-ui text-secondary">
+							<div className="type-dense text-secondary">
 								{verdict.safe
 									? "No observed traffic would be dropped."
 									: k.pairs > 0
@@ -243,10 +243,10 @@ export function PromoteDialog({
 						<div className="flex flex-col gap-1.5">
 							<label
 								className={cn(
-									"flex cursor-pointer items-start gap-2.5 rounded-lg border bg-subtle px-3 py-2.5 type-ui text-primary",
+									"flex cursor-pointer items-start gap-2.5 rounded-panel border bg-card px-3 py-2.5 type-dense text-primary",
 									nudged && !acknowledged
 										? "border-status-warn-border"
-										: "border-default",
+										: "border-hairline",
 								)}
 							>
 								<input
@@ -268,7 +268,7 @@ export function PromoteDialog({
 							</label>
 							{nudged && !acknowledged ? (
 								<div id={ackHintId} role="status">
-									<SeverityNote level="alert" className="type-caption">
+									<SeverityNote level="alert" prose className="type-caption">
 										Nothing was enforced. Check the acknowledgment above to
 										enforce anyway.
 									</SeverityNote>
@@ -282,10 +282,10 @@ export function PromoteDialog({
 							onPreview={preview}
 						>
 							You submitted{" "}
-							<span className="type-mono-ui">{mismatch.expected}</span>{" "}
+							<span className="type-mono-data">{mismatch.expected}</span>{" "}
 							workloads; the control plane resolved{" "}
-							<span className="type-mono-ui">{mismatch.matched}</span>. Nothing
-							was changed.
+							<span className="type-mono-data">{mismatch.matched}</span>.
+							Nothing was changed.
 						</StaleSet>
 					) : gone ? (
 						<StaleSet
@@ -296,7 +296,12 @@ export function PromoteDialog({
 							changed.
 						</StaleSet>
 					) : problem ? (
-						<SeverityNote level="error" role="alert" className="type-ui">
+						<SeverityNote
+							level="error"
+							role="alert"
+							prose
+							className="type-dense"
+						>
 							{problem.problem.errors?.map((f) => f.message).join(" ") ||
 								problem.problem.detail ||
 								problem.problem.title}
@@ -307,14 +312,13 @@ export function PromoteDialog({
 					<DialogClose asChild>
 						<Button variant="secondary">Cancel</Button>
 					</DialogClose>
+					{/* The confirm is the view's primary action, the plate whatever
+					    the verdict; a confirm held back (an unchecked
+					    acknowledgment, nothing to enforce) is the plate's disabled
+					    state, kept focusable so its reason can be reached. */}
 					<Button
 						variant="primary"
 						aria-disabled={!canSubmit || undefined}
-						className={
-							canSubmit
-								? undefined
-								: "opacity-disabled hover:border-action-primary-bg hover:bg-action-primary-bg"
-						}
 						onClick={submit}
 					>
 						{submitting
@@ -339,10 +343,10 @@ function Matched({
 	hostnames: string[];
 }) {
 	return (
-		<div className="flex flex-col gap-1 type-ui" data-testid="preview">
+		<div className="flex flex-col gap-1 type-dense" data-testid="preview">
 			<span className="text-secondary">
 				<span className="type-mono-sm text-secondary">{scope}</span> matches{" "}
-				<span className="type-mono-ui text-primary">{count(n)}</span>{" "}
+				<span className="type-mono-data text-primary">{count(n)}</span>{" "}
 				{n === 1 ? "workload" : "workloads"} now
 			</span>
 			<span className="type-mono-sm text-tertiary">
@@ -365,14 +369,14 @@ function PartitionTable({
 	onPreview: () => void;
 }) {
 	const row =
-		"grid min-h-row-dense grid-cols-[1fr_auto_auto] items-center gap-x-4 border-t border-subtle px-3 py-2 first:border-t-0";
+		"grid min-h-row-pitch grid-cols-[1fr_auto_auto] items-center gap-x-4 border-t border-hairline px-3 py-2 first:border-t-0";
 	const n = (x: number) => `${count(x)} ${x === 1 ? "workload" : "workloads"}`;
 	const num = "type-mono-sm text-secondary";
-	const included = "type-ui-strong text-primary";
+	const included = "type-header-register text-primary";
 	const skipped = "text-tertiary";
 	return (
 		<div
-			className="overflow-hidden rounded-lg border border-default bg-app type-ui"
+			className="overflow-hidden rounded-panel border border-hairline bg-canvas type-dense"
 			data-testid="partition"
 		>
 			<div className={row}>
@@ -406,7 +410,7 @@ function PartitionTable({
 									{issueLabel[issue]} ·{" "}
 									<Link
 										to={`/workloads/${w.id}`}
-										className="type-mono-ui text-link hover:underline"
+										className="type-mono-data link"
 									>
 										{w.hostname}
 									</Link>
@@ -439,7 +443,7 @@ function PartitionTable({
 					<button
 						type="button"
 						onClick={onPreview}
-						className="cursor-pointer text-link hover:underline"
+						className="cursor-pointer link"
 					>
 						Preview again
 					</button>
@@ -461,9 +465,9 @@ function StaleSet({
 	return (
 		<div
 			role="alert"
-			className="flex flex-col gap-1.5 rounded-lg border border-status-warn-border bg-status-warn-bg px-3 py-2.5 type-ui"
+			className="flex flex-col gap-1.5 rounded-panel border border-status-warn-border bg-status-warn-bg px-3 py-2.5 type-dense"
 		>
-			<SeverityNote level="alert" className="font-medium">
+			<SeverityNote level="alert" prose className="font-medium">
 				{title}
 			</SeverityNote>
 			<span className="text-secondary">{children}</span>

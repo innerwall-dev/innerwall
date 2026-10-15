@@ -1,12 +1,17 @@
 import type { ReactNode } from "react";
+import { Icon, type IconName } from "@/components/Icon";
 import { cn } from "@/lib/utils";
 
-// EmptyState is the fresh-install layout the routes share: a heading,
-// the explanation, optional numbered steps, and the actions, stacked on
-// the design's measure and gap. Centred in the screen unless the caller
-// places it.
+// EmptyState is the fresh-install layout the routes share: the
+// section's chrome icon in a 40px hairline disc on the overlay surface,
+// a heading, the explanation in text-secondary, optional numbered steps,
+// and the actions, stacked on the design's measure and gap. The heading
+// is the dialog-title style, or the page title on a non-dense page (the
+// 404). Centred in the screen unless the caller places it.
 export function EmptyState({
 	title,
+	icon,
+	page = false,
 	children,
 	steps,
 	actions,
@@ -15,6 +20,8 @@ export function EmptyState({
 	className,
 }: {
 	title: string;
+	icon?: IconName;
+	page?: boolean;
 	children: ReactNode;
 	steps?: { lead: string; rest: string }[];
 	actions?: ReactNode;
@@ -31,18 +38,28 @@ export function EmptyState({
 			)}
 			style={{ maxWidth: width }}
 		>
-			<h1 className="type-title-section">{title}</h1>
-			<p className="type-body text-secondary">{children}</p>
+			{icon ? (
+				<span
+					className="flex size-10 items-center justify-center rounded-full border border-hairline bg-overlay"
+					aria-hidden="true"
+				>
+					<Icon name={icon} />
+				</span>
+			) : null}
+			<h1 className={page ? "type-page-title" : "type-dialog-title"}>
+				{title}
+			</h1>
+			<p className="type-dense text-secondary">{children}</p>
 			{steps ? (
-				<ol className="mt-1.5 grid grid-cols-[24px_1fr] gap-2.5 type-ui">
+				<ol className="mt-1.5 grid grid-cols-[24px_1fr] gap-2.5 type-dense">
 					{steps.map((s, i) => (
 						<li key={s.lead} className="contents">
 							<span
 								className={cn(
 									"flex size-[22px] items-center justify-center rounded-full border type-mono-xs",
 									i === 0
-										? "border-strong bg-active text-primary"
-										: "border-default text-tertiary",
+										? "border-overlay bg-overlay text-primary"
+										: "border-hairline text-tertiary",
 								)}
 								aria-hidden="true"
 							>

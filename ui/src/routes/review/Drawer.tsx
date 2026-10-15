@@ -99,9 +99,9 @@ export function ReviewDrawer({
 	return (
 		<aside
 			aria-label="Pair detail"
-			className="flex w-[400px] shrink-0 flex-col overflow-hidden border-l border-default bg-raised"
+			className="flex w-[400px] shrink-0 flex-col overflow-hidden border-l border-hairline bg-popover"
 		>
-			<div className="flex flex-col gap-3 border-b border-subtle p-4">
+			<div className="flex flex-col gap-3 border-b border-hairline p-4">
 				<div className="flex items-center gap-2">
 					<VerdictPill verdict={row.verdict} variant="tinted" />
 					<Button
@@ -114,14 +114,14 @@ export function ReviewDrawer({
 						<Icon name="x" />
 					</Button>
 				</div>
-				<div className="type-title-section break-words font-mono">
+				<div className="type-dialog-title break-words font-mono">
 					{row.peer.full ?? row.peer.title}{" "}
 					<span className="text-tertiary" aria-hidden="true">
 						→
 					</span>
 					<span className="sr-only">on</span> {row.service}
 				</div>
-				<p className="type-body text-secondary" data-testid="explain">
+				<p className="type-dense text-secondary" data-testid="explain">
 					{explain(row, exact)}
 				</p>
 				<div className="flex flex-wrap gap-2">
@@ -260,7 +260,7 @@ function RuleSection({
 	onFound: (found: Found[]) => void;
 }) {
 	return (
-		<div className="flex flex-col gap-2 border-b border-subtle p-4">
+		<div className="flex flex-col gap-2 border-b border-hairline p-4">
 			<Eyebrow>Rule</Eyebrow>
 			{row.verdict === "allowed" ? (
 				<MatchedRules
@@ -274,7 +274,7 @@ function RuleSection({
 				/>
 			) : (
 				<>
-					<p className="type-ui text-secondary" data-testid="rule-statement">
+					<p className="type-dense text-secondary" data-testid="rule-statement">
 						No enabled rule matched: nothing in the policy these workloads run
 						admits this peer on {row.service}.
 					</p>
@@ -355,27 +355,28 @@ function MatchedRules({
 	}
 	if (found.length === 0) {
 		return (
-			<p className="type-ui text-secondary">
+			<p className="type-dense text-secondary">
 				The windows name no rule this listing holds.
 			</p>
 		);
 	}
 	return (
-		<ul className="flex flex-col gap-1 type-ui" data-testid="rule-statement">
+		<ul className="flex flex-col gap-1 type-dense" data-testid="rule-statement">
 			{found.map((f) => (
 				<li key={f.id}>
 					{f.rule && f.ruleset ? (
 						<>
 							Matched{" "}
-							<span className="type-mono-ui font-medium text-primary">
+							<span className="type-mono-data font-medium text-primary">
 								{ruleName(f.rule)}
 							</span>{" "}
-							in <span className="type-mono-ui">{f.ruleset.name}</span>
+							in <span className="type-mono-data">{f.ruleset.name}</span>
 						</>
 					) : (
 						<>
-							Matched rule <span className="type-mono-ui">{shortId(f.id)}</span>
-							, which no longer exists
+							Matched rule{" "}
+							<span className="type-mono-data">{shortId(f.id)}</span>, which no
+							longer exists
 						</>
 					)}
 				</li>
@@ -467,11 +468,11 @@ function Candidates({
 			{outcome?.kind === "enabled" ? (
 				<p
 					role="status"
-					className="flex items-start gap-1.5 type-ui text-primary"
+					className="flex items-start gap-1.5 type-dense text-primary"
 				>
 					<StatusGlyph status="allowed" size="md" className="mt-[3px]" />
 					<span className="min-w-0">
-						Enabled <span className="type-mono-ui">{outcome.rule}</span>. It
+						Enabled <span className="type-mono-data">{outcome.rule}</span>. It
 						takes effect as each workload in scope applies its next version;
 						stored windows keep the decision they were recorded with.
 					</span>
@@ -479,14 +480,16 @@ function Candidates({
 			) : outcome?.kind === "stale" ? (
 				<div
 					role="alert"
-					className="flex flex-col gap-1.5 rounded-lg border border-status-warn-border bg-status-warn-bg px-3 py-2.5 type-ui"
+					className="flex flex-col gap-1.5 rounded-panel border border-status-warn-border bg-status-warn-bg px-3 py-2.5 type-dense"
 				>
-					<SeverityNote level="alert" className="font-medium">
+					<SeverityNote level="alert" prose className="font-medium">
 						{outcome.rule} changed since this review read it
 					</SeverityNote>
 					<span className="text-secondary">
 						The rule is now at version{" "}
-						<span className="type-mono-ui">{outcome.current ?? "unknown"}</span>
+						<span className="type-mono-data">
+							{outcome.current ?? "unknown"}
+						</span>
 						{"; nothing was changed."} Reload to see the rule as it stands, then
 						decide again.
 					</span>
@@ -503,20 +506,20 @@ function Candidates({
 					</Button>
 				</div>
 			) : outcome?.kind === "failed" ? (
-				<SeverityNote level="error" role="alert" className="type-ui">
+				<SeverityNote level="error" role="alert" prose className="type-dense">
 					{outcome.message}
 				</SeverityNote>
 			) : null}
 			{disabled.length === 0 ? (
-				<p className="type-ui text-secondary">
-					<span className="type-mono-ui">{ruleset.name}</span> has no disabled
+				<p className="type-dense text-secondary">
+					<span className="type-mono-data">{ruleset.name}</span> has no disabled
 					rules.
 				</p>
 			) : (
 				<>
-					<p className="type-ui text-secondary">
+					<p className="type-dense text-secondary">
 						Disabled rules in{" "}
-						<span className="type-mono-ui">{ruleset.name}</span>. Whether one
+						<span className="type-mono-data">{ruleset.name}</span>. Whether one
 						covers this traffic is for you to judge; enabling it renders a new
 						version for the scope.
 					</p>
@@ -524,10 +527,10 @@ function Candidates({
 						{disabled.map((r) => (
 							<li
 								key={r.id}
-								className="flex items-start gap-2 rounded-lg border border-default bg-app px-3 py-2"
+								className="flex items-start gap-2 rounded-panel border border-hairline bg-canvas px-3 py-2"
 							>
 								<div className="flex min-w-0 flex-1 flex-col gap-0.5">
-									<span className="type-mono-ui font-medium text-primary">
+									<span className="type-mono-data font-medium text-primary">
 										{ruleName(r)}
 									</span>
 									<span className="break-words type-mono-sm text-tertiary">
@@ -582,14 +585,14 @@ function Pairs({
 }) {
 	const [open, setOpen] = useState<string | null>(null);
 	if (groups.length === 0) {
-		return <p className="type-ui text-secondary">No pairs in this range.</p>;
+		return <p className="type-dense text-secondary">No pairs in this range.</p>;
 	}
 	return (
-		<div className="overflow-x-auto rounded-lg border border-default">
+		<div className="overflow-x-auto rounded-panel border border-hairline">
 			<table className="w-full border-collapse">
 				<caption className="sr-only">Workload pairs behind this row</caption>
 				<thead>
-					<tr className="h-row-header bg-subtle">
+					<tr className="h-row-header">
 						<th className={pth}>Source</th>
 						<th className={pth}>Destination</th>
 						<th className={cn(pth, "text-right")}>Conns</th>
@@ -623,7 +626,7 @@ function Pairs({
 										<td className={ptd}>
 											<Link
 												to={`/workloads/${dst.id}`}
-												className="text-link hover:underline"
+												className="link"
 												onClick={(ev) => ev.stopPropagation()}
 											>
 												{dst.hostname}
@@ -664,9 +667,9 @@ function Pairs({
 
 // The drawer's tables: the shared table pattern at the drawer's width.
 const pth =
-	"h-row-header whitespace-nowrap border-b border-default px-2 text-left type-label text-tertiary first:pl-2.5 last:pr-2.5";
+	"h-row-header whitespace-nowrap border-b border-hairline px-2 text-left type-meta-label text-tertiary first:pl-2.5 last:pr-2.5";
 const ptd =
-	"whitespace-nowrap border-t border-subtle px-2 py-2 first:pl-2.5 last:pr-2.5";
+	"whitespace-nowrap border-t border-hairline px-2 py-2 first:pl-2.5 last:pr-2.5";
 
 function PairRow({
 	cells,
@@ -684,15 +687,15 @@ function PairRow({
 			<tr
 				onClick={onToggle}
 				className={cn(
-					"h-row-dense cursor-pointer [&:first-child>td]:border-t-0",
-					isOpen ? "bg-selection-bg" : "hover:bg-hover",
+					"h-row-pitch cursor-pointer [&:first-child>td]:border-t-0",
+					isOpen ? "bg-wash-selected" : "hover:bg-wash-hover",
 				)}
 			>
 				{cells}
 			</tr>
 			{windows ? (
 				<tr>
-					<td colSpan={4} className="bg-subtle px-2.5 pt-1 pb-2.5">
+					<td colSpan={4} className="bg-card px-2.5 pt-1 pb-2.5">
 						{windows}
 					</td>
 				</tr>
@@ -763,23 +766,23 @@ function PairWindows({
 				<caption className="sr-only">Stored windows of this pair</caption>
 				<thead>
 					<tr>
-						<th className="h-7 pr-2 text-left type-label text-tertiary">
+						<th className="h-7 pr-2 text-left type-control text-tertiary">
 							window
 						</th>
-						<th className="h-7 pr-2 text-left type-label text-tertiary">
+						<th className="h-7 pr-2 text-left type-control text-tertiary">
 							process
 						</th>
-						<th className="h-7 pl-2 text-right type-label text-tertiary">
+						<th className="h-7 pl-2 text-right type-control text-tertiary">
 							conns
 						</th>
-						<th className="h-7 pl-2 text-right type-label text-tertiary">
+						<th className="h-7 pl-2 text-right type-control text-tertiary">
 							last seen
 						</th>
 					</tr>
 				</thead>
 				<tbody className="type-mono-xs">
 					{flows.map((f) => (
-						<tr key={f.id} className="border-t border-subtle">
+						<tr key={f.id} className="border-t border-hairline">
 							<td className="py-1 pr-2 text-secondary">
 								{since(f.window_end)} ago
 							</td>
@@ -799,7 +802,7 @@ function PairWindows({
 					type="button"
 					onClick={loadMore}
 					disabled={more.loading}
-					className="cursor-pointer self-start type-caption text-link hover:underline"
+					className="cursor-pointer self-start type-caption link"
 				>
 					{more.loading ? "Loading…" : "Load more windows"}
 				</button>

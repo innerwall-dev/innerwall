@@ -15,7 +15,7 @@ export function ProblemNotice({
 }) {
 	return (
 		<div role="alert" className="flex max-w-[560px] flex-col gap-2 py-6">
-			<div className="flex items-center gap-2 type-body-strong text-status-critical-fg">
+			<div className="flex items-center gap-2 type-dense-strong text-status-critical-fg">
 				<StatusGlyph status="error" />
 				<span>Could not load {what}</span>
 			</div>

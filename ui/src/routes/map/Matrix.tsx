@@ -27,7 +27,7 @@ function rowEdge(n: MapNode): string {
 		return "border-l-2 border-dashed border-l-(--border-strong)";
 	if (n.kind === "unlabeled")
 		return "border-l-2 border-dotted border-l-(--status-warn-border)";
-	return "border-l-2 border-solid border-l-(--border-default)";
+	return "border-l-2 border-solid border-l-(--border-overlay)";
 }
 
 export function Matrix({
@@ -68,14 +68,14 @@ export function Matrix({
 	}, [selected]);
 
 	return (
-		<div className="flex min-h-0 flex-col px-6 py-5" data-testid="flow-matrix">
+		<div className="flex min-h-0 flex-col px-5 py-5" data-testid="flow-matrix">
 			<div className="mb-3">{range}</div>
 			<div ref={box} className="min-h-0 overflow-auto">
 				{/* The grid is the table's own spacing over the grid color, so
 			    each 1px gap is a grid line; a filled cell's tint sits on that
 			    color, as the design draws it, and an empty cell is opaque. */}
 				<table
-					className="w-full border-separate border-spacing-px rounded-lg border border-subtle bg-(--border-subtle)"
+					className="w-full border-separate border-spacing-px rounded-panel border border-hairline bg-(--border-hairline)"
 					style={{ minWidth: 150 + cols.length * 84 }}
 				>
 					<caption className="sr-only">
@@ -91,7 +91,7 @@ export function Matrix({
 						<tr>
 							<th
 								scope="col"
-								className="sticky left-0 bg-subtle px-3 py-2 text-left align-top type-label text-tertiary"
+								className="sticky left-0 bg-card px-3 py-2 text-left align-top type-control text-tertiary"
 							>
 								Source ↓ · destination →
 							</th>
@@ -101,7 +101,7 @@ export function Matrix({
 									scope="col"
 									className={cn(
 										"p-0 align-top font-normal",
-										nodeSelected(c.id) ? "bg-selection-bg" : "bg-subtle",
+										nodeSelected(c.id) ? "bg-wash-selected" : "bg-card",
 									)}
 								>
 									<button
@@ -112,7 +112,7 @@ export function Matrix({
 											"w-full cursor-pointer px-1.5 py-2 text-center type-mono-xs break-words",
 											nodeSelected(c.id)
 												? "text-primary"
-												: "text-secondary hover:bg-hover hover:text-primary",
+												: "text-secondary hover:bg-wash-hover hover:text-primary",
 										)}
 									>
 										{c.title}
@@ -129,7 +129,7 @@ export function Matrix({
 									className={cn(
 										"sticky left-0 p-0 text-left font-normal",
 										rowEdge(r),
-										nodeSelected(r.id) ? "bg-selection-bg" : "bg-subtle",
+										nodeSelected(r.id) ? "bg-wash-selected" : "bg-card",
 									)}
 								>
 									<button
@@ -140,7 +140,7 @@ export function Matrix({
 											"w-full cursor-pointer truncate px-2.5 py-1.5 text-left type-mono-sm whitespace-nowrap",
 											nodeSelected(r.id)
 												? "text-primary"
-												: "text-secondary hover:bg-hover hover:text-primary",
+												: "text-secondary hover:bg-wash-hover hover:text-primary",
 										)}
 									>
 										{r.title}
@@ -149,7 +149,7 @@ export function Matrix({
 								{cols.map((c) => {
 									const e = edges.get(`${r.id}>${c.id}`);
 									if (!e) {
-										return <td key={c.id} className="bg-app" />;
+										return <td key={c.id} className="bg-canvas" />;
 									}
 									const selected =
 										selection?.kind === "edge" && selection.id === e.id;
@@ -169,8 +169,8 @@ export function Matrix({
 												className={cn(
 													"inline-flex size-full cursor-pointer items-center justify-center gap-1.5 px-1.5 py-1.5 type-mono-sm whitespace-nowrap text-primary",
 													selected
-														? "bg-selection-bg"
-														: cn(cellTone[e.decision], "hover:bg-hover"),
+														? "bg-wash-selected"
+														: cn(cellTone[e.decision], "hover:bg-wash-hover"),
 												)}
 											>
 												<StatusGlyph status={v.status} size="md" />

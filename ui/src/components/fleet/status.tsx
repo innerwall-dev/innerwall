@@ -14,7 +14,8 @@ import { cn } from "@/lib/utils";
 
 // The design's status vocabulary. Color is never the only encoding:
 // every sync state and verdict carries its status glyph, and every mode
-// its Lucide icon. Modes are not status, so they stay gray.
+// its Lucide icon. A mode is chrome, not status: every mode is drawn
+// alike, its icon at icon-default and its word in text-secondary.
 
 export const modes: Record<
 	Mode,
@@ -22,21 +23,21 @@ export const modes: Record<
 > = {
 	visibility: {
 		icon: "eye",
-		glyph: <Icon name="eye" className="size-3.5" />,
+		glyph: <Icon name="eye" />,
 		label: "Visibility",
-		cls: "text-secondary border-default",
+		cls: "",
 	},
 	simulation: {
 		icon: "flask-conical",
-		glyph: <Icon name="flask-conical" className="size-3.5" />,
+		glyph: <Icon name="flask-conical" />,
 		label: "Simulation",
-		cls: "text-primary border-strong",
+		cls: "",
 	},
 	enforced: {
 		icon: "shield",
-		glyph: <Icon name="shield" className="size-3.5" />,
+		glyph: <Icon name="shield" />,
 		label: "Enforced",
-		cls: "text-primary border-strong",
+		cls: "",
 	},
 };
 
@@ -81,14 +82,14 @@ export const verdicts: Record<
 	blocked: flow("blocked", "blocked"),
 };
 
-// ModePill is a workload's mode: its icon and word in a hairline pill,
-// gray in every mode.
+// ModePill is a workload's mode: its icon and word in a 22px pill on
+// the overlay border, the same in every mode and never a status color.
 export function ModePill({ mode }: { mode: Mode }) {
 	const m = modes[mode];
 	return (
 		<span
 			className={cn(
-				"inline-flex h-[22px] items-center gap-1.5 whitespace-nowrap rounded-sm border px-2 type-label",
+				"inline-flex h-chip items-center gap-1.5 whitespace-nowrap rounded-full border border-overlay px-2 type-control text-secondary",
 				m.cls,
 			)}
 		>
@@ -122,8 +123,8 @@ export function VerdictPill({
 }
 
 // LabelChip is one `key=value` label, always mono and never truncated
-// mid-key: the key in text-tertiary, the value in text-primary, on
-// bg-subtle behind a hairline. The input form sits inside an editable
+// mid-key: the key in text-tertiary, the value in text-primary, 20px
+// on the overlay surface behind a hairline. The input form sits inside an editable
 // field, on its stronger border. A label outside the label grammar
 // (ADR-0022), which only one stored before it can be, is drawn quoted on
 // the warning tone and says why, so a value holding a space or an "="
@@ -151,12 +152,12 @@ export function LabelChip({
 					: undefined
 			}
 			className={cn(
-				"inline-flex h-5 items-center whitespace-nowrap rounded-sm border px-1.5 type-mono-sm text-primary",
+				"inline-flex h-label-chip items-center whitespace-nowrap rounded-inner border px-1.5 type-mono-sm text-primary",
 				outside
 					? "border-dashed border-status-warn-border bg-status-warn-bg"
 					: cn(
-							"bg-subtle",
-							size === "input" ? "border-strong" : "border-default",
+							"bg-overlay",
+							size === "input" ? "border-strong" : "border-hairline",
 						),
 			)}
 		>
@@ -173,7 +174,9 @@ export function LabelChip({
 }
 
 // FilterChip is a toggle in a chip row: the fleet's sync states, the
-// flow tab's verdicts. Pressed, it takes the pressed-segment fill.
+// review's decisions. It is a secondary control: the raised chooser on
+// the overlay border, whose hover strengthens the border; pressed, it
+// takes the selected wash on the stronger border.
 export function FilterChip({
 	on,
 	glyph,
@@ -193,10 +196,10 @@ export function FilterChip({
 			aria-pressed={on}
 			onClick={onClick}
 			className={cn(
-				"inline-flex h-control-sm cursor-pointer items-center gap-1.5 rounded-md border px-2.5 type-caption",
+				"inline-flex h-control cursor-pointer items-center gap-1.5 rounded-control border px-2.5 type-control",
 				on
-					? "border-strong bg-active font-medium text-primary"
-					: "border-default text-secondary hover:bg-hover hover:text-primary",
+					? "border-control-hover bg-wash-selected text-primary"
+					: "border-overlay bg-control-raised text-secondary hover:border-control-hover hover:text-primary",
 			)}
 		>
 			{glyph}
@@ -208,7 +211,8 @@ export function FilterChip({
 	);
 }
 
-// Eyebrow is a section's small heading: label type, sentence case.
+// Eyebrow is a section's small heading: the meta label, mono uppercase
+// in text-tertiary.
 export function Eyebrow({
 	children,
 	className,
@@ -217,7 +221,9 @@ export function Eyebrow({
 	className?: string;
 }) {
 	return (
-		<div className={cn("type-label text-tertiary", className)}>{children}</div>
+		<div className={cn("type-meta-label text-tertiary", className)}>
+			{children}
+		</div>
 	);
 }
 
@@ -247,10 +253,10 @@ export function ChoiceChips<T extends string>({
 				<label
 					key={o.value}
 					className={cn(
-						"inline-flex h-control-sm cursor-pointer items-center gap-1.5 rounded-md border px-2.5 type-caption has-[:focus-visible]:focus-ring",
+						"inline-flex h-control cursor-pointer items-center gap-1.5 rounded-control border px-2.5 type-control has-[:focus-visible]:focus-ring",
 						value === o.value
-							? "border-strong bg-active font-medium text-primary"
-							: "border-default text-secondary hover:bg-hover hover:text-primary",
+							? "border-control-hover bg-wash-selected text-primary"
+							: "border-overlay bg-control-raised text-secondary hover:border-control-hover hover:text-primary",
 					)}
 				>
 					<input

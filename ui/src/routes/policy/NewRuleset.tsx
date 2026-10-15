@@ -99,7 +99,7 @@ export function NewRuleset({
 							value={name}
 							onChange={(ev) => setName(ev.target.value)}
 							className={cn(
-								"h-control-lg w-[320px] rounded-md border bg-app px-3 type-title-section font-mono text-primary placeholder:font-normal placeholder:text-tertiary",
+								"h-control-md w-[320px] rounded-control border bg-field-sunk px-3 type-dialog-title font-mono text-primary placeholder:font-normal placeholder:text-tertiary",
 								at("name").length > 0
 									? "border-status-critical-fg"
 									: "border-strong",
@@ -107,7 +107,7 @@ export function NewRuleset({
 						/>
 						<FindingLines findings={at("name")} />
 					</div>
-					<span className="flex items-center gap-2 type-ui text-secondary">
+					<span className="flex items-center gap-2 type-dense text-secondary">
 						<Switch
 							size="header"
 							on={enabled}
@@ -128,7 +128,7 @@ export function NewRuleset({
 			</header>
 			<div
 				role="note"
-				className="flex gap-2.5 rounded-lg border border-default bg-subtle px-4 py-3 type-body text-secondary"
+				className="flex gap-2.5 rounded-panel border border-hairline bg-card px-4 py-3 type-dense text-secondary"
 				data-testid="banner"
 			>
 				<Icon name="info" className="mt-0.5" />
@@ -142,7 +142,7 @@ export function NewRuleset({
 				<div
 					role="note"
 					data-testid="pair-context"
-					className="flex gap-2.5 rounded-lg border border-default bg-subtle px-4 py-3 type-ui text-secondary"
+					className="flex gap-2.5 rounded-panel border border-hairline bg-card px-4 py-3 type-dense text-secondary"
 				>
 					<Icon name="info" className="mt-0.5 shrink-0" />
 					<span>

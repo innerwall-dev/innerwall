@@ -17,18 +17,21 @@ import { memo, type ReactNode, useEffect, useMemo } from "react";
 import { modes, verdicts } from "@/components/fleet/status";
 import { Icon } from "@/components/Icon";
 import { SeverityNote, StatusGlyph } from "@/components/StatusGlyph";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { short } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { type EdgeShape, shapeEdges } from "./geometry";
 import { type Layout, nodeHeight, nodeWidth } from "./layout";
 import {
-	type DashMetrics,
-	dashMetrics,
 	edgeCap,
 	edgeColor,
-	type edgeDash,
-	edgeDashAt,
+	edgeDash,
 	edgeEmphasis,
+	edgeWidth,
 	type MapEdge,
 	type MapModel,
 	type MapNode,
@@ -36,7 +39,6 @@ import {
 	nodeDimmed,
 	precedence,
 	type Selection,
-	strokeWidth,
 } from "./model";
 
 // The graph take: label groups as nodes, laid out in layers, and one
@@ -126,14 +128,11 @@ export function Graph({
 			})),
 		[model, layout, selection, onSelect],
 	);
-	const metrics = useDashMetrics();
 	const edges = useMemo<FlowEdge[]>(() => {
-		const max = Math.max(0, ...model.edges.map((e) => e.connections));
 		const shapes = shapeEdges(model, layout);
 		const titles = new Map(model.nodes.map((n) => [n.id, n.title]));
 		return model.edges.map((e) => {
 			const { selected, dimmed } = edgeEmphasis(e, selection);
-			const width = strokeWidth(e, max);
 			return {
 				id: e.id,
 				type: "flow",
@@ -146,15 +145,15 @@ export function Graph({
 					from: titles.get(e.source) ?? e.source,
 					to: titles.get(e.target) ?? e.target,
 					shape: shapes.get(e.id) as EdgeShape,
-					width,
-					dash: edgeDashAt(e.decision, width, metrics),
+					width: edgeWidth,
+					dash: edgeDash[e.decision],
 					selected,
 					dimmed,
 					onSelect,
 				},
 			};
 		});
-	}, [model, layout, selection, onSelect, metrics]);
+	}, [model, layout, selection, onSelect]);
 
 	return (
 		<div className="absolute inset-0" data-testid="flow-graph">
@@ -177,10 +176,10 @@ export function Graph({
 			>
 				<Refit layout={layout} />
 			</ReactFlow>
-			<div className="absolute top-3 left-4 rounded-lg border border-default bg-raised p-1.5 pr-2.5">
+			<div className="absolute top-3 left-4 rounded-panel border border-overlay bg-popover p-1.5 pr-2.5">
 				{range}
 			</div>
-			<Legend metrics={metrics} />
+			<Legend />
 		</div>
 	);
 }
@@ -194,15 +193,6 @@ const fitOptions = {
 	padding: { top: "60px", bottom: "96px", left: "24px", right: "24px" },
 	maxZoom: 1.25,
 } as const;
-
-// useDashMetrics reads the tokens the observed dash scales by, once: they
-// are the same in both themes.
-function useDashMetrics(): DashMetrics | null {
-	return useMemo(
-		() => dashMetrics(getComputedStyle(document.documentElement)),
-		[],
-	);
-}
 
 // Refit fits the view again when the map is regrouped or rescoped, and
 // when the canvas changes size (the drawer opening or closing, the
@@ -242,8 +232,7 @@ function Refit({ layout }: { layout: Layout }) {
 }
 
 // Markers are the arrowheads, one per decision, filled with the edge's
-// own token. They are sized in the canvas's units, not the stroke's, so
-// an arrowhead stays the same size whatever volume widens its edge.
+// own token. They are sized in the canvas's units, not the stroke's.
 function Markers() {
 	return (
 		<svg aria-hidden="true" className="absolute size-0">
@@ -275,10 +264,10 @@ const unmanagedKinds = new Set(["address-group", "unknown"]);
 // the unlabeled workloads outlined in the warning tone; selection is
 // blue in every kind.
 function frame(n: MapNode, selected: boolean): string {
-	if (selected) return "bg-selection-bg border-selection-fg";
-	if (unmanagedKinds.has(n.kind)) return "bg-app border-strong";
-	if (n.kind === "unlabeled") return "bg-raised border-status-warn-border";
-	return "bg-raised border-default";
+	if (selected) return "bg-overlay border-control-hover";
+	if (unmanagedKinds.has(n.kind)) return "bg-canvas border-strong";
+	if (n.kind === "unlabeled") return "bg-card border-status-warn-border";
+	return "bg-card border-overlay";
 }
 
 // subtitle is a node's second line: how many workloads, or what the
@@ -321,11 +310,21 @@ export function ModeLine({ n }: { n: MapNode }) {
 			</SeverityNote>
 		);
 	}
-	if (n.kind === "address-group") {
-		return <span className="text-tertiary">unmanaged · address group</span>;
-	}
-	if (n.kind === "unknown") {
-		return <span className="text-tertiary">unmanaged · no address group</span>;
+	// What kind of unmanaged peer a node is reads as words, set in the
+	// sans so the line fits the node, and never clipped mid-word.
+	if (n.kind === "address-group" || n.kind === "unknown") {
+		const text =
+			n.kind === "unknown"
+				? "unmanaged · no address group"
+				: "unmanaged · address group";
+		return (
+			<span
+				className="block min-w-0 truncate font-sans text-[11px] leading-4 text-tertiary"
+				title={text}
+			>
+				{text}
+			</span>
+		);
 	}
 	const m = modeSummary(n);
 	if (!m) {
@@ -370,7 +369,7 @@ function GroupNodeView({ data }: NodeProps<GroupNode>) {
 				onSelect(selected ? null : { kind: "node", id: n.id });
 			}}
 			className={cn(
-				"nodrag nopan relative flex cursor-pointer flex-col justify-center rounded-md border px-2.5 text-left",
+				"nodrag nopan relative flex cursor-pointer flex-col justify-center rounded-control border px-2 text-left",
 				frame(n, selected),
 			)}
 			style={{
@@ -384,7 +383,7 @@ function GroupNodeView({ data }: NodeProps<GroupNode>) {
 					name={unmanagedKinds.has(n.kind) ? "globe" : "boxes"}
 					className="size-3.5"
 				/>
-				<span className="truncate type-ui-strong text-primary">{n.title}</span>
+				<span className="truncate type-mono-sm text-primary">{n.title}</span>
 			</span>
 			<span className="truncate type-mono-xs text-tertiary">{subtitle(n)}</span>
 			<span className="flex min-w-0 truncate type-mono-xs">
@@ -426,14 +425,14 @@ function FlowEdgeView({ data }: EdgeProps<FlowEdge>) {
 	return (
 		<>
 			{selected ? (
-				// The selected edge's halo, in the selection hue, under the
-				// edge itself.
+				// The selected edge's halo, in the hovered-control border
+				// tone, under the edge itself.
 				<path
 					d={path}
 					style={{
 						pointerEvents: "none",
 						fill: "none",
-						stroke: "var(--selection-border)",
+						stroke: "var(--border-control-hover)",
 						strokeWidth: `calc(${width} + 5px)`,
 						strokeLinecap: "round",
 					}}
@@ -462,12 +461,13 @@ function FlowEdgeView({ data }: EdgeProps<FlowEdge>) {
 						data-edge={e.id}
 						onClick={select}
 						className={cn(
-							"nodrag nopan pointer-events-auto absolute flex h-[18px] cursor-pointer items-center gap-1 rounded-sm border px-1 type-mono-xs text-primary",
-							selected ? "border-selection-fg bg-selection-bg" : "bg-app",
+							"nodrag nopan pointer-events-auto absolute flex h-[18px] cursor-pointer items-center gap-1 rounded-inner border px-1 type-mono-xs text-primary",
+							selected
+								? "border-control-hover bg-overlay"
+								: "border-overlay bg-card",
 						)}
 						style={{
 							transform: `translate(-50%, -50%) translate(${lx}px, ${ly}px)`,
-							borderColor: selected ? undefined : color,
 							opacity,
 							zIndex: selected ? 1 : 0,
 						}}
@@ -481,10 +481,12 @@ function FlowEdgeView({ data }: EdgeProps<FlowEdge>) {
 	);
 }
 
-// Legend is the floating key on the raised surface: each decision with
-// its glyph and a line sample in the tokens' own color and dash, and the
-// node kinds by their icons.
-function Legend({ metrics }: { metrics: DashMetrics | null }) {
+// Legend is the floating key on the popover surface: each decision with
+// its glyph and a line sample in the tokens' own color, dash and width,
+// and the node kinds by their icons, in short labels; what an unmanaged
+// peer is, is that entry's tooltip. Volume has no line in it: every edge
+// is one width.
+function Legend() {
 	const sample = (d: keyof typeof edgeDash) => (
 		<svg width="32" height="8" aria-hidden="true" className="shrink-0">
 			<line
@@ -494,8 +496,8 @@ function Legend({ metrics }: { metrics: DashMetrics | null }) {
 				y2="4"
 				style={{
 					stroke: edgeColor[d],
-					strokeWidth: 2,
-					strokeDasharray: edgeDashAt(d, "2px", metrics),
+					strokeWidth: edgeWidth,
+					strokeDasharray: edgeDash[d],
 					strokeLinecap: edgeCap[d],
 				}}
 			/>
@@ -504,13 +506,13 @@ function Legend({ metrics }: { metrics: DashMetrics | null }) {
 	const entry = (d: keyof typeof edgeDash, words: string) => (
 		<span className="flex items-center gap-1.5">
 			{sample(d)}
-			<StatusGlyph status={verdicts[d].status} size="lg" />
+			<StatusGlyph status={verdicts[d].status} size="md" />
 			{words}
 		</span>
 	);
 	return (
 		<div
-			className="pointer-events-none absolute bottom-3.5 left-4 flex flex-col gap-2 rounded-lg border border-default bg-raised px-3 py-2.5 type-caption"
+			className="pointer-events-none absolute bottom-3.5 left-4 flex flex-col gap-2 rounded-panel border border-overlay bg-popover px-3 py-2.5 type-caption"
 			data-testid="map-legend"
 		>
 			<div className="flex flex-wrap gap-x-4 gap-y-1.5 text-secondary">
@@ -524,12 +526,22 @@ function Legend({ metrics }: { metrics: DashMetrics | null }) {
 					<Icon name="boxes" className="size-3.5" />
 					managed label group
 				</span>
-				<span className="flex items-center gap-1.5">
-					<Icon name="globe" className="size-3.5" />
-					unmanaged peer (address group / unknown) — appears only as a source;
-					no agent observes traffic into it
-				</span>
-				<span>line weight grows with connections</span>
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<span
+							// biome-ignore lint/a11y/noNoninteractiveTabindex: the entry's explanation is its tooltip, reached by keyboard too
+							tabIndex={0}
+							className="pointer-events-auto flex cursor-default items-center gap-1.5 rounded-inner focus-visible:focus-ring"
+						>
+							<Icon name="globe" className="size-3.5" />
+							unmanaged peer
+						</span>
+					</TooltipTrigger>
+					<TooltipContent side="top" className="max-w-[320px]">
+						unmanaged peer (address group / unknown) — appears only as a source;
+						no agent observes traffic into it
+					</TooltipContent>
+				</Tooltip>
 			</div>
 		</div>
 	);

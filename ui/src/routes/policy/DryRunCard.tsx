@@ -49,7 +49,7 @@ export function DryRunCard({
 	return (
 		<section
 			aria-label="Dry run"
-			className="flex flex-col gap-3 rounded-lg border border-default bg-app p-4"
+			className="flex flex-col gap-3 rounded-panel border border-hairline bg-card p-4"
 		>
 			<div className="flex items-center gap-3">
 				<Eyebrow>Dry run — what saving these changes would change</Eyebrow>
@@ -76,14 +76,14 @@ export function DryRunCard({
 				</p>
 			) : state.status === "refused" ? (
 				<div className="flex flex-col gap-1.5" role="alert">
-					<SeverityNote level="error" className="type-ui">
+					<SeverityNote level="error" prose className="type-dense">
 						The control plane refused this set as a write would: the findings
 						are shown at the fields they name.
 					</SeverityNote>
 					<FindingLines findings={state.findings} />
 				</div>
 			) : state.status === "failed" ? (
-				<SeverityNote level="error" role="alert" className="type-ui">
+				<SeverityNote level="error" role="alert" prose className="type-dense">
 					The dry run failed: {state.message}
 				</SeverityNote>
 			) : (
@@ -105,11 +105,11 @@ function Result({
 				<div
 					role="status"
 					data-testid="dryrun-freshness"
-					className="flex items-start gap-1.5 rounded-lg border border-status-warn-border bg-status-warn-bg px-3 py-2.5 type-ui"
+					className="flex items-start gap-1.5 rounded-panel border border-status-warn-border bg-status-warn-bg px-3 py-2.5 type-dense"
 				>
 					<StatusGlyph status="alert" className="mt-[3px]" />
 					<span>
-						<span className="type-ui-strong text-status-warn-fg">
+						<span className="type-header-register text-status-warn-fg">
 							{freshness === "stale"
 								? "The state moved before this ran."
 								: "The state has moved since this ran."}
@@ -123,30 +123,30 @@ function Result({
 				</div>
 			) : null}
 			{result.workloads.length === 0 ? (
-				<p className="type-ui text-secondary" data-testid="dryrun-summary">
+				<p className="type-dense text-secondary" data-testid="dryrun-summary">
 					Nothing would change: no workload's rendered policy differs from what
 					it has now.
 				</p>
 			) : (
 				<>
-					<p className="type-ui text-secondary" data-testid="dryrun-summary">
+					<p className="type-dense text-secondary" data-testid="dryrun-summary">
 						Saving would change the rendered policy of{" "}
-						<span className="font-mono tabular-nums text-primary">
+						<span className="font-mono text-primary">
 							{count(result.workloads.length)}
 						</span>{" "}
 						{result.workloads.length === 1 ? "workload" : "workloads"}.
 					</p>
-					<ul className="flex flex-col divide-y divide-subtle border-t border-subtle">
+					<ul className="flex flex-col divide-y divide-hairline border-t border-hairline">
 						{result.workloads.map((w) => (
 							<li
 								key={w.workload.id}
 								className="flex flex-col gap-1 py-2"
 								data-testid="dryrun-workload"
 							>
-								<div className="flex flex-wrap items-baseline gap-2 type-ui">
+								<div className="flex flex-wrap items-baseline gap-2 type-dense">
 									<Link
 										to={`/workloads/${encodeURIComponent(w.workload.id)}`}
-										className="type-mono-ui font-medium text-primary hover:underline"
+										className="type-mono-data font-medium text-primary hover:underline"
 									>
 										{w.workload.hostname || w.workload.id}
 									</Link>

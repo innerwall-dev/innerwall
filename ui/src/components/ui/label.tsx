@@ -8,7 +8,7 @@ export function Label({ className, ...props }: React.ComponentProps<"label">) {
 		// biome-ignore lint/a11y/noLabelWithoutControl: the caller associates it with its control through htmlFor
 		<label
 			data-slot="label"
-			className={cn("block type-label text-secondary", className)}
+			className={cn("block type-control text-secondary", className)}
 			{...props}
 		/>
 	);

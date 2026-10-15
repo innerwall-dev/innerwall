@@ -84,8 +84,8 @@ export function Login() {
 	const noPassword = problem?.type === ProblemType.noPassword;
 
 	return (
-		<div className="flex min-h-dvh items-center justify-center bg-app px-6 py-12 text-primary">
-			<div className="w-full max-w-[380px] rounded-xl border border-default bg-raised p-6">
+		<div className="flex min-h-dvh items-center justify-center bg-canvas px-5 py-12 text-primary">
+			<div className="w-full max-w-[380px] rounded-panel border border-hairline bg-popover p-6">
 				<div className="flex items-center gap-2.5">
 					<Lockup />
 					<span className="ml-auto type-mono-xs text-tertiary">
@@ -108,7 +108,7 @@ export function Login() {
 							onChange={(e) => setPassword(e.target.value)}
 							aria-invalid={problem ? true : undefined}
 							aria-describedby={problem ? problemId : undefined}
-							className="mt-2 font-mono"
+							className="mt-2 h-control-sm font-mono"
 						/>
 						{problem ? (
 							<p id={problemId} role="alert" className="mt-2.5">
@@ -162,17 +162,17 @@ export function describe(
 function FreshInstall({ onRetry }: { onRetry: () => void }) {
 	return (
 		<div className="mt-6" data-testid="fresh-install">
-			<div className="flex gap-2.5 rounded-lg border border-default bg-subtle px-4 py-3">
+			<div className="flex gap-2.5 rounded-panel border border-hairline bg-card px-4 py-3">
 				<Icon name="info" className="mt-0.5" />
 				<div className="min-w-0 flex-1">
-					<h1 className="type-body-strong text-primary">
+					<h1 className="type-dense-strong text-primary">
 						No operator password has been set
 					</h1>
-					<p className="mt-1.5 type-body text-secondary">
+					<p className="mt-1.5 type-dense text-secondary">
 						This control plane is freshly installed. The password is set from
 						the command line on the control-plane host, and nowhere else:
 					</p>
-					<pre className="mt-3 overflow-x-auto rounded-md border border-strong bg-app px-3 py-2 type-mono-sm text-primary">
+					<pre className="mt-3 overflow-x-auto rounded-control border border-stronger bg-field-sunk px-3 py-2 type-mono-sm text-primary">
 						innerwall operator set-password
 					</pre>
 					<p className="mt-3 type-caption text-tertiary">

@@ -33,8 +33,8 @@ export const tone: Record<GlyphStatus, string> = {
 	pending: "text-health-pending",
 	degraded: "text-health-degraded",
 	offline: "text-health-offline",
-	alert: "text-status-warn-fg",
-	error: "text-status-critical-fg",
+	alert: "text-severity-alert",
+	error: "text-severity-error",
 };
 
 // tint is the tinted badge's fill and hairline for each glyph's tone.
@@ -178,28 +178,33 @@ export function StatusBadge({
 	return (
 		<span
 			className={cn(
-				"inline-flex items-center gap-1.5 whitespace-nowrap type-label",
+				"inline-flex items-center gap-1.5 whitespace-nowrap type-control",
 				tone[status],
 				variant === "tinted" && [
-					"h-[22px] rounded-sm border px-2",
+					"h-chip rounded-inner border px-2",
 					tint[status],
 				],
 				className,
 			)}
 		>
-			<StatusGlyph status={status} size="sm" />
+			<StatusGlyph status={status} size="md" />
 			<span>{children}</span>
 		</span>
 	);
 }
 
 // SeverityNote is a warning or an error in running text: its severity
-// glyph, then the words, both in the severity's tone. The glyph is
-// centered on the first line when the text wraps; size follows the text
-// (sm in 12px text, md in 13–14px).
+// glyph, then the words. A status phrase ("renewal failed · retrying")
+// takes the severity's tone with its glyph; a sentence (prose) is body
+// text, in text-primary beside the toned glyph, since body text never
+// takes a status tone (the light warning foreground is waived for the
+// word and glyph alone, W1). The glyph is centered on the first line
+// when the text wraps; size follows the text (sm in 12px text, md in
+// 13–14px).
 export function SeverityNote({
 	level,
 	size = "md",
+	prose = false,
 	className,
 	children,
 	role,
@@ -208,6 +213,7 @@ export function SeverityNote({
 }: {
 	level: Severity;
 	size?: "sm" | "md";
+	prose?: boolean;
 	className?: string;
 	children: ReactNode;
 	role?: "alert" | "status" | "note";
@@ -218,17 +224,22 @@ export function SeverityNote({
 		<span
 			role={role}
 			title={title}
-			className={cn("inline-flex items-start gap-1.5", tone[level], className)}
+			className={cn(
+				"inline-flex items-start gap-1.5",
+				prose ? "text-primary" : tone[level],
+				className,
+			)}
 			{...rest}
 		>
 			<StatusGlyph
 				status={level}
 				size={size}
-				className={
+				className={cn(
+					prose && tone[level],
 					size === "sm"
 						? "mt-[calc((1lh-var(--glyph-sm))/2)]"
-						: "mt-[calc((1lh-var(--glyph-md))/2)]"
-				}
+						: "mt-[calc((1lh-var(--glyph-md))/2)]",
+				)}
 			/>
 			<span className="min-w-0">{children}</span>
 		</span>

@@ -413,28 +413,15 @@ export function defaultKey(workloads: Workload[], keys: string[]): string {
 	return ranked[0]?.k ?? keys[0] ?? "app";
 }
 
-// Edge width encodes volume (tokens.css, edge-width-*): log-scaled
-// across the edges in view, from --edge-width-min for none to
-// --edge-width-max for the busiest edge on the map. Decision rides on
-// color and dash, and selection on dimming everything else, so width
-// carries volume alone.
-export function volumeScale(connections: number, max: number): number {
-	if (max <= 0) return 0;
-	const t = Math.log1p(Math.max(connections, 0)) / Math.log1p(max);
-	return Math.min(1, Math.max(0, t));
-}
-
-export function strokeWidth(
-	e: Pick<MapEdge, "connections">,
-	max: number,
-): string {
-	const t = volumeScale(e.connections, max);
-	return `calc(var(--edge-width-min) + (var(--edge-width-max) - var(--edge-width-min)) * ${t.toFixed(4)})`;
-}
+// Every edge is drawn at one width (tokens.css, edge-width): volume
+// never sets it. Decision rides on color and dash, and selection on
+// dimming everything else; volume lives in the selected edge's panel and
+// the pair counts.
+export const edgeWidth = "var(--edge-width)";
 
 // Dash geometry travels with decision (tokens.css, edge-dash-*):
-// allowed solid, would-block "6 4", blocked "8 3 2 3", observed "1 4"
-// drawn with round caps and scaled with the stroke (edgeDashAt).
+// allowed solid, would-block "6 4", blocked "8 3 2 3", and observed "1 4"
+// drawn with round caps, so its dots stay apart at the one width.
 export const edgeDash: Record<Verdict, string> = {
 	observed: "var(--edge-dash-observed)",
 	allowed: "var(--edge-dash-allowed)",
@@ -448,49 +435,6 @@ export const edgeCap: Record<Verdict, "round" | "butt"> = {
 	would_block: "butt",
 	blocked: "butt",
 };
-
-// A round cap reaches half the stroke width past each end of a dash, so
-// the caps eat a gap by the full stroke width: the observed "1 4" keeps
-// a 2.75px gap at --edge-width-min and none at --edge-width-max, where
-// its dots run together into a solid line. So the observed pattern is the
-// token's geometry at --edge-width-min, scaled with the stroke: each
-// length grows by width / edge-width-min, and a dot and its gap keep the
-// same proportions at every volume. The butt-capped patterns are the
-// tokens' own at every width; their gaps stay open.
-//
-// The scale needs the tokens' values, which live only in tokens.css, so
-// they are read from the document's computed style (dashMetrics). Where
-// they cannot be read, the observed pattern falls back to the token.
-export type DashMetrics = { widthMin: number; observed: number[] };
-
-export function dashMetrics(style: {
-	getPropertyValue(name: string): string;
-}): DashMetrics | null {
-	const widthMin = Number.parseFloat(
-		style.getPropertyValue("--edge-width-min"),
-	);
-	const observed = style
-		.getPropertyValue("--edge-dash-observed")
-		.split(/[\s,]+/)
-		.filter((x) => x !== "")
-		.map(Number);
-	if (!(widthMin > 0) || observed.length === 0) return null;
-	if (observed.some((n) => !Number.isFinite(n) || n < 0)) return null;
-	return { widthMin, observed };
-}
-
-// edgeDashAt is the dash an edge of the given decision is stroked with at
-// the given width (a length, or a calc() over the edge-width tokens).
-export function edgeDashAt(
-	decision: Verdict,
-	width: string,
-	metrics: DashMetrics | null,
-): string {
-	if (decision !== "observed" || metrics === null) return edgeDash[decision];
-	return metrics.observed
-		.map((n) => `calc(${width} * ${(n / metrics.widthMin).toFixed(4)})`)
-		.join(" ");
-}
 
 export const edgeColor: Record<Verdict, string> = {
 	observed: "var(--flow-observed)",

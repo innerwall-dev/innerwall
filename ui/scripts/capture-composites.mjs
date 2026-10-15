@@ -223,11 +223,26 @@ const scenes = [
 		path: "/map?label=app%3Dsearch&label=tier%3Dinfra&range=1h",
 		ready: "text=No flows in this range",
 	},
+	// A workload's page lands on its Overview: db-1 is degraded and lost
+	// evidence, so its states are chips in the tab row and alert cards
+	// above the status card.
 	{
-		name: "09-workload-detail-degraded-flows",
+		name: "09-workload-detail-overview",
 		cp: "seeded",
 		path: async (api) => `/workloads/${await workloadId(api, "db-1")}`,
 		ready: '[data-testid="status-card"]',
+	},
+	{
+		name: "workload-detail-inbound-flows",
+		cp: "seeded",
+		path: async (api) => `/workloads/${await workloadId(api, "db-1")}/flows`,
+		ready: '[data-testid="flows-result"]',
+		act: async (page) => {
+			await page
+				.getByRole("complementary", { name: "Filter inbound flows" })
+				.getByRole("checkbox", { name: /^would block/ })
+				.check();
+		},
 	},
 	{
 		name: "10-workload-detail-listening-services",
@@ -249,17 +264,43 @@ const scenes = [
 		path: async (api) => `/workloads/${await workloadId(api, "cache-1")}`,
 		ready: '[data-testid="status-card"]',
 		act: async (page) => {
-			await page.getByRole("button", { name: "Resend snapshot" }).click();
+			await page
+				.getByTestId("status-card")
+				.getByRole("button", { name: "Resend snapshot" })
+				.click();
 			await page
 				.getByText(/The agent is offline, so nothing was sent/)
 				.waitFor();
 		},
 	},
+	// Its offline chip's popover holds the resend back with the reason the
+	// control plane would refuse it.
+	{
+		name: "workload-detail-offline-popover",
+		cp: "seeded",
+		path: async (api) =>
+			`/workloads/${await workloadId(api, "cache-1")}/services`,
+		ready: '[data-testid="state-chips"]',
+		act: async (page) => {
+			await page
+				.getByTestId("state-chips")
+				.getByRole("button", { name: "Offline" })
+				.click();
+			await page.getByRole("dialog", { name: "Offline" }).waitFor();
+		},
+	},
 	{
 		name: "workload-detail-evidence-gaps",
 		cp: "seeded",
-		path: async (api) => `/workloads/${await workloadId(api, "db-1")}`,
-		ready: '[data-testid="evidence-gaps"]',
+		path: async (api) => `/workloads/${await workloadId(api, "db-1")}/flows`,
+		ready: '[data-testid="state-chips"]',
+		act: async (page) => {
+			await page
+				.getByTestId("state-chips")
+				.getByRole("button", { name: "Evidence gap" })
+				.click();
+			await page.getByRole("dialog", { name: "Evidence gap" }).waitFor();
+		},
 	},
 	{
 		name: "workload-detail-clock-skew",

@@ -6,21 +6,32 @@
 		<meta name="color-scheme" content="dark light" />
 		<title>Innerwall</title>
 		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-		<!-- The theme (data-theme, mirrored by the .dark class) is applied
-		     before first paint so a stored preference never flashes the
-		     other theme. The console makes no external request; this is the
-		     only inline script it carries. -->
+		<!-- The theme is resolved before first paint so a stored preference
+		     never flashes the other theme: a stored choice wins, the system
+		     preference is the default, and a store that refuses to be read
+		     still leaves the system preference. It sets data-theme (which the
+		     tokens key on), the .dark class that mirrors it, and the page's
+		     color scheme, which the browser paints the canvas in before the
+		     stylesheet arrives. ThemeProvider resolves the same way. The
+		     console makes no external request; this is the only inline script
+		     it carries. -->
 		<script>
 			(() => {
+				let stored = null;
 				try {
-					const stored = localStorage.getItem("innerwall.console.theme");
-					const dark =
-						stored === "dark" ||
-						(stored !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
-					const root = document.documentElement;
-					root.dataset.theme = dark ? "dark" : "light";
-					if (dark) root.classList.add("dark");
+					stored = localStorage.getItem("innerwall.console.theme");
 				} catch (_) {}
+				const theme =
+					stored === "dark" || stored === "light"
+						? stored
+						: matchMedia("(prefers-color-scheme: dark)").matches
+							? "dark"
+							: "light";
+				const root = document.documentElement;
+				root.dataset.theme = theme;
+				root.classList.toggle("dark", theme === "dark");
+				const scheme = document.querySelector('meta[name="color-scheme"]');
+				if (scheme) scheme.content = theme;
 			})();
 		</script>
 	</head>

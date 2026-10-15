@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { EvidenceGap, Rollup, Verdict, Workload } from "@/api/schema";
@@ -169,9 +169,12 @@ function surface(
 	]);
 }
 
+// openMap renders the map and waits for its totals line. The map is a
+// lazily loaded chunk, which on a loaded machine can take longer than a
+// query's default second to arrive.
 async function openMap(path = "/map") {
 	renderApp(path);
-	return screen.findByText("connections");
+	return screen.findByText("connections", undefined, { timeout: 5000 });
 }
 
 describe("flow map", () => {
@@ -576,11 +579,19 @@ describe("flow map", () => {
 			],
 		});
 		await openMap();
-		expect(
-			await screen.findByText(
-				/1 workload dropped flow records — map may be incomplete/,
-			),
-		).toBeInTheDocument();
+		// The toolbar holds the short form; the sentence and each
+		// workload's counter are its tooltip, on hover or keyboard focus.
+		const warning = await screen.findByRole("button", {
+			name: /flow records dropped · 1 workload/,
+		});
+		act(() => warning.focus());
+		const detail = await screen.findByTestId("dropped-detail");
+		expect(detail).toHaveTextContent(
+			"1 workload dropped flow records — map may be incomplete.",
+		);
+		expect(within(detail).getByRole("listitem")).toHaveTextContent(
+			"metrics-01: 212 dropped",
+		);
 	});
 
 	it("says the map is incomplete where agents lost evidence in the range, and reads the gaps over its range and scope", async () => {
@@ -604,18 +615,28 @@ describe("flow map", () => {
 			],
 		});
 		await openMap("/map?label=env%3Dprod");
-		const warning = await screen.findByText(
-			/1 workload lost evidence in this range — map is incomplete/,
+		// The toolbar holds the short form; the sentence and each gap are
+		// its tooltip, on hover or keyboard focus.
+		const warning = await screen.findByRole("button", {
+			name: /evidence incomplete · 1 workload/,
+		});
+		act(() => warning.focus());
+		const detail = await screen.findByTestId("evidence-detail");
+		expect(detail).toHaveTextContent(
+			"1 workload lost evidence in this range — map is incomplete.",
 		);
-		expect(warning).toHaveAttribute(
-			"title",
-			expect.stringMatching(
-				/^metrics-01: the agent dropped buffered windows between .* UTC\nmetrics-01: the kernel dropped events between .* UTC$/,
-			),
+		const gaps = within(detail).getAllByRole("listitem");
+		expect(gaps[0]).toHaveTextContent(
+			/^metrics-01: the agent dropped buffered windows between .* UTC$/,
+		);
+		expect(gaps[1]).toHaveTextContent(
+			/^metrics-01: the kernel dropped events between .* UTC$/,
 		);
 		// The gaps place the dropped records; the live counter's hedge
 		// is not repeated for them.
-		expect(screen.queryByText(/dropped flow records/)).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: /flow records dropped/ }),
+		).not.toBeInTheDocument();
 		const read = calls
 			.filter((x) => x.path.startsWith("/api/v1/flows/gaps"))
 			.map((x) => new URL(x.path, "http://console.test").searchParams);
