@@ -29,19 +29,19 @@ const web = wref("w-web", "web-01", { app: "web" });
 const ops = wref("w-ops", "ops-01", { app: "ops" });
 const db = wref("w-db", "db-01", { app: "db" });
 
-// The lab estate: unknown peers reach ops (blocked), web and db (would
-// block), and ops reaches web and db, which web reaches too.
+// The lab estate as the issue's screenshot shows it: unknown peers reach
+// ops and db (would block) and web (blocked); ops reaches web (blocked),
+// and web reaches db.
 const lab = modelOf({
-	blocked: [row(peer.address("203.0.113.9"), ops, 412)],
+	blocked: [
+		row(peer.address("203.0.113.9"), web, 2_700),
+		row(peer.workload(ops), web, 8_900),
+	],
 	would_block: [
-		row(peer.address("203.0.113.9"), web, 88),
-		row(peer.address("198.51.100.4"), db, 31),
+		row(peer.address("203.0.113.9"), ops, 2_700),
+		row(peer.address("198.51.100.4"), db, 2_700),
 	],
-	allowed: [
-		row(peer.workload(ops), web, 5400),
-		row(peer.workload(web), db, 21000),
-		row(peer.workload(ops), db, 1900),
-	],
+	allowed: [row(peer.workload(web), db, 11_700)],
 });
 
 // seeded draws a graph of eight groups from a seed: every decision, fans
