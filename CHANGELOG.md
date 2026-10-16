@@ -2,6 +2,87 @@
 
 Notable changes to Innerwall, newest first. Versions follow semantic versioning; before 1.0, a minor version may change anything.
 
+## v0.2.0 — console v3, and honest state
+
+The console is restyled to design package v3, with a new workload page, and it says more truthfully what each host is doing: a removed table, a reconnecting control channel, a drifting clock, and a late renewal each read as what they are. Credential expiry is no longer a cliff, and a label means one thing on every surface.
+
+### Console
+
+- **Design package v3** (#118). New tokens and type: DM Sans and Source Code Pro, self-hosted. The chrome, controls and tables are restyled, with 40px rows. The Workloads table gains an Agent column. Every flow map edge is drawn at one 2px width, with decision carried by dash, color and glyph, never by width. The stored theme paints from the first frame. The package is recorded in [`docs/design/`](docs/design/PACKAGE.md). Between the two releases the console was first restyled to package v2 (#27); v3 supersedes it.
+- **The workload page** (#118):
+  - the workload's identity, mode, and last contact sit in the header strip;
+  - the page lands on an Overview of alert cards, status, labels, host facts, and the evidence-gap history;
+  - exceptional states are chips beside the tabs on every page, critical first, each opening its explanation;
+  - Inbound flows and Listening services gain a filter panel.
+- **Search, edit, and navigate** (#85):
+  - a search palette behind the header box and ⌘K finds workloads by hostname or label and rulesets by name;
+  - a workload's labels are edited in place, as a conditioned write with a review of what changes;
+  - the Workloads badge counts the workloads needing attention;
+  - an address with no screen renders "No such page" instead of redirecting;
+  - "Open in policy editor" carries the pair's peers, services, and matched rule into the editor.
+- **Policy editor** (#76, #80):
+  - every finding is reported in one pass, for rulesets, rules, and services;
+  - address-shaped peer text is read as a CIDR, typo or not;
+  - a pending scope edit and rule edit save as one write, so the previewed combination is what lands;
+  - rulesets can be renamed and redescribed;
+  - creating a ruleset lands on it;
+  - a click on the promotion's held-back confirm keeps the dialog.
+- **The control plane's version** shows in the account popover, from `/me` (#87).
+- **The flow map's graph library and layout load only with the map** (#120). The main bundle drops from 891 kB to 636 kB.
+
+### Agents and the control plane
+
+- **Credential expiry is no longer a cliff** (#102, #110, ADR-0016 amended). A control-plane outage that spanned the agents' renewal window used to lapse every credential and force a re-enrollment per host.
+  - The renewal call now accepts a credential expired by at most `--renewal-grace` (72h by default); every other call still requires a valid one.
+  - Expiry is never fatal to the agent: it keeps enforcing from disk and keeps retrying renewal.
+  - Enrollment may overwrite an expired stored credential.
+  - Renewal is scheduled on monotonic time as well as the wall clock.
+  - A late renewal is logged, recorded, and shown.
+- **The kill switch is visible** (#95, #101). A host whose owned table was removed reports it on its next heartbeat.
+  - Its flow reports carry a `table_removed` evidence gap for as long as the table stays removed.
+  - The Workloads table, the workload page, the counts, the attention badge, and a `removed` filter all say so.
+  - A kill-switched host no longer reads as healthy and idle.
+- **Reconnecting is told from offline** (#95). Ingest records each workload's last flow report. A workload whose control channel is down while its reports keep arriving reads "Reconnecting"; one with no contact on either channel reads "Offline".
+- **Agent clock skew is detected** (#81, #90).
+  - Every flow report carries the agent's clock at send.
+  - Skew beyond two windows is logged, recorded on the workload, and shown, with the remedy in [docs/troubleshooting.md](docs/troubleshooting.md).
+  - A window open across a backwards clock step is cut at the step.
+  - A window the control plane refuses as malformed is dropped and recorded as a `window_rejected` gap. It used to block every window behind it until a restart.
+- **Directed reconnects** (#53, #107).
+  - The agent redials at once on a directed reconnect, and resets its backoff once a stream is established.
+  - The gateway logs every directive it cannot deliver.
+  - A stream that ends no longer marks a newer live stream of the same workload offline.
+- **One label grammar** (#34, ADR-0022). It is admitted wherever a label enters: token mint, label edits, scopes and peers, selectors, and read filters. A paste such as `app=web env=lab` becomes two labels, where it used to become one label no selector could match. The console's label inputs share one parser that mirrors the grammar, and a stored label outside it is drawn quoted.
+- **A label scope can match either end of a flow** (#36, ADR-0019 amended). The flow map uses `endpoint=either`, so scoping to a workload that only sends now draws its traffic.
+- **Both binaries report their tag and commit** (#71): `v0.2.0+<commit>`, or `dev+<commit>` for an untagged build.
+- **Visibility engages connection tracking itself** (#32). On a host where nothing else referenced connection tracking, visibility observed nothing and reported no error. This was listed under v0.1.0 but merged after the tag, so v0.2.0 is the first release that carries it.
+- **A peer-only change on a visibility table is one full apply** (#95). It no longer logs a set-update refusal blamed on the kernel.
+
+### Build and project
+
+- Go 1.26.9 and `golang.org/x/net` v0.60.0 clear the advisories reachable from the shipped code; golangci-lint moves to v2.9.0 with them (#35).
+- The automated ADR review runs on `pull_request_target`, so it can authenticate on a fork's pull request; a review that did not post says so in the job summary (#73, ADR-0014 amended).
+- [docs/policy.md](docs/policy.md) states the policy model: a ruleset's scope is the destination, one ruleset per tier (#77).
+
+### Upgrading
+
+- **Migrations.** Five are added, 00010 through 00014; all are additive. Apply them with `innerwall migrate` or `innerwall serve --migrate`.
+- **Order.** Upgrade the control plane first, then the agents. A v0.1.0 agent keeps working against a v0.2.0 control plane: a report without a send time is judged by its window, and a heartbeat without the table's state leaves the stored one. The renewal grace, skew detection, and kill-switch reporting each work in full only with both ends at v0.2.0.
+- **Labels.** Writes and read filters outside the grammar are now refused with findings; a read filter outside it was an empty result. Stored labels are not rewritten. Enrollment refuses a provisioning token whose stored labels fall outside the grammar: mint a new token for those labels. A workload's own labels outside it can be repaired in the console's label editor.
+- **API.** Every surface change is additive:
+  - `Me.version`;
+  - `health.clock_skew`, `health.owned_table`, `health.last_flow_report_at`, `health.telemetry_live`, and `health.credential.last_late_renewal`;
+  - `GET /api/v1/workloads/counts`;
+  - the rollup's `endpoint` parameter;
+  - the gap kinds `window_rejected` and `table_removed`.
+- **Agent contract.** The changes are additive fields: `ReportFlowsRequest.sent_at`, the heartbeat's `owned_table`, and the two gap kinds.
+
+### Known limitations
+
+- The server-side evidence guard, the workload deny-list, and clone detection are not built (ROADMAP.md).
+- The aggregation window is set in the control plane's defaults; `innerwall serve` exposes no flag for it.
+- Linux only, inbound only, one operator.
+
 ## v0.1.0 — first release
 
 The first tagged release: one control-plane binary with the operator console embedded, one Postgres, and a Linux agent. What it does is summarized in the [README](README.md); what it deliberately does not do yet is the backlog in [ROADMAP.md](ROADMAP.md).
@@ -29,7 +110,6 @@ Two independent audits of the release candidate (`main` at `04e3209`) found defe
 - **A fleet test depended on wall-clock timing**, the OpenAPI contract omitted the origin guard's 403 on 22 unsafe operations, and a rollup test fixture emitted a protocol the contract does not admit (#24).
 - **Migrations had no immutability check.** CI now fails any change to a migration already on `main` (#24).
 - **The automated ADR review enforced rules the record had amended away**, and the documents claimed it reviews every pull request; both are corrected (#24).
-- **Visibility observed nothing on a host where nothing else engaged connection tracking.** The kernel tracks connections in a network namespace only once a loaded ruleset references connection tracking, and the visibility table was empty, so on a clean host the agent's sources subscribed and then reported no flows and no error. Visibility now installs one chain whose one rule engages connection tracking and accepts; it drops nothing, and the log source stays enforcement and simulation only. A network-namespace test with nothing else on the host holds it; found on a clean host evaluating the quickstart (#32).
 - **The image did not build.** The console stage lacked the API contract its build generates types from, so `make dev` failed; found while verifying this release's quickstart (#26).
 
 ### Record corrected before release
