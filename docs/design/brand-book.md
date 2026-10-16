@@ -1,8 +1,10 @@
-# Console v3 — proposed (2026-10-14 / 2026-10-15)
+# Console v3 — locked (2026-10-14 / 2026-10-15)
 
-> **Status: PROPOSED — direction held 2026-10-15 (Avi).** This is the design of record proposed for the console. It **locks only on the lab-estate live preview against real data** (brief §8): the CC build deploys a branch with `lab-deploy.sh`, Avi rules the lock there, then the PR merges and ships in v0.2.0. Until that lock:
-> - the README's v2 console foundations stay in effect for the shipped console and are marked *superseded on lock*;
-> - this system's `tokens.json` stays v2; the v3 tokens ship in **package v3** (`tokens.json` + generated `tokens.css`) and replace them here at lock.
+> **Status: LOCKED — 2026-10-15 (Avi).** This is the design of record for the console. It locked on the lab-estate live preview against real data (brief §8): the CC build deployed a branch with `lab-deploy.sh`, Avi ruled the lock there, and the PR (#118) merged and ships in v0.2.0. At lock:
+> - the README's v2 console foundations are superseded for the shipped console;
+> - the v3 tokens in **package v3** (`tokens.json` + generated `tokens.css`) replace this system's v2 `tokens.json`.
+>
+> *Status updated 2026-10-16: this block read "PROPOSED, locks only on the lab-estate live preview" until #118 merged after the lock ruling.*
 >
 > Nothing in the site extensions changes. The site keeps Geist until its own redesign, and that mismatch is accepted and recorded (R1).
 

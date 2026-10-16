@@ -28,6 +28,7 @@ The console is restyled to design package v3, with a new workload page, and it s
   - creating a ruleset lands on it;
   - a click on the promotion's held-back confirm keeps the dialog.
 - **The control plane's version** shows in the account popover, from `/me` (#87).
+- **Flow map edges route around the nodes** (#121). An edge that skipped a layer used to run under the cards in it, and a node's edges all left one point, so a fan read as one bundle and its labels landed at ragged offsets. Each edge now follows its own lane, crossing columns level and bending only between them; every label sits in a slot kept for it on its own edge; and a node's edges attach at ports spread along its side.
 - **The flow map's graph library and layout load only with the map** (#120). The main bundle drops from 891 kB to 636 kB.
 
 ### Agents and the control plane
