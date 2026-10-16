@@ -119,11 +119,23 @@ SET clock_skew_offset_ms   = CASE WHEN sqlc.arg(skewed)::boolean THEN sqlc.arg(o
 WHERE id = sqlc.arg(id) AND (sqlc.arg(skewed)::boolean OR clock_skew_current);
 
 -- The receipt of one flow report (migration 00013). Never moved backwards,
--- so reports handled out of order across replicas leave the latest.
--- name: RecordWorkloadFlowReport :exec
+-- so reports handled out of order across replicas leave the latest. The
+-- row it replaces comes back so ingest can derive the agent-silence gap
+-- (migration 00015): the locking subquery serializes concurrent reports of
+-- one workload, so each silence is seen by exactly one of them. No row
+-- means the receipt did not advance (a stale report, or no such workload).
+-- name: RecordWorkloadFlowReport :many
 UPDATE workloads
 SET last_flow_report_at = sqlc.arg(received_at)
-WHERE id = sqlc.arg(id) AND (last_flow_report_at IS NULL OR last_flow_report_at < sqlc.arg(received_at));
+FROM (
+    SELECT w.id AS locked_id, w.last_flow_report_at AS prev
+    FROM workloads w
+    WHERE w.id = sqlc.arg(id)
+    FOR UPDATE
+) locked
+WHERE workloads.id = locked.locked_id
+  AND (locked.prev IS NULL OR locked.prev < sqlc.arg(received_at))
+RETURNING locked.prev;
 
 -- name: SetWorkloadSyncState :execrows
 UPDATE workloads

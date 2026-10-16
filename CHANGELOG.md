@@ -2,6 +2,10 @@
 
 Notable changes to Innerwall, newest first. Versions follow semantic versioning; before 1.0, a minor version may change anything.
 
+## Unreleased
+
+- **An agent's silence is an evidence gap** (#114). An agent process that is down leaves the owned table enforcing (fail static, ADR-0011) but observes nothing, and nothing used to say so: a simulation review over the outage could read "safe" on evidence that was never collected. The control plane now derives the gap itself — flow ingest already stamps every report's receipt, so a report that ends a silence longer than the telemetry-liveness allowance (two flow windows) writes an `agent_silent` gap from the previous receipt to the arriving window's start (migration 00015, ADR-0019 as amended). A window that reaches back over the silence is buffered evidence delivered late and derives nothing, so a telemetry outage the agent rode out, and a quick agent restart, record no gap. The review's verdict, the workload page, `GET /api/v1/flows/gaps`, and `innerwall flows gaps` state the new kind like any other; the agent is untouched, and a reported gap claiming the kind is refused at ingest.
+
 ## v0.2.0 — console v3, and honest state
 
 The console is restyled to design package v3, with a new workload page, and it says more truthfully what each host is doing: a removed table, a reconnecting control channel, a drifting clock, and a late renewal each read as what they are. Credential expiry is no longer a cliff, and a label means one thing on every surface.

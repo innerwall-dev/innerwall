@@ -47,7 +47,7 @@ func (p *Postgres) WriteWindow(ctx context.Context, w Window) (int, error) {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := p.q.WithTx(tx)
-	if err := writeGaps(ctx, q, w); err != nil {
+	if err := writeGaps(ctx, q, w.WorkloadID, w.Gaps); err != nil {
 		return 0, err
 	}
 	if len(w.Records) == 0 {
@@ -125,20 +125,26 @@ func (p *Postgres) WriteWindow(ctx context.Context, w Window) (int, error) {
 	return int(n), nil
 }
 
-// writeGaps stores w's gaps in one batch; one already stored is skipped.
-func writeGaps(ctx context.Context, q *db.Queries, w Window) error {
-	if len(w.Gaps) == 0 {
+// WriteGaps implements FlowStore: gaps the control plane derived itself,
+// stored outside any window's transaction.
+func (p *Postgres) WriteGaps(ctx context.Context, id identity.WorkloadID, gaps []Gap) error {
+	return writeGaps(ctx, p.q, id, gaps)
+}
+
+// writeGaps stores gaps in one batch; one already stored is skipped.
+func writeGaps(ctx context.Context, q *db.Queries, id identity.WorkloadID, gaps []Gap) error {
+	if len(gaps) == 0 {
 		return nil
 	}
-	params := make([]db.InsertFlowGapParams, 0, len(w.Gaps))
-	for i := range w.Gaps {
-		g := &w.Gaps[i]
+	params := make([]db.InsertFlowGapParams, 0, len(gaps))
+	for i := range gaps {
+		g := &gaps[i]
 		var lost pgtype.Int8
 		if g.Count != nil {
 			lost = pgtype.Int8{Int64: int64(*g.Count), Valid: true} //nolint:gosec // counts are far below the signed range
 		}
 		params = append(params, db.InsertFlowGapParams{
-			WorkloadID: w.WorkloadID.UUID(),
+			WorkloadID: id.UUID(),
 			Kind:       int32(g.Kind),
 			Source:     int32(g.Source),
 			GapFrom:    g.From,

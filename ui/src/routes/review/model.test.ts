@@ -477,6 +477,40 @@ describe("the verdict", () => {
 			});
 		});
 
+		it("states a server-derived agent silence in the same vocabulary", () => {
+			// A gap the control plane derived itself (the agent process was
+			// not reporting over the interval, issue #114) fails the verdict
+			// exactly as an agent-reported one: the headline never says safe.
+			const w = ready();
+			w[1].hostname = "iw-db";
+			const v = verdictOf(w, allowedOnly, [
+				gap(w[1], 90, 70, { kind: "agent_silent", source: null }),
+			]);
+			expect(v.safe).toBe(false);
+			expect(v.headline).toBe("Not safe to enforce yet");
+			expect(v.failing.map((c) => c.id)).toEqual(["evidence-gaps"]);
+			expect(v.caveats[0]).toMatch(
+				/^Evidence incomplete for iw-db between (?:\d\d-\d\d )?\d\d:\d\d and (?:\d\d-\d\d )?\d\d:\d\d UTC — the agent was not reporting$/,
+			);
+		});
+
+		it("states one silence once when two kinds describe it", () => {
+			// A kill-switched host whose agent then also stopped carries a
+			// table_removed gap from the agent and an agent_silent gap from
+			// the control plane over overlapping intervals: one failing
+			// condition, spanning both, with no single reason claimed.
+			const w = ready();
+			const v = verdictOf(w, allowedOnly, [
+				gap(w[0], 100, 70, { kind: "table_removed", source: null }),
+				gap(w[0], 95, 80, { kind: "agent_silent", source: null }),
+			]);
+			expect(v.failing.map((c) => c.id)).toEqual(["evidence-gaps"]);
+			expect(v.caveats).toHaveLength(1);
+			expect(v.caveats[0]).toMatch(
+				/^Evidence incomplete for checkout-01 between (?:\d\d-\d\d )?\d\d:\d\d and (?:\d\d-\d\d )?\d\d:\d\d UTC$/,
+			);
+		});
+
 		it("names an interval to the minute, with dates when it crosses a day", () => {
 			expect(between("2026-10-04T13:02:10Z", "2026-10-04T13:04:50Z")).toBe(
 				"13:02 and 13:04 UTC",

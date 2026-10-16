@@ -208,6 +208,11 @@ func (f *MemFlows) WriteWindow(context.Context, flowstore.Window) (int, error) {
 	return 0, ErrUnsupported
 }
 
+// WriteGaps implements flowstore.FlowStore.
+func (f *MemFlows) WriteGaps(context.Context, identity.WorkloadID, []flowstore.Gap) error {
+	return ErrUnsupported
+}
+
 // ListWindows implements flowstore.FlowStore.
 func (f *MemFlows) ListWindows(context.Context, flowstore.WindowQuery) ([]flowstore.WindowRow, error) {
 	return nil, ErrUnsupported

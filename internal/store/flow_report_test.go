@@ -43,13 +43,27 @@ func TestFlowReportReceiptAndLiveTelemetry(t *testing.T) {
 	}
 
 	check("fresh", nil, false)
-	if err := s.RecordFlowReport(ctx, id, at); err != nil {
-		t.Fatal(err)
+	prev, advanced, err := s.RecordFlowReport(ctx, id, at)
+	if err != nil || prev != nil || !advanced {
+		t.Fatalf("first receipt = %v, %v, %v; want nil prev, advanced", prev, advanced, err)
 	}
-	if err := s.RecordFlowReport(ctx, id, at.Add(-time.Minute)); err != nil {
-		t.Fatal(err)
+	// A stale receipt, handled out of order, replaces nothing and hands
+	// back no previous instant to derive a silence from.
+	prev, advanced, err = s.RecordFlowReport(ctx, id, at.Add(-time.Minute))
+	if err != nil || prev != nil || advanced {
+		t.Fatalf("stale receipt = %v, %v, %v; want no advance", prev, advanced, err)
 	}
 	check("received", &at, true)
+	// A later receipt returns the one it replaced: the bound of the
+	// silence between them (migration 00015).
+	later := at.Add(10 * time.Minute)
+	prev, advanced, err = s.RecordFlowReport(ctx, id, later)
+	if err != nil || prev == nil || !prev.Equal(at) || !advanced {
+		t.Fatalf("second receipt = %v, %v, %v; want prev %v", prev, advanced, err, at)
+	}
+	now = later
+	at = later
+	check("advanced", &later, true)
 
 	// The sync stream goes away; the reports keep the instant they set.
 	if err := s.SetSyncState(ctx, id, innerwallv1.SyncState_SYNC_STATE_OFFLINE, "", at.Add(time.Second)); err != nil {

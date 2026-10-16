@@ -108,6 +108,8 @@ func GapKindName(k innerwallv1.EvidenceGapKind) string {
 		return "window_rejected"
 	case innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_TABLE_REMOVED:
 		return "table_removed"
+	case innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_AGENT_SILENT:
+		return "agent_silent"
 	case innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_UNSPECIFIED:
 		return "unknown"
 	default:

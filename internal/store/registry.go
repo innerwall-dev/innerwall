@@ -310,12 +310,20 @@ func (s *Store) RecordClockReading(ctx context.Context, id identity.WorkloadID, 
 }
 
 // RecordFlowReport implements ingest.ReportRecorder: the receipt of one
-// flow report, never moved backwards.
-func (s *Store) RecordFlowReport(ctx context.Context, id identity.WorkloadID, receivedAt time.Time) error {
-	if err := s.q.RecordWorkloadFlowReport(ctx, db.RecordWorkloadFlowReportParams{ID: id.UUID(), ReceivedAt: &receivedAt}); err != nil {
-		return fmt.Errorf("store: recording flow report: %w", err)
+// flow report, never moved backwards. It returns the receipt it replaced,
+// nil for the first ever, and advanced false when this one was stale and
+// replaced nothing. The statement locks the workload's row, so of two
+// concurrent reports one sees the other's receipt as prev, never the one
+// before: a silence between consecutive receipts is derived exactly once.
+func (s *Store) RecordFlowReport(ctx context.Context, id identity.WorkloadID, receivedAt time.Time) (prev *time.Time, advanced bool, err error) {
+	rows, err := s.q.RecordWorkloadFlowReport(ctx, db.RecordWorkloadFlowReportParams{ID: id.UUID(), ReceivedAt: &receivedAt})
+	if err != nil {
+		return nil, false, fmt.Errorf("store: recording flow report: %w", err)
 	}
-	return nil
+	if len(rows) == 0 {
+		return nil, false, nil
+	}
+	return rows[0], true, nil
 }
 
 // RecordHeartbeat implements registry.Store.
