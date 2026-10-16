@@ -1,6 +1,6 @@
 # Console v3 — locked (2026-10-14 / 2026-10-15)
 
-> **Status: LOCKED — 2026-10-15 (Avi).** This is the design of record for the console. It locked on the lab-estate live preview against real data (brief §8): the CC build deployed a branch with `lab-deploy.sh`, Avi ruled the lock there, and the PR (#118) merged and ships in v0.2.0. At lock:
+> **Status: v3, LOCKED — 2026-10-15 (Avi),** after three lab-preview polish rounds; W5's wide-screen containment was withdrawn in the third, recorded in package v3's amendment 6. This is the design of record for the console. It locked on the lab-estate live preview against real data (brief §8): the CC build deployed a branch with `lab-deploy.sh`, Avi ruled the polish rounds and the lock there, and the PR (#118) merged and ships in v0.2.0. At lock:
 > - the README's v2 console foundations are superseded for the shipped console;
 > - the v3 tokens in **package v3** (`tokens.json` + generated `tokens.css`) replace this system's v2 `tokens.json`.
 >

@@ -2,11 +2,11 @@
 
 **Dated:** 2026-10-14 / 2026-10-15.
 
-**Status:** the **design of record, locked.** The direction held on 2026-10-15 (Avi), and v3 locked the same day.
+**Status:** the **design of record: v3, locked 2026-10-15** (Avi), after three lab-preview polish rounds. W5's wide-screen containment was withdrawn in the third and is recorded in amendment 6.
 
 **Lock:** v3 locked on the lab-estate live preview against real data (brief §8), as the gate required.
 - The CC build was a preview vehicle on a branch (#118).
-- Avi deployed it with `./lab-deploy.sh` and ruled the lock there on 2026-10-15; the lock rulings are recorded below (E15, P13-a).
+- Avi deployed it with `./lab-deploy.sh` and ruled three polish rounds there: round 1 (P1–P14), round 2 (D1 and the first-frame theme), and round 3 (W5 and W5-a, withdrawn as W5-b; amendment 6). The lock rulings followed on 2026-10-15 (E15, P13-a).
 - #118 then merged, and v3 ships in v0.2.0.
 
 **Supersedes:** package v2, which stays in history (`git log -- docs/design`).
