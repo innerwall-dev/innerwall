@@ -1,14 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { listFlows } from "@/api/fleet";
-import type {
-	Flow,
-	FlowsPage,
-	Peer,
-	PeerRef,
-	Selector,
-	Workload,
-} from "@/api/schema";
+import type { Flow, FlowsPage, Peer, Selector, Workload } from "@/api/schema";
 import {
 	Eyebrow,
 	LabelChip,
@@ -36,6 +29,7 @@ import {
 	type Selection,
 	unlabeledId,
 } from "./model";
+import { peerName } from "./names";
 
 // The drawer beside either take. An edge opens its decisions, the rule
 // it suggests, and its pairs; a pair opens its stored windows from
@@ -291,20 +285,6 @@ export function destScope(
 			e.pairs.map((p) => p.dst.labels),
 		),
 	};
-}
-
-// peerName is a pair's source as a row names it.
-export function peerName(p: PeerRef): string {
-	switch (p.kind) {
-		case "workload":
-			return p.name ?? p.workload_id ?? "workload";
-		case "group":
-			return p.name ?? "address group";
-		case "address":
-			return p.address ?? "address";
-		default:
-			return `unrecognized · ${p.address ?? ""}`;
-	}
 }
 
 function service(f: Flow): string {
