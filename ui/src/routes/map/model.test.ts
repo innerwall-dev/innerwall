@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 import { workload } from "@/test/fixtures";
 import { addressGroup, peer, rollupOf, row, wref } from "@/test/map";
 import { peerSelector } from "./Drawer";
-import { chipWidth, type EdgeShape, shapeEdges } from "./geometry";
-import { layoutModel, nodeHeight, nodeWidth } from "./layout";
+import { type EdgeShape, shapeEdges } from "./geometry";
+import { chipWidth, layoutModel, nodeHeight, nodeWidth } from "./layout";
 import {
 	buildModel,
 	defaultKey,

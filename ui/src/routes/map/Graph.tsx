@@ -197,25 +197,22 @@ const fitOptions = {
 // Refit fits the view again when the map is regrouped or rescoped, and
 // when the canvas changes size (the drawer opening or closing, the
 // window resizing); panning and zooming in between are the operator's.
-// The bounds come from the layout, which knows every node's box, so the
-// fit never waits on measuring nodes that are not mounted.
+// The bounds come from the layout, which knows every node's box and
+// every edge's lane, so the fit never waits on measuring nodes that are
+// not mounted.
 function Refit({ layout }: { layout: Layout }) {
 	const { setViewport } = useReactFlow();
 	const width = useStore((s) => s.width);
 	const height = useStore((s) => s.height);
 	useEffect(() => {
 		if (width <= 0 || height <= 0 || layout.positions.size === 0) return;
-		const xs = [...layout.positions.values()];
-		const minX = Math.min(...xs.map((p) => p.x));
-		const minY = Math.min(...xs.map((p) => p.y));
-		const maxX = Math.max(...xs.map((p) => p.x + nodeWidth));
+		const b = layout.bounds;
 		// A loop rises above its node; leave room for one on the top row.
-		const maxY = Math.max(...xs.map((p) => p.y + nodeHeight));
 		const bounds = {
-			x: minX,
-			y: minY - loopRise,
-			width: maxX - minX,
-			height: maxY - minY + loopRise,
+			x: b.x,
+			y: b.y - loopRise,
+			width: b.width,
+			height: b.height + loopRise,
 		};
 		void setViewport(
 			getViewportForBounds(
