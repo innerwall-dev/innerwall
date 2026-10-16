@@ -1,15 +1,17 @@
-# Innerwall Console — design package v3 (proposed)
+# Innerwall Console — design package v3
 
 **Dated:** 2026-10-14 / 2026-10-15.
 
-**Status:** the **design of record, proposed.** The direction held on 2026-10-15 (Avi).
+**Status:** the **design of record: v3, locked 2026-10-15** (Avi), after three lab-preview polish rounds. W5's wide-screen containment was withdrawn in the third and is recorded in amendment 6.
 
-**Lock:** v3 **locks only on the lab-estate live preview against real data** (brief §8).
-- The CC build is a preview vehicle on a branch.
-- Avi deploys the branch with `./lab-deploy.sh` and rules the lock there.
-- The PR then merges and ships in v0.2.0.
+**Lock:** v3 locked on the lab-estate live preview against real data (brief §8), as the gate required.
+- The CC build was a preview vehicle on a branch (#118).
+- Avi deployed it with `./lab-deploy.sh` and ruled three polish rounds there: round 1 (P1–P14), round 2 (D1 and the first-frame theme), and round 3 (W5 and W5-a, withdrawn as W5-b; amendment 6). The lock rulings followed on 2026-10-15 (E15, P13-a).
+- #118 then merged, and v3 ships in v0.2.0.
 
-**Supersedes:** package v2, *on lock*. v2 stays the shipped console until then.
+**Supersedes:** package v2, which stays in history (`git log -- docs/design`).
+
+*Status updated 2026-10-16: this header read "proposed, locks only on the lab-estate live preview" until #118 merged after the lock ruling.*
 
 ## Contents
 

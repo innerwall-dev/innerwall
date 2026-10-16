@@ -4,7 +4,7 @@ Open-source microsegmentation for heterogeneous server estates: VMs, bare metal,
 
 A small agent on each workload observes the connections that reach it and programs the operating system's native firewall. A control plane turns label-based policy into per-host rulesets, pushes them over persistent streams, and renders the estate's real traffic as a live dependency map. An operator console embedded in the control plane shows that map, the fleet, the policy, and what enforcing it would break.
 
-**Status: v0.1.0, the first release.** Enrollment and short-lived workload identity, the policy sync stream, flow telemetry with evidence gaps, policy authoring with dry runs, simulation, and enforcement on Linux (nftables), and the operator console all work end to end. What is deliberately not in this release, and what comes next, is in [ROADMAP.md](ROADMAP.md); what changed, including the fixes from two independent conformance audits, is in [CHANGELOG.md](CHANGELOG.md).
+**Status: v0.2.0.** Enrollment and short-lived workload identity, the policy sync stream, flow telemetry with evidence gaps, policy authoring with dry runs, simulation, and enforcement on Linux (nftables), and the operator console all work end to end. This release restyles the console to design package v3, with a new workload page, makes credential expiry recoverable, and reports a removed table, a reconnecting control channel, and a drifting agent clock as what they are. What is deliberately not built yet, and what comes next, is in [ROADMAP.md](ROADMAP.md); what changed in each release is in [CHANGELOG.md](CHANGELOG.md).
 
 ## The console
 
@@ -22,9 +22,9 @@ Each image puts a screen of the shipped console in its dark theme (left) beside 
 
 ![Policy editor dry run, dark and light](docs/img/console/policy-editor-dry-run.jpg)
 
-**Fleet.** Every workload's mode, sync state against its latest rendered version, and agent health.
+**Workloads.** Every workload's mode, sync state against its latest rendered version, and agent health.
 
-![Fleet workloads, dark and light](docs/img/console/13-fleet-workloads.jpg)
+![Workloads, dark and light](docs/img/console/13-fleet-workloads.jpg)
 
 ## Why
 
@@ -102,6 +102,7 @@ On another host, use the control plane's address in place of `localhost`; the ga
 | `internal/store/` | Hand-written SQL, goose migrations, sqlc output (ADR-0006) |
 | `ui/` | The operator console: Vite + React, embedded into the control plane (ADR-0008) |
 | `docs/adr/` | Architecture decision records: the design's source of truth |
+| `docs/design/` | The console's design package of record: tokens, brand book, component specs, and the record of its amendments and errata |
 | `docs/deploy/` | Running it: deployment, the operator surface, high availability |
 | `docs/policy.md` | The policy model: the scope is the destination, one ruleset per tier, authoring and the dry run |
 | `docs/troubleshooting.md` | Symptom, cause, and remedy for what operators meet, such as an agent whose clock has drifted |

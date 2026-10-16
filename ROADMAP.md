@@ -2,6 +2,15 @@
 
 Direction, not dates. Ordering follows ADR-0001: visibility value first, enforcement as the destination. Every item below that the record already names cites where; an item without a citation is a direction the record has not decided yet and gets its own ADR before it is built.
 
+## Shipped in v0.2.0
+
+Hardening of what v0.1.0 shipped, and the console restyled; the full list is in [CHANGELOG.md](CHANGELOG.md).
+
+- **Console v3.** Design package v3 ([`docs/design/`](docs/design/PACKAGE.md)), a workload page that lands on an Overview with its exceptional states as chips, a search palette, in-place label editing, deep links from the drawers into the policy editor, and a flow map whose edges route around its nodes.
+- **Honest state.** A removed owned table (the kill switch), a reconnecting control channel, a drifting agent clock, and a late credential renewal are each reported as what they are, end to end (ADR-0015, ADR-0019 amended).
+- **Recoverable credential expiry.** An expired credential may renew within a configurable grace, and expiry is never fatal to the agent (ADR-0016 amended).
+- **One label grammar**, admitted wherever a label enters (ADR-0022).
+
 ## Shipped in v0.1.0
 
 The milestones M1 to M5 as first planned, delivered in this shape:
