@@ -162,6 +162,14 @@ const (
 	// pieces, one with each window, while the table stays gone. Not one
 	// source's loss; no count.
 	EvidenceGapKind_EVIDENCE_GAP_KIND_TABLE_REMOVED EvidenceGapKind = 7
+	// The control plane received no flow report from the workload's agent
+	// over the interval, and no window delivered afterwards covered it: the
+	// agent process was down, or it lost what it would have reported. The
+	// one kind the control plane derives itself, from the receipt instants
+	// of consecutive reports; an agent cannot observe its own absence, so a
+	// reported gap of this kind is refused at ingest. Not one source's
+	// loss; no count.
+	EvidenceGapKind_EVIDENCE_GAP_KIND_AGENT_SILENT EvidenceGapKind = 8
 )
 
 // Enum value maps for EvidenceGapKind.
@@ -175,6 +183,7 @@ var (
 		5: "EVIDENCE_GAP_KIND_WINDOW_OVERFLOW",
 		6: "EVIDENCE_GAP_KIND_WINDOW_REJECTED",
 		7: "EVIDENCE_GAP_KIND_TABLE_REMOVED",
+		8: "EVIDENCE_GAP_KIND_AGENT_SILENT",
 	}
 	EvidenceGapKind_value = map[string]int32{
 		"EVIDENCE_GAP_KIND_UNSPECIFIED":     0,
@@ -185,6 +194,7 @@ var (
 		"EVIDENCE_GAP_KIND_WINDOW_OVERFLOW": 5,
 		"EVIDENCE_GAP_KIND_WINDOW_REJECTED": 6,
 		"EVIDENCE_GAP_KIND_TABLE_REMOVED":   7,
+		"EVIDENCE_GAP_KIND_AGENT_SILENT":    8,
 	}
 )
 
@@ -1894,7 +1904,7 @@ const file_innerwall_v1_agent_proto_rawDesc = "" +
 	"\x0fOwnedTableState\x12!\n" +
 	"\x1dOWNED_TABLE_STATE_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19OWNED_TABLE_STATE_PRESENT\x10\x01\x12\x1c\n" +
-	"\x18OWNED_TABLE_STATE_ABSENT\x10\x02*\xc0\x02\n" +
+	"\x18OWNED_TABLE_STATE_ABSENT\x10\x02*\xe4\x02\n" +
 	"\x0fEvidenceGapKind\x12!\n" +
 	"\x1dEVIDENCE_GAP_KIND_UNSPECIFIED\x10\x00\x12$\n" +
 	" EVIDENCE_GAP_KIND_SOURCE_OVERRUN\x10\x01\x12$\n" +
@@ -1903,7 +1913,8 @@ const file_innerwall_v1_agent_proto_rawDesc = "" +
 	" EVIDENCE_GAP_KIND_DUMP_TRUNCATED\x10\x04\x12%\n" +
 	"!EVIDENCE_GAP_KIND_WINDOW_OVERFLOW\x10\x05\x12%\n" +
 	"!EVIDENCE_GAP_KIND_WINDOW_REJECTED\x10\x06\x12#\n" +
-	"\x1fEVIDENCE_GAP_KIND_TABLE_REMOVED\x10\a*k\n" +
+	"\x1fEVIDENCE_GAP_KIND_TABLE_REMOVED\x10\a\x12\"\n" +
+	"\x1eEVIDENCE_GAP_KIND_AGENT_SILENT\x10\b*k\n" +
 	"\x0eEvidenceSource\x12\x1f\n" +
 	"\x1bEVIDENCE_SOURCE_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19EVIDENCE_SOURCE_CONNTRACK\x10\x01\x12\x19\n" +

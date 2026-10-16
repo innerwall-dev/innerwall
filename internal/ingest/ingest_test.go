@@ -81,11 +81,21 @@ func (f *fakeDirectory) ListAddressGroups(context.Context) ([]policy.AddressGrou
 type fakeFlows struct {
 	flowstore.FlowStore
 	windows []flowstore.Window
+	derived []flowstore.Gap
+	gapsErr error
 }
 
 func (f *fakeFlows) WriteWindow(_ context.Context, w flowstore.Window) (int, error) {
 	f.windows = append(f.windows, w)
 	return len(w.Records), nil
+}
+
+func (f *fakeFlows) WriteGaps(_ context.Context, _ identity.WorkloadID, gaps []flowstore.Gap) error {
+	if f.gapsErr != nil {
+		return f.gapsErr
+	}
+	f.derived = append(f.derived, gaps...)
+	return nil
 }
 
 // TestIngestValidatesAndResolves checks that malformed records are skipped
@@ -191,11 +201,31 @@ type reportCall struct {
 	at time.Time
 }
 
-type fakeReports struct{ calls []reportCall }
+// fakeReports keeps the latest receipt per workload and hands back the one
+// a record replaces, as the store's locking statement does.
+type fakeReports struct {
+	calls []reportCall
+	last  map[identity.WorkloadID]time.Time
+	err   error
+}
 
-func (f *fakeReports) RecordFlowReport(_ context.Context, id identity.WorkloadID, at time.Time) error {
+func (f *fakeReports) RecordFlowReport(_ context.Context, id identity.WorkloadID, at time.Time) (*time.Time, bool, error) {
+	if f.err != nil {
+		return nil, false, f.err
+	}
 	f.calls = append(f.calls, reportCall{id, at})
-	return nil
+	if f.last == nil {
+		f.last = map[identity.WorkloadID]time.Time{}
+	}
+	prev, ok := f.last[id]
+	if ok && !prev.Before(at) {
+		return nil, false, nil
+	}
+	f.last[id] = at
+	if !ok {
+		return nil, true, nil
+	}
+	return &prev, true, nil
 }
 
 // TestIngestRecordsEveryReportReceipt checks that every report from a

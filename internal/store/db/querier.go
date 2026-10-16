@@ -199,8 +199,12 @@ type Querier interface {
 	// there is no mark to clear, so a healthy agent's reports cost no write.
 	RecordWorkloadClockReading(ctx context.Context, arg RecordWorkloadClockReadingParams) error
 	// The receipt of one flow report (migration 00013). Never moved backwards,
-	// so reports handled out of order across replicas leave the latest.
-	RecordWorkloadFlowReport(ctx context.Context, arg RecordWorkloadFlowReportParams) error
+	// so reports handled out of order across replicas leave the latest. The
+	// row it replaces comes back so ingest can derive the agent-silence gap
+	// (migration 00015): the locking subquery serializes concurrent reports of
+	// one workload, so each silence is seen by exactly one of them. No row
+	// means the receipt did not advance (a stale report, or no such workload).
+	RecordWorkloadFlowReport(ctx context.Context, arg RecordWorkloadFlowReportParams) ([]*time.Time, error)
 	// A heartbeat's counters, renewal status, and owned-table state (migration
 	// 00012). An unknown state leaves the stored one; the absent instant is the
 	// first heartbeat's that said absent, kept while the state stays absent.

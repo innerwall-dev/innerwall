@@ -83,8 +83,10 @@ type Window struct {
 }
 
 // Gap is one interval [From, To) in which a workload's flow evidence is
-// known to be incomplete, as its agent reported it. Count is the records
-// or table entries lost, nil when unknown (ADR-0019 as amended).
+// known to be incomplete: as its agent reported it, or, for the one
+// server-derived kind (agent silence), as flow ingest derived it. Count is
+// the records or table entries lost, nil when unknown (ADR-0019 as
+// amended).
 type Gap struct {
 	Kind   innerwallv1.EvidenceGapKind
 	Source innerwallv1.EvidenceSource
@@ -181,6 +183,10 @@ type FlowStore interface {
 	// and stores its gaps, atomically; a gap already stored is not stored
 	// again. It returns the number of records stored.
 	WriteWindow(ctx context.Context, w Window) (int, error)
+	// WriteGaps stores gaps the control plane derived itself for one
+	// workload, outside any reported window; a gap already stored is not
+	// stored again. The agent-reported gaps ride WriteWindow.
+	WriteGaps(ctx context.Context, id identity.WorkloadID, gaps []Gap) error
 	// ListGaps returns the gaps of a workload set intersecting a range.
 	ListGaps(ctx context.Context, q GapQuery) ([]GapRow, error)
 	// ListWindows returns a workload's stored windows, newest first.

@@ -304,6 +304,14 @@ enum EvidenceGapKind {
   // pieces, one with each window, while the table stays gone. Not one
   // source's loss; no count.
   EVIDENCE_GAP_KIND_TABLE_REMOVED = 7;
+  // The control plane received no flow report from the workload's agent
+  // over the interval, and no window delivered afterwards covered it: the
+  // agent process was down, or it lost what it would have reported. The
+  // one kind the control plane derives itself, from the receipt instants
+  // of consecutive reports; an agent cannot observe its own absence, so a
+  // reported gap of this kind is refused at ingest. Not one source's
+  // loss; no count.
+  EVIDENCE_GAP_KIND_AGENT_SILENT = 8;
 }
 
 // The agent's flow sources.

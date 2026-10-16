@@ -1,10 +1,12 @@
 import type { EvidenceGap } from "@/api/schema";
 
-// Evidence gaps are intervals [from, to) in which a workload's agent knows
-// its flow evidence is incomplete: the kernel dropped events, a source was
-// down, the agent's buffer dropped windows, or the connection table was cut
-// at its bound. What was lost cannot be recovered; the interval bounds it.
-// These helpers are the one reading of a gap the screens share.
+// Evidence gaps are intervals [from, to) in which a workload's flow
+// evidence is known to be incomplete: the kernel dropped events, a source
+// was down, the agent's buffer dropped windows, the connection table was
+// cut at its bound, or — the one kind the control plane derives itself —
+// the agent was not reporting at all. What was lost cannot be recovered;
+// the interval bounds it. These helpers are the one reading of a gap the
+// screens share.
 
 // intersects is the read's own test: a gap meets [from, to) when it starts
 // before the range ends and ends after it starts; an instantaneous gap
@@ -97,6 +99,8 @@ export function kindText(kind: EvidenceGap["kind"]): string {
 			return "the control plane refused a malformed window";
 		case "table_removed":
 			return "enforcement was removed on the host, so nothing was observed";
+		case "agent_silent":
+			return "the agent was not reporting";
 	}
 }
 

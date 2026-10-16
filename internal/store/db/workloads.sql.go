@@ -811,10 +811,18 @@ func (q *Queries) RecordWorkloadClockReading(ctx context.Context, arg RecordWork
 	return err
 }
 
-const recordWorkloadFlowReport = `-- name: RecordWorkloadFlowReport :exec
+const recordWorkloadFlowReport = `-- name: RecordWorkloadFlowReport :many
 UPDATE workloads
 SET last_flow_report_at = $1
-WHERE id = $2 AND (last_flow_report_at IS NULL OR last_flow_report_at < $1)
+FROM (
+    SELECT w.id AS locked_id, w.last_flow_report_at AS prev
+    FROM workloads w
+    WHERE w.id = $2
+    FOR UPDATE
+) locked
+WHERE workloads.id = locked.locked_id
+  AND (locked.prev IS NULL OR locked.prev < $1)
+RETURNING locked.prev
 `
 
 type RecordWorkloadFlowReportParams struct {
@@ -823,10 +831,29 @@ type RecordWorkloadFlowReportParams struct {
 }
 
 // The receipt of one flow report (migration 00013). Never moved backwards,
-// so reports handled out of order across replicas leave the latest.
-func (q *Queries) RecordWorkloadFlowReport(ctx context.Context, arg RecordWorkloadFlowReportParams) error {
-	_, err := q.db.Exec(ctx, recordWorkloadFlowReport, arg.ReceivedAt, arg.ID)
-	return err
+// so reports handled out of order across replicas leave the latest. The
+// row it replaces comes back so ingest can derive the agent-silence gap
+// (migration 00015): the locking subquery serializes concurrent reports of
+// one workload, so each silence is seen by exactly one of them. No row
+// means the receipt did not advance (a stale report, or no such workload).
+func (q *Queries) RecordWorkloadFlowReport(ctx context.Context, arg RecordWorkloadFlowReportParams) ([]*time.Time, error) {
+	rows, err := q.db.Query(ctx, recordWorkloadFlowReport, arg.ReceivedAt, arg.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []*time.Time{}
+	for rows.Next() {
+		var prev *time.Time
+		if err := rows.Scan(&prev); err != nil {
+			return nil, err
+		}
+		items = append(items, prev)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const recordWorkloadHeartbeat = `-- name: RecordWorkloadHeartbeat :execrows

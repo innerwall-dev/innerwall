@@ -34,6 +34,16 @@ const maxFieldLength = 256
 // or so and ships them in one request.
 const MaxGapsPerRequest = 4096
 
+// SilenceWindows is how many flow windows may pass between consecutive
+// reports of a workload before the silence between them is an evidence
+// gap (ADR-0019 as amended). The reporter ships one window per window
+// length, so two allow one late report — the same allowance after which
+// the read model stops calling the workload's telemetry live
+// (readmodel.TelemetryLiveWindows; a test keeps the two equal). Below it,
+// an agent restarted quickly enough to miss no whole window records no
+// gap.
+const SilenceWindows = 2
+
 // Directory is the registry view resolution needs: every workload with
 // its current addresses and labels, and every address group. The store
 // implements both.
@@ -52,9 +62,13 @@ type ClockRecorder interface {
 // ReportRecorder records the instant the control plane received a flow
 // report from a workload. A report proves the agent is running whatever
 // the state of its sync stream, which travels on a connection of its own.
-// The store implements it.
+// It returns the receipt this one replaced (nil for the first ever) and
+// whether it advanced at all: a stale receipt, handled out of order,
+// replaces nothing. The implementation must hand the replaced instant to
+// exactly one of two concurrent reports, so a silence is derived once; the
+// store implements it with one locking statement.
 type ReportRecorder interface {
-	RecordFlowReport(ctx context.Context, id identity.WorkloadID, receivedAt time.Time) error
+	RecordFlowReport(ctx context.Context, id identity.WorkloadID, receivedAt time.Time) (prev *time.Time, advanced bool, err error)
 }
 
 // Service ingests reported windows.
@@ -101,6 +115,10 @@ type Result struct {
 	// many failed validation and were skipped.
 	Gaps         int
 	GapsRejected int
+	// Derived is how many gaps this report made the control plane derive
+	// and store itself: one when it ended a silence longer than
+	// SilenceWindows flow windows, zero otherwise (ADR-0019 as amended).
+	Derived int
 }
 
 // Ingest validates and stores one window reported by workload id. The
@@ -130,24 +148,27 @@ func (s *Service) Ingest(ctx context.Context, id identity.WorkloadID, req *inner
 	if reporter == nil {
 		return Result{}, registry.ErrWorkloadUnknown
 	}
-	s.recordReport(ctx, id, receivedAt)
+	var res Result
+	prev, advanced := s.recordReport(ctx, id, receivedAt)
+	if advanced {
+		res.Derived = s.recordSilence(ctx, id, prev, req, receivedAt)
+	}
 	s.checkClock(ctx, reporter, req, receivedAt)
 
 	if req.GetWindowStart() == nil || req.GetWindowEnd() == nil {
-		return Result{}, ErrInvalidWindow
+		return res, ErrInvalidWindow
 	}
 	start, end := req.GetWindowStart().AsTime(), req.GetWindowEnd().AsTime()
 	if end.Before(start) {
-		return Result{}, ErrInvalidWindow
+		return res, ErrInvalidWindow
 	}
 	groups, err := s.Directory.ListAddressGroups(ctx)
 	if err != nil {
-		return Result{}, err
+		return res, err
 	}
 	idx := BuildIndex(workloads, groups)
 
 	window := flowstore.Window{WorkloadID: id, Start: start, End: end, Records: make([]flowstore.Record, 0, len(req.GetRecords()))}
-	var res Result
 	for _, fr := range req.GetRecords() {
 		rec, err := convert(fr, start, end)
 		if err != nil {
@@ -189,13 +210,89 @@ func (s *Service) Ingest(ctx context.Context, id identity.WorkloadID, req *inner
 // recordReport stamps the receipt of a report on its workload, before the
 // window is validated: a report refused for its bounds still came from a
 // running agent. A failed record is logged and costs the window nothing.
-func (s *Service) recordReport(ctx context.Context, id identity.WorkloadID, receivedAt time.Time) {
+// It returns the receipt this one replaced and whether it advanced, for
+// the silence derivation.
+func (s *Service) recordReport(ctx context.Context, id identity.WorkloadID, receivedAt time.Time) (prev *time.Time, advanced bool) {
 	if s.Reports == nil {
-		return
+		return nil, false
 	}
-	if err := s.Reports.RecordFlowReport(ctx, id, receivedAt); err != nil {
+	prev, advanced, err := s.Reports.RecordFlowReport(ctx, id, receivedAt)
+	if err != nil {
 		s.log().Warn("recording flow report receipt", "workload_id", id, "error", err)
+		return nil, false
 	}
+	return prev, advanced
+}
+
+// recordSilence derives and stores the agent-silence evidence gap a report
+// reveals, if any, and returns how many gaps it stored (ADR-0019 as
+// amended; issue #114). An agent cannot report the interval in which its
+// own process was down — its gaps cover only losses it observed, and
+// ADR-0011 gives it no on-disk instant to reopen at start — but the
+// control plane saw the silence: no report arrived. A failed write is
+// logged and costs the window nothing; the receipt has already advanced,
+// so the gap is not derived again, and the loss it bounded stays unstated
+// — the write shares the report's database, so a write that fails here
+// would have failed the whole window.
+func (s *Service) recordSilence(ctx context.Context, id identity.WorkloadID, prev *time.Time, req *innerwallv1.ReportFlowsRequest, receivedAt time.Time) int {
+	gap, ok := deriveSilence(prev, req, receivedAt, s.FlowWindow)
+	if !ok {
+		return 0
+	}
+	if err := s.Flows.WriteGaps(ctx, id, []flowstore.Gap{gap}); err != nil {
+		s.log().Warn("recording derived silence gap", "workload_id", id, "gap_from", gap.From, "gap_to", gap.To, "error", err)
+		return 0
+	}
+	s.log().Info("agent silence recorded as evidence gap", "workload_id", id, "gap_from", gap.From, "gap_to", gap.To, "silence", receivedAt.Sub(*prev).Round(time.Second).String())
+	return 1
+}
+
+// deriveSilence decides whether the silence a report ended is an evidence
+// gap, and bounds it. The bounds are receipt instants on the control
+// plane's clock, refined by the arriving window:
+//
+//   - No gap while the silence is within SilenceWindows flow windows: the
+//     reporter ships one window per window length, so a quick agent
+//     restart that loses no whole window derives nothing. No gap either
+//     with no window length to judge by, before the first report ever, or
+//     when the recorder did not advance (a stale report says nothing new).
+//   - The gap opens at the previous report's receipt: the last instant
+//     evidence is known to have reached the control plane. The sync
+//     stream's lifecycle plays no part — an agent whose telemetry
+//     connection failed buffers closed windows in memory and loses them if
+//     the process then dies, so instants the stream was alive past the
+//     last report are not instants whose flow evidence survived.
+//   - The gap closes where evidence resumes: at the arriving window's
+//     start when that lies within the silence (an agent restarted at t
+//     opens its first window at t), and at this report's receipt when the
+//     report carries no usable window start. A window that reaches back to
+//     or before the previous receipt is buffered evidence delivered late —
+//     the silence was the connection's, the evidence survived, and there
+//     is no gap; what such a buffer dropped, the agent itself reports
+//     (buffer_overflow), so the one loss is not stored twice.
+func deriveSilence(prev *time.Time, req *innerwallv1.ReportFlowsRequest, receivedAt time.Time, window time.Duration) (flowstore.Gap, bool) {
+	if window <= 0 || prev == nil {
+		return flowstore.Gap{}, false
+	}
+	if receivedAt.Sub(*prev) <= SilenceWindows*window {
+		return flowstore.Gap{}, false
+	}
+	to := receivedAt
+	if ws := req.GetWindowStart(); ws != nil {
+		start := ws.AsTime()
+		if !start.After(*prev) {
+			return flowstore.Gap{}, false
+		}
+		if start.Before(receivedAt) {
+			to = start
+		}
+	}
+	return flowstore.Gap{
+		Kind:   innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_AGENT_SILENT,
+		Source: innerwallv1.EvidenceSource_EVIDENCE_SOURCE_UNSPECIFIED,
+		From:   *prev,
+		To:     to,
+	}, true
 }
 
 // checkClock reads the report's clock, logs a skewed reading naming the
@@ -238,6 +335,10 @@ func convertGap(wg *innerwallv1.EvidenceGap) (flowstore.Gap, error) {
 		innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_TABLE_REMOVED:
 	case innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_UNSPECIFIED:
 		return g, errors.New("gap kind unspecified")
+	case innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_AGENT_SILENT:
+		// The one kind the control plane derives itself: an agent cannot
+		// observe its own absence, so a reported claim of it is refused.
+		return g, errors.New("gap kind agent_silent is derived by the control plane, never reported")
 	default:
 		return g, fmt.Errorf("unknown gap kind %d", wg.GetKind())
 	}
