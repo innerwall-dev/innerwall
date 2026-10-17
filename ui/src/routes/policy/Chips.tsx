@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useState } from "react";
 import type { Finding } from "@/api/schema";
 import { LabelChip } from "@/components/fleet/status";
 import { Icon } from "@/components/Icon";
@@ -10,7 +10,8 @@ import type { Chip } from "./model";
 // solid when it states a value inline, dashed when it names something
 // defined elsewhere. A selector's labels draw as label chips. A refused
 // write's finding on it draws it in the destructive color, struck through
-// when it names a definition that does not exist.
+// when it names a definition that does not exist. A reference's title is
+// what the definition stands for now.
 export function ChipView({
 	chip,
 	findings,
@@ -78,6 +79,7 @@ export function ChipView({
 			)}
 			data-testid="chip"
 			data-failed={failed || undefined}
+			title={chip.detail}
 		>
 			<span className="type-mono-xs text-tertiary">{chip.tag}</span>
 			{chip.text ? (
@@ -96,8 +98,14 @@ export function ChipView({
 }
 
 // FindingLines are the findings on one element or column, in the
-// surface's own words, under it.
-export function FindingLines({ findings }: { findings?: readonly Finding[] }) {
+// surface's own words, under it, with the way forward when there is one.
+export function FindingLines({
+	findings,
+	action,
+}: {
+	findings?: readonly Finding[];
+	action?: ReactNode;
+}) {
 	if (!findings || findings.length === 0) return null;
 	return (
 		<ul className="flex flex-col gap-0.5">
@@ -112,6 +120,7 @@ export function FindingLines({ findings }: { findings?: readonly Finding[] }) {
 					</SeverityNote>
 				</li>
 			))}
+			{action ? <li className="pl-5">{action}</li> : null}
 		</ul>
 	);
 }

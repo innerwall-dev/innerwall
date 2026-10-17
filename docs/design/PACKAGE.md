@@ -214,3 +214,13 @@ These strings are new to the repository; every other rendered string is the repo
   - "flow records dropped · N workload(s)" and the tooltip's "<host>: N dropped" lines (P13-a);
   - "unmanaged peer" as the legend's short label (P12);
   - the policy header split into "Scope" / "Inbound rules" with their sentence-case lines (P14).
+
+## Screens the package has no board for
+
+Recorded 2026-10-17 (INN-90). These screens are built from the package's own patterns and add no tokens, components, or icons; a package revision may draw them.
+
+- **Definitions lists** (`/policy/services`, `/policy/address-groups`). The policy rail's two Definitions rows lead to them and take the ruleset rows' states (hover `wash-hover`, current `wash-selected` at 500). Each list is a data page: an in-content `h1` (E12) with a sentence in text-secondary and the view's primary action on the plate ("New service", "New address group", as "Mint token" is), then one table on `surface-card` with 40px rows (Name with its version, Entries or CIDRs as solid chips, Referenced by as ruleset links with each rule's description, Edit).
+- **The definition dialog** is the standard dialog (`components/Pages-and-Patterns.md`): name field, the members as removable chips with the chip input below, findings under what they name, the plate confirm. The rule editor opens the same dialog from a "does not exist" finding, as a caption link under it.
+- **A reference chip's title** is what it stands for (`tcp/5432`, a group's CIDRs), on hover.
+- Copy added: the two list titles and their sentences, "Referenced by", "No rule references it.", the empty-list lines, the dialog titles ("New service", "Edit service *name*", and the address-group pair), its sentences and confirms, "Create service *name*…" / "Create address group *name*…", and the write notices.
+

@@ -328,7 +328,7 @@ function ShownOnce({ minted }: { minted: MintedToken }) {
 				<div className="flex flex-col gap-1.5">
 					<span className="type-meta-label text-tertiary">Enroll a host</span>
 					<pre className="rounded-control border border-hairline bg-field-sunk px-3 py-2 type-mono-sm whitespace-pre-wrap text-secondary">
-						{`innerwall-agent enroll --server ${gateway} \\\n  --token ${masked(minted.token)} --bootstrap-ca ./innerwall-ca.crt`}
+						{`innerwall-agent enroll --server ${gateway} \\\n  --token ${masked(minted.token)} --bootstrap-ca ca.crt`}
 					</pre>
 					<span className="type-caption text-tertiary">
 						Distribute the CA certificate alongside the token; the agent uses it

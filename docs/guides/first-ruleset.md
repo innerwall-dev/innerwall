@@ -12,7 +12,7 @@ A ruleset says who may connect to one protected tier, and on what. This guide wr
 <!-- steps -->
 1. **Create the ruleset.** In **Policy**, choose **new** beside the ruleset list (**New ruleset** on a fresh install), give it a name and a description, and create it. Name it for the tier it protects (`db-inbound`): the name is what the review and the fleet show.
 2. **Set the scope.** Add the requirements that select the tier (`role=db`, or `role=db env=prod`). The scope card shows how many workloads the scope matches as you edit it. That count is every workload each rule below will reach; if it holds more than the tier, narrow the scope before writing rules.
-3. **Add a rule per peer and service set.** Choose **Add rule**. In the peer input, write who may connect, and in the services, on what. A tier that admits several peers on different services holds several rules.
+3. **Add a rule per peer and service set.** Choose **Add rule**. In the peer input, write who may connect, and in the services, on what. A tier that admits several peers on different services holds several rules. A service or an address group a rule names must exist when the rule is saved ([services and address groups](#services-and-address-groups)); a save that names a missing one is refused, and the finding offers to create it without leaving the row.
 4. **Run the dry run.** Choose **Dry run**. It submits every ruleset as read, with your unsaved edits in place, and lists each workload whose rendered policy would change and the rules it would gain, lose, or see changed. It never writes. If a workload outside the tier is listed, the scope is too broad or the rule is in the wrong ruleset.
 5. **Save.** The row's save applies at once and says how many workloads it applies to. When the scope and a rule are both edited, the row's save is **Save rule and scope**: it writes the two together as one ruleset write, which is exactly the combination the dry run previewed.
 
@@ -32,6 +32,14 @@ The form is decided by shape, not by whether the text is valid, so a mistyped ad
 
 > [!TIP]
 > Admit the operator's own path now, while you are writing rules. A workload that no rule admits your management traffic to (SSH from a bastion, an administration network) will have that traffic dropped once it is enforced. A CIDR or address-group peer for the management network, on `tcp/22` or whatever you manage the host with, belongs in the tier's ruleset or in an estate-wide one ([promotion and enforcement](promotion-and-enforcement.md#before-you-promote-admit-your-management-path)).
+
+## Services and address groups
+
+A rule can state its protocols and ports inline (`tcp/5432`) or reference a *service* by name (`postgres`), and can name an *address group* (`corp`) as a peer: a named set of CIDRs for sources that are not managed workloads. Both are defined once and referenced by any number of rules; changing one changes what every rule referencing it admits, at once.
+
+In the console they are listed under **Definitions** in the policy rail: **Service definitions** and **Address groups**. Each list shows what every definition expands to (`postgres` is `tcp/5432`) and which rules reference it, each a link to its ruleset; a reference in a rule shows the same expansion on hover. **New service** and **New address group** create one, and **Edit** changes one, under the same admission as the command line: a service's entries are typed as the services input reads them (`tcp/5432`, `udp/53`, `tcp/6000-6010`, `icmp`; the command line's `tcp:5432` reads too), an address group's members as CIDRs, several pasted at once. An edit is conditioned on the version the list read, like every other write.
+
+When a rule's save names a service or an address group that does not exist, the finding (`rule references a service that does not exist (postgres)`) carries **Create service postgres…**, which opens the same form with the name filled in. Creating it keeps the row as you left it; save the rule again. A definition created this way changes no workload's policy until a rule that references it is saved.
 
 ## Findings
 
@@ -65,7 +73,7 @@ innerwall address-group create --name corp --cidr 10.0.0.0/8
 innerwall ruleset create -f db-inbound.json
 ```
 
-The command line has no dry run of its own; the console's dry run reads the same stored rulesets. The document's fields are in the [command-line reference](../reference/innerwall-cli.md#ruleset).
+The two definitions the rules name are created first, as the console creates them from the lists or from the rule's findings. The command line has no dry run of its own; the console's dry run reads the same stored rulesets. The document's fields are in the [command-line reference](../reference/innerwall-cli.md#ruleset).
 
 ## Next
 

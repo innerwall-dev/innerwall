@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { Link, useLocation, useSearchParams } from "react-router";
 import type { Ruleset } from "@/api/schema";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadingRow, ProblemNotice } from "@/components/Problem";
 import { Button } from "@/components/ui/button";
 import { useResource } from "@/lib/resource";
 import { useShell } from "@/shell/Shell";
+import { Definitions, definitionViews } from "./Definitions";
 import { type EditorData, loadEditor } from "./data";
 import { carried, pairSuggestion, suggestedScope } from "./link";
+import type { Unknown } from "./model";
 import { NewRuleset } from "./NewRuleset";
 import { Rail } from "./Rail";
 import { RulesetEditor } from "./RulesetEditor";
@@ -17,8 +19,17 @@ import { RulesetEditor } from "./RulesetEditor";
 // nothing staged: every save is a write the control plane admits or
 // refuses at once, conditioned on the version the editor read. What the
 // address holds is the ruleset shown (`ruleset`) or the new one being
-// started (`new`), so a link can open the editor at either.
+// started (`new`), so a link can open the editor at either. Beside the
+// rulesets, the definitions rules reference have a list each, at their
+// own address.
 export function Policy() {
+	const { pathname } = useLocation();
+	const section: Unknown["kind"] | null =
+		pathname === definitionViews.service.path
+			? "service"
+			: pathname === definitionViews.group.path
+				? "group"
+				: null;
 	const [params, setParams] = useSearchParams();
 	const name = params.get("ruleset");
 	const creating = params.has("new");
@@ -44,14 +55,15 @@ export function Policy() {
 		following && data && !settling && name === following.from
 			? data.rulesets.find((rs) => rs.id === following.id)
 			: undefined;
-	const current: Ruleset | null = data
-		? (followed ??
-			(creating
-				? null
-				: (data.rulesets.find((rs) => rs.name === name) ??
-					(settling ? null : data.rulesets[0]) ??
-					null)))
-		: null;
+	const current: Ruleset | null =
+		data && section === null
+			? (followed ??
+				(creating
+					? null
+					: (data.rulesets.find((rs) => rs.name === name) ??
+						(settling ? null : data.rulesets[0]) ??
+						null)))
+			: null;
 
 	// The address names what is shown: the first ruleset when none was
 	// named, or when the one named no longer exists. A followed ruleset
@@ -79,7 +91,8 @@ export function Policy() {
 			<Rail
 				rulesets={data?.rulesets ?? null}
 				current={current?.name ?? null}
-				creating={creating}
+				creating={creating && section === null}
+				section={section}
 				services={data?.services.length ?? null}
 				groups={data?.groups.length ?? null}
 			/>
@@ -92,6 +105,8 @@ export function Policy() {
 						error={resource.error}
 						onRetry={reload}
 					/>
+				) : section && data ? (
+					<Definitions kind={section} data={data} reload={reload} />
 				) : current && data ? (
 					<RulesetEditor
 						key={current.id}

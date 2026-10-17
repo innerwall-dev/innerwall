@@ -571,7 +571,7 @@ function FreshReview() {
 				steps={[
 					{
 						lead: "Enroll workloads",
-						rest: "mint a token in Enrollment, run the installer.",
+						rest: "mint a token in Workloads → Provisioning tokens, copy the agent binary and CA certificate to the host.",
 					},
 					{
 						lead: "Let flows accumulate",
