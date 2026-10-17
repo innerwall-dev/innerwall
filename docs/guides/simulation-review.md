@@ -56,6 +56,8 @@ innerwall address-group create --name ipv6-link-local --cidr fe80::/10
 
 Then, in the tier's ruleset (or one scoped to every workload that needs it), add a rule whose peer is `ipv6-link-local` and whose service is `icmp`. Address groups are created on the command line or the API; the console names them in a rule's peer input.
 
+Once admitted, the two kinds of link-local ICMPv6 read differently. Echo (ping) is tracked by the kernel, so it is recorded as `allowed` with the rule that matched. Neighbor discovery is never tracked, so there is no connection to record: its would-block pair stops accruing and nothing replaces it. Agents before the fix for issue #142 dropped admitted neighbor discovery and kept recording it as would-block; upgrade the agent before relying on this rule.
+
 **Mixed pairs.** Where one source and destination pair carried traffic under more than one decision (some admitted, some would-block), the flow map's edge, the matrix's cell, and the review's matrix show the most severe one (blocked, then would-block, then allowed, then observed), and the number is the connections under that decision only. The admitted volume of the pair is in its detail drawer, which lists every decision.
 
 ## Evidence gaps

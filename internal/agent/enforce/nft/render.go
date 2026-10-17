@@ -8,8 +8,9 @@
 // The chain accepts loopback, accepts established and related traffic,
 // then accepts what each rule permits (source in the rule's set, the
 // rule's protocol and ports) while marking the connection with the rule's
-// stable value from the Allocator, and ends in a terminal rule that decides what the policy did not
-// permit: in enforced mode it logs the packet and drops it; in simulation
+// stable value from the Allocator, admitting the same traffic unmarked
+// when the kernel does not track it, and ends in a terminal rule that
+// decides what the policy did not permit: in enforced mode it logs the packet and drops it; in simulation
 // mode it logs the packet, marks the connection as one enforcement would
 // have dropped, and accepts it. Everything else is identical between the
 // two modes, so a simulation verdict is evidence about exactly the
@@ -199,22 +200,41 @@ func Render(policy *innerwallv1.WorkloadPolicy, marks map[string]uint32, opts Op
 	b.WriteString("\t\tct state established,related accept\n")
 	for _, r := range rules {
 		index := marks[r.GetRuleId()]
-		comment := fmt.Sprintf("innerwall rule %s mark %d", r.GetRuleId(), index)
 		match := l4Match(r)
-		// The write keeps the foreign bits: (ct mark & foreign) | ours.
-		fmt.Fprintf(&b, "\t\tip saddr @%s %s ct mark set (ct mark & 0x%08x) | 0x%08x accept comment \"%s\"\n", SetName(r.GetRuleId(), false), match.v4, ForeignMask, RuleMark(index), comment)
-		fmt.Fprintf(&b, "\t\tip6 saddr @%s %s ct mark set (ct mark & 0x%08x) | 0x%08x accept comment \"%s\"\n", SetName(r.GetRuleId(), true), match.v6, ForeignMask, RuleMark(index), comment)
+		writeAdmit(&b, "ip", SetName(r.GetRuleId(), false), match.v4, r.GetRuleId(), index)
+		writeAdmit(&b, "ip6", SetName(r.GetRuleId(), true), match.v6, r.GetRuleId(), index)
 	}
 	switch policy.GetMode() {
 	case innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED:
 		fmt.Fprintf(&b, "\t\tlog prefix \"%s\" group %d drop comment \"innerwall terminal enforced\"\n", LogPrefix, opts.group())
 	case innerwallv1.EnforcementMode_ENFORCEMENT_MODE_SIMULATION:
+		// The log and the counter come before the mark write. A packet
+		// with no connection entry (untracked traffic) ends the rule at
+		// the mark write's read of the connection mark, so it is logged
+		// and counted first, then falls to the chain's policy, which is
+		// accept: the same verdict, and the recording stays complete.
 		fmt.Fprintf(&b, "\t\tlog prefix \"%s\" group %d counter ct mark set (ct mark & 0x%08x) | 0x%08x accept comment \"innerwall terminal simulation\"\n", LogPrefix, opts.group(), ForeignMask, WouldBlockMark)
 	case innerwallv1.EnforcementMode_ENFORCEMENT_MODE_VISIBILITY, innerwallv1.EnforcementMode_ENFORCEMENT_MODE_UNSPECIFIED:
 		// Handled above.
 	}
 	b.WriteString("\t}\n}\n")
 	return b.String(), nil
+}
+
+// writeAdmit renders one rule's two accepts for one address family. The
+// marking accept writes the rule's value into the connection mark, keeping
+// the foreign bits: (ct mark & foreign) | ours. That write reads the
+// connection mark, and a packet the kernel does not track (IPv6 neighbor
+// discovery is never tracked, and a host's own notrack rules exempt more)
+// has none to read: the kernel ends the rule there, before its accept, and
+// the packet would fall through to the terminal rule. So the untracked
+// accept comes first, with the same match and no connection step: such a
+// packet is admitted unmarked, and tracked traffic, which it never
+// matches, is marked exactly as before. Untracked traffic leaves no
+// connection to attribute, so admitting it records nothing.
+func writeAdmit(b *strings.Builder, family, set, match, ruleID string, index uint32) {
+	fmt.Fprintf(b, "\t\t%s saddr @%s %s ct state untracked accept comment \"innerwall rule %s untracked\"\n", family, set, match, ruleID)
+	fmt.Fprintf(b, "\t\t%s saddr @%s %s ct mark set (ct mark & 0x%08x) | 0x%08x accept comment \"innerwall rule %s mark %d\"\n", family, set, match, ForeignMask, RuleMark(index), ruleID, index)
 }
 
 // carriesSets reports whether the table Render installs for mode holds

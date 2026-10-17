@@ -2,6 +2,11 @@
 
 Notable changes to Innerwall, newest first. Versions follow semantic versioning; before 1.0, a minor version may change anything.
 
+## Unreleased
+
+- **Admitted untracked traffic is accepted** (#142). A rule's accept also wrote the connection mark, and the kernel ends a rule at that write for a packet it does not track, so admitted untracked traffic fell through to the terminal rule. IPv6 neighbor discovery is never tracked: a rule admitting link-local ICMPv6, the simulation review's own remedy, recorded neighbor discovery as would-block in simulation and dropped it under enforcement, which breaks IPv6 neighbors. Each rule's accept is now paired with one that admits the same traffic unmarked when it is untracked; tracked traffic is marked and attributed exactly as before, and the two modes still differ in the terminal rule alone (ADR-0020 as amended). Agent-side only: no migration and no wire change. Upgrade agents before enforcing on a host with IPv6.
+- **The connection-mark mask, as `nft list` prints it** (#143). A listed rule shows `ct mark & 0x000Nffff | 0x000N0000`, which read as a mask leaking region bits. It is `nft`'s reading of the kernel's mask-and-xor form of the rendered `(ct mark & 0x0000ffff) | 0x000N0000`, the same write; the rendering is unchanged, and tests now pin the rendered mask and the installed bytecode. The promotion guide and ADR-0020 say how the listing reads.
+
 ## v0.3.0 — the silence gap, and operator docs
 
 An agent process that is down now counts against the evidence its workload's verdict rests on, and the operating loop is documented end to end: task guides, a reference for both command lines and the operator API, and a troubleshooting catalog grown from live operation.

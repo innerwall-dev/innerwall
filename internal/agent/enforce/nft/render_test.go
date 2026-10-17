@@ -3,6 +3,7 @@ package nft
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -160,8 +161,11 @@ func TestRenderStructure(t *testing.T) {
 	order := []string{
 		`iif "lo" accept`,
 		"ct state established,related accept",
+		"innerwall rule " + ruleWeb + " untracked",
 		"innerwall rule " + ruleWeb + " mark 1",
+		"innerwall rule " + ruleDNS + " untracked",
 		"innerwall rule " + ruleDNS + " mark 2",
+		"innerwall rule " + rulePng + " untracked",
 		"innerwall rule " + rulePng + " mark 3",
 		"log prefix \"innerwall \" group 7 drop",
 	}
@@ -202,6 +206,93 @@ func TestRenderStructure(t *testing.T) {
 	}
 	if strings.Contains(script, "ct mark set 0x") || strings.Contains(script, "ct mark set 1") {
 		t.Fatalf("an unmasked mark write:\n%s", script)
+	}
+}
+
+// TestAdmitVerdictIndependentOfConnectionTracking holds the property
+// issue #142 broke: a packet the kernel does not track (IPv6 neighbor
+// discovery, or anything a host exempts with notrack) has no connection
+// mark, a rule that reads one ends at the read, and an admitted packet
+// must not fall through to the terminal rule because of it. Every
+// marking accept is therefore preceded, directly, by an accept with the
+// same match that admits untracked traffic and touches no connection
+// state, and no other rule before the terminal one reads it. In both
+// modes the terminal rule records before any connection step: the
+// enforced one has none, and the simulated one logs and counts before
+// its mark write, whose verdict on an untracked packet is the chain's
+// policy of accept.
+func TestAdmitVerdictIndependentOfConnectionTracking(t *testing.T) {
+	for _, mode := range []innerwallv1.EnforcementMode{innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED, innerwallv1.EnforcementMode_ENFORCEMENT_MODE_SIMULATION} {
+		t.Run(mode.String(), func(t *testing.T) {
+			lines := strings.Split(render(t, multiRule(mode), Options{}), "\n")
+			marking, untracked := 0, 0
+			for i, line := range lines {
+				line = strings.TrimSpace(line)
+				switch {
+				case strings.Contains(line, "ct state untracked"):
+					untracked++
+					if strings.Contains(line, "ct mark") || !strings.Contains(line, "ct state untracked accept comment") {
+						t.Fatalf("untracked accept touches connection state or is not a plain accept: %q", line)
+					}
+				case strings.Contains(line, "ct mark set") && !strings.Contains(line, "innerwall terminal"):
+					marking++
+					prev := strings.TrimSpace(lines[i-1])
+					match, _, _ := strings.Cut(line, " ct mark set ")
+					if !strings.HasPrefix(prev, match+" ct state untracked accept ") {
+						t.Fatalf("marking accept %q is not directly preceded by its untracked accept; got %q", line, prev)
+					}
+				}
+			}
+			if marking != 6 || untracked != 6 {
+				t.Fatalf("marking accepts = %d, untracked accepts = %d, want one each per rule and family", marking, untracked)
+			}
+			terminal := strings.TrimSpace(lines[len(lines)-4])
+			if mode == innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED {
+				if !strings.HasPrefix(terminal, "log ") || strings.Contains(terminal, "ct ") || !strings.Contains(terminal, " drop comment") {
+					t.Fatalf("enforced terminal rule = %q, want a log and a drop with no connection step", terminal)
+				}
+			} else {
+				logAt, counterAt, ctAt := strings.Index(terminal, "log "), strings.Index(terminal, " counter "), strings.Index(terminal, " ct ")
+				if logAt != 0 || counterAt < 0 || ctAt < counterAt || strings.Count(terminal, " ct ") != 1 {
+					t.Fatalf("simulation terminal rule = %q, want log and counter before its one connection step", terminal)
+				}
+			}
+		})
+	}
+}
+
+// TestMarkWriteMask pins the mask every marking accept writes with: the
+// foreign bits, 0x0000ffff, and never anything in the region, beside the
+// rule's own value in the region (issue #143). `nft list` reads the
+// kernel's (mask, xor) pair back as `ct mark & (mask | value) | value`,
+// so an installed rule lists as `& 0x000Nffff | 0x000N0000`; the
+// arithmetic part checks that the listed form writes exactly what the
+// rendered one does, for every value and any prior mark, so no earlier
+// region bits survive either way.
+func TestMarkWriteMask(t *testing.T) {
+	marks, err := NewAllocator().Allocate(multiRule(innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := render(t, multiRule(innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED), Options{})
+	for id, index := range marks {
+		want := fmt.Sprintf("ct mark set (ct mark & 0x0000ffff) | 0x%08x accept comment \"innerwall rule %s mark %d\"", RuleMark(index), id, index)
+		if strings.Count(script, want) != 2 {
+			t.Fatalf("rule %s: want %q once per family:\n%s", id, want, script)
+		}
+	}
+	if strings.Count(script, "ct mark & 0x0000ffff") != 6 || strings.Count(script, "ct mark &") != 6 {
+		t.Fatalf("a mark write masks with something other than the foreign bits:\n%s", script)
+	}
+	priors := []uint32{0, 0x2a, 0xffff, 0x00010000, 0x00040000, 0x0005002a, 0xfffe0000, 0xffffffff, 0xdeadbeef}
+	for index := uint32(1); index <= WouldBlockIndex; index++ {
+		v := index << MarkShift
+		for _, x := range priors {
+			rendered, listed := (x&ForeignMask)|v, (x&(ForeignMask|v))|v
+			if rendered != listed || RuleIndex(rendered) != index || rendered&ForeignMask != x&ForeignMask {
+				t.Fatalf("value %#x over prior %#x: rendered %#x, listed %#x", v, x, rendered, listed)
+			}
+		}
 	}
 }
 
