@@ -36,38 +36,56 @@ Each image puts a screen of the shipped console in its dark theme (left) beside 
 
 ## Quickstart
 
-The supported v1 deployment is one control-plane binary and one Postgres (ADR-0017). Run it with Docker Compose, or build it from source.
+> [!IMPORTANT]
+> **Before you start: decide where the agents will run.** The agent runs only on Linux, as root, with nftables. If any agent will run on a machine other than the one running the control plane (always the case when Docker runs on macOS or Windows), first read [Name the control plane before the first start](docs/deploy/multi-host-evaluation.md#name-the-control-plane-before-the-first-start). The gateway's certificate is generated once, at the first start, and names only that machine's local names. No command reissues it, and an agent on another machine cannot enroll against it. Changing the names afterwards means starting the stack over.
+
+The supported v1 deployment is one control-plane binary and one Postgres (ADR-0017). Run the released image with Docker Compose, or install the released binaries. These docs describe v0.4.0, and every command below names it.
 
 ### With Docker Compose
 
 ```sh
 git clone https://github.com/innerwall-dev/innerwall.git
 cd innerwall
-make dev        # builds the image (console embedded) and starts the control plane and Postgres
+git checkout v0.4.0     # the release these docs describe; a fresh clone is main
+echo 'INNERWALL_IMAGE=ghcr.io/innerwall-dev/innerwall:0.4.0' > .env
+docker compose up -d    # pulls the released control-plane image and starts it with Postgres
 ```
 
-In a second terminal, set the operator password (the command line on the host is the only place it can be set):
+`.env` (git ignores it) names the image for every later `docker compose` command. Compose keys the stack's volumes by the directory's name, so a clone into a directory named `innerwall` picks up whatever state an earlier `innerwall` stack left behind, even after that clone was deleted. To start clean beside an earlier stack, add a line `COMPOSE_PROJECT_NAME=<a new name>` to `.env` before the first start ([how to tell, and the other way out](docs/troubleshooting.md#a-new-clone-starts-with-an-earlier-installs-state)).
+
+Set the operator password (the command line on the host is the only place it can be set):
 
 ```sh
 docker compose exec innerwall /innerwall operator set-password
 ```
 
-Open `https://localhost:8080/` and log in. The certificate is self-signed on first start; its SHA-256 fingerprint is in `docker compose logs innerwall`.
+It prompts twice, without echo: type the password (at least 12 characters) at each prompt. Nothing goes on the command line or into the shell's history. To provision without a terminal, pipe it in on standard input: `docker compose exec -T innerwall /innerwall operator set-password < password-file` reads one line.
 
-### From source
+Open `https://localhost:8080/` and log in. The certificate is self-signed, so the browser warns once. Before you accept it, compare it with the one the control plane logged: `docker compose logs innerwall | grep "operator listener certificate"` shows its `sha256_fingerprint`, and the browser shows the same value in the certificate's details (open the certificate from the warning page or the address bar; the SHA-256 fingerprint is listed there). A match means the page comes from your control plane and not from something in between, so the password you type next goes only to it.
 
-Needs Go (the version `go.mod` names), Node 22 for the console, and a reachable Postgres:
+**Fallback: build the image from the checkout.** `make dev` builds the control-plane image from the checked-out source, console embedded, and starts the stack in the foreground; it ignores `INNERWALL_IMAGE`. Use it for a tree with changes, or a platform the released image does not cover.
+
+### With the release binaries
+
+The control plane is one binary, for Linux or macOS: download `innerwall_0.4.0_<os>_<arch>.tar.gz`, verify it, and install it as [versioning and install](docs/reference/versioning-and-install.md#install-from-a-release) shows (the agent below takes the same steps). Then, with a reachable Postgres:
 
 ```sh
 export INNERWALL_DATABASE_URL='postgres://innerwall:innerwall@127.0.0.1:5432/innerwall?sslmode=disable'
-make console    # builds the console into ui/dist/
-make build      # bin/innerwall and bin/innerwall-agent, the console embedded
-bin/innerwall migrate
-bin/innerwall operator set-password
-bin/innerwall serve --init-ca --ca-dir ./state/ca --site lab --gateway-advertise-address localhost:8443
+innerwall migrate
+innerwall operator set-password
+innerwall serve --init-ca --ca-dir ./state/ca --site lab --gateway-advertise-address localhost:8443
 ```
 
-`--init-ca` creates the signing authority in `./state/ca` on first start, with the listeners' certificates beside it. Open `https://localhost:8080/`. `make build-noconsole` builds without Node; that binary serves the API and no console.
+`--init-ca` creates the signing authority in `./state/ca` on first start, with the listeners' certificates beside it; they name `--tls-hosts` (by default `localhost,127.0.0.1`), the same once-only choice as above. Open `https://localhost:8080/`, and compare the fingerprint in the `operator listener certificate` log line as above.
+
+**Fallback: build from source.** It needs Go (the version `go.mod` names) and Node 22 for the console:
+
+```sh
+make console    # builds the console into ui/dist/
+make build      # bin/innerwall and bin/innerwall-agent, the console embedded
+```
+
+Use `bin/innerwall` and `bin/innerwall-agent` where this page says `innerwall` and `innerwall-agent`. `make build-noconsole` builds without Node; that binary serves the API and no console.
 
 ### Enroll an agent
 
@@ -77,19 +95,34 @@ The agent runs on Linux as root, with nftables. It needs a provisioning token an
 # Docker Compose
 docker compose exec innerwall /innerwall token mint --name lab --label app=demo
 docker compose cp innerwall:/var/lib/innerwall/ca/ca.crt ./ca.crt
-# from source
-bin/innerwall token mint --name lab --label app=demo
+# release binaries
+innerwall token mint --name lab --label app=demo
 cp ./state/ca/ca.crt ./ca.crt
 ```
 
-Then, on the host to protect (`make build` produces `bin/innerwall-agent`):
+On the host to protect, download the agent, verify it against the release's signed checksums, and install it (`ARCH` is `amd64` or `arm64`):
 
 ```sh
-sudo bin/innerwall-agent enroll --server localhost:8443 --token <provisioning-token> --bootstrap-ca ca.crt
-sudo bin/innerwall-agent daemon --server localhost:8443
+VERSION=0.4.0 ARCH=amd64
+ASSET=innerwall-agent_${VERSION}_linux_${ARCH}.tar.gz
+base=https://github.com/innerwall-dev/innerwall/releases/download/v$VERSION
+for f in "$ASSET" checksums.txt checksums.txt.sig checksums.txt.pem; do curl -fsSLO "$base/$f"; done
+cosign verify-blob checksums.txt --signature checksums.txt.sig --certificate checksums.txt.pem \
+  --certificate-identity "https://github.com/innerwall-dev/innerwall/.github/workflows/release.yml@refs/tags/v$VERSION" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+awk -v f="$ASSET" '$2 == f' checksums.txt | sha256sum -c
+tar -xzf "$ASSET" innerwall-agent
+sudo install -m 0755 innerwall-agent /usr/local/bin/innerwall-agent
 ```
 
-On another host, use the control plane's address in place of `localhost`; the gateway's certificate must name it (`--tls-hosts`, set before the control plane first starts: [docs/deploy/multi-host-evaluation.md](docs/deploy/multi-host-evaluation.md)). The agent stamps its flows with the host's clock, so keep it in sync: a VM on a laptop drifts when the laptop sleeps, and its flows then land at the wrong times until the clock is re-synced ([docs/troubleshooting.md](docs/troubleshooting.md)). The workload appears in the console's fleet, synced, in visibility mode: observed, never blocked. From there the path is the one the console walks: write a ruleset, move workloads to simulation, read the simulation review, and promote. A rule has no destination of its own: the ruleset's scope is the destination, so write one ruleset per tier you protect and let the dry run show which workloads each change reaches ([docs/policy.md](docs/policy.md)). `sudo bin/innerwall-agent down` removes the agent's firewall table at any time without the control plane. Running it in production, with more than one replica, behind load balancers, is in [docs/deploy/README.md](docs/deploy/README.md).
+`cosign verify-blob` (cosign 2.x) prints `Verified OK` only if `checksums.txt` was signed by the release workflow at that tag, and `sha256sum -c` prints `OK` only if the archive is the one it lists. A host without cosign can download and verify on a machine that has it, then copy over the archive and `checksums.txt` and repeat the `sha256sum` line. Neither binary checks for updates or sends telemetry. If no release archive fits the host, [build the agent from source](docs/reference/versioning-and-install.md#fallback-build-from-source). Then enroll and run it:
+
+```sh
+sudo innerwall-agent enroll --server localhost:8443 --token <provisioning-token> --bootstrap-ca ca.crt
+sudo innerwall-agent daemon --server localhost:8443
+```
+
+On another host, use the control plane's address in place of `localhost`; the gateway's certificate must name it (`--tls-hosts`, set before the control plane first starts: [docs/deploy/multi-host-evaluation.md](docs/deploy/multi-host-evaluation.md)). The daemon's log warns `connection byte accounting is off; flow byte counts will be zero` on most hosts, because the kernel's per-connection byte accounting is off by default: flows are still counted, with zero bytes. Turn it on with `sudo sysctl -w net.netfilter.nf_conntrack_acct=1`; connections opened after that carry byte counts (keeping it across reboots is in [troubleshooting](docs/troubleshooting.md#flow-byte-counts-are-zero)). The agent stamps its flows with the host's clock, so keep it in sync: a VM on a laptop drifts when the laptop sleeps, and its flows then land at the wrong times until the clock is re-synced ([docs/troubleshooting.md](docs/troubleshooting.md)). The workload appears in the console's fleet, synced, in visibility mode: observed, never blocked. From there the path is the one the console walks: write a ruleset, move workloads to simulation, read the simulation review, and promote. A rule has no destination of its own: the ruleset's scope is the destination, so write one ruleset per tier you protect and let the dry run show which workloads each change reaches ([docs/policy.md](docs/policy.md)). `sudo innerwall-agent down` removes the agent's firewall table at any time without the control plane. Running it in production, with more than one replica, behind load balancers, is in [docs/deploy/README.md](docs/deploy/README.md).
 
 ## Layout
 
