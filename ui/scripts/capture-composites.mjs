@@ -1,19 +1,20 @@
 #!/usr/bin/env node
-// Captures the console's review composites: every screen state in the
-// dark theme beside the same state in the light, captured in the same
-// interaction. The running console is its own reference; the design
-// canvas stays outside the repository. Output is
-// docs/img/console/<name>.jpg, 1960 wide and as tall as the screen's
-// frame needs (700 for the 1440x900 screens), so they compare at a
-// glance.
+// Captures the console's review images in two forms, both committed to
+// docs/img/console/:
 //
-// With --singles DIR it also writes each screen state as two single
-// images, one per theme: DIR/<name>-dark.png and DIR/<name>-light.png,
-// the very captures the composite is made of (same seed, same
-// interaction), at the capture's full size (2880x1800 for a 1440x900
-// screen). They are for wherever one theme is needed on its own; the
-// composites stay the committed review format and the singles are
-// on-demand output, not committed.
+//   <name>.jpg        the composite: the screen state in the dark theme
+//                     beside the same state in the light, captured in the
+//                     same interaction, 1960 wide and as tall as the
+//                     screen's frame needs (700 for the 1440x900 screens),
+//                     so they compare at a glance on GitHub;
+//   <name>-dark.png   the per-theme singles: the very captures the
+//   <name>-light.png  composite is made of (same seed, same interaction),
+//                     at the capture's full size (2880x1800 for a 1440x900
+//                     screen), for docs that show the capture matching the
+//                     reader's theme.
+//
+// The running console is its own reference; the design canvas stays
+// outside the repository.
 //
 // It drives running control planes through their own console, logged
 // in with the operator password, at 1440x900 and twice the pixel
@@ -43,8 +44,7 @@
 //   --unset URL    a control plane with no operator password
 //                  [UNSET_CONSOLE_URL, https://127.0.0.1:8110]
 //   --password PW  the operator password [CONSOLE_PASSWORD]
-//   --out DIR      where composites go [docs/img/console]
-//   --singles DIR  also write each theme's capture there as its own image
+//   --out DIR      where the composites and singles go [docs/img/console]
 //   --only a,b     capture only the scenes whose names start with these
 //
 // Playwright is resolved from the global install when the console's own
@@ -79,7 +79,6 @@ const { values: opt } = parseArgs({
 			type: "string",
 			default: resolve(import.meta.dirname, "../../docs/img/console"),
 		},
-		singles: { type: "string" },
 		only: { type: "string" },
 	},
 });
@@ -632,7 +631,6 @@ async function main() {
 	if (!opt.password)
 		throw new Error("--password (or CONSOLE_PASSWORD) is required");
 	mkdirSync(opt.out, { recursive: true });
-	if (opt.singles) mkdirSync(opt.singles, { recursive: true });
 	const only = opt.only?.split(",") ?? null;
 	const chosen = scenes.filter(
 		(s) => !only || only.some((o) => s.name.startsWith(o)),
@@ -652,15 +650,13 @@ async function main() {
 				scene.height,
 			);
 			console.log(file);
-			if (opt.singles) {
-				for (const [theme, png] of [
-					["dark", dark],
-					["light", light],
-				]) {
-					const single = join(opt.singles, `${scene.name}-${theme}.png`);
-					writeFileSync(single, png);
-					console.log(single);
-				}
+			for (const [theme, png] of [
+				["dark", dark],
+				["light", light],
+			]) {
+				const single = join(opt.out, `${scene.name}-${theme}.png`);
+				writeFileSync(single, png);
+				console.log(single);
 			}
 		}
 	} finally {
