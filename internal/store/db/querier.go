@@ -202,12 +202,17 @@ type Querier interface {
 	// so reports handled out of order across replicas leave the latest. The
 	// row it replaces comes back so ingest can derive the agent-silence gap
 	// (migration 00015): the locking subquery serializes concurrent reports of
-	// one workload, so each silence is seen by exactly one of them. No row
-	// means the receipt did not advance (a stale report, or no such workload).
-	RecordWorkloadFlowReport(ctx context.Context, arg RecordWorkloadFlowReportParams) ([]*time.Time, error)
+	// one workload, so each silence is seen by exactly one of them. The latest
+	// heartbeat's receipt and process start ride along, read under the same
+	// lock, so the derivation can tell a quiet agent from an absent one
+	// (migration 00016). No row means the receipt did not advance (a stale
+	// report, or no such workload).
+	RecordWorkloadFlowReport(ctx context.Context, arg RecordWorkloadFlowReportParams) ([]RecordWorkloadFlowReportRow, error)
 	// A heartbeat's counters, renewal status, and owned-table state (migration
 	// 00012). An unknown state leaves the stored one; the absent instant is the
 	// first heartbeat's that said absent, kept while the state stays absent.
+	// The heartbeat's receipt and the start of the process it came from are
+	// written together, so the pair is always one heartbeat's (migration 00016).
 	RecordWorkloadHeartbeat(ctx context.Context, arg RecordWorkloadHeartbeatParams) (int64, error)
 	RecordWorkloadHeartbeatSeen(ctx context.Context, arg RecordWorkloadHeartbeatSeenParams) (int64, error)
 	RecordWorkloadInventory(ctx context.Context, arg RecordWorkloadInventoryParams) (int64, error)

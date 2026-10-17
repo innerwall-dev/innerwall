@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"strings"
 	"sync"
 	"testing"
@@ -257,5 +258,17 @@ func TestNewerStreamWaitsForOfflineMark(t *testing.T) {
 	}
 	if err := context.Cause(newer.ctx); err != nil {
 		t.Fatalf("newer stream ended: %v", err)
+	}
+}
+
+// TestHeartbeatUptimeHeldInRange: an uptime too long for a duration is
+// held at the longest one, never wrapped into a negative that would place
+// the process start after its own heartbeat.
+func TestHeartbeatUptimeHeldInRange(t *testing.T) {
+	if got := heartbeatUptime(90); got != 90*time.Second {
+		t.Fatalf("heartbeatUptime(90) = %v", got)
+	}
+	if got := heartbeatUptime(math.MaxUint64); got <= 0 {
+		t.Fatalf("heartbeatUptime(max) = %v, want positive", got)
 	}
 }

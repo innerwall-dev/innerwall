@@ -202,16 +202,18 @@ type reportCall struct {
 }
 
 // fakeReports keeps the latest receipt per workload and hands back the one
-// a record replaces, as the store's locking statement does.
+// a record replaces, as the store's locking statement does, with the agent
+// process the latest heartbeat proved running, which tests set in proc.
 type fakeReports struct {
 	calls []reportCall
 	last  map[identity.WorkloadID]time.Time
+	proc  *registry.AgentProcess
 	err   error
 }
 
-func (f *fakeReports) RecordFlowReport(_ context.Context, id identity.WorkloadID, at time.Time) (*time.Time, bool, error) {
+func (f *fakeReports) RecordFlowReport(_ context.Context, id identity.WorkloadID, at time.Time) (*time.Time, *registry.AgentProcess, bool, error) {
 	if f.err != nil {
-		return nil, false, f.err
+		return nil, nil, false, f.err
 	}
 	f.calls = append(f.calls, reportCall{id, at})
 	if f.last == nil {
@@ -219,13 +221,13 @@ func (f *fakeReports) RecordFlowReport(_ context.Context, id identity.WorkloadID
 	}
 	prev, ok := f.last[id]
 	if ok && !prev.Before(at) {
-		return nil, false, nil
+		return nil, nil, false, nil
 	}
 	f.last[id] = at
 	if !ok {
-		return nil, true, nil
+		return nil, f.proc, true, nil
 	}
-	return &prev, true, nil
+	return &prev, f.proc, true, nil
 }
 
 // TestIngestRecordsEveryReportReceipt checks that every report from a

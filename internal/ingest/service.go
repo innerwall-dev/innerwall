@@ -62,13 +62,15 @@ type ClockRecorder interface {
 // ReportRecorder records the instant the control plane received a flow
 // report from a workload. A report proves the agent is running whatever
 // the state of its sync stream, which travels on a connection of its own.
-// It returns the receipt this one replaced (nil for the first ever) and
-// whether it advanced at all: a stale receipt, handled out of order,
-// replaces nothing. The implementation must hand the replaced instant to
-// exactly one of two concurrent reports, so a silence is derived once; the
-// store implements it with one locking statement.
+// It returns the receipt this one replaced (nil for the first ever), the
+// agent process the workload's latest heartbeat proved running (nil when
+// none is recorded), and whether it advanced at all: a stale receipt,
+// handled out of order, replaces nothing. The implementation must hand the
+// replaced instant to exactly one of two concurrent reports, so a silence
+// is derived once, and read the process under the same lock; the store
+// implements it with one locking statement.
 type ReportRecorder interface {
-	RecordFlowReport(ctx context.Context, id identity.WorkloadID, receivedAt time.Time) (prev *time.Time, advanced bool, err error)
+	RecordFlowReport(ctx context.Context, id identity.WorkloadID, receivedAt time.Time) (prev *time.Time, proc *registry.AgentProcess, advanced bool, err error)
 }
 
 // Service ingests reported windows.
@@ -149,9 +151,9 @@ func (s *Service) Ingest(ctx context.Context, id identity.WorkloadID, req *inner
 		return Result{}, registry.ErrWorkloadUnknown
 	}
 	var res Result
-	prev, advanced := s.recordReport(ctx, id, receivedAt)
+	prev, proc, advanced := s.recordReport(ctx, id, receivedAt)
 	if advanced {
-		res.Derived = s.recordSilence(ctx, id, prev, req, receivedAt)
+		res.Derived = s.recordSilence(ctx, id, prev, proc, req, receivedAt)
 	}
 	s.checkClock(ctx, reporter, req, receivedAt)
 
@@ -210,18 +212,18 @@ func (s *Service) Ingest(ctx context.Context, id identity.WorkloadID, req *inner
 // recordReport stamps the receipt of a report on its workload, before the
 // window is validated: a report refused for its bounds still came from a
 // running agent. A failed record is logged and costs the window nothing.
-// It returns the receipt this one replaced and whether it advanced, for
-// the silence derivation.
-func (s *Service) recordReport(ctx context.Context, id identity.WorkloadID, receivedAt time.Time) (prev *time.Time, advanced bool) {
+// It returns the receipt this one replaced, the agent process last proved
+// running, and whether it advanced, for the silence derivation.
+func (s *Service) recordReport(ctx context.Context, id identity.WorkloadID, receivedAt time.Time) (prev *time.Time, proc *registry.AgentProcess, advanced bool) {
 	if s.Reports == nil {
-		return nil, false
+		return nil, nil, false
 	}
-	prev, advanced, err := s.Reports.RecordFlowReport(ctx, id, receivedAt)
+	prev, proc, advanced, err := s.Reports.RecordFlowReport(ctx, id, receivedAt)
 	if err != nil {
 		s.log().Warn("recording flow report receipt", "workload_id", id, "error", err)
-		return nil, false
+		return nil, nil, false
 	}
-	return prev, advanced
+	return prev, proc, advanced
 }
 
 // recordSilence derives and stores the agent-silence evidence gap a report
@@ -234,8 +236,8 @@ func (s *Service) recordReport(ctx context.Context, id identity.WorkloadID, rece
 // so the gap is not derived again, and the loss it bounded stays unstated
 // — the write shares the report's database, so a write that fails here
 // would have failed the whole window.
-func (s *Service) recordSilence(ctx context.Context, id identity.WorkloadID, prev *time.Time, req *innerwallv1.ReportFlowsRequest, receivedAt time.Time) int {
-	gap, ok := deriveSilence(prev, req, receivedAt, s.FlowWindow)
+func (s *Service) recordSilence(ctx context.Context, id identity.WorkloadID, prev *time.Time, proc *registry.AgentProcess, req *innerwallv1.ReportFlowsRequest, receivedAt time.Time) int {
+	gap, ok := deriveSilence(prev, proc, req, receivedAt, s.FlowWindow)
 	if !ok {
 		return 0
 	}
@@ -256,9 +258,26 @@ func (s *Service) recordSilence(ctx context.Context, id identity.WorkloadID, pre
 //     restart that loses no whole window derives nothing. No gap either
 //     with no window length to judge by, before the first report ever, or
 //     when the recorder did not advance (a stale report says nothing new).
+//   - No gap when one agent process ran through the whole silence: the
+//     agent ships only windows that hold something, so a running agent on
+//     a workload that receives little goes many windows between reports
+//     having lost nothing (issue #144). The latest heartbeat proves it when
+//     the process it came from started at or before the previous receipt
+//     and still ran within one flow window of this one: the window this
+//     report carries was open for a window length before it was sent, so
+//     the process that sent it was already running then, and two of one
+//     agent's processes never overlap — the process that ran at the
+//     previous report is the one reporting now. Whatever a running process
+//     loses it reports itself (a source restart, a full buffer, a removed
+//     table), so the silence holds no loss of this kind. A heartbeat from
+//     before a restart fails the test however late it arrived, since the
+//     restarted process opened its first window after the old one was
+//     gone; a sync stream that is down leaves the latest heartbeat too old,
+//     and the derivation stands as below.
 //   - The gap opens at the previous report's receipt: the last instant
-//     evidence is known to have reached the control plane. The sync
-//     stream's lifecycle plays no part — an agent whose telemetry
+//     evidence is known to have reached the control plane. Neither the
+//     sync stream's lifecycle nor the old process's last heartbeat moves
+//     it later — an agent whose telemetry
 //     connection failed buffers closed windows in memory and loses them if
 //     the process then dies, so instants the stream was alive past the
 //     last report are not instants whose flow evidence survived.
@@ -270,11 +289,14 @@ func (s *Service) recordSilence(ctx context.Context, id identity.WorkloadID, pre
 //     the silence was the connection's, the evidence survived, and there
 //     is no gap; what such a buffer dropped, the agent itself reports
 //     (buffer_overflow), so the one loss is not stored twice.
-func deriveSilence(prev *time.Time, req *innerwallv1.ReportFlowsRequest, receivedAt time.Time, window time.Duration) (flowstore.Gap, bool) {
+func deriveSilence(prev *time.Time, proc *registry.AgentProcess, req *innerwallv1.ReportFlowsRequest, receivedAt time.Time, window time.Duration) (flowstore.Gap, bool) {
 	if window <= 0 || prev == nil {
 		return flowstore.Gap{}, false
 	}
 	if receivedAt.Sub(*prev) <= SilenceWindows*window {
+		return flowstore.Gap{}, false
+	}
+	if ranThrough(proc, *prev, receivedAt, window) {
 		return flowstore.Gap{}, false
 	}
 	to := receivedAt
@@ -293,6 +315,13 @@ func deriveSilence(prev *time.Time, req *innerwallv1.ReportFlowsRequest, receive
 		From:   *prev,
 		To:     to,
 	}, true
+}
+
+// ranThrough says the agent process proc ran from at or before the
+// previous receipt until within one flow window of this one, so it is the
+// process that sent this report and no restart lies in the silence.
+func ranThrough(proc *registry.AgentProcess, prev, receivedAt time.Time, window time.Duration) bool {
+	return proc != nil && !proc.StartedAt.After(prev) && !proc.HeartbeatAt.Before(receivedAt.Add(-window))
 }
 
 // checkClock reads the report's clock, logs a skewed reading naming the

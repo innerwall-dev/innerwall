@@ -101,6 +101,21 @@ type Heartbeat struct {
 	// OwnedTable is the owned table's state as the agent read it; an
 	// unspecified state leaves the recorded one as it was.
 	OwnedTable innerwallv1.OwnedTableState
+	// Uptime is how long the agent process had run when it sent the
+	// heartbeat, on its own monotonic clock. With the receipt instant it
+	// places the process start on the control plane's clock.
+	Uptime time.Duration
+}
+
+// AgentProcess is what a workload's latest heartbeat proved about its
+// agent: the process that started at StartedAt was still running when the
+// heartbeat arrived at HeartbeatAt, both on the control plane's clock. One
+// process ran throughout, so nothing in between was a restart. StartedAt
+// is the receipt minus the reported uptime, late by the heartbeat's
+// transit and the uptime's truncation, never early.
+type AgentProcess struct {
+	StartedAt   time.Time
+	HeartbeatAt time.Time
 }
 
 // LateRenewal is a renewal made with a credential that had already
@@ -192,7 +207,8 @@ type Store interface {
 	// agent claims to have applied.
 	RecordAgent(ctx context.Context, id identity.WorkloadID, agent AgentInfo, appliedVersion uint64, now time.Time) error
 	// RecordHeartbeat refreshes last-seen and what the heartbeat carries:
-	// the loss counters, the renewal status, and the owned table's state.
+	// the loss counters, the renewal status, the owned table's state, and
+	// the agent process it came from.
 	RecordHeartbeat(ctx context.Context, id identity.WorkloadID, hb Heartbeat, now time.Time) error
 	// SetSyncState records the convergence state with an optional detail.
 	SetSyncState(ctx context.Context, id identity.WorkloadID, state innerwallv1.SyncState, detail string, now time.Time) error
