@@ -23,6 +23,7 @@ package nft_test
 import (
 	"bufio"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -82,6 +83,13 @@ const (
 // touched by the agent.
 const foreignScript = "table inet " + foreignTable + " {}\ndelete table inet " + foreignTable + "\ntable inet " + foreignTable + " {\n\tchain premark {\n\t\ttype filter hook prerouting priority mangle; policy accept;\n\t\tct state new ct mark set 0x2a\n\t}\n}\n"
 
+// notrackScript installs a table, not ours, that exempts inbound ICMP from
+// connection tracking. The kernel never tracks IPv6 neighbor discovery;
+// this makes IPv4 echo the same kind of packet, untracked, so the suite
+// can show an admitted untracked packet is accepted on any kernel,
+// whether or not it has IPv6 (issue #142).
+const notrackScript = "table inet " + foreignTable + " {}\ndelete table inet " + foreignTable + "\ntable inet " + foreignTable + " {\n\tchain exempt {\n\t\ttype filter hook prerouting priority raw; policy accept;\n\t\tmeta l4proto icmp notrack\n\t}\n}\n"
+
 type outcome string
 
 const (
@@ -109,6 +117,48 @@ func dialFrom(local string, port int) outcome {
 		return timedOut
 	}
 	return outcome("error: " + err.Error())
+}
+
+// echo sends one ICMP echo request from a local address to the target and
+// reports whether the matching reply came back.
+func echo(t *testing.T, local string, seq uint16) bool {
+	t.Helper()
+	c, err := net.ListenPacket("ip4:icmp", local)
+	if err != nil {
+		t.Fatalf("opening an ICMP socket on %s: %v", local, err)
+	}
+	defer func() { _ = c.Close() }()
+	const id = 0x1e1e
+	req := []byte{8, 0, 0, 0, id >> 8, id & 0xff, byte(seq >> 8), byte(seq), 'i', 'w'}
+	var sum uint32
+	for i := 0; i < len(req); i += 2 {
+		sum += uint32(req[i])<<8 | uint32(req[i+1])
+	}
+	for sum > 0xffff {
+		sum = sum>>16 + sum&0xffff
+	}
+	binary.BigEndian.PutUint16(req[2:], ^uint16(sum))
+	if _, err := c.WriteTo(req, &net.IPAddr{IP: net.ParseIP(targetIP)}); err != nil {
+		t.Fatal(err)
+	}
+	_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
+	buf := make([]byte, 1500)
+	for {
+		n, from, err := c.ReadFrom(buf)
+		if err != nil {
+			return false
+		}
+		if from.String() == targetIP && n >= 8 && buf[0] == 0 && buf[4] == id>>8 && buf[5] == id&0xff && buf[6] == byte(seq>>8) && buf[7] == byte(seq) {
+			return true
+		}
+	}
+}
+
+func expectEcho(t *testing.T, local string, seq uint16, want bool) {
+	t.Helper()
+	if got := echo(t, local, seq); got != want {
+		t.Fatalf("echo %s -> %s answered = %v, want %v", local, targetIP, got, want)
+	}
 }
 
 // holdOpen opens a connection from a local address and leaves it open,
@@ -312,6 +362,27 @@ func TestVisibilityObservationInNamespace(t *testing.T) {
 	child.wait()
 }
 
+// TestUntrackedAdmitInNamespace is the parent of the untracked-traffic
+// test (issue #142). A table not ours exempts inbound ICMP from connection
+// tracking, as the kernel itself exempts IPv6 neighbor discovery, and the
+// policy admits ICMP from the first peer only. Under enforcement the
+// admitted peer's echo is answered and the other's is dropped and
+// recorded; under simulation both are answered and only the other's is
+// recorded as one enforcement would block.
+func TestUntrackedAdmitInNamespace(t *testing.T) {
+	_, inNamespace := namespace(t)
+	child := newChild(t, inNamespace(os.Args[0], "-test.run=^TestNetnsRole$", "-test.v"), "untracked")
+	child.expectReady("enforced")
+	expectEcho(t, peerIP, 1, true)
+	expectEcho(t, peer2IP, 2, false)
+	child.proceed()
+	child.expectReady("simulation")
+	expectEcho(t, peerIP, 3, true)
+	expectEcho(t, peer2IP, 4, true)
+	child.proceed()
+	child.wait()
+}
+
 // child drives one in-namespace run of this binary.
 type child struct {
 	t     *testing.T
@@ -398,6 +469,8 @@ func TestNetnsRole(t *testing.T) {
 		runTarget(t)
 	case "visibility":
 		runVisibility(t)
+	case "untracked":
+		runUntracked(t)
 	case "restart":
 		s := nft.New(nft.Config{StateDir: os.Getenv(envStateDir), Table: tableName, NflogGroup: nflogGroup})
 		if err := s.Load(); err != nil {
@@ -619,6 +692,13 @@ func runTarget(t *testing.T) {
 	// The accepted connection carries our rule number in the region and
 	// the foreign mark, untouched, in the low bits.
 	marks.expect(t, "rule 1 beside the foreign mark", nft.RuleMark(1)|foreignMark)
+	// What the kernel holds masks with the foreign bits alone. `nft list`
+	// reads it back as `& 0x0001ffff | 0x00010000`, the same write
+	// (issue #143); the bytecode is the unambiguous form.
+	if out, err := exec.Command("nft", "--debug=netlink", "list", "table", "inet", tableName).CombinedOutput(); err != nil ||
+		!strings.Contains(string(out), fmt.Sprintf("( reg 1 & 0x%08x ) ^ 0x%08x", nft.ForeignMask, nft.RuleMark(1))) {
+		t.Fatalf("installed mark write is not (ct mark & %#08x) ^ %#08x: %v\n%s", nft.ForeignMask, nft.RuleMark(1), err, out)
+	}
 
 	// Delta: the second peer address joins rule A's set; no full reload.
 	if err := store.Apply(ctx, policyAt(2, innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED, peerIP+"/32", peer2IP+"/32")); err != nil {
@@ -712,6 +792,58 @@ func runTarget(t *testing.T) {
 	fmt.Println("READY final")
 	waitGo()
 	obs.waitFor(t, "blocked again after returning to enforced", from(peerIP, portDenied, innerwallv1.PolicyDecision_POLICY_DECISION_BLOCKED))
+}
+
+// runUntracked is the target of the untracked-traffic test.
+func runUntracked(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stdin := bufio.NewScanner(os.Stdin)
+	waitGo := func() {
+		t.Helper()
+		if !stdin.Scan() {
+			t.Fatal("parent closed stdin")
+		}
+	}
+
+	upTarget(t)
+	if err := (nft.ExecRunner{}).Apply(ctx, notrackScript); err != nil {
+		t.Fatalf("installing the notrack table: %v", err)
+	}
+	store := nft.New(nft.Config{StateDir: os.Getenv(envStateDir), Table: tableName, NflogGroup: nflogGroup})
+	if err := store.Load(); err != nil {
+		t.Fatal(err)
+	}
+	obs := &observed{}
+	go func() { _ = (&nflog.Source{Group: nflogGroup, Decide: store.TerminalDecision}).Run(ctx, obs.add) }()
+	time.Sleep(300 * time.Millisecond) // let the subscription register
+
+	icmpFrom := func(ip string, d innerwallv1.PolicyDecision) func(collect.Observation) bool {
+		return func(o collect.Observation) bool {
+			return o.Src == netip.MustParseAddr(ip) && o.Protocol == innerwallv1.Protocol_PROTOCOL_ICMP && o.Decision == d
+		}
+	}
+	policy := func(version uint64, mode innerwallv1.EnforcementMode) *innerwallv1.WorkloadPolicy {
+		return &innerwallv1.WorkloadPolicy{Version: version, Mode: mode, InboundRules: []*innerwallv1.ResolvedRule{
+			{RuleId: "0191e5c0-0000-7000-8000-00000000000c/icmp", Protocol: innerwallv1.Protocol_PROTOCOL_ICMP, PeerCidrs: []string{peerIP + "/32"}},
+		}}
+	}
+
+	if err := store.Apply(ctx, policy(1, innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED)); err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println("READY enforced")
+	waitGo()
+	obs.waitFor(t, "the unlisted peer's untracked echo blocked", icmpFrom(peer2IP, innerwallv1.PolicyDecision_POLICY_DECISION_BLOCKED))
+	obs.none(t, "the admitted peer's untracked echo blocked", icmpFrom(peerIP, innerwallv1.PolicyDecision_POLICY_DECISION_BLOCKED))
+
+	if err := store.Apply(ctx, policy(2, innerwallv1.EnforcementMode_ENFORCEMENT_MODE_SIMULATION)); err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println("READY simulation")
+	waitGo()
+	obs.waitFor(t, "the unlisted peer's untracked echo would block", icmpFrom(peer2IP, innerwallv1.PolicyDecision_POLICY_DECISION_WOULD_BLOCK))
+	obs.none(t, "the admitted peer's untracked echo would block", icmpFrom(peerIP, innerwallv1.PolicyDecision_POLICY_DECISION_WOULD_BLOCK))
 }
 
 // upTarget brings the target namespace up: loopback, our end of the veth

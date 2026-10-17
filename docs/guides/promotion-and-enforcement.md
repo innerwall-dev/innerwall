@@ -40,7 +40,9 @@ table inet innerwall {
 		type filter hook input priority filter + 10; policy accept;
 		iif "lo" accept
 		ct state established,related accept
+		ip saddr @r_<rule-id>_v4 tcp dport { 5432 } ct state untracked accept
 		ip saddr @r_<rule-id>_v4 tcp dport { 5432 } ct mark set (ct mark & 0x0000ffff) | <rule mark> accept
+		ip6 saddr @r_<rule-id>_v6 tcp dport { 5432 } ct state untracked accept
 		ip6 saddr @r_<rule-id>_v6 tcp dport { 5432 } ct mark set (ct mark & 0x0000ffff) | <rule mark> accept
 		log prefix "innerwall " group 200 drop
 	}
@@ -49,7 +51,8 @@ table inet innerwall {
 
 - **Loopback and established traffic** are accepted before any rule, so a connection that was open before enforcement keeps working, and so does the return traffic of every connection the host opens.
 - **Each rule** has two interval sets of peer addresses, one per address family, and matches its protocol and ports. Workload peers resolve to the addresses their workloads report and follow them as they change.
-- **Attribution.** An admitted connection's connection-tracking mark carries the rule that admitted it, in bits 16 to 31 (mask `0xffff0000`). The low sixteen bits are left exactly as found, so a host tool that marks connections there keeps working; one that uses the high bits conflicts with the agent.
+- **Untracked traffic.** Each rule's accept is paired with one that admits the same traffic when the kernel does not track it, without marking it. The kernel never tracks IPv6 neighbor discovery, and a host's own `notrack` rules can exempt more; a mark write cannot complete for such a packet, so without the pair it would fall through to the terminal rule. Admitted untracked traffic has no connection to attribute and leaves no flow record.
+- **Attribution.** An admitted connection's connection-tracking mark carries the rule that admitted it, in bits 16 to 31 (mask `0xffff0000`). The low sixteen bits are left exactly as found, so a host tool that marks connections there keeps working; one that uses the high bits conflicts with the agent. `nft list` prints the write as `ct mark & 0x000Nffff | 0x000N0000`, its own reading of the kernel's mask-and-xor form; it is the same write as the rendered `(ct mark & 0x0000ffff) | 0x000N0000`, because the or sets the extra bits the printed mask keeps.
 - **The terminal rule** logs every new inbound connection no rule admitted to netlink log group 200 and, enforced, drops it. In simulation the same rule accepts instead (and marks the connection as would-block); in visibility the table holds a single `observe` chain that engages connection tracking and accepts everything.
 - **The host's own firewall** is untouched. The chain runs at input priority `filter + 10`, after the host's own filter chains, and a packet must be accepted by both.
 
