@@ -1,0 +1,77 @@
+# Release: a pushed v* tag runs the whole CI gate on the tagged commit (ci.yml
+# itself, called rather than copied, so a tag never publishes assets CI did
+# not see), then goreleaser builds both binaries, archives them with an SBOM
+# each, signs the checksums keyless, pushes and signs the control-plane image
+# on GHCR, and uploads everything to a draft release. Publishing the draft,
+# with notes written from CHANGELOG.md, is a human act. The procedure is in
+# docs/development.md.
+#
+# Signing is keyless: the job's OIDC token is the signer's identity, so no key
+# or secret is configured anywhere in this workflow.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+# One release run per tag; a second push of the same tag waits, never races.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "22"
+  GORELEASER_VERSION: "v2.18.3"
+  # cosign v2 writes the detached .sig and .pem .goreleaser.yaml promises;
+  # v3 writes a single bundle instead.
+  COSIGN_VERSION: "v2.6.5"
+  SYFT_VERSION: "v1.54.1"
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  goreleaser:
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the draft release and its assets
+      id-token: write # keyless signing of the checksums and the image
+      packages: write # the image on GHCR
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      # The console is built by the before hooks and embedded in the
+      # control-plane binary.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - uses: sigstore/cosign-installer@v4
+        with:
+          cosign-release: ${{ env.COSIGN_VERSION }}
+      - uses: anchore/sbom-action/download-syft@v0
+        with:
+          syft-version: ${{ env.SYFT_VERSION }}
+      # The image copies a prebuilt binary and runs nothing on the target
+      # architecture, so buildx needs no emulation for arm64.
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          version: ${{ env.GORELEASER_VERSION }}
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

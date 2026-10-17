@@ -1,0 +1,21 @@
+# Release image for the control plane, built by goreleaser (`dockers` in
+# .goreleaser.yaml) from the binary it built for the release archives, console
+# embedded: the image carries the same bytes the archives do. Its context is
+# goreleaser's, not the checkout, so it is never built by hand. At runtime it
+# is the compose stack's image (Dockerfile): the same base, user, state
+# directory, ports, and entrypoint.
+
+# The base has no shell to make the state directory with, so it is made in
+# the base's debug variant (the same image with busybox), on the build host's
+# own platform: nothing executes on the target architecture, and nothing is
+# pulled from outside the base's registry.
+FROM --platform=$BUILDPLATFORM gcr.io/distroless/static-debian12:debug AS state
+RUN ["/busybox/mkdir", "-p", "/out/state"]
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY innerwall /innerwall
+# State directory (signing authority) owned by the runtime user; a volume
+# mounted here inherits the ownership on first use.
+COPY --from=state --chown=nonroot:nonroot /out/state /var/lib/innerwall
+EXPOSE 8080 8443
+ENTRYPOINT ["/innerwall"]
