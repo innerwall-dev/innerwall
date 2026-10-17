@@ -123,6 +123,21 @@ const refusedRow = async (page) => {
 	await page.getByRole("button", { name: /^Save — applies/ }).click();
 	await page.getByText(/errors? blocks? saving/).waitFor();
 };
+// A rule naming a service no definition holds yet, saved: the refusal
+// offers to create it from the finding.
+const missingService = async (page) => {
+	await page.getByRole("button", { name: "Add rule" }).click();
+	const peer = page.getByRole("textbox", { name: "Add a peer" });
+	await peer.fill("app=storefront-api env=prod");
+	await peer.press("Enter");
+	const svc = page.getByRole("textbox", { name: "Add a service" });
+	await svc.fill("postgres");
+	await svc.press("Enter");
+	await page.getByRole("button", { name: /^Save — applies/ }).click();
+	await page
+		.getByRole("button", { name: "Create service postgres…" })
+		.waitFor();
+};
 const openPromote = async (page) => {
 	await page.getByRole("button", { name: "Promote to enforced…" }).click();
 	await page.waitForSelector('[data-testid="partition"]');
@@ -373,6 +388,57 @@ const scenes = [
 			await page
 				.getByRole("region", { name: "Dry run" })
 				.scrollIntoViewIfNeeded();
+		},
+	},
+	{
+		name: "policy-service-definitions",
+		cp: "seeded",
+		path: "/policy/services",
+		ready: 'table[aria-label="Service definitions"]',
+	},
+	{
+		name: "policy-address-groups",
+		cp: "seeded",
+		path: "/policy/address-groups",
+		ready: 'table[aria-label="Address groups"]',
+	},
+	{
+		name: "policy-new-service-dialog",
+		cp: "seeded",
+		path: "/policy/services",
+		ready: 'table[aria-label="Service definitions"]',
+		act: async (page) => {
+			await page.getByRole("button", { name: "New service" }).click();
+			const dialog = page.getByRole("dialog", { name: "New service" });
+			await dialog.getByLabel("Name").fill("postgres");
+			const entry = dialog.getByRole("textbox", { name: "Add an entry" });
+			await entry.fill("tcp/5432");
+			await entry.press("Enter");
+		},
+	},
+	{
+		name: "policy-editor-missing-service",
+		cp: "seeded",
+		path: "/policy?ruleset=checkout-inbound",
+		height: 1060,
+		ready: "text=matched on",
+		act: missingService,
+	},
+	{
+		name: "policy-editor-create-missing-service",
+		cp: "seeded",
+		path: "/policy?ruleset=checkout-inbound",
+		height: 1060,
+		ready: "text=matched on",
+		act: async (page) => {
+			await missingService(page);
+			await page
+				.getByRole("button", { name: "Create service postgres…" })
+				.click();
+			const dialog = page.getByRole("dialog", { name: "New service" });
+			const entry = dialog.getByRole("textbox", { name: "Add an entry" });
+			await entry.fill("tcp/5432");
+			await entry.press("Enter");
 		},
 	},
 	{

@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { Rule, Selector } from "@/api/schema";
 import { Eyebrow, verdicts } from "@/components/fleet/status";
 import { Icon } from "@/components/Icon";
@@ -9,9 +9,10 @@ import { count } from "@/lib/format";
 import type { Resource } from "@/lib/resource";
 import { cn } from "@/lib/utils";
 import { AddInput, ChipView, FindingLines } from "./Chips";
+import { DefinitionDialog, kindText } from "./DefinitionDialog";
 import type { Traffic } from "./data";
 import {
-	type Attached,
+	type DraftRow,
 	draftInput,
 	entryChip,
 	type Names,
@@ -25,17 +26,15 @@ import {
 	serviceRefChip,
 	servicesCell,
 	shortRuleId,
+	type Unknown,
+	unknownOf,
 } from "./model";
 
 // RowState is the one row being edited: its draft, the findings of the
 // last refused write attached to what they name, and the write as it was
 // refused (see saveKey), so saving the identical write again is not
 // offered.
-export interface RowState {
-	draft: RuleDraft;
-	findings: Attached;
-	refused: string | null;
-}
+export type RowState = DraftRow;
 
 // saveKey names the write the row's save makes: the row alone, or the
 // row with the unsaved scope it is saved together with.
@@ -83,6 +82,7 @@ export function RulesCard({
 	onEdit,
 	onAdd,
 	onDraft,
+	onDefined,
 	onDiscard,
 	onSave,
 	onDryRun,
@@ -102,6 +102,9 @@ export function RulesCard({
 	onEdit: (rule: Rule) => void;
 	onAdd: () => void;
 	onDraft: (d: RuleDraft) => void;
+	// onDefined is called once a definition the row found missing has
+	// been created from it.
+	onDefined: (u: Unknown, createdAs: string) => void;
 	onDiscard: () => void;
 	onSave: () => void;
 	onDryRun: () => void;
@@ -166,7 +169,13 @@ export function RulesCard({
 					) : null}
 					{rules.map((r) =>
 						row && editingId === r.id ? (
-							<EditRow key={r.id} row={row} names={names} onDraft={onDraft} />
+							<EditRow
+								key={r.id}
+								row={row}
+								names={names}
+								onDraft={onDraft}
+								onDefined={onDefined}
+							/>
 						) : (
 							<RuleRow
 								key={r.id}
@@ -181,7 +190,12 @@ export function RulesCard({
 						),
 					)}
 					{row && editingId === null ? (
-						<EditRow row={row} names={names} onDraft={onDraft} />
+						<EditRow
+							row={row}
+							names={names}
+							onDraft={onDraft}
+							onDefined={onDefined}
+						/>
 					) : null}
 				</tbody>
 			</table>
@@ -367,21 +381,56 @@ function SimulationCell({
 
 // EditRow is the row being edited: its elements as chips the operator
 // removes, a field to add each kind, and the findings of the last
-// refused write on the elements they name.
+// refused write on the elements they name. A finding that a service or
+// an address group does not exist offers to create it here, so the row
+// is kept while the definition is written.
 function EditRow({
 	row,
 	names,
 	onDraft,
+	onDefined,
 }: {
 	row: RowState;
 	names: Names;
 	onDraft: (d: RuleDraft) => void;
+	onDefined: (u: Unknown, createdAs: string) => void;
 }) {
 	const d = row.draft;
 	const f = row.findings;
 	const id = d.base?.id ?? null;
+	const [defining, setDefining] = useState<Unknown | null>(null);
+	const lines = (key: string, u: Unknown | null) => (
+		<FindingLines
+			key={key}
+			findings={f.elements[key]}
+			action={
+				u ? (
+					<button
+						type="button"
+						onClick={() => setDefining(u)}
+						className="cursor-pointer type-caption link"
+					>
+						Create {kindText[u.kind].noun} {u.name}…
+					</button>
+				) : null
+			}
+		/>
+	);
 	return (
 		<>
+			<DefinitionDialog
+				kind={defining?.kind ?? "service"}
+				editing={null}
+				name={defining?.name}
+				open={defining !== null}
+				onOpenChange={(open) => {
+					if (!open) setDefining(null);
+				}}
+				onSaved={(saved) => {
+					setDefining(null);
+					if (defining) onDefined(defining, saved.name);
+				}}
+			/>
 			<tr
 				aria-label={
 					id ? `Editing ${d.base?.description || shortRuleId(id)}` : "New rule"
@@ -412,9 +461,9 @@ function EditRow({
 								/>
 							))}
 						</span>
-						{d.peers.map((p) => (
-							<FindingLines key={p.key} findings={f.elements[p.key]} />
-						))}
+						{d.peers.map((p) =>
+							lines(p.key, unknownOf(f.elements[p.key], { peer: p.value })),
+						)}
 						<FindingLines findings={f.columns.peers} />
 						<AddInput
 							label="Add a peer"
@@ -462,9 +511,10 @@ function EditRow({
 								/>
 							))}
 						</span>
-						{[...d.refs, ...d.entries].map((s) => (
-							<FindingLines key={s.key} findings={f.elements[s.key]} />
-						))}
+						{d.refs.map((r) =>
+							lines(r.key, unknownOf(f.elements[r.key], { ref: r.value })),
+						)}
+						{d.entries.map((e) => lines(e.key, null))}
 						<FindingLines findings={f.columns.services} />
 						<AddInput
 							label="Add a service"

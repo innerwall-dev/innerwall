@@ -1,7 +1,9 @@
 import { request } from "./client";
 import type {
+	AddressGroup,
 	DryRunRequest,
 	DryRunResult,
+	Entry,
 	Rule,
 	RuleInput,
 	Ruleset,
@@ -26,6 +28,50 @@ export function listRulesets(): Promise<{
 
 export function listServices(): Promise<{ services: Service[] }> {
 	return request("GET", "/services");
+}
+
+// A definition as the surface takes it: a service's name and entries, an
+// address group's name and member CIDRs.
+export interface ServiceInput {
+	name: string;
+	entries: Entry[];
+}
+
+export interface AddressGroupInput {
+	name: string;
+	cidrs: string[];
+}
+
+export function createService(svc: ServiceInput): Promise<Service> {
+	return request("POST", "/services", svc);
+}
+
+// putService replaces a service's name and entries, conditioned on the
+// version it was read at.
+export function putService(
+	svc: Service,
+	change: ServiceInput,
+): Promise<Service> {
+	return request("PUT", `/services/${encodeURIComponent(svc.id)}`, change, {
+		"If-Match": `"${svc.version}"`,
+	});
+}
+
+export function createAddressGroup(
+	g: AddressGroupInput,
+): Promise<AddressGroup> {
+	return request("POST", "/address-groups", g);
+}
+
+// putAddressGroup replaces an address group's name and members,
+// conditioned on the version it was read at.
+export function putAddressGroup(
+	g: AddressGroup,
+	change: AddressGroupInput,
+): Promise<AddressGroup> {
+	return request("PUT", `/address-groups/${encodeURIComponent(g.id)}`, change, {
+		"If-Match": `"${g.version}"`,
+	});
 }
 
 // previewSelector is what a selector resolves to now: the resolution a

@@ -7,24 +7,30 @@ import {
 	attachFindings,
 	bannerText,
 	combinedSave,
+	defined,
 	deltaLines,
 	dirty,
 	draftInput,
 	draftOf,
+	entryText,
 	freshness,
 	matchedHosts,
 	namesOf,
 	outstanding,
+	parseEntry,
 	parsePeer,
 	parseService,
 	peerChip,
 	planDryRun,
 	recency,
+	referencesTo,
 	ruleLabeler,
 	scopeFindings,
 	scopeMix,
 	servicesCell,
+	splitList,
 	trafficByRule,
+	unknownOf,
 } from "./model";
 
 const ssh = {
@@ -68,6 +74,7 @@ describe("cells", () => {
 			tag: "GROUP",
 			text: "corp-vpn",
 			reference: true,
+			detail: "10.40.0.0/16",
 		});
 		expect(peerChip({ cidr: "10.40.0.0/33" }, names)).toEqual({
 			tag: "CIDR",
@@ -90,7 +97,7 @@ describe("cells", () => {
 				names,
 			),
 		).toEqual([
-			{ tag: "REF", text: "ssh", reference: true },
+			{ tag: "REF", text: "ssh", reference: true, detail: "tcp/22" },
 			{ tag: "REF", text: "svc_legacy_ldap", reference: true },
 			{ tag: "TCP", text: "389, 6000-6010", reference: false },
 			{ tag: "ICMP", text: "", reference: false },
@@ -507,5 +514,99 @@ describe("the dry run", () => {
 				detail: "tcp/9100 → tcp/9100-9101 · + 10.0.0.7/32 · − 10.0.0.5/32",
 			},
 		]);
+	});
+});
+
+describe("definitions", () => {
+	it("reads an entry in the input's form or the command line's", () => {
+		expect(parseEntry("tcp/5432")).toEqual({
+			entry: { protocol: "tcp", ports: ["5432"] },
+		});
+		expect(parseEntry(" TCP:6000-6010, 6012 ")).toEqual({
+			entry: { protocol: "tcp", ports: ["6000-6010", "6012"] },
+		});
+		expect(parseEntry("udp")).toEqual({ entry: { protocol: "udp" } });
+		expect(parseEntry("icmp")).toEqual({ entry: { protocol: "icmp" } });
+		// Ports are kept as typed: admission names what is wrong with them.
+		expect(parseEntry("tcp/70000")).toEqual({
+			entry: { protocol: "tcp", ports: ["70000"] },
+		});
+		expect(parseEntry("postgres")).toEqual({
+			error:
+				"an entry is a protocol with its ports: tcp/5432, udp/53, tcp/6000-6010, or icmp (postgres)",
+		});
+		expect(entryText({ protocol: "tcp", ports: ["5432", "6000-6010"] })).toBe(
+			"tcp/5432,6000-6010",
+		);
+		expect(entryText({ protocol: "icmp" })).toBe("icmp");
+		expect(splitList("10.0.0.0/8, 192.168.0.0/16\nfd00::/8")).toEqual([
+			"10.0.0.0/8",
+			"192.168.0.0/16",
+			"fd00::/8",
+		]);
+	});
+
+	it("lists the rules that reference a definition, by the id stored", () => {
+		const a = rule({ services: [ssh.id], peers: [{ address_group: vpn.id }] });
+		const b = rule({ services: ["other"] });
+		const c = rule({ peers: [{ address_group: vpn.id }] });
+		const one = ruleset("one", { app: ["a"] }, [a, b]);
+		const two = ruleset("two", { app: ["b"] }, [c]);
+		expect(
+			referencesTo([one, two], "service", ssh.id).map((r) => r.rule.id),
+		).toEqual([a.id]);
+		expect(
+			referencesTo([one, two], "group", vpn.id).map(
+				(r) => `${r.ruleset.name}/${r.rule.id}`,
+			),
+		).toEqual([`one/${a.id}`, `two/${c.id}`]);
+		expect(referencesTo([one, two], "service", "ssh")).toEqual([]);
+	});
+
+	it("offers to create what an unknown-reference finding names, and clears it once created", () => {
+		const d = draftOf(null, "t");
+		const draft = {
+			...d,
+			peers: [
+				{ key: "p1", value: { address_group: "corp" } },
+				{ key: "p2", value: { cidr: "10.0.0.0/33" } },
+			],
+			refs: [{ key: "r1", value: "postgres" }],
+		};
+		const missing = (path: string, rule: string) => ({
+			path,
+			rule,
+			message: "",
+		});
+		const findings = attachFindings(draft, [
+			missing("peers[0]", "address-group-unknown"),
+			missing("peers[1]", "cidr"),
+			missing("services[0]", "service-unknown"),
+		]);
+		expect(unknownOf(findings.elements.r1, { ref: "postgres" })).toEqual({
+			kind: "service",
+			name: "postgres",
+		});
+		expect(
+			unknownOf(findings.elements.p1, { peer: { address_group: "corp" } }),
+		).toEqual({ kind: "group", name: "corp" });
+		expect(
+			unknownOf(findings.elements.p2, { peer: { cidr: "10.0.0.0/33" } }),
+		).toBeNull();
+
+		const row = { draft, findings, refused: "the refused write" };
+		const after = defined(row, { kind: "service", name: "postgres" });
+		expect(after.refused).toBeNull();
+		expect(after.findings.elements.r1).toBeUndefined();
+		expect(Object.keys(after.findings.elements).sort()).toEqual(["p1", "p2"]);
+		expect(after.draft.refs[0]?.value).toBe("postgres");
+
+		// Created under another name, the row names the one created.
+		const renamed = defined(row, { kind: "group", name: "corp" }, "corp-net");
+		expect(renamed.draft.peers[0]?.value).toEqual({
+			address_group: "corp-net",
+		});
+		expect(renamed.findings.elements.p1).toBeUndefined();
+		expect(renamed.findings.elements.r1).toHaveLength(1);
 	});
 });

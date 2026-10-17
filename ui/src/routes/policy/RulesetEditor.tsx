@@ -31,6 +31,7 @@ import {
 	attachFindings,
 	bannerText,
 	combinedSave,
+	defined,
 	draftInput,
 	draftOf,
 	entryChip,
@@ -51,6 +52,7 @@ import {
 	serviceRefChip,
 	servicesCell,
 	shortRuleId,
+	type Unknown,
 } from "./model";
 import { type RowState, RulesCard, saveKey } from "./RulesTable";
 import { ScopeCard } from "./ScopeCard";
@@ -392,6 +394,18 @@ export function RulesetEditor({
 
 	function setDraft(d: RuleDraft) {
 		setRow((cur) => (cur ? { ...cur, draft: d } : cur));
+	}
+
+	// A definition the row found missing, created from it: the listing is
+	// read again so the row's reference resolves to it, and the finding
+	// that named it goes, so the same write can be saved again.
+	function rowDefined(u: Unknown, createdAs: string) {
+		setRow((cur) => (cur ? defined(cur, u, createdAs) : cur));
+		setRulesNotice({
+			tone: "ok",
+			text: `Created ${u.kind === "service" ? "service" : "address group"} ${createdAs}. The row references it; save the rule to write it.`,
+		});
+		reload();
 	}
 
 	async function saveRow() {
@@ -804,6 +818,7 @@ export function RulesetEditor({
 				onEdit={(r) => editRule(r)}
 				onAdd={() => editRule(null)}
 				onDraft={setDraft}
+				onDefined={rowDefined}
 				onDiscard={discardRow}
 				onSave={() => void saveRow()}
 				onDryRun={() => void runDryRun()}

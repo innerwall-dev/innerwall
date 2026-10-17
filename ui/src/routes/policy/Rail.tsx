@@ -2,24 +2,28 @@ import { Link } from "react-router";
 import type { Ruleset } from "@/api/schema";
 import { Icon } from "@/components/Icon";
 import { cn } from "@/lib/utils";
+import { definitionViews } from "./Definitions";
 import { editorPath } from "./link";
+import type { Unknown } from "./model";
 
 const railHeading = "type-control text-tertiary";
 
 // Rail lists the rulesets, each with whether it is enabled and how many
-// rules it holds, and below them the definitions rules reference. The
-// definitions have no screens in this version: their rows state counts
-// and lead nowhere.
+// rules it holds, and below them the definitions rules reference, each
+// kind with how many there are and leading to its list.
 export function Rail({
 	rulesets,
 	current,
 	creating,
+	section = null,
 	services,
 	groups,
 }: {
 	rulesets: Ruleset[] | null;
 	current: string | null;
 	creating: boolean;
+	// section is the definitions list shown, when one is.
+	section?: Unknown["kind"] | null;
 	services: number | null;
 	groups: number | null;
 }) {
@@ -48,7 +52,8 @@ export function Rail({
 				<nav aria-label="Ruleset list" className="flex flex-col gap-0.5">
 					{rulesets.map((rs) => {
 						const on = rs.enabled !== false;
-						const selected = !creating && rs.name === current;
+						const selected =
+							!creating && section === null && rs.name === current;
 						return (
 							<Link
 								key={rs.id}
@@ -94,17 +99,41 @@ export function Rail({
 				</nav>
 			)}
 			<div className={`${railHeading} px-2 pt-4 pb-1.5`}>Definitions</div>
-			<Definition label="Service definitions" n={services} />
-			<Definition label="Address groups" n={groups} />
+			<nav aria-label="Definitions" className="flex flex-col gap-0.5">
+				<Definition
+					kind="service"
+					n={services}
+					selected={section === "service"}
+				/>
+				<Definition kind="group" n={groups} selected={section === "group"} />
+			</nav>
 		</aside>
 	);
 }
 
-function Definition({ label, n }: { label: string; n: number | null }) {
+function Definition({
+	kind,
+	n,
+	selected,
+}: {
+	kind: Unknown["kind"];
+	n: number | null;
+	selected: boolean;
+}) {
+	const view = definitionViews[kind];
 	return (
-		<div className="flex h-8 items-center gap-2 rounded-control px-2 type-dense text-secondary">
-			<span className="flex-1">{label}</span>
+		<Link
+			to={view.path}
+			aria-current={selected ? "page" : undefined}
+			className={cn(
+				"flex h-8 items-center gap-2 rounded-control px-2 type-dense",
+				selected
+					? "bg-wash-selected font-medium text-primary"
+					: "text-secondary hover:bg-wash-hover hover:text-primary",
+			)}
+		>
+			<span className="flex-1">{view.title}</span>
 			<span className="type-mono-xs text-tertiary">{n ?? "…"}</span>
-		</div>
+		</Link>
 	);
 }

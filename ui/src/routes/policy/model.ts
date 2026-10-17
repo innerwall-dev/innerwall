@@ -43,6 +43,9 @@ export interface Chip {
 	// draws as one label chip from the selector itself, never from text
 	// re-split (a value stored before the label grammar may hold a space).
 	requirements?: Requirement[];
+	// detail is what a reference stands for, as the listing defines it
+	// now: a service's entries, an address group's members.
+	detail?: string;
 }
 
 // selectorText is a selector as one chip's text: its requirements in key
@@ -56,18 +59,35 @@ export function selectorText(sel: Selector): string {
 		.join(" ");
 }
 
+// Names maps the ids the surface writes to the names an operator reads,
+// and each definition, by id or by name (an unsaved row holds names), to
+// what it stands for.
 export interface Names {
 	services: ReadonlyMap<string, string>;
 	groups: ReadonlyMap<string, string>;
+	serviceDetail: ReadonlyMap<string, string>;
+	groupDetail: ReadonlyMap<string, string>;
 }
 
 export function namesOf(
 	services: readonly Service[],
 	groups: readonly AddressGroup[],
 ): Names {
+	const both = <T extends { id: string; name: string }>(
+		defs: readonly T[],
+		detail: (d: T) => string,
+	) =>
+		new Map(
+			defs.flatMap((d) => [
+				[d.name, detail(d)],
+				[d.id, detail(d)],
+			]),
+		);
 	return {
 		services: new Map(services.map((s) => [s.id, s.name])),
 		groups: new Map(groups.map((g) => [g.id, g.name])),
+		serviceDetail: both(services, (s) => s.entries.map(entryText).join(", ")),
+		groupDetail: both(groups, (g) => g.cidrs.join(", ")),
 	};
 }
 
@@ -88,6 +108,7 @@ export function peerChip(p: Peer, names: Names): Chip {
 			tag: "GROUP",
 			text: names.groups.get(p.address_group) ?? p.address_group,
 			reference: true,
+			...detailOf(names.groupDetail, p.address_group),
 		};
 	}
 	return { tag: "CIDR", text: p.cidr ?? "", reference: false };
@@ -112,7 +133,25 @@ export function entryChip(e: Entry): Chip {
 // ids, an operator types names, and either reads as the name when the
 // listing has it.
 export function serviceRefChip(ref: string, names: Names): Chip {
-	return { tag: "REF", text: names.services.get(ref) ?? ref, reference: true };
+	return {
+		tag: "REF",
+		text: names.services.get(ref) ?? ref,
+		reference: true,
+		...detailOf(names.serviceDetail, ref),
+	};
+}
+
+// A reference the listing does not define has no detail.
+const detailOf = (m: ReadonlyMap<string, string>, ref: string) => {
+	const detail = m.get(ref);
+	return detail === undefined ? {} : { detail };
+};
+
+// entryText is one entry as the service input reads it back: the
+// protocol, and its ports after a slash when it lists any.
+export function entryText(e: Entry): string {
+	const ports = e.ports ?? [];
+	return ports.length > 0 ? `${e.protocol}/${ports.join(",")}` : e.protocol;
 }
 
 // servicesCell is a rule's services as its cell draws them: the named
@@ -509,6 +548,135 @@ export function scopeFindings(
 		const m = new RegExp(`^${field}\\[(.*)\\]$`).exec(f.path);
 		if (m?.[1] !== undefined) push(out.keys, m[1], f);
 		else out.whole.push(f);
+	}
+	return out;
+}
+
+// Unknown is a definition a refused write named and found missing: a
+// service a rule references, or an address group it names as a peer.
+export type Unknown = { kind: "service" | "group"; name: string };
+
+// unknownOf is the missing definition a finding names, if it names one.
+// The finding sits on the element that names it (attachFindings), so
+// the name is the element's own value as the row holds it.
+export function unknownOf(
+	findings: readonly Finding[] | undefined,
+	element: { ref?: string; peer?: Peer },
+): Unknown | null {
+	for (const f of findings ?? []) {
+		if (f.rule === "service-unknown" && element.ref !== undefined) {
+			return { kind: "service", name: element.ref };
+		}
+		if (
+			f.rule === "address-group-unknown" &&
+			element.peer?.address_group !== undefined
+		) {
+			return { kind: "group", name: element.peer.address_group };
+		}
+	}
+	return null;
+}
+
+// DraftRow is the row being edited as the table holds it (RowState).
+export interface DraftRow {
+	draft: RuleDraft;
+	findings: Attached;
+	refused: string | null;
+}
+
+// defined is a row once a definition it found missing has been created,
+// under the name it was created with (the dialog may have changed it):
+// the elements that named it name the created one, their
+// unknown-reference findings are gone, and the refused write is no
+// longer the one just refused, since saving it now resolves the name.
+export function defined(
+	row: DraftRow,
+	u: Unknown,
+	createdAs: string = u.name,
+): DraftRow {
+	const d = row.draft;
+	const naming = new Set<string>();
+	const refs = d.refs.map((r) => {
+		if (u.kind !== "service" || r.value !== u.name) return r;
+		naming.add(r.key);
+		return { ...r, value: createdAs };
+	});
+	const peers = d.peers.map((p) => {
+		if (u.kind !== "group" || p.value.address_group !== u.name) return p;
+		naming.add(p.key);
+		return { ...p, value: { address_group: createdAs } };
+	});
+	const rule =
+		u.kind === "service" ? "service-unknown" : "address-group-unknown";
+	const elements: Record<string, Finding[]> = {};
+	for (const [k, fs] of Object.entries(row.findings.elements)) {
+		const kept = naming.has(k) ? fs.filter((f) => f.rule !== rule) : fs;
+		if (kept.length > 0) elements[k] = kept;
+	}
+	return {
+		...row,
+		draft: { ...d, refs, peers },
+		findings: { ...row.findings, elements },
+		refused: null,
+	};
+}
+
+// --- definitions -------------------------------------------------------------
+
+// parseEntry reads one service entry as typed: a protocol, optionally
+// with its ports after a slash or, as the command line writes it, a
+// colon (`tcp/5432`, `tcp:6000-6010,6012`, `udp/53`, `icmp`). Ports are
+// kept as typed, so the control plane's admission names any fault in
+// them; text that is not a protocol at all is refused here, since an
+// entry has no other form.
+export function parseEntry(text: string): { entry: Entry } | { error: string } {
+	const t = text.trim();
+	const m = /^(tcp|udp|icmp)(?:[/:](.*))?$/i.exec(t);
+	if (!m) {
+		return {
+			error: `an entry is a protocol with its ports: tcp/5432, udp/53, tcp/6000-6010, or icmp (${t})`,
+		};
+	}
+	const protocol = (m[1] ?? "").toLowerCase() as Entry["protocol"];
+	const ports = (m[2] ?? "")
+		.split(",")
+		.map((p) => p.trim())
+		.filter((p) => p !== "");
+	return { entry: ports.length > 0 ? { protocol, ports } : { protocol } };
+}
+
+// splitList is pasted text as its items, separated by commas or
+// whitespace: several CIDRs pasted at once. (An entry's ports hold
+// commas, so entries are separated by whitespace alone.)
+export function splitList(text: string): string[] {
+	return text.split(/[\s,]+/).filter((t) => t !== "");
+}
+
+// Reference is one rule that references a definition, in the ruleset
+// that holds it.
+export interface Reference {
+	ruleset: Ruleset;
+	rule: Rule;
+}
+
+// referencesTo lists the rules that reference a definition, by the id
+// the control plane writes: a service among a rule's services, an
+// address group among its peers. Rulesets keep the listing's order, and
+// rules theirs.
+export function referencesTo(
+	rulesets: readonly Ruleset[],
+	kind: Unknown["kind"],
+	id: string,
+): Reference[] {
+	const out: Reference[] = [];
+	for (const rs of rulesets) {
+		for (const rule of rs.rules) {
+			const hit =
+				kind === "service"
+					? (rule.services ?? []).includes(id)
+					: rule.peers.some((p) => p.address_group === id);
+			if (hit) out.push({ ruleset: rs, rule });
+		}
 	}
 	return out;
 }

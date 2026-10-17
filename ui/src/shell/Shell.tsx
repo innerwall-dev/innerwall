@@ -67,6 +67,10 @@ function crumbsFor(pathname: string, search: string): Crumb[] {
 	if (identityRoute(pathname)) return [];
 	if (pathname.startsWith("/workloads"))
 		return [{ label: "Workloads" }, { label: "Fleet" }];
+	if (pathname === "/policy/services")
+		return [{ label: "Policy" }, { label: "Service definitions" }];
+	if (pathname === "/policy/address-groups")
+		return [{ label: "Policy" }, { label: "Address groups" }];
 	if (pathname.startsWith("/policy")) {
 		// The ruleset the editor shows, which it names in the address.
 		const q = new URLSearchParams(search);
