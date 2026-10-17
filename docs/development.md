@@ -99,6 +99,8 @@ For iterating on the console itself, `npm --prefix ui run dev` serves it with ho
 - `drift`: `scripts/check-drift.sh`, which runs `make proto sqlc console-api` and fails on any diff or untracked generated file
 - `dco`: `scripts/check-dco.sh`, which requires a `Signed-off-by` trailer on every commit in the PR
 
+The same workflow is the gate for a release: `release.yml` calls it on the tagged commit before anything is built for publishing (see [Releasing](#releasing)). There the three checks that compare a change against its base (the proto breaking-change gate, applied migrations, DCO) have no base, and are skipped.
+
 `.github/workflows/claude.yml` runs the coding-agent jobs: `@claude` mentions on issues and PRs, and an advisory ADR-conformance review of every PR ready for review (a draft when it is marked ready; not one that changes only generated output or lockfiles) that posts findings as a sticky PR comment and never fails the build. The review runs only when the triggering actor holds write access to the repository; a PR from any other author gets an "ADR review did not post" note in the job summary instead, and an `@claude` mention reviews it by hand (ADR-0014). Both authenticate through workload identity federation; there is no static credential in the workflow.
 
 ## Versions
@@ -113,6 +115,35 @@ Both binaries report one version string: `innerwall version`, `innerwall-agent v
 | no commit known (a tree without `.git`, or no `git` on the build host) | `dev+unknown` |
 
 The commit is the 12-character prefix of what the Go toolchain embeds on every build made in a git checkout (`vcs.revision`), so `make build`, a plain `go build`, and a cross-compile all carry it with no flags; `go version -m <binary>` shows the full value. The image build installs `git` for the same reason. The release build sets both parts at link time instead (`-X github.com/innerwall-dev/innerwall/internal/buildinfo.version=…` and `.commit=…`, in `.goreleaser.yaml`). The logic is `internal/buildinfo`; nothing else formats a version.
+
+## Releasing
+
+A release is a pushed `v*` tag. `.github/workflows/release.yml` builds and uploads everything for it; publishing stays a human act.
+
+1. **Write the notes.** The release's section of `CHANGELOG.md` lands on `main` through a PR like any other change. The tag goes on a commit on `main`.
+2. **Tag and push.** `git tag -a v0.4.0 -m v0.4.0 <commit>`, then `git push origin v0.4.0`.
+3. **The gate runs.** The workflow first runs `ci.yml` on the tagged commit, every job a pull request runs except the three that need a base (above). A tag whose commit fails it publishes nothing.
+4. **goreleaser builds and uploads a draft.** `goreleaser release --clean` over `.goreleaser.yaml`:
+   - `innerwall`, the console embedded, for linux and darwin on amd64 and arm64; `innerwall-agent` for linux on amd64 and arm64 only. CGO is off; the Linux binaries are static. Both report `v0.4.0+<commit>`, the string a source build of the tag reports. The `noconsole` tag is a source-build option only: a release always embeds the console.
+   - One archive per binary and platform, `innerwall_0.4.0_<os>_<arch>.tar.gz` and `innerwall-agent_0.4.0_linux_<arch>.tar.gz`, each holding the binary and `LICENSE`, with an SPDX SBOM beside it (`<archive>.spdx.json`, written by syft).
+   - `checksums.txt` over the archives and SBOMs, signed keyless with cosign into `checksums.txt.sig` and `checksums.txt.pem`. No key exists: the certificate names the release workflow at the tag as the signer, through the job's OIDC identity.
+   - The control-plane image `ghcr.io/innerwall-dev/innerwall:0.4.0`, a manifest list over `0.4.0-amd64` and `0.4.0-arm64`, each the release binary copied into the minimal base by `Dockerfile.release`, and signed keyless by digest. Version tags only; nothing is tagged `latest`. The agent has no image. The image is pushed when the workflow runs, not when the draft is published.
+   - Everything above is uploaded to a **draft** release for the tag. A re-run of the workflow for the same tag replaces its own draft.
+5. **Publish.** Open the draft, check its assets against the list above, title it and write its notes from the tag's `CHANGELOG.md` section, and publish. Nothing generates notes, and the workflow never publishes.
+
+The tool versions (goreleaser, cosign, syft) are pinned in `release.yml`'s `env`. cosign stays on its v2 line: that is the release that writes the detached `.sig` and `.pem`.
+
+### Dry run
+
+The workflow cannot be run before a tag, so check a change to the release configuration locally, with the goreleaser version `release.yml` pins, Node 22, syft on `PATH`, and Docker with buildx:
+
+```sh
+git fetch --tags                                  # the snapshot's version is derived from the latest tag
+goreleaser check
+goreleaser release --snapshot --clean --skip=sign
+```
+
+A snapshot builds every binary, archive, SBOM, the checksums file, and both image platforms into `dist/` (ignored by git) and the local image store, versioned as the next patch with a `-next` suffix (`v0.3.1-next+<commit>`), and publishes nothing; the manifest list is made only on a real release. `--skip=sign` is required: a snapshot still signs, and keyless signing outside the workflow would start an interactive login and record the identity used in the public transparency log.
 
 ## Where things live
 
