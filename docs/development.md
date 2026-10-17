@@ -35,7 +35,7 @@ The Makefile is a thin dispatcher. Every target wraps a tool in one to three lin
 | `make sqlc` | `sqlc generate` from `internal/store/queries/` into `internal/store/db/` |
 | `make console-api` | Generates the console's types, `ui/src/api/generated.ts`, from `api/openapi.yaml` |
 | `make console` | `npm ci` and a production Vite build of the console into `ui/dist/` (`make ui` is the same target) |
-| `make dev` | `docker compose up --build`: control plane + Postgres |
+| `make dev` | `docker compose up --build`: the control plane built from the checkout, whatever `.env` names as `INNERWALL_IMAGE`, + Postgres |
 | `make seed` | Loads the review fleet into `$INNERWALL_DATABASE_URL` (`innerwall dev seed`, built with `-tags dev`); see below |
 | `make migrate` | Applies pending migrations to `$INNERWALL_DATABASE_URL` (`innerwall migrate`) |
 | `make drift` | Regenerates everything and fails on any diff (what CI runs) |
