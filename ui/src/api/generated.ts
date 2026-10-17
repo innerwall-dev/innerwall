@@ -2433,7 +2433,16 @@ export interface operations {
                 limit?: number;
                 /** @description Restrict to workloads in this enforcement mode. */
                 mode?: components["schemas"]["Mode"];
-                /** @description Restrict to workloads in this sync state. */
+                /**
+                 * @description Restrict to workloads in this stored sync state. It does not
+                 *     exclude workloads whose `health.owned_table.state` is `absent`
+                 *     (enforcement removed on the host): such a workload keeps the sync
+                 *     state its agent last recorded and is matched by it, while
+                 *     `GET /workloads/counts` counts it in `removed` and in no sync
+                 *     state. A page filtered by a sync state can therefore hold more
+                 *     workloads than that state's count, by exactly the removed
+                 *     workloads in it.
+                 */
                 sync_state?: components["schemas"]["SyncState"];
             };
             header?: never;
