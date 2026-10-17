@@ -155,9 +155,11 @@ Connections opened after that carry byte counts; ones already open stay at zero.
 
 **Symptom.** A workload shows an evidence gap reading *the agent was not reporting between t1 and t2*, and a simulation review whose range includes it is not safe to enforce.
 
-**Cause.** No flow report arrived from the agent for longer than two flow windows, and no window delivered afterwards covered the interval: the agent process was down (stopped, crashed, the host rebooted or was suspended), or it lost what it would have reported. The control plane derives this gap itself, from when it received the reports on either side (`agent_silent`), and writes it when the agent reports again. This is the evidence model working, not a fault: anything that reached the host in that interval went unseen.
+**Cause.** No flow report arrived from the agent for longer than two flow windows, no window delivered afterwards covered the interval, and the agent's heartbeats did not show one process running through it: the agent process was down (stopped, crashed, the host rebooted or was suspended), or it lost what it would have reported. The control plane derives this gap itself, from when it received the reports on either side (`agent_silent`), and writes it when the agent reports again. This is the evidence model working, not a fault: anything that reached the host in that interval went unseen.
 
-**Remedy.** Find out why the agent was down: the host's journal around the interval. The review stays unsafe while the gap is in its range; promote past it only with the acknowledgment, or wait until the range has moved past it. A control-plane outage the agent rode out records no such gap, because its buffered windows cover the time.
+**Remedy.** Find out why the agent was down: the host's journal around the interval. The review stays unsafe while the gap is in its range; promote past it only with the acknowledgment, or wait until the range has moved past it. A control-plane outage the agent rode out records no such gap, because its buffered windows cover the time, and neither does a workload that simply received no traffic, because its agent's heartbeats show it running throughout.
+
+A gap of this kind dated before an upgrade to v0.4.0, on a workload that receives little inbound traffic and whose agent's journal shows no stop or restart in the interval, can be spurious: v0.3.0 read such quiet stretches as silence (#144). Nothing stored distinguishes those gaps from an outage, so they are kept and age out with flow retention; acknowledge them in a review once the journal confirms the agent was running.
 
 ### Flow times are wrong: the agent's clock has drifted
 

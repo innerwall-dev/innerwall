@@ -693,7 +693,7 @@ export interface components {
              *     window_overflow — the agent's open aggregation window held as many distinct keys as it may, and observations for new keys were dropped until it closed.
              *     window_rejected — the control plane refused a closed window as malformed, and the agent dropped it rather than retry it.
              *     table_removed — the agent's owned firewall table was gone from the kernel (the local kill switch), so nothing was observed or classified; reported in pieces, one with each window, while it lasts.
-             *     agent_silent — the control plane received no flow report from the workload's agent for longer than the telemetry-liveness allowance, and no window delivered afterwards covered the interval: the agent process was down, or it lost what it would have reported. The one kind the control plane derives itself, from the receipt instants of consecutive reports.
+             *     agent_silent — the control plane received no flow report from the workload's agent for longer than the telemetry-liveness allowance, no window delivered afterwards covered the interval, and no heartbeat showed one agent process running through it: the agent process was down, or it lost what it would have reported. The one kind the control plane derives itself, from the receipt instants of consecutive reports and the agent process start its heartbeats imply.
              * @enum {string}
              */
             kind: "source_overrun" | "source_restart" | "buffer_overflow" | "dump_truncated" | "window_overflow" | "window_rejected" | "table_removed" | "agent_silent";

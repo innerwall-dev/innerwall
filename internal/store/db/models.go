@@ -247,6 +247,8 @@ type Workload struct {
 	LastFlowReportAt       *time.Time
 	LateRenewalAt          *time.Time
 	LateRenewalExpiredAt   *time.Time
+	LastHeartbeatAt        *time.Time
+	AgentStartedAt         *time.Time
 }
 
 type WorkloadAddress struct {

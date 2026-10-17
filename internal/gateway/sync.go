@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"sync"
 	"time"
 
@@ -372,6 +373,7 @@ func (s *Server) handleMessage(ctx context.Context, log *slog.Logger, sess *sess
 		if err := s.registry.RecordHeartbeat(ctx, sess.id, registry.Heartbeat{
 			DroppedFlowRecords: hb.GetDroppedFlowRecords(), SourceOverruns: hb.GetSourceOverruns(),
 			RenewalError: hb.GetCredentialRenewalError(), OwnedTable: hb.GetOwnedTable(),
+			Uptime: heartbeatUptime(hb.GetUptimeSeconds()),
 		}, now); err != nil {
 			return status.Error(codes.Internal, "recording heartbeat")
 		}
@@ -386,6 +388,14 @@ func (s *Server) handleMessage(ctx context.Context, log *slog.Logger, sess *sess
 	default:
 		return status.Error(codes.InvalidArgument, "empty sync message")
 	}
+}
+
+// heartbeatUptime is a heartbeat's agent uptime as a duration, held to
+// the longest one representable: an uptime past it is nonsense, and
+// overflowing would place the process start after the heartbeat instead.
+func heartbeatUptime(seconds uint64) time.Duration {
+	const most = uint64(math.MaxInt64 / int64(time.Second))
+	return time.Duration(min(seconds, most)) * time.Second //nolint:gosec // bounded above
 }
 
 // handleAck records an acknowledgement and its instant. APPLIED moves the

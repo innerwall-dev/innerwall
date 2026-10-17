@@ -292,6 +292,15 @@ func TestFlowPipelineEndToEnd(t *testing.T) {
 	waitFor(t, st, db.id, "renewal error cleared", func(w *registry.Workload) bool {
 		return w.CredentialRenewalError == "" && w.DroppedFlowRecords == 0
 	})
+	// The heartbeat's uptime places the agent process start on the
+	// control plane's clock, which the next flow report's receipt reads
+	// back for the silence derivation (issue #144).
+	db.send(&innerwallv1.SyncRequest{Msg: &innerwallv1.SyncRequest_Heartbeat{Heartbeat: &innerwallv1.Heartbeat{UptimeSeconds: 7200, DroppedFlowRecords: 3}}})
+	waitFor(t, st, db.id, "uptime heartbeat recorded", func(w *registry.Workload) bool { return w.DroppedFlowRecords == 3 })
+	_, proc, _, err := st.RecordFlowReport(ctx, db.id, time.Now())
+	if err != nil || proc == nil || proc.HeartbeatAt.Sub(proc.StartedAt) != 2*time.Hour {
+		t.Fatalf("recorded agent process = %+v, %v; want started two hours before its heartbeat", proc, err)
+	}
 	db.disconnect()
 
 	// A malformed window is refused with InvalidArgument; the stream

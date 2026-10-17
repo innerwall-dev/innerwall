@@ -81,6 +81,83 @@ func TestSilenceDerivedAcrossAgentOutage(t *testing.T) {
 	}
 }
 
+// heartbeat records on reports what a heartbeat received at at said: the
+// process that sent it had run for uptime.
+func heartbeat(reports *fakeReports, at time.Time, uptime time.Duration) {
+	reports.proc = &registry.AgentProcess{StartedAt: at.Add(-uptime), HeartbeatAt: at}
+}
+
+// TestQuietWorkloadDerivesNoGap is the repro of issue #144: a workload
+// that receives almost no inbound traffic, its agent running and its sync
+// stream heartbeating throughout. The agent ships only windows that hold
+// something, so reports arrive minutes apart; each long stretch used to
+// derive an agent_silent gap for evidence that was never lost. One process
+// ran through every silence, so nothing is derived.
+func TestQuietWorkloadDerivesNoGap(t *testing.T) {
+	svc, flows, reports, db := silenceService(t)
+	started := time.Date(2026, 10, 15, 10, 0, 0, 0, time.UTC)
+	t0 := started.Add(2 * time.Hour)
+	// An hour of windows; x held a record and was shipped, . was empty
+	// and never left the host. Runs of up to five empty windows.
+	const pattern = "xx..xxx...xxxx.xx.....xxxxx..xxx.xxxx...xxxxxx..xx.xxxxx.."
+	for i := range pattern {
+		start := t0.Add(time.Duration(i) * time.Minute)
+		end := start.Add(time.Minute)
+		// Heartbeats every 30s on the sync stream, the last one 20s
+		// before the window closes.
+		heartbeat(reports, end.Add(-20*time.Second), end.Add(-20*time.Second).Sub(started))
+		if pattern[i] != 'x' {
+			continue
+		}
+		if res := report(t, svc, db, start, end.Add(500*time.Millisecond)); res.Derived != 0 {
+			t.Fatalf("window %d: a quiet, running agent derived %d gaps", i, res.Derived)
+		}
+	}
+	if len(flows.derived) != 0 {
+		t.Fatalf("derived %v, want none", flows.derived)
+	}
+}
+
+// TestSilenceDerivedThroughStaleHeartbeat: the proof must cover the whole
+// silence. A real outage still derives its gap with the same bounds when
+// the latest heartbeat on record is the dead process's (the restarted
+// one's first report beat its first heartbeat), when it is the restarted
+// process's, and when the stream is down so no recent heartbeat exists.
+func TestSilenceDerivedThroughStaleHeartbeat(t *testing.T) {
+	started := time.Date(2026, 10, 15, 10, 0, 0, 0, time.UTC)
+	t0 := started.Add(2 * time.Hour)
+	restart := t0.Add(10 * time.Minute)
+	for name, proc := range map[string]*registry.AgentProcess{
+		// The old process's last heartbeat, 20s before it died at t0+25s.
+		"old process": {StartedAt: started, HeartbeatAt: t0.Add(5 * time.Second)},
+		// The restarted process, heartbeating 30s after it started.
+		"new process": {StartedAt: restart, HeartbeatAt: restart.Add(30 * time.Second)},
+		"none":        nil,
+	} {
+		t.Run(name, func(t *testing.T) {
+			svc, flows, reports, db := silenceService(t)
+			report(t, svc, db, t0.Add(-time.Minute), t0)
+			reports.proc = proc
+			if res := report(t, svc, db, restart, restart.Add(time.Minute)); res.Derived != 1 {
+				t.Fatalf("outage derived %d gaps, want 1", res.Derived)
+			}
+			if g := flows.derived[0]; !g.From.Equal(t0) || !g.To.Equal(restart) {
+				t.Fatalf("gap [%v, %v), want [%v, %v)", g.From, g.To, t0, restart)
+			}
+		})
+	}
+	// A running process whose sync stream has been down for longer than a
+	// window proves nothing about the silence: its latest heartbeat is too
+	// old, and the derivation stands.
+	svc, flows, reports, db := silenceService(t)
+	report(t, svc, db, t0.Add(-time.Minute), t0)
+	heartbeat(reports, t0.Add(time.Minute), t0.Add(time.Minute).Sub(started))
+	at := t0.Add(5 * time.Minute)
+	if res := report(t, svc, db, at.Add(-time.Minute), at); res.Derived != 1 || !flows.derived[0].From.Equal(t0) {
+		t.Fatalf("stream down: derived %d (%v), want the gap from %v", res.Derived, flows.derived, t0)
+	}
+}
+
 // TestQuickRestartDerivesNoGap is the acceptance property: an ordinary
 // agent restart on a healthy host, quick enough to lose no whole window,
 // sprays no spurious gaps — the silence stays within the allowance.

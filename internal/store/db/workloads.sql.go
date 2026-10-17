@@ -167,7 +167,7 @@ func (q *Queries) DeleteWorkloadListeningServices(ctx context.Context, workloadI
 }
 
 const getWorkload = `-- name: GetWorkload :one
-SELECT id, region_id, provisioning_token_id, hostname, enrolled_at, credential_serial, credential_expires_at, last_renewed_at, mode, facts, agent_version, agent_capabilities, last_seen_at, sync_state, applied_policy_version, sync_error, dropped_flow_records, credential_renewal_error, last_snapshot_sent_at, last_acked_at, last_apply_failed_at, source_overruns, clock_skew_offset_ms, clock_skew_observed_at, clock_skew_current, owned_table_state, owned_table_absent_since, last_flow_report_at, late_renewal_at, late_renewal_expired_at FROM workloads
+SELECT id, region_id, provisioning_token_id, hostname, enrolled_at, credential_serial, credential_expires_at, last_renewed_at, mode, facts, agent_version, agent_capabilities, last_seen_at, sync_state, applied_policy_version, sync_error, dropped_flow_records, credential_renewal_error, last_snapshot_sent_at, last_acked_at, last_apply_failed_at, source_overruns, clock_skew_offset_ms, clock_skew_observed_at, clock_skew_current, owned_table_state, owned_table_absent_since, last_flow_report_at, late_renewal_at, late_renewal_expired_at, last_heartbeat_at, agent_started_at FROM workloads
 WHERE id = $1
 `
 
@@ -205,12 +205,14 @@ func (q *Queries) GetWorkload(ctx context.Context, id uuid.UUID) (Workload, erro
 		&i.LastFlowReportAt,
 		&i.LateRenewalAt,
 		&i.LateRenewalExpiredAt,
+		&i.LastHeartbeatAt,
+		&i.AgentStartedAt,
 	)
 	return i, err
 }
 
 const getWorkloadWithPolicy = `-- name: GetWorkloadWithPolicy :one
-SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at, w.credential_serial, w.credential_expires_at, w.last_renewed_at, w.mode, w.facts, w.agent_version, w.agent_capabilities, w.last_seen_at, w.sync_state, w.applied_policy_version, w.sync_error, w.dropped_flow_records, w.credential_renewal_error, w.last_snapshot_sent_at, w.last_acked_at, w.last_apply_failed_at, w.source_overruns, w.clock_skew_offset_ms, w.clock_skew_observed_at, w.clock_skew_current, w.owned_table_state, w.owned_table_absent_since, w.last_flow_report_at, w.late_renewal_at, w.late_renewal_expired_at, p.version AS latest_version, p.rendered_at AS latest_rendered_at
+SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at, w.credential_serial, w.credential_expires_at, w.last_renewed_at, w.mode, w.facts, w.agent_version, w.agent_capabilities, w.last_seen_at, w.sync_state, w.applied_policy_version, w.sync_error, w.dropped_flow_records, w.credential_renewal_error, w.last_snapshot_sent_at, w.last_acked_at, w.last_apply_failed_at, w.source_overruns, w.clock_skew_offset_ms, w.clock_skew_observed_at, w.clock_skew_current, w.owned_table_state, w.owned_table_absent_since, w.last_flow_report_at, w.late_renewal_at, w.late_renewal_expired_at, w.last_heartbeat_at, w.agent_started_at, p.version AS latest_version, p.rendered_at AS latest_rendered_at
 FROM workloads w
 LEFT JOIN workload_policies p ON p.workload_id = w.id
 WHERE w.id = $1
@@ -257,6 +259,8 @@ func (q *Queries) GetWorkloadWithPolicy(ctx context.Context, id uuid.UUID) (GetW
 		&i.Workload.LastFlowReportAt,
 		&i.Workload.LateRenewalAt,
 		&i.Workload.LateRenewalExpiredAt,
+		&i.Workload.LastHeartbeatAt,
+		&i.Workload.AgentStartedAt,
 		&i.LatestVersion,
 		&i.LatestRenderedAt,
 	)
@@ -495,7 +499,7 @@ SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at,
        w.sync_rank::integer AS sync_rank, w.seen_key::timestamptz AS seen_key,
        p.version AS latest_version, p.rendered_at AS latest_rendered_at
 FROM (
-    SELECT workloads.id, workloads.region_id, workloads.provisioning_token_id, workloads.hostname, workloads.enrolled_at, workloads.credential_serial, workloads.credential_expires_at, workloads.last_renewed_at, workloads.mode, workloads.facts, workloads.agent_version, workloads.agent_capabilities, workloads.last_seen_at, workloads.sync_state, workloads.applied_policy_version, workloads.sync_error, workloads.dropped_flow_records, workloads.credential_renewal_error, workloads.last_snapshot_sent_at, workloads.last_acked_at, workloads.last_apply_failed_at, workloads.source_overruns, workloads.clock_skew_offset_ms, workloads.clock_skew_observed_at, workloads.clock_skew_current, workloads.owned_table_state, workloads.owned_table_absent_since, workloads.last_flow_report_at, workloads.late_renewal_at, workloads.late_renewal_expired_at,
+    SELECT workloads.id, workloads.region_id, workloads.provisioning_token_id, workloads.hostname, workloads.enrolled_at, workloads.credential_serial, workloads.credential_expires_at, workloads.last_renewed_at, workloads.mode, workloads.facts, workloads.agent_version, workloads.agent_capabilities, workloads.last_seen_at, workloads.sync_state, workloads.applied_policy_version, workloads.sync_error, workloads.dropped_flow_records, workloads.credential_renewal_error, workloads.last_snapshot_sent_at, workloads.last_acked_at, workloads.last_apply_failed_at, workloads.source_overruns, workloads.clock_skew_offset_ms, workloads.clock_skew_observed_at, workloads.clock_skew_current, workloads.owned_table_state, workloads.owned_table_absent_since, workloads.last_flow_report_at, workloads.late_renewal_at, workloads.late_renewal_expired_at, workloads.last_heartbeat_at, workloads.agent_started_at,
            CASE WHEN workloads.owned_table_state = 2 THEN 0
                 WHEN workloads.sync_state = 3 THEN 0 WHEN workloads.sync_state = 4 THEN 1
                 WHEN workloads.sync_state = 2 THEN 2 WHEN workloads.sync_state = 1 THEN 3 ELSE 4 END AS sync_rank,
@@ -637,7 +641,7 @@ func (q *Queries) ListWorkloadPage(ctx context.Context, arg ListWorkloadPagePara
 
 const listWorkloads = `-- name: ListWorkloads :many
 
-SELECT id, region_id, provisioning_token_id, hostname, enrolled_at, credential_serial, credential_expires_at, last_renewed_at, mode, facts, agent_version, agent_capabilities, last_seen_at, sync_state, applied_policy_version, sync_error, dropped_flow_records, credential_renewal_error, last_snapshot_sent_at, last_acked_at, last_apply_failed_at, source_overruns, clock_skew_offset_ms, clock_skew_observed_at, clock_skew_current, owned_table_state, owned_table_absent_since, last_flow_report_at, late_renewal_at, late_renewal_expired_at FROM workloads
+SELECT id, region_id, provisioning_token_id, hostname, enrolled_at, credential_serial, credential_expires_at, last_renewed_at, mode, facts, agent_version, agent_capabilities, last_seen_at, sync_state, applied_policy_version, sync_error, dropped_flow_records, credential_renewal_error, last_snapshot_sent_at, last_acked_at, last_apply_failed_at, source_overruns, clock_skew_offset_ms, clock_skew_observed_at, clock_skew_current, owned_table_state, owned_table_absent_since, last_flow_report_at, late_renewal_at, late_renewal_expired_at, last_heartbeat_at, agent_started_at FROM workloads
 ORDER BY enrolled_at, id
 `
 
@@ -682,6 +686,8 @@ func (q *Queries) ListWorkloads(ctx context.Context) ([]Workload, error) {
 			&i.LastFlowReportAt,
 			&i.LateRenewalAt,
 			&i.LateRenewalExpiredAt,
+			&i.LastHeartbeatAt,
+			&i.AgentStartedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -815,14 +821,15 @@ const recordWorkloadFlowReport = `-- name: RecordWorkloadFlowReport :many
 UPDATE workloads
 SET last_flow_report_at = $1
 FROM (
-    SELECT w.id AS locked_id, w.last_flow_report_at AS prev
+    SELECT w.id AS locked_id, w.last_flow_report_at AS prev,
+           w.last_heartbeat_at AS heartbeat_at, w.agent_started_at AS started_at
     FROM workloads w
     WHERE w.id = $2
     FOR UPDATE
 ) locked
 WHERE workloads.id = locked.locked_id
   AND (locked.prev IS NULL OR locked.prev < $1)
-RETURNING locked.prev
+RETURNING locked.prev, locked.heartbeat_at, locked.started_at
 `
 
 type RecordWorkloadFlowReportParams struct {
@@ -830,25 +837,34 @@ type RecordWorkloadFlowReportParams struct {
 	ID         uuid.UUID
 }
 
+type RecordWorkloadFlowReportRow struct {
+	Prev        *time.Time
+	HeartbeatAt *time.Time
+	StartedAt   *time.Time
+}
+
 // The receipt of one flow report (migration 00013). Never moved backwards,
 // so reports handled out of order across replicas leave the latest. The
 // row it replaces comes back so ingest can derive the agent-silence gap
 // (migration 00015): the locking subquery serializes concurrent reports of
-// one workload, so each silence is seen by exactly one of them. No row
-// means the receipt did not advance (a stale report, or no such workload).
-func (q *Queries) RecordWorkloadFlowReport(ctx context.Context, arg RecordWorkloadFlowReportParams) ([]*time.Time, error) {
+// one workload, so each silence is seen by exactly one of them. The latest
+// heartbeat's receipt and process start ride along, read under the same
+// lock, so the derivation can tell a quiet agent from an absent one
+// (migration 00016). No row means the receipt did not advance (a stale
+// report, or no such workload).
+func (q *Queries) RecordWorkloadFlowReport(ctx context.Context, arg RecordWorkloadFlowReportParams) ([]RecordWorkloadFlowReportRow, error) {
 	rows, err := q.db.Query(ctx, recordWorkloadFlowReport, arg.ReceivedAt, arg.ID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []*time.Time{}
+	items := []RecordWorkloadFlowReportRow{}
 	for rows.Next() {
-		var prev *time.Time
-		if err := rows.Scan(&prev); err != nil {
+		var i RecordWorkloadFlowReportRow
+		if err := rows.Scan(&i.Prev, &i.HeartbeatAt, &i.StartedAt); err != nil {
 			return nil, err
 		}
-		items = append(items, prev)
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -859,18 +875,20 @@ func (q *Queries) RecordWorkloadFlowReport(ctx context.Context, arg RecordWorklo
 const recordWorkloadHeartbeat = `-- name: RecordWorkloadHeartbeat :execrows
 UPDATE workloads
 SET last_seen_at = $1, dropped_flow_records = $2,
-    credential_renewal_error = $3, source_overruns = $4,
+    last_heartbeat_at = $1, agent_started_at = $3,
+    credential_renewal_error = $4, source_overruns = $5,
     owned_table_absent_since = CASE
-        WHEN $5::smallint = 0 THEN owned_table_absent_since
-        WHEN $5::smallint = 2 THEN coalesce(owned_table_absent_since, $1)
+        WHEN $6::smallint = 0 THEN owned_table_absent_since
+        WHEN $6::smallint = 2 THEN coalesce(owned_table_absent_since, $1)
         ELSE NULL END,
-    owned_table_state = CASE WHEN $5::smallint = 0 THEN owned_table_state ELSE $5::smallint END
-WHERE id = $6
+    owned_table_state = CASE WHEN $6::smallint = 0 THEN owned_table_state ELSE $6::smallint END
+WHERE id = $7
 `
 
 type RecordWorkloadHeartbeatParams struct {
 	LastSeenAt             *time.Time
 	DroppedFlowRecords     int64
+	AgentStartedAt         *time.Time
 	CredentialRenewalError string
 	SourceOverruns         int64
 	OwnedTableState        int16
@@ -880,10 +898,13 @@ type RecordWorkloadHeartbeatParams struct {
 // A heartbeat's counters, renewal status, and owned-table state (migration
 // 00012). An unknown state leaves the stored one; the absent instant is the
 // first heartbeat's that said absent, kept while the state stays absent.
+// The heartbeat's receipt and the start of the process it came from are
+// written together, so the pair is always one heartbeat's (migration 00016).
 func (q *Queries) RecordWorkloadHeartbeat(ctx context.Context, arg RecordWorkloadHeartbeatParams) (int64, error) {
 	result, err := q.db.Exec(ctx, recordWorkloadHeartbeat,
 		arg.LastSeenAt,
 		arg.DroppedFlowRecords,
+		arg.AgentStartedAt,
 		arg.CredentialRenewalError,
 		arg.SourceOverruns,
 		arg.OwnedTableState,

@@ -12,6 +12,7 @@ import (
 	"github.com/innerwall-dev/innerwall/internal/identity"
 	"github.com/innerwall-dev/innerwall/internal/ingest"
 	"github.com/innerwall-dev/innerwall/internal/readmodel"
+	"github.com/innerwall-dev/innerwall/internal/registry"
 	"github.com/innerwall-dev/innerwall/internal/storetest"
 )
 
@@ -97,6 +98,119 @@ func TestSilenceGapEndToEnd(t *testing.T) {
 	}
 	if gaps := gapsIn(base.Add(-time.Hour), quick.Add(time.Hour)); len(gaps) != 1 {
 		t.Fatalf("agent_silent gaps after steady reporting = %+v, want still one", gaps)
+	}
+}
+
+// TestQuietWorkloadSilenceEndToEnd is issue #144 through the real store,
+// heartbeats recorded as the gateway records them: an hour of a quiet
+// workload whose agent ships only the windows holding a record, its sync
+// stream heartbeating every 30s, derives nothing; then the agent process
+// stops for ten minutes and the restarted process's first report derives
+// the outage's gap with the INN-72 bounds, even though the newest
+// heartbeat on record is still the dead process's; then a quick restart
+// derives nothing.
+func TestQuietWorkloadSilenceEndToEnd(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	s := storetest.Open(t)
+	f := storetest.SeedFleet(t, s)
+
+	var now time.Time
+	svc := &ingest.Service{Directory: s, Flows: s.Flows(), Clock: s, Reports: s,
+		FlowWindow: time.Minute, Now: func() time.Time { return now }}
+	report := func(start, at time.Time) ingest.Result {
+		t.Helper()
+		now = at
+		res, err := svc.Ingest(ctx, f.DB, &innerwallv1.ReportFlowsRequest{
+			WindowStart: timestamppb.New(start), WindowEnd: timestamppb.New(start.Add(time.Minute)),
+			SentAt: timestamppb.New(at),
+			Records: []*innerwallv1.FlowRecord{{
+				SrcAddress: "10.0.0.99", DstAddress: "10.0.0.10", DstPort: 22,
+				Protocol: innerwallv1.Protocol_PROTOCOL_TCP, Direction: innerwallv1.Direction_DIRECTION_INBOUND,
+				Decision: innerwallv1.PolicyDecision_POLICY_DECISION_OBSERVED, ConnectionCount: 1,
+			}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res
+	}
+	// heartbeats records the heartbeats of a process started at started,
+	// every 30s from *next until at.
+	heartbeats := func(started time.Time, next *time.Time, at time.Time) {
+		t.Helper()
+		for ; !next.After(at); *next = next.Add(30 * time.Second) {
+			if err := s.RecordHeartbeat(ctx, f.DB, registry.Heartbeat{Uptime: next.Sub(started).Truncate(time.Second)}, *next); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	silent := func(from, to time.Time) []readmodel.Gap {
+		t.Helper()
+		reads := &readmodel.Reader{Store: s, Flows: s.Flows(), FlowWindow: time.Minute}
+		res, err := reads.Gaps(ctx, readmodel.GapsRequest{From: from, To: to, Workload: &f.DB})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []readmodel.Gap
+		for _, g := range res.Gaps {
+			if g.Kind == innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_AGENT_SILENT {
+				out = append(out, g)
+			}
+		}
+		return out
+	}
+
+	started := f.Now.Add(time.Hour)
+	base := started.Add(2 * time.Hour)
+	hb := started.Add(30 * time.Second)
+	heartbeats(started, &hb, base)
+	report(base.Add(-time.Minute), base)
+
+	// The quiet hour: 58 windows, 39 with a record, the cadence the
+	// issue's journal showed.
+	const pattern = "xx..xxx...xxxx.xx....xxxxx..xxx.xxxx...xxxxx..xx.xxxxxxxxx"
+	var last time.Time
+	for i := range pattern {
+		start := base.Add(time.Duration(i) * time.Minute)
+		end := start.Add(time.Minute)
+		heartbeats(started, &hb, end)
+		if pattern[i] != 'x' {
+			continue
+		}
+		last = end.Add(500 * time.Millisecond)
+		if res := report(start, last); res.Derived != 0 {
+			t.Fatalf("quiet window %d derived a gap", i)
+		}
+	}
+	if gaps := silent(base.Add(-time.Hour), last.Add(time.Hour)); len(gaps) != 0 {
+		t.Fatalf("a quiet, running agent's hour holds agent_silent gaps %+v", gaps)
+	}
+
+	// A real silence: the process dies 25s after its last report, its
+	// last heartbeat before that; the restarted process's first window
+	// closes, and is reported, before its first heartbeat lands.
+	heartbeats(started, &hb, last.Add(25*time.Second))
+	restart := last.Add(10 * time.Minute)
+	if res := report(restart, restart.Add(time.Minute)); res.Derived != 1 {
+		t.Fatalf("report after the outage derived %d gaps, want 1", res.Derived)
+	}
+	gaps := silent(base.Add(-time.Hour), restart.Add(time.Hour))
+	if len(gaps) != 1 || !gaps[0].From.Equal(last) || !gaps[0].To.Equal(restart) {
+		t.Fatalf("agent_silent gaps = %+v, want [%v, %v)", gaps, last, restart)
+	}
+
+	// The restarted process heartbeats; a quick restart of it (20s down)
+	// stays within the allowance and adds nothing.
+	hb = restart.Add(30 * time.Second)
+	heartbeats(restart, &hb, restart.Add(2*time.Minute))
+	report(restart.Add(time.Minute), restart.Add(2*time.Minute))
+	quick := restart.Add(2*time.Minute + 20*time.Second)
+	if res := report(quick, quick.Add(time.Minute)); res.Derived != 0 {
+		t.Fatal("quick restart derived a gap")
+	}
+	if gaps := silent(base.Add(-time.Hour), quick.Add(time.Hour)); len(gaps) != 1 {
+		t.Fatalf("agent_silent gaps after the quick restart = %+v, want still one", gaps)
 	}
 }
 

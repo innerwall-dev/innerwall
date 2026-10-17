@@ -96,9 +96,12 @@ ORDER BY protocol, port;
 -- A heartbeat's counters, renewal status, and owned-table state (migration
 -- 00012). An unknown state leaves the stored one; the absent instant is the
 -- first heartbeat's that said absent, kept while the state stays absent.
+-- The heartbeat's receipt and the start of the process it came from are
+-- written together, so the pair is always one heartbeat's (migration 00016).
 -- name: RecordWorkloadHeartbeat :execrows
 UPDATE workloads
 SET last_seen_at = sqlc.arg(last_seen_at), dropped_flow_records = sqlc.arg(dropped_flow_records),
+    last_heartbeat_at = sqlc.arg(last_seen_at), agent_started_at = sqlc.arg(agent_started_at),
     credential_renewal_error = sqlc.arg(credential_renewal_error), source_overruns = sqlc.arg(source_overruns),
     owned_table_absent_since = CASE
         WHEN sqlc.arg(owned_table_state)::smallint = 0 THEN owned_table_absent_since
@@ -122,20 +125,24 @@ WHERE id = sqlc.arg(id) AND (sqlc.arg(skewed)::boolean OR clock_skew_current);
 -- so reports handled out of order across replicas leave the latest. The
 -- row it replaces comes back so ingest can derive the agent-silence gap
 -- (migration 00015): the locking subquery serializes concurrent reports of
--- one workload, so each silence is seen by exactly one of them. No row
--- means the receipt did not advance (a stale report, or no such workload).
+-- one workload, so each silence is seen by exactly one of them. The latest
+-- heartbeat's receipt and process start ride along, read under the same
+-- lock, so the derivation can tell a quiet agent from an absent one
+-- (migration 00016). No row means the receipt did not advance (a stale
+-- report, or no such workload).
 -- name: RecordWorkloadFlowReport :many
 UPDATE workloads
 SET last_flow_report_at = sqlc.arg(received_at)
 FROM (
-    SELECT w.id AS locked_id, w.last_flow_report_at AS prev
+    SELECT w.id AS locked_id, w.last_flow_report_at AS prev,
+           w.last_heartbeat_at AS heartbeat_at, w.agent_started_at AS started_at
     FROM workloads w
     WHERE w.id = sqlc.arg(id)
     FOR UPDATE
 ) locked
 WHERE workloads.id = locked.locked_id
   AND (locked.prev IS NULL OR locked.prev < sqlc.arg(received_at))
-RETURNING locked.prev;
+RETURNING locked.prev, locked.heartbeat_at, locked.started_at;
 
 -- name: SetWorkloadSyncState :execrows
 UPDATE workloads

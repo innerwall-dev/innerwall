@@ -311,26 +311,35 @@ func (s *Store) RecordClockReading(ctx context.Context, id identity.WorkloadID, 
 
 // RecordFlowReport implements ingest.ReportRecorder: the receipt of one
 // flow report, never moved backwards. It returns the receipt it replaced,
-// nil for the first ever, and advanced false when this one was stale and
-// replaced nothing. The statement locks the workload's row, so of two
-// concurrent reports one sees the other's receipt as prev, never the one
-// before: a silence between consecutive receipts is derived exactly once.
-func (s *Store) RecordFlowReport(ctx context.Context, id identity.WorkloadID, receivedAt time.Time) (prev *time.Time, advanced bool, err error) {
+// nil for the first ever, with the agent process the latest heartbeat
+// proved running (nil before any heartbeat recorded one), and advanced
+// false when this one was stale and replaced nothing. The statement locks
+// the workload's row, so of two concurrent reports one sees the other's
+// receipt as prev, never the one before: a silence between consecutive
+// receipts is derived exactly once, against the heartbeat pair as it
+// stood when the lock was taken.
+func (s *Store) RecordFlowReport(ctx context.Context, id identity.WorkloadID, receivedAt time.Time) (prev *time.Time, proc *registry.AgentProcess, advanced bool, err error) {
 	rows, err := s.q.RecordWorkloadFlowReport(ctx, db.RecordWorkloadFlowReportParams{ID: id.UUID(), ReceivedAt: &receivedAt})
 	if err != nil {
-		return nil, false, fmt.Errorf("store: recording flow report: %w", err)
+		return nil, nil, false, fmt.Errorf("store: recording flow report: %w", err)
 	}
 	if len(rows) == 0 {
-		return nil, false, nil
+		return nil, nil, false, nil
 	}
-	return rows[0], true, nil
+	row := rows[0]
+	if row.StartedAt != nil && row.HeartbeatAt != nil {
+		proc = &registry.AgentProcess{StartedAt: *row.StartedAt, HeartbeatAt: *row.HeartbeatAt}
+	}
+	return row.Prev, proc, true, nil
 }
 
 // RecordHeartbeat implements registry.Store.
 func (s *Store) RecordHeartbeat(ctx context.Context, id identity.WorkloadID, hb registry.Heartbeat, now time.Time) error {
+	started := now.Add(-hb.Uptime)
 	n, err := s.q.RecordWorkloadHeartbeat(ctx, db.RecordWorkloadHeartbeatParams{
 		ID: id.UUID(), LastSeenAt: &now, DroppedFlowRecords: int64(hb.DroppedFlowRecords), CredentialRenewalError: hb.RenewalError, //nolint:gosec // counters
 		SourceOverruns: int64(hb.SourceOverruns), OwnedTableState: ownedTableState(hb.OwnedTable), //nolint:gosec // counters
+		AgentStartedAt: &started,
 	})
 	if err != nil {
 		return fmt.Errorf("store: recording heartbeat: %w", err)
