@@ -1,13 +1,22 @@
-# Release builds for both binaries: static (CGO disabled), trimmed, timestamped
-# from the commit so the same tag rebuilds byte-for-byte. Archives are
-# checksummed and signed. Tag-driven; see docs/development.md.
+# Release builds: the control plane (console embedded) for Linux and macOS,
+# the agent for Linux only (it programs the host's nftables as root). Static
+# (CGO disabled), trimmed, timestamped from the commit so the same tag
+# rebuilds byte-for-byte. Each binary is archived on its own with an SPDX
+# SBOM; the checksums file is signed keyless with cosign. The control-plane
+# image is published to GHCR for amd64 and arm64, by version tag only, and
+# signed the same way. Everything uploads to a draft release whose notes are
+# written by hand from CHANGELOG.md; publishing it is a human act.
+# Tag-driven by .github/workflows/release.yml; see docs/development.md.
 version: 2
 
 project_name: innerwall
 
 before:
   hooks:
-    - go mod tidy
+    # Checks, never mutates: these hooks run after goreleaser's clean-tree
+    # check, so a hook that rewrote go.mod or go.sum would release a tree the
+    # CI gate never saw. An untidy module fails the release instead.
+    - go mod tidy -diff
     - npm --prefix ui ci
     - npm --prefix ui run build
 
@@ -19,13 +28,16 @@ builds:
       - CGO_ENABLED=0
     goos:
       - linux
+      - darwin
     goarch:
       - amd64
       - arm64
     flags:
       - -trimpath
+    # The version is the tag as internal/buildinfo reports it everywhere,
+    # v-prefixed: the same string a source build of the tag reports.
     ldflags:
-      - -s -w -X github.com/innerwall-dev/innerwall/internal/buildinfo.version={{ .Version }} -X github.com/innerwall-dev/innerwall/internal/buildinfo.commit={{ .FullCommit }}
+      - -s -w -X github.com/innerwall-dev/innerwall/internal/buildinfo.version=v{{ .Version }} -X github.com/innerwall-dev/innerwall/internal/buildinfo.commit={{ .FullCommit }}
     mod_timestamp: "{{ .CommitTimestamp }}"
 
   - id: innerwall-agent
@@ -41,7 +53,7 @@ builds:
     flags:
       - -trimpath
     ldflags:
-      - -s -w -X github.com/innerwall-dev/innerwall/internal/buildinfo.version={{ .Version }} -X github.com/innerwall-dev/innerwall/internal/buildinfo.commit={{ .FullCommit }}
+      - -s -w -X github.com/innerwall-dev/innerwall/internal/buildinfo.version=v{{ .Version }} -X github.com/innerwall-dev/innerwall/internal/buildinfo.commit={{ .FullCommit }}
     mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
@@ -51,17 +63,30 @@ archives:
     name_template: "innerwall_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     formats:
       - tar.gz
+    files:
+      - LICENSE
   - id: innerwall-agent
     ids:
       - innerwall-agent
     name_template: "innerwall-agent_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     formats:
       - tar.gz
+    files:
+      - LICENSE
+
+# One SPDX document per archive, written by syft. Listed in checksums.txt,
+# so the signature covers them.
+sboms:
+  - artifacts: archive
+    documents:
+      - "{{ .ArtifactName }}.spdx.json"
 
 checksum:
   name_template: checksums.txt
   algorithm: sha256
 
+# Keyless: the signer is the release workflow's OIDC identity. The detached
+# .sig and .pem are cosign v2's output; the workflow pins a v2 release.
 signs:
   - cmd: cosign
     certificate: "${artifact}.pem"
@@ -73,12 +98,71 @@ signs:
       - --yes
     artifacts: checksum
 
+# The control-plane image: the release binary copied into a minimal base
+# (Dockerfile.release), one image per architecture joined under one version
+# tag by the manifest. The agent has no image: it is a host daemon that owns
+# the host's nftables table.
+dockers:
+  - id: innerwall-amd64
+    ids:
+      - innerwall
+    goos: linux
+    goarch: amd64
+    dockerfile: Dockerfile.release
+    use: buildx
+    image_templates:
+      - "ghcr.io/innerwall-dev/innerwall:{{ .Version }}-amd64"
+    build_flag_templates:
+      - --platform=linux/amd64
+      - --label=org.opencontainers.image.title=innerwall
+      - --label=org.opencontainers.image.source=https://github.com/innerwall-dev/innerwall
+      - --label=org.opencontainers.image.licenses=Apache-2.0
+      - --label=org.opencontainers.image.version=v{{ .Version }}
+      - --label=org.opencontainers.image.revision={{ .FullCommit }}
+      - --label=org.opencontainers.image.created={{ .CommitDate }}
+  - id: innerwall-arm64
+    ids:
+      - innerwall
+    goos: linux
+    goarch: arm64
+    dockerfile: Dockerfile.release
+    use: buildx
+    image_templates:
+      - "ghcr.io/innerwall-dev/innerwall:{{ .Version }}-arm64"
+    build_flag_templates:
+      - --platform=linux/arm64
+      - --label=org.opencontainers.image.title=innerwall
+      - --label=org.opencontainers.image.source=https://github.com/innerwall-dev/innerwall
+      - --label=org.opencontainers.image.licenses=Apache-2.0
+      - --label=org.opencontainers.image.version=v{{ .Version }}
+      - --label=org.opencontainers.image.revision={{ .FullCommit }}
+      - --label=org.opencontainers.image.created={{ .CommitDate }}
+
+docker_manifests:
+  - name_template: "ghcr.io/innerwall-dev/innerwall:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/innerwall-dev/innerwall:{{ .Version }}-amd64"
+      - "ghcr.io/innerwall-dev/innerwall:{{ .Version }}-arm64"
+
+# Signs the manifest list by digest, keyless, as the checksums are.
+docker_signs:
+  - cmd: cosign
+    artifacts: manifests
+    args:
+      - sign
+      - ${artifact}@${digest}
+      - --yes
+
+# A draft, never published by the pipeline. A re-run for the same tag
+# replaces its own draft rather than adding a second.
+release:
+  draft: true
+  replace_existing_draft: true
+
+# Notes are written by hand from CHANGELOG.md when the draft is published,
+# so no commit log is generated into the draft.
+changelog:
+  disable: true
+
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
-
-changelog:
-  sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^ci:"
