@@ -272,6 +272,8 @@ describe("mint dialog", () => {
 		expect(done).toHaveTextContent(
 			"innerwall-agent enroll --server gw.iad1.example:8443",
 		);
+		// The CA certificate by the name every install document gives it.
+		expect(done).toHaveTextContent("--bootstrap-ca ca.crt");
 		expect(done).not.toHaveTextContent("<agent-gateway>");
 		expect(done).not.toHaveTextContent("--gateway-advertise-address");
 	});

@@ -898,6 +898,11 @@ describe("simulation review states", () => {
 		expect(
 			await screen.findByRole("heading", { name: "Nothing to review yet" }),
 		).toBeInTheDocument();
+		// Enrolling names the tab tokens are minted in and what the host
+		// needs, whichever way the agent is installed.
+		expect(document.body).toHaveTextContent(
+			"Enroll workloads — mint a token in Workloads → Provisioning tokens, copy the agent binary and CA certificate to the host.",
+		);
 	});
 
 	it("says when every ruleset is disabled", async () => {
