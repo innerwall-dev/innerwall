@@ -2,6 +2,13 @@
 
 Direction, not dates. Ordering follows ADR-0001: visibility value first, enforcement as the destination. Every item below that the record already names cites where; an item without a citation is a direction the record has not decided yet and gets its own ADR before it is built.
 
+## Shipped in v0.3.0
+
+The evidence record hardened, and the operating loop documented; the full list is in [CHANGELOG.md](CHANGELOG.md).
+
+- **An agent's silence is an evidence gap.** The control plane derives the interval in which a workload's agent was not reporting into an `agent_silent` gap; a simulation review spanning it fails rather than reading safe (ADR-0019 amended).
+- **Operator documentation.** Task guides for the operating loop, a reference for both command lines, the operator API, and every workload state and evidence-gap kind, and a troubleshooting catalog ([docs/guides/](docs/guides/), [docs/reference/](docs/reference/)).
+
 ## Shipped in v0.2.0
 
 Hardening of what v0.1.0 shipped, and the console restyled; the full list is in [CHANGELOG.md](CHANGELOG.md).
