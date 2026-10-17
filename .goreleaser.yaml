@@ -13,7 +13,10 @@ project_name: innerwall
 
 before:
   hooks:
-    - go mod tidy
+    # Checks, never mutates: these hooks run after goreleaser's clean-tree
+    # check, so a hook that rewrote go.mod or go.sum would release a tree the
+    # CI gate never saw. An untidy module fails the release instead.
+    - go mod tidy -diff
     - npm --prefix ui ci
     - npm --prefix ui run build
 
