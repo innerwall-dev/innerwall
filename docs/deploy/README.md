@@ -2,13 +2,14 @@
 
 ## Supported v1 deployment
 
-One control-plane binary and one Postgres, co-located or adjacent (ADR-0017). `docker-compose.yml` at the repository root is that deployment:
+One control-plane binary and one Postgres, co-located or adjacent (ADR-0017). `docker-compose.yml` at the repository root is that deployment. In a checkout of the release's tag, name the release's control-plane image in `.env` and start it:
 
 ```sh
-make dev
+echo 'INNERWALL_IMAGE=ghcr.io/innerwall-dev/innerwall:0.4.0' > .env
+docker compose up -d
 ```
 
-It starts Postgres with a persistent volume and builds the control plane from source, with the console embedded in the binary (ADR-0008). The control plane reads its Postgres connection string from `INNERWALL_DATABASE_URL`. Ports: the operator surface on 8080, over TLS only, serving the console and the REST/JSON API it uses (bound to localhost in the compose file); the agent gateway on 8443. To place agents on other machines, the gateway's certificate and advertised address must name the control plane's host before the first start ([multi-host evaluation](multi-host-evaluation.md)).
+It starts Postgres with a persistent volume and the control plane from the released image, with the console embedded in the binary (ADR-0008); the [quickstart](../../README.md#with-docker-compose) has the whole sequence, and [versioning and install](../reference/versioning-and-install.md) how to verify the image and the binaries. `make dev` builds the image from the checkout instead. The control plane reads its Postgres connection string from `INNERWALL_DATABASE_URL`. Ports: the operator surface on 8080, over TLS only, serving the console and the REST/JSON API it uses (bound to localhost in the compose file); the agent gateway on 8443. To place agents on other machines, the gateway's certificate and advertised address must name the control plane's host before the first start ([multi-host evaluation](multi-host-evaluation.md)).
 
 On first start the control plane applies migrations, creates its signing authority in the `innerwall-state` volume, and serves the agent gateway on 8443. Enrolling an agent from the host:
 

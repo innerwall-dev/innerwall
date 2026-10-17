@@ -25,16 +25,17 @@ Upgrade the control plane first, then the agents. An older agent keeps working a
 <!-- tabs -->
 ### Docker Compose
 
-1. **Check out the new release.** In the checkout the stack runs from: `git fetch --tags`, then `git checkout <release-tag>`.
-2. **Rebuild and restart.** `make dev` (or `docker compose up --build -d`) rebuilds the image and recreates the control-plane container. The compose file runs `serve --migrate`, so pending migrations are applied before it serves. Keep the volumes.
-3. **Confirm the version.** The account popover in the console shows the control plane's version, as does `docker compose exec innerwall /innerwall version`.
+1. **Check out the new release.** In the checkout the stack runs from: `git fetch --tags`, then `git checkout <release-tag>`, so the compose file is the release's.
+2. **Name the new image.** In `.env`, set `INNERWALL_IMAGE=ghcr.io/innerwall-dev/innerwall:<version>`, the tag without its `v`.
+3. **Restart on it.** `docker compose up -d` pulls the image and recreates the control-plane container. The compose file runs `serve --migrate`, so pending migrations are applied before it serves. Keep the volumes. A stack that runs an image built from the checkout is rebuilt and restarted with `make dev` instead.
+4. **Confirm the version.** The account popover in the console shows the control plane's version, as does `docker compose exec innerwall /innerwall version`.
 
-### From source
+### Release binaries
 
-1. **Build the new release.** Check out the tag and run `make console` and `make build`.
-2. **Apply the migrations.** `bin/innerwall migrate` (or start with `serve --migrate`).
+1. **Install the new release.** Download, verify, and install the new `innerwall` as [versioning and install](../reference/versioning-and-install.md#download-verify-install) shows. Built from source instead: check out the tag and run `make console` and `make build`.
+2. **Apply the migrations.** `innerwall migrate` (or start with `serve --migrate`).
 3. **Restart** each control-plane process on the new binary, with the same flags, database, and `--ca-dir`.
-4. **Confirm the version** with `bin/innerwall version` or the console's account popover.
+4. **Confirm the version** with `innerwall version` or the console's account popover.
 <!-- /tabs -->
 
 ## While it is down
@@ -46,7 +47,7 @@ Upgrade the control plane first, then the agents. An older agent keeps working a
 
 ## The agents
 
-Agents never update themselves (ADR-0011). On each host, replace the binary and restart the daemon:
+Agents never update themselves (ADR-0011). On each host, download and verify the new release's `innerwall-agent` ([versioning and install](../reference/versioning-and-install.md#download-verify-install)), then replace the binary and restart the daemon:
 
 ```sh
 sudo systemctl stop innerwall-agent        # or however the daemon is run on the host

@@ -11,6 +11,10 @@
 # serves the agent gateway and the operator surface. Set the operator
 # password once with `docker compose exec innerwall /innerwall operator
 # set-password`. The console is served on the operator surface.
+#
+# Compose names the stack after this directory unless COMPOSE_PROJECT_NAME
+# says otherwise, and the volumes after the stack: a new checkout in a
+# directory of the same name starts on the state an earlier one left.
 
 services:
   postgres:
@@ -30,6 +34,11 @@ services:
       retries: 10
 
   innerwall:
+    # The released image when INNERWALL_IMAGE names one, as the quickstart
+    # sets it in .env (ghcr.io/innerwall-dev/innerwall:<version>): pulled when
+    # it is not already present. Unset, the image is built from this checkout;
+    # `make dev` always builds, whatever .env says.
+    image: ${INNERWALL_IMAGE:-}
     build: .
     depends_on:
       postgres:

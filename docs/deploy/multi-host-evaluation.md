@@ -1,6 +1,6 @@
 # Multi-host evaluation
 
-The quickstart enrolls an agent on the machine that runs the control plane. Evaluating Innerwall means agents on other machines (VMs, a second server) enrolling against that control plane. This guide covers what has to change for that, building the agent for the target, running it as a service, and the pitfalls of a small lab.
+The quickstart enrolls an agent on the machine that runs the control plane. Evaluating Innerwall means agents on other machines (VMs, a second server) enrolling against that control plane. This guide covers what has to change for that, installing the agent on the target, running it as a service, and the pitfalls of a small lab.
 
 ## Name the control plane before the first start
 
@@ -21,32 +21,33 @@ services:
       INNERWALL_GATEWAY_ADVERTISE_ADDRESS: cp.example.internal:8443
 ```
 
-The `command` replaces the one in `docker-compose.yml`, so it repeats its flags and adds the hosts. Then `make dev`. The mint dialog now prints `--server cp.example.internal:8443`, and agents can dial either the name or the address.
+The `command` replaces the one in `docker-compose.yml`, so it repeats its flags and adds the hosts. Then start the stack as the [quickstart](../../README.md#with-docker-compose) does, `docker compose up -d` with the released image named in `.env` (or `make dev` to build from the checkout). The mint dialog now prints `--server cp.example.internal:8443`, and agents can dial either the name or the address.
+
+Git does not track the override file, and an untracked file marks the checkout as changed: a control plane built from it (`make dev`, `make build`) reports its version with `.dirty` from now on. That is expected; the released image is not built from the checkout and is unaffected ([version strings](../reference/versioning-and-install.md#version-strings)).
 
 The gateway is published on port 8443 on every interface of the machine; let it through that machine's own firewall. The operator surface stays bound to the machine's loopback, so open the console on that machine.
 
-**A stack that has already started** keeps the certificate it generated. The way to a certificate with the new names is a fresh stack, which is reasonable only while there is nothing in it to keep:
+**A stack that has already started** keeps the certificate it generated. The way to a certificate with the new names is a fresh stack, which is reasonable only while there is nothing in it to keep. Either start one beside it under a new project name, which leaves the old volumes untouched ([a new clone starts with an earlier install's state](../troubleshooting.md#a-new-clone-starts-with-an-earlier-installs-state)), or delete the old one:
 
 > [!CAUTION]
 > `docker compose down -v` deletes both volumes: `pgdata`, which holds every workload, ruleset, token, flow, and the operator password, and `innerwall-state`, which holds the signing authority and the operator certificate. Every agent enrolled against the old authority can no longer connect and must be enrolled again, as a new workload. Use it only on a stack you are willing to start over.
 
-## Build the agent for the target
+## Get the agent for the target
 
-The agent is a static Linux binary, so it can be built on any machine with Go for any Linux architecture:
+Each release carries the agent for Linux on `amd64` and `arm64`, `innerwall-agent_<version>_linux_<arch>.tar.gz`, with signed checksums. Download it, verify it, and install it on the host as [versioning and install](../reference/versioning-and-install.md#download-verify-install) shows; the host needs nftables and root. The binary makes no update checks and sends no telemetry: it dials only the control plane.
+
+**Fallback: cross-compile.** For an architecture no release covers, or a build of an unreleased commit, the agent is a static Linux binary that any machine with Go can build from a checkout at the tag:
 
 ```sh
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -o bin/linux-arm64/ ./cmd/innerwall-agent
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o bin/linux-amd64/ ./cmd/innerwall-agent
 ```
 
-Releases carry no binaries yet, so this is the install path ([versioning and install](../reference/versioning-and-install.md)). The host needs nftables and root.
-
 ## Enroll the remote host
 
-Mint a token (in the console, **Workloads → Provisioning tokens → Mint token**, or `innerwall token mint`), and copy the agent binary, the signing authority's certificate (`ca.crt`, from `docker compose cp innerwall:/var/lib/innerwall/ca/ca.crt ./ca.crt`), and the token to the host. Then, on the host:
+Mint a token (in the console, **Workloads → Provisioning tokens → Mint token**, or `innerwall token mint`), and copy the signing authority's certificate (`ca.crt`, from `docker compose cp innerwall:/var/lib/innerwall/ca/ca.crt ./ca.crt`) and the token to the host, where the agent is installed at `/usr/local/bin/innerwall-agent` as above. Then, on the host:
 
 ```sh
-sudo install -m 0755 innerwall-agent /usr/local/bin/innerwall-agent
 sudo install -D -m 0644 ca.crt /etc/innerwall/ca.crt
 sudo env INNERWALL_TOKEN='<provisioning-token>' innerwall-agent enroll --server cp.example.internal:8443 --bootstrap-ca /etc/innerwall/ca.crt
 ```

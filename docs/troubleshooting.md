@@ -25,6 +25,25 @@ Then `docker compose up -d`; Postgres recovers by itself once it can write.
 
 A log line such as `invalid record length at …: expected at least …, got 0` as Postgres starts is its normal end-of-WAL message during recovery, not a sign of damage.
 
+### A new clone starts with an earlier install's state
+
+**Symptom.** A stack you expected to be new is not. On what should be its first start:
+
+- `docker compose logs postgres` shows `PostgreSQL Database directory appears to contain a database; Skipping initialization`;
+- the control plane's `operator listener certificate` line reads `generated=false`, and no `signing authority created` line appears;
+- the fleet already holds workloads, and agents enrolled against an earlier install reconnect to this one;
+- an operator password you never set here is accepted, and an agent dialing a name you added to `--tls-hosts` is refused at the TLS handshake, because the certificate is the earlier one.
+
+**Cause.** Docker Compose names a stack after the directory it runs in, unless `COMPOSE_PROJECT_NAME` says otherwise, and names the stack's volumes after the stack. A clone into a directory named `innerwall` is therefore the same stack, with the same `pgdata` and `innerwall-state` volumes, as every earlier `innerwall` checkout on that Docker host, even one since deleted. The volumes outlive the directory.
+
+**Remedy.** If the earlier state is worth keeping, nothing is wrong: this is the earlier install, and [upgrading in place](guides/upgrading.md) is how to move it forward. To start clean, choose one:
+
+- **A new project name**, which leaves the earlier volumes untouched. Stop the other stack first if it is running (`docker compose down`, without `-v`), since both publish the same ports. Then, in the new checkout, add `COMPOSE_PROJECT_NAME=<a new name>` to `.env`, so every `docker compose` command and `make dev` in that directory uses it, and start the stack.
+- **Delete the earlier state** with `docker compose down -v` in the directory, then start again.
+
+> [!CAUTION]
+> `docker compose down -v` deletes both volumes: `pgdata`, which holds every workload, ruleset, token, flow, and the operator password, and `innerwall-state`, which holds the signing authority and the operator certificate. Every agent enrolled against the old authority can no longer connect and must be enrolled again, as a new workload. Use it only on a stack you are willing to start over.
+
 ### A command is refused with its own usage line
 
 **Symptom.** A command such as `innerwall flows list <workload-id> --since 1h` or `innerwall workload set-labels <workload-id> --label role=web` prints `innerwall: usage: …` and does nothing, although every argument is there.
@@ -93,6 +112,20 @@ level=WARN msg="reconnect directive not sent" workload_id=… reason="…"
 **Cause.** Fixed in v0.2.0 (it was listed under v0.1.0 but merged after that tag). The kernel only tracks connections in a network namespace where some rule references connection tracking; on a host whose own firewall has no such rule, visibility installed nothing that did, so the agent observed nothing. Since v0.2.0 visibility installs one `observe` chain whose rule engages connection tracking and accepts everything.
 
 **Remedy.** Upgrade the agent to v0.2.0 or later.
+
+### Flow byte counts are zero
+
+**Symptom.** A workload's flows arrive with connection counts but zero bytes, and the daemon's log at start reads `connection byte accounting is off; flow byte counts will be zero` with `sysctl=net.netfilter.nf_conntrack_acct`.
+
+**Cause.** The kernel keeps per-connection byte counters only when connection-tracking accounting is on, and it is off by default on most distributions. The agent reads flows from connection tracking, so without the counters it sees the connections but not their bytes. This is a host setting the agent does not change.
+
+**Remedy.** Turn accounting on:
+
+```sh
+sudo sysctl -w net.netfilter.nf_conntrack_acct=1
+```
+
+Connections opened after that carry byte counts; ones already open stay at zero. To keep the setting across reboots, add the line `net.netfilter.nf_conntrack_acct = 1` to a file in `/etc/sysctl.d/`. The daemon checks the setting each time it starts and repeats the warning while it is off, so a restart after a reboot shows whether the setting held.
 
 ### After the kill switch, the console still shows the workload enforced
 
