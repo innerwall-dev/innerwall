@@ -11,7 +11,7 @@ The Docker Compose stack is set up for agents on the same machine:
 
 Both must name the address remote agents will dial, and the certificate must do so **before the stack first starts**: the gateway's certificate is generated once, when `--init-ca` creates the signing authority, and an existing certificate is never reissued. Changing `--tls-hosts` later changes nothing, and no command reissues it.
 
-Put the change in a `docker-compose.override.yml` beside `docker-compose.yml`; Docker Compose, and so `make dev`, reads it automatically. With the control plane reachable as `cp.example.internal` at `192.0.2.10`:
+Put the change in a `docker-compose.override.yml` beside `docker-compose.yml`. Docker Compose reads it automatically, and `make dev` passes it on. With the control plane reachable as `cp.example.internal` at `192.0.2.10`:
 
 ```yaml title="docker-compose.override.yml"
 services:

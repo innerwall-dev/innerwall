@@ -2,6 +2,10 @@
 
 Notable changes to Innerwall, newest first. Versions follow semantic versioning; before 1.0, a minor version may change anything.
 
+## v0.4.1 — the quickstart runs the released image
+
+- **`docker compose up` never builds over the released image** (#171). `docker-compose.yml` declared both the image `.env` names and a build from the checkout, so `docker compose up -d` on the quickstart's path pulled the released image, then built the checkout over it, tagged the local build with the release’s name, and ran that: a control plane reporting `v0.4.0+<commit>.dirty`, unverified, under the name of a signed image. The compose file is now image-only: it runs the image `INNERWALL_IMAGE` names, as pulled, and without the variable every `docker compose` command stops with an error naming the `.env` line to add. The build moves to `docker-compose.dev.yml`, which only `make dev` adds; its build is named `innerwall:dev`, never a release's name. `make dev` passes on a `docker-compose.override.yml` when one is present, as compose did on its own before. The quickstart's commands are unchanged apart from the version they name. Nothing in either binary changes.
+
 ## v0.4.0 — first binaries, and the cold run’s fixes
 
 - **Admitted untracked traffic is accepted** (#142, #154). A rule's accept also wrote the connection mark, and the kernel ends a rule at that write for a packet it does not track, so admitted untracked traffic fell through to the terminal rule. IPv6 neighbor discovery is never tracked: a rule admitting link-local ICMPv6, the simulation review's own remedy, recorded neighbor discovery as would-block in simulation and dropped it under enforcement, which breaks IPv6 neighbors. Each rule's accept is now paired with one that admits the same traffic unmarked when it is untracked; tracked traffic is marked and attributed exactly as before, and the two modes still differ in the terminal rule alone (ADR-0020 as amended). Agent-side only: no migration and no wire change. Upgrade agents before enforcing on a host with IPv6.

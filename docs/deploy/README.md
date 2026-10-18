@@ -5,7 +5,7 @@
 One control-plane binary and one Postgres, co-located or adjacent (ADR-0017). `docker-compose.yml` at the repository root is that deployment. In a checkout of the release's tag, name the release's control-plane image in `.env` and start it:
 
 ```sh
-echo 'INNERWALL_IMAGE=ghcr.io/innerwall-dev/innerwall:0.4.0' > .env
+echo 'INNERWALL_IMAGE=ghcr.io/innerwall-dev/innerwall:0.4.1' > .env
 docker compose up -d
 ```
 
