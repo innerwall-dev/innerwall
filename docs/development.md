@@ -35,11 +35,13 @@ The Makefile is a thin dispatcher. Every target wraps a tool in one to three lin
 | `make sqlc` | `sqlc generate` from `internal/store/queries/` into `internal/store/db/` |
 | `make console-api` | Generates the console's types, `ui/src/api/generated.ts`, from `api/openapi.yaml` |
 | `make console` | `npm ci` and a production Vite build of the console into `ui/dist/` (`make ui` is the same target) |
-| `make dev` | `docker compose up --build`: the control plane built from the checkout, whatever `.env` names as `INNERWALL_IMAGE`, + Postgres |
+| `make dev` | `scripts/dev.sh`: `docker compose up --build` over `docker-compose.yml` and `docker-compose.dev.yml`, the control plane built from the checkout as `innerwall:dev`, whatever `.env` names as `INNERWALL_IMAGE`, + Postgres |
 | `make seed` | Loads the review fleet into `$INNERWALL_DATABASE_URL` (`innerwall dev seed`, built with `-tags dev`); see below |
 | `make migrate` | Applies pending migrations to `$INNERWALL_DATABASE_URL` (`innerwall migrate`) |
 | `make drift` | Regenerates everything and fails on any diff (what CI runs) |
 | `make tools` | Installs the pinned CLI toolchain |
+
+`docker-compose.yml` is image-only: it runs the image `INNERWALL_IMAGE` names and never builds, and without the variable every `docker compose` command stops with an error naming the `.env` line to add. Only `make dev` adds `docker-compose.dev.yml`, which builds the image from the checkout and names it `innerwall:dev`, never a release's image name. Because it names its files, compose no longer reads `docker-compose.override.yml` by itself, so the script passes that file on when it exists. Plain `docker compose` commands against a dev stack (`exec`, `logs`, `down`) still read `.env`. In a checkout with no release named there, put `INNERWALL_IMAGE=innerwall:dev` in `.env`; `docker compose up -d` then runs the last `make dev` build without building.
 
 `make build test lint` is the loop before a PR. CI additionally runs `make drift`, the proto breaking-change gate, and the DCO check.
 
@@ -120,7 +122,7 @@ The commit is the 12-character prefix of what the Go toolchain embeds on every b
 
 A release is a pushed `v*` tag. `.github/workflows/release.yml` builds and uploads everything for it; publishing stays a human act.
 
-1. **Write the notes.** The release's section of `CHANGELOG.md` lands on `main` through a PR like any other change. The tag goes on a commit on `main`.
+1. **Write the notes, and bump the version literals.** The release's section of `CHANGELOG.md` lands on `main` through a PR like any other change, and the same PR moves every command literal that names the release to the new version, as well as the README's status line: in `README.md`, the `git checkout v…`, the `.env` image line, the control-plane archive, and `VERSION=`; in `docs/reference/versioning-and-install.md`, the download, the `cosign verify`, the source fallback, and the version-string examples; in `docs/deploy/README.md`, the `.env` line. The docs are read at the release's tag, so a release cut without the bump publishes commands that fetch the previous release. The tag goes on a commit on `main`.
 2. **Tag and push.** `git tag -a v0.4.0 -m v0.4.0 <commit>`, then `git push origin v0.4.0`.
 3. **The gate runs.** The workflow first runs `ci.yml` on the tagged commit, every job a pull request runs except the three that need a base (above). A tag whose commit fails it publishes nothing.
 4. **goreleaser builds and uploads a draft.** `goreleaser release --clean` over `.goreleaser.yaml`:
@@ -130,6 +132,8 @@ A release is a pushed `v*` tag. `.github/workflows/release.yml` builds and uploa
    - The control-plane image `ghcr.io/innerwall-dev/innerwall:0.4.0`, a manifest list over `0.4.0-amd64` and `0.4.0-arm64`, each the release binary copied into the minimal base by `Dockerfile.release`, and signed keyless by digest. Version tags only; nothing is tagged `latest`. The agent has no image. The image is pushed when the workflow runs, not when the draft is published.
    - Everything above is uploaded to a **draft** release for the tag. A re-run of the workflow for the same tag replaces its own draft.
 5. **Publish.** Open the draft, check its assets against the list above, title it and write its notes from the tag's `CHANGELOG.md` section, and publish. Nothing generates notes, and the workflow never publishes.
+
+**A new image package is made public once.** The registry creates a package private on its first push, so an image the release workflow pushes for the first time cannot be pulled anonymously, and the quickstart's `docker compose up -d` fails for every reader. After the first push of a new package, two settings change by hand, once each, since the workflow can do neither. The organization's package policy must permit public packages (organization settings, **Packages → Package creation**, **Public**); then the package's own visibility flips to public in its package settings. Every later tag pushes into the public package. `ghcr.io/innerwall-dev/innerwall` was made public this way at v0.4.0; a new image, if one ever ships, repeats the second step.
 
 The tool versions (goreleaser, cosign, syft) are pinned in `release.yml`'s `env`. cosign stays on its v2 line: that is the release that writes the detached `.sig` and `.pem`.
 

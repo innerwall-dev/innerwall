@@ -34,12 +34,13 @@ services:
       retries: 10
 
   innerwall:
-    # The released image when INNERWALL_IMAGE names one, as the quickstart
-    # sets it in .env (ghcr.io/innerwall-dev/innerwall:<version>): pulled when
-    # it is not already present. Unset, the image is built from this checkout;
-    # `make dev` always builds, whatever .env says.
-    image: ${INNERWALL_IMAGE:-}
-    build: .
+    # The image INNERWALL_IMAGE names, as the quickstart sets it in .env
+    # (ghcr.io/innerwall-dev/innerwall:<version>): pulled when it is not
+    # already present, and run as pulled. This file never builds. Unset, every
+    # `docker compose` command stops with the error below and starts nothing.
+    # `make dev` builds the image from this checkout instead, through
+    # docker-compose.dev.yml, and names its build innerwall:dev.
+    image: ${INNERWALL_IMAGE:?add INNERWALL_IMAGE=ghcr.io/innerwall-dev/innerwall:<version> to .env, as the quickstart does, or run make dev to build from this checkout}
     depends_on:
       postgres:
         condition: service_healthy

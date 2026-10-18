@@ -46,7 +46,7 @@ console:
 ui: console
 
 dev:
-	INNERWALL_IMAGE= docker compose up --build
+	scripts/dev.sh
 
 seed:
 	go run -tags dev ./cmd/innerwall dev seed

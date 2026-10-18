@@ -1,9 +1,10 @@
 # Release image for the control plane, built by goreleaser (`dockers` in
 # .goreleaser.yaml) from the binary it built for the release archives, console
 # embedded: the image carries the same bytes the archives do. Its context is
-# goreleaser's, not the checkout, so it is never built by hand. At runtime it
-# is the compose stack's image (Dockerfile): the same base, user, state
-# directory, ports, and entrypoint.
+# goreleaser's, not the checkout, so it is never built by hand. It is the image
+# the compose stack runs; at runtime it matches the image `make dev` builds from
+# the checkout (Dockerfile): the same base, user, state directory, ports, and
+# entrypoint.
 
 # The base has no shell to make the state directory with, so it is made in
 # the base's debug variant (the same image with busybox), on the build host's

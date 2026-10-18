@@ -1,0 +1,11 @@
+# The development stack: docker-compose.yml with the control plane built from
+# this checkout. `make dev` (scripts/dev.sh) passes this file after the main
+# one; nothing reads it otherwise, so a plain `docker compose up` never builds.
+#
+# The build is named innerwall:dev, never a release's image name, whatever .env
+# says, so a release image already present is left as pulled.
+
+services:
+  innerwall:
+    image: innerwall:dev
+    build: .
