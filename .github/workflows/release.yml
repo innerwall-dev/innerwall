@@ -55,7 +55,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: ui/package-lock.json
-      - uses: sigstore/cosign-installer@v4
+      - uses: sigstore/cosign-installer@v3
         with:
           cosign-release: ${{ env.COSIGN_VERSION }}
       - uses: anchore/sbom-action/download-syft@v0
