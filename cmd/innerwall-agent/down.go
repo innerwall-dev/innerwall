@@ -9,6 +9,7 @@ import (
 
 	"github.com/innerwall-dev/innerwall/internal/agent/enforce"
 	"github.com/innerwall-dev/innerwall/internal/agent/enforce/nft"
+	"github.com/innerwall-dev/innerwall/internal/cli"
 )
 
 // runDown is the local kill switch (ADR-0011): it deletes the owned
@@ -19,7 +20,7 @@ func runDown(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall-agent down", flag.ContinueOnError)
 	stateDir := fs.String("state-dir", stateDirDefault(), "directory holding the last applied policy")
 	table := fs.String("nft-table", nft.DefaultTable, "name of the owned nftables table")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 0); err != nil {
 		return err
 	}
 	if err := nft.Teardown(ctx, nil, nft.Options{Table: *table}); err != nil {

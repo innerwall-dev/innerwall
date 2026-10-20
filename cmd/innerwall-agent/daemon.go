@@ -17,6 +17,7 @@ import (
 	"github.com/innerwall-dev/innerwall/internal/agent/enforce/nft"
 	"github.com/innerwall-dev/innerwall/internal/agent/inventory"
 	agentsync "github.com/innerwall-dev/innerwall/internal/agent/sync"
+	"github.com/innerwall-dev/innerwall/internal/cli"
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 )
 
@@ -43,7 +44,7 @@ func runDaemon(ctx context.Context, args []string) error {
 	dumpMax := fs.Int("flow-dump-max", collect.DefaultBufferRecords, "connection-table entries processed from the dump at each conntrack subscribe, and connections tracked to count each once; entries past it are skipped and recorded as an evidence gap. Bounds processing, not the dump's peak memory")
 	table := fs.String("nft-table", nft.DefaultTable, "name of the owned nftables table")
 	nflogGroup := fs.Uint("nflog-group", uint(nft.DefaultNflogGroup), "netlink log group the terminal rule logs to")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 0); err != nil {
 		return err
 	}
 	if *server == "" {

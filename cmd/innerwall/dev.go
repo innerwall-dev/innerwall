@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/innerwall-dev/innerwall/internal/cli"
 	"github.com/innerwall-dev/innerwall/internal/store"
 	"github.com/innerwall-dev/innerwall/internal/storetest"
 )
@@ -26,7 +27,7 @@ func runDev(ctx context.Context, args []string) error {
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
 	estate := fs.Bool("estate", false, "also load the review estate: the flow map's label groups, address groups, and traffic, a few hundred workloads")
 	extra := fs.Int("estate-extra", 0, "with --estate, this many more app groups of three workloads each, for reviewing the map at estate scale")
-	if err := fs.Parse(args[1:]); err != nil {
+	if err := cli.Parse(fs, args[1:], 0); err != nil {
 		return err
 	}
 	url, err := databaseURL(*dbURL)

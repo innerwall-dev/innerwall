@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/term"
 
+	"github.com/innerwall-dev/innerwall/internal/cli"
 	"github.com/innerwall-dev/innerwall/internal/operator"
 )
 
@@ -42,7 +43,7 @@ func runOperatorSetPassword(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall operator set-password", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
 	name := fs.String("name", "", "display name shown by the console (empty clears it)")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 0); err != nil {
 		return err
 	}
 	password, err := readPassword(os.Stdin, os.Stderr)
@@ -121,7 +122,7 @@ func runOperatorTokenMint(ctx context.Context, args []string) error {
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
 	name := fs.String("name", "", "operator-facing name for the token")
 	ttl := fs.Duration("ttl", 0, "token lifetime (0 means it does not expire)")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 0); err != nil {
 		return err
 	}
 	st, err := openStore(ctx, *dbURL)
@@ -153,7 +154,7 @@ func expiryString(t *time.Time) string {
 func runOperatorTokenList(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall operator token list", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 0); err != nil {
 		return err
 	}
 	st, err := openStore(ctx, *dbURL)
@@ -190,7 +191,7 @@ func runOperatorTokenList(ctx context.Context, args []string) error {
 func runOperatorTokenRevoke(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall operator token revoke", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 1); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {

@@ -48,9 +48,9 @@ A log line such as `invalid record length at …: expected at least …, got 0` 
 
 **Symptom.** A command such as `innerwall flows list <workload-id> --since 1h` or `innerwall workload set-labels <workload-id> --label role=web` prints `innerwall: usage: …` and does nothing, although every argument is there.
 
-**Cause.** Each command stops reading flags at its first positional argument, so flags written after the workload id are read as extra arguments.
+**Cause.** `innerwall` v0.4.1 and earlier stops reading flags at a command's first positional argument, so flags written after the workload id are read as extra arguments. Later versions read flags on either side of a command's positional arguments, but a positional argument beyond those the command takes still ends its flags: a value with an unquoted space in it reads as two arguments. `ruleset update` reads its flags only before the ruleset it names.
 
-**Remedy.** Put the flags first: `innerwall flows list --since 1h <workload-id>`, `innerwall workload set-labels --label role=web <workload-id>` ([command-line reference](reference/innerwall-cli.md#conventions)).
+**Remedy.** Put the flags first, which every version reads: `innerwall flows list --since 1h <workload-id>`, `innerwall workload set-labels --label role=web <workload-id>`. Quote a value that holds a space ([command-line reference](reference/innerwall-cli.md#conventions)).
 
 ### Resend snapshot is accepted but the snapshot instant never moves
 

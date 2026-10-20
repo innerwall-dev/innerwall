@@ -10,6 +10,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/innerwall-dev/innerwall/internal/cli"
 	"github.com/innerwall-dev/innerwall/internal/flowstore"
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 	"github.com/innerwall-dev/innerwall/internal/identity"
@@ -171,11 +172,11 @@ func runFlowsList(ctx context.Context, args []string) error {
 	until := fs.String("until", "", "end of the range: a duration before now or an RFC 3339 time (default now)")
 	decision := fs.String("decision", "", "only this decision: observed|allowed|would_block|blocked (default all)")
 	limit := fs.Int("limit", 200, "maximum rows, newest window first")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 1); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return usageError("usage: innerwall flows list <workload-id> [--since 24h] [--until ...] [--decision ...] [--limit 200]")
+		return usageError("usage: innerwall flows list [--since 24h] [--until ...] [--decision ...] [--limit 200] <workload-id>")
 	}
 	id, err := identity.ParseWorkloadID(fs.Arg(0))
 	if err != nil {
@@ -230,7 +231,7 @@ func runFlowsRollup(ctx context.Context, args []string) error {
 	service := fs.String("service", "", "with --group-by: only this service, <protocol>/<port> or icmp")
 	order := fs.String("order", "connections", "with --group-by: connections | recent")
 	limit := fs.Int("limit", flowstore.DefaultGroupLimit, "with --group-by: the most groups shown; the rest are counted in the totals")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 0); err != nil {
 		return err
 	}
 	if fs.NArg() != 0 {
@@ -288,11 +289,11 @@ func runFlowsTotals(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall flows totals", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
 	decision := fs.String("decision", "", "only this decision: observed|allowed|would_block|blocked (default all)")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 1); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return usageError("usage: innerwall flows totals <workload-id> [--decision ...]")
+		return usageError("usage: innerwall flows totals [--decision ...] <workload-id>")
 	}
 	id, err := identity.ParseWorkloadID(fs.Arg(0))
 	if err != nil {
@@ -469,7 +470,7 @@ func runFlowsGaps(ctx context.Context, args []string) error {
 	fs.Var(&labels, "label", "label key=value selecting the workloads in scope (repeatable, ANDed; none selects every workload)")
 	workload := fs.String("workload", "", "only this workload's gaps")
 	limit := fs.Int("limit", readmodel.DefaultGapLimit, "the most gaps shown, newest first")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 0); err != nil {
 		return err
 	}
 	if fs.NArg() != 0 {

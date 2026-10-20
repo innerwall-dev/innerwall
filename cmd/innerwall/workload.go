@@ -9,6 +9,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/innerwall-dev/innerwall/internal/cli"
 	"github.com/innerwall-dev/innerwall/internal/fleet"
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 	"github.com/innerwall-dev/innerwall/internal/identity"
@@ -61,7 +62,7 @@ func ago(t *time.Time, now time.Time) string {
 func runWorkloadList(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall workload list", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 0); err != nil {
 		return err
 	}
 	st, err := openStore(ctx, *dbURL)
@@ -100,7 +101,7 @@ func runWorkloadList(ctx context.Context, args []string) error {
 func runWorkloadCounts(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall workload counts", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 0); err != nil {
 		return err
 	}
 	st, err := openStore(ctx, *dbURL)
@@ -130,7 +131,7 @@ func runWorkloadCounts(ctx context.Context, args []string) error {
 func runWorkloadStatus(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall workload status", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 1); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
@@ -224,11 +225,11 @@ func runWorkloadSetLabels(ctx context.Context, args []string) error {
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
 	var labels labelFlags
 	fs.Var(&labels, "label", "label key=value (repeatable; replaces all labels)")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 1); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return usageError("usage: innerwall workload set-labels <workload-id> --label key=value ...")
+		return usageError("usage: innerwall workload set-labels --label key=value ... <workload-id>")
 	}
 	id, err := identity.ParseWorkloadID(fs.Arg(0))
 	if err != nil {
@@ -255,7 +256,7 @@ func runWorkloadSetLabels(ctx context.Context, args []string) error {
 func runWorkloadSetMode(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall workload set-mode", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 2); err != nil {
 		return err
 	}
 	if fs.NArg() != 2 {
@@ -288,7 +289,7 @@ func runWorkloadSetMode(ctx context.Context, args []string) error {
 func runWorkloadResendSnapshot(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall workload resend-snapshot", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 1); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
