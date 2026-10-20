@@ -10,16 +10,24 @@
 #                 and is reviewed by an @claude mention instead. The
 #                 review is anchored to the diff; it re-reads the whole ADR
 #                 record only when the record itself (docs/adr/, CLAUDE.md)
-#                 changes. Advisory only; findings never fail the build.
+#                 changes. Advisory only; findings never fail the build,
+#                 but a review that was attempted and errored on a branch's
+#                 pull request fails the job, so a review that never ran is
+#                 never mistaken for one that found nothing.
 #                 It runs on pull_request_target so a fork's pull request
 #                 gets the same token and OIDC identity as a branch's; the
 #                 checkout is the base ref, the source of truth, and nothing
 #                 from the pull request's head is checked out or executed.
 #
-# Both jobs authenticate through workload identity federation using the job's
-# OIDC token. No static credential is configured anywhere in this workflow: a
-# static key or token would silently take precedence over federation.
-# The federation identifiers below are not secrets; only the OIDC token is.
+# Both jobs authenticate to the API through workload identity federation using
+# the job's OIDC token. No static credential is configured anywhere in this
+# workflow: a static key or token would silently take precedence over
+# federation. The federation identifiers below are not secrets; only the OIDC
+# token is. On GitHub, adr-review acts with the job's own short-lived
+# GITHUB_TOKEN rather than exchanging its OIDC token for an app token: the
+# exchange rejects tokens minted for pull_request_target
+# (anthropics/claude-code-action#1886), so the review posts as
+# github-actions[bot].
 name: claude
 
 on:
@@ -96,11 +104,11 @@ jobs:
         continue-on-error: true
         with:
           allowed_bots: "claude,claude[bot]"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           anthropic_federation_rule_id: fdrl_017Z5x46M1Apn3aGGLYLFfsT
           anthropic_organization_id: 2d941f98-8c11-4723-86e9-8dddac458911
           anthropic_service_account_id: svac_01LUZUMbvB9sTx4tXUQ1oHm2
           anthropic_workspace_id: wrkspc_01UvMt6iYb2SMsdhT2XRoFz2
-          use_sticky_comment: true
           prompt: |
             You are reviewing pull request #${{ github.event.pull_request.number }} in ${{ github.repository }} for conformance with the project's architecture decision records.
 
@@ -116,7 +124,11 @@ jobs:
             5. In either mode, also report a document the change leaves inconsistent with the record it belongs to, and a dangling reference the change introduces (an ADR number, file, or heading that does not exist).
             6. If a contradiction is present, check whether the pull request adds a superseding ADR that covers it.
 
-            Post exactly one comment on the pull request using `gh pr comment ${{ github.event.pull_request.number }} --body`, updating it if you already posted one. Structure it as:
+            Post exactly one comment on the pull request, and keep it one across runs: update your earlier comment rather than adding another.
+            - The comment's first line is the marker `<!-- innerwall-adr-review -->`, exactly, on every post and every update.
+            - Find your prior comment by that marker: `gh api --paginate repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- innerwall-adr-review -->"))) | .id'`.
+            - If that prints an id, update that comment with `gh api --method PATCH repos/${{ github.repository }}/issues/comments/<id> -f body=<comment>`, quoting the body for the shell (the first id, if it prints more than one). If it prints nothing, create the comment with `gh api --method POST repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments -f body=<comment>`, quoted the same way.
+            Structure it as:
             - A one-line verdict, naming the mode used: "No ADR contradictions found" or "ADR review: N finding(s)".
             - For each finding: the ADR number and title, the file and line, what the change does, why it contradicts the ADR, and whether a superseding ADR is present. Quote the ADR text you are relying on.
             - If a superseding ADR is present, note whether it follows the format in docs/adr/README.md.
@@ -128,11 +140,20 @@ jobs:
           # fits well inside it.
           claude_args: |
             --model claude-sonnet-5
-            --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(gh api:*),Read,Glob,Grep"
+            --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api:*),Read,Glob,Grep"
             --max-turns 40
-      # continue-on-error keeps the check green when the review fails to
-      # run or post; say so in the job summary so it is never silent.
-      - if: steps.review.outcome == 'failure'
+      # continue-on-error lets the job decide what a failed review means.
+      # On a branch's pull request the review had every credential it needs,
+      # so a failure is a broken review: name it and fail the job. On a
+      # fork's pull request a failure is the expected refusal of an author
+      # without write access (ADR-0014), so the check stays green and the
+      # summary says no review posted.
+      - if: steps.review.outcome == 'failure' && github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name
+        run: |
+          echo "### ADR review failed" >> "$GITHUB_STEP_SUMMARY"
+          echo "The review step failed on a pull request from this repository, so no ADR review comment was posted. That is a broken review, not a refused one: the job log above has the cause." >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+      - if: steps.review.outcome == 'failure' && github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name
         run: |
           echo "### ADR review did not post" >> "$GITHUB_STEP_SUMMARY"
-          echo "The review step failed, so no ADR review comment was posted on this pull request. The job log above has the cause." >> "$GITHUB_STEP_SUMMARY"
+          echo "The review step failed on a pull request from a fork, so no ADR review comment was posted on this pull request. The job log above has the cause." >> "$GITHUB_STEP_SUMMARY"
