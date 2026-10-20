@@ -31,6 +31,7 @@ func newSurface(t *testing.T, deps api.Deps) *surface {
 	now := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
 	st := operatortest.NewMemStore()
 	svc := &operator.Service{Store: st, Now: func() time.Time { return now }}
+	deps.Authenticator = operator.NewAuthenticator(svc)
 	deps.Operators = svc
 	deps.Now = func() time.Time { return now }
 	ts := httptest.NewUnstartedServer(api.New(deps).Handler())

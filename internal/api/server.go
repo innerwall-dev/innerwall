@@ -31,6 +31,10 @@ const maxBodyBytes = 64 << 10
 
 // Deps is what the operator surface is built from.
 type Deps struct {
+	// Authenticator resolves the credentials the surface is presented,
+	// behind the login endpoint and the authentication middleware.
+	Authenticator authn.Authenticator
+	// Operators is the operator domain, behind operator token management.
 	Operators *operator.Service
 	// Reads is the read model the read endpoints call.
 	Reads *readmodel.Reader
@@ -69,18 +73,19 @@ type Deps struct {
 // each carries the transport semantics of its endpoint and calls the same
 // domain functions the command line calls, holding no logic of its own.
 type Server struct {
-	operators *operator.Service
-	reads     *readmodel.Reader
-	authoring *policy.Authoring
-	fleet     *fleet.Service
-	enroll    *enroll.Service
-	site      string
-	gateway   string
-	console   fs.FS
-	auth      *Authenticator
-	throttle  *Throttle
-	log       *slog.Logger
-	now       func() time.Time
+	operators     *operator.Service
+	reads         *readmodel.Reader
+	authoring     *policy.Authoring
+	fleet         *fleet.Service
+	enroll        *enroll.Service
+	site          string
+	gateway       string
+	console       fs.FS
+	authenticator authn.Authenticator
+	auth          *authentication
+	throttle      *Throttle
+	log           *slog.Logger
+	now           func() time.Time
 }
 
 // New constructs the surface.
@@ -92,18 +97,19 @@ func New(d Deps) *Server {
 		d.Now = time.Now
 	}
 	return &Server{
-		operators: d.Operators,
-		reads:     d.Reads,
-		authoring: d.Authoring,
-		fleet:     d.Fleet,
-		enroll:    d.Enroll,
-		site:      d.Site,
-		gateway:   d.GatewayAddress,
-		console:   d.Console,
-		auth:      &Authenticator{Operators: d.Operators, Log: d.Log},
-		throttle:  &Throttle{Limit: d.LoginAttempts, Window: d.LoginWindow, Now: d.Now},
-		log:       d.Log,
-		now:       d.Now,
+		operators:     d.Operators,
+		reads:         d.Reads,
+		authoring:     d.Authoring,
+		fleet:         d.Fleet,
+		enroll:        d.Enroll,
+		site:          d.Site,
+		gateway:       d.GatewayAddress,
+		console:       d.Console,
+		authenticator: d.Authenticator,
+		auth:          &authentication{authenticator: d.Authenticator, log: d.Log},
+		throttle:      &Throttle{Limit: d.LoginAttempts, Window: d.LoginWindow, Now: d.Now},
+		log:           d.Log,
+		now:           d.Now,
 	}
 }
 
@@ -350,7 +356,7 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	err := s.operators.VerifyPassword(ctx, req.Password)
+	p, err := s.authenticator.Verify(ctx, authn.Credential{Form: authn.Password, Secret: req.Password})
 	switch {
 	case errors.Is(err, operator.ErrNoOperator):
 		writeProblem(w, Problem{Type: ProblemNoPassword, Title: "No operator password has been set", Status: http.StatusForbidden, Detail: "no operator password has been set; run `innerwall operator set-password` on the control-plane host"})
@@ -364,21 +370,15 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, problemInternal)
 		return
 	}
-	id, sess, err := s.operators.CreateSession(ctx)
+	sess, err := s.authenticator.Mint(ctx)
 	if err != nil {
 		s.log.Error("creating operator session", "error", err)
 		writeProblem(w, problemInternal)
 		return
 	}
-	op, err := s.operators.Store.GetOperator(ctx)
-	if err != nil {
-		s.log.Error("reading operator", "error", err)
-		writeProblem(w, problemInternal)
-		return
-	}
-	http.SetCookie(w, sessionCookie(id, sess.ExpiresAt.Sub(sess.CreatedAt)))
+	http.SetCookie(w, sessionCookie(sess.ID, sess.Lifetime))
 	s.log.Info("operator logged in")
-	writeJSON(w, s.me(&authn.Principal{DisplayName: op.DisplayName}))
+	writeJSON(w, s.me(p))
 }
 
 // deleteSession is DELETE /api/v1/session: revoke the current session and

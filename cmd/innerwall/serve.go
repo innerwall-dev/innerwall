@@ -176,7 +176,7 @@ func runServe(ctx context.Context, args []string) error {
 	// line's authoring commands call (ADR-0007 as amended).
 	authoring := &policy.Authoring{Store: st, Renderer: renderer{engine}}
 	fleetSvc := &fleet.Service{Store: st, Engine: engine, Reads: reads, Directives: st}
-	apiSrv := api.New(api.Deps{Operators: operators, Reads: reads, Authoring: authoring, Fleet: fleetSvc, Enroll: svc, Site: *site, GatewayAddress: *gatewayAddr, Console: console, Log: log.With("service", "api")})
+	apiSrv := api.New(api.Deps{Authenticator: operator.NewAuthenticator(operators), Operators: operators, Reads: reads, Authoring: authoring, Fleet: fleetSvc, Enroll: svc, Site: *site, GatewayAddress: *gatewayAddr, Console: console, Log: log.With("service", "api")})
 	httpServer := api.NewHTTPServer(api.ServerTLSConfig(operatorCert), apiSrv.Handler())
 	srv := gateway.New(gateway.Deps{
 		Enroll:   svc,

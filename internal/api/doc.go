@@ -24,8 +24,9 @@
 // failed with the current one. The contract is api/openapi.yaml.
 //
 // The package owns the listener's transport rules: TLS only; a middleware
-// that resolves a session cookie or a bearer operator token to the one
-// operator principal; an origin guard on every request that is not a read;
+// that reads a session cookie or a bearer operator token and resolves it,
+// through the injected authn.Authenticator, to the one operator principal;
+// an origin guard on every request that is not a read;
 // a fixed-window throttle on the login endpoint; problem documents for
 // every error. Handlers see a principal and nothing about how it was
 // authenticated.
