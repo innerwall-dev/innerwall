@@ -249,6 +249,7 @@ type Workload struct {
 	LateRenewalExpiredAt   *time.Time
 	LastHeartbeatAt        *time.Time
 	AgentStartedAt         *time.Time
+	RetiredAt              *time.Time
 }
 
 type WorkloadAddress struct {
