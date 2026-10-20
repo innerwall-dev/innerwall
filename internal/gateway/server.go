@@ -34,7 +34,7 @@ type PolicyStore interface {
 // the replica holding the workload's stream without anything polling
 // (ADR-0002, ADR-0018 as amended).
 type PolicyEvents interface {
-	ListenPolicyChanges(ctx context.Context, log *slog.Logger, onReady func(), fn func(compiler.Announcement), reconnect func(identity.WorkloadID)) error
+	ListenPolicyChanges(ctx context.Context, log *slog.Logger, onReady func(), fn func(compiler.Announcement), directed func(compiler.Directive)) error
 }
 
 // Deps is what the gateway is built from. Enroll is required. Registry,
@@ -108,7 +108,7 @@ func (s *Server) now() time.Time { return s.nowFn() }
 // re-verify client chains against the same bundle, and registers both
 // services on it.
 func NewGRPCServer(tlsCfg *tls.Config, srv *Server, opts ...grpc.ServerOption) *grpc.Server {
-	auth := &authenticator{roots: tlsCfg.ClientCAs, enroll: srv.enroll}
+	auth := &authenticator{roots: tlsCfg.ClientCAs, enroll: srv.enroll, log: srv.log}
 	opts = append(opts,
 		grpc.Creds(credentials.NewTLS(tlsCfg)),
 		grpc.ChainUnaryInterceptor(auth.unary),
@@ -182,6 +182,9 @@ func (s *Server) RenewCredential(ctx context.Context, req *innerwallv1.RenewCred
 	notBefore, notAfter := credentialValidity(ctx)
 	cred, err := s.enroll.Renew(ctx, id, notBefore, notAfter, req.GetCsrPem())
 	if err != nil {
+		if isRetired(err) {
+			return nil, refuseRetired(s.log.With("workload_id", id), err, "renewal")
+		}
 		s.log.Info("renewal refused", "workload_id", id, "error", err)
 		return nil, toStatus(err)
 	}

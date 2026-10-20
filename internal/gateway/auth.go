@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -127,10 +128,12 @@ func verifyChain(roots *x509.CertPool, certs []*x509.Certificate) ([]*x509.Certi
 
 // authenticator applies the per-service policy. Roots is the authority
 // bundle the handshake verified the chain against, and Enroll the domain
-// whose validity rule decides what a credential may call now.
+// whose validity and retirement rules decide what a credential may call
+// now.
 type authenticator struct {
 	roots  *x509.CertPool
 	enroll *enroll.Service
+	log    *slog.Logger
 }
 
 // authenticate applies the per-service policy to one call. It returns the
@@ -157,6 +160,17 @@ func (a *authenticator) authenticate(ctx context.Context, fullMethod string) (co
 	}
 	if err := a.enroll.AdmitCredential(leaf.NotBefore, leaf.NotAfter, fullMethod == renewMethod); err != nil {
 		return nil, status.Error(codes.Unauthenticated, err.Error())
+	}
+	// A retired identity is refused at every door, with nothing said to
+	// the agent about why (ADR-0023). Renewal checks it again in the
+	// domain, so neither check can be bypassed by a path that reaches
+	// only the other.
+	if err := a.enroll.CheckNotRetired(ctx, id); err != nil {
+		if isRetired(err) {
+			return nil, refuseRetired(a.logger().With("workload_id", id), err, fullMethod)
+		}
+		a.logger().Error("checking a credential's workload for retirement", "workload_id", id, "error", err)
+		return nil, status.Error(codes.Unavailable, "the control plane cannot admit credentials right now")
 	}
 	return context.WithValue(ctx, identityKey{}, principal{id: id, notBefore: leaf.NotBefore, notAfter: leaf.NotAfter}), nil
 }
@@ -204,3 +218,10 @@ type identityStream struct {
 }
 
 func (s *identityStream) Context() context.Context { return s.ctx }
+
+func (a *authenticator) logger() *slog.Logger {
+	if a.log != nil {
+		return a.log
+	}
+	return slog.Default()
+}

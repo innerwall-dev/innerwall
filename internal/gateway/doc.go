@@ -5,7 +5,9 @@
 // only with a verified workload credential. An interceptor enforces that
 // split per service and is the only place identity is derived from a
 // connection; handlers read it from the request context and nowhere else
-// (ADR-0016).
+// (ADR-0016). It also refuses an identity whose workload was retired, with
+// one refusal that names no reason, and the gateway ends a retired
+// workload's live stream with the same refusal (ADR-0023).
 //
 // The sync stream (ADR-0002, ADR-0015) lives here too: one live stream per
 // workload, registered in an in-process map so that a render's

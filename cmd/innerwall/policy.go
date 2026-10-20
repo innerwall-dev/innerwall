@@ -18,6 +18,7 @@ import (
 	"github.com/innerwall-dev/innerwall/internal/cli"
 	"github.com/innerwall-dev/innerwall/internal/compiler"
 	"github.com/innerwall-dev/innerwall/internal/fleet"
+	"github.com/innerwall-dev/innerwall/internal/gateway"
 	"github.com/innerwall-dev/innerwall/internal/identity"
 	"github.com/innerwall-dev/innerwall/internal/policy"
 	"github.com/innerwall-dev/innerwall/internal/readmodel"
@@ -42,7 +43,13 @@ func openAuthoring(ctx context.Context, flagURL string) (*authoring, error) {
 	}
 	eng := &compiler.Engine{Store: st}
 	reads := &readmodel.Reader{Store: st, Flows: st.Flows()}
-	return &authoring{st: st, svc: &policy.Authoring{Store: st, Renderer: renderAdapter{eng}}, fleet: &fleet.Service{Store: st, Engine: eng, Reads: reads, Directives: st}, eng: eng}, nil
+	return &authoring{st: st, svc: &policy.Authoring{Store: st, Renderer: renderAdapter{eng}}, fleet: &fleet.Service{
+		Store: st, Engine: eng, Reads: reads, Directives: st,
+		// This process holds no streams: a retirement's end directive
+		// reaches the replica that does. Its silence is judged by the flow
+		// window the control plane hands agents.
+		FlowWindow: syncFlowWindow(gateway.DefaultSyncConfig()),
+	}, eng: eng}, nil
 }
 
 func (a *authoring) close() { a.st.Close() }

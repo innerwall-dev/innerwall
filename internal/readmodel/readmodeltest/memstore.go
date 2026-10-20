@@ -97,7 +97,7 @@ func (m *MemStore) CountWorkloadsByStatus(context.Context) ([]readmodel.StatusCo
 	at := map[readmodel.StatusCount]int{}
 	var out []readmodel.StatusCount
 	for i := range m.Workloads {
-		key := readmodel.StatusCount{SyncState: m.Workloads[i].SyncState, Removed: m.Workloads[i].OwnedTable == innerwallv1.OwnedTableState_OWNED_TABLE_STATE_ABSENT}
+		key := readmodel.StatusCount{SyncState: m.Workloads[i].SyncState, Removed: m.Workloads[i].OwnedTable == innerwallv1.OwnedTableState_OWNED_TABLE_STATE_ABSENT, Retired: m.Workloads[i].Retired()}
 		j, ok := at[key]
 		if !ok {
 			j = len(out)
@@ -132,7 +132,13 @@ func (m *MemStore) ListWorkloadPage(_ context.Context, q readmodel.WorkloadPageQ
 		if q.SyncState != 0 && r.SyncState != q.SyncState {
 			continue
 		}
+		if r.Retired() != q.Retired {
+			continue
+		}
 		r.SyncRank, r.SeenKey = SyncRank(r.SyncState, r.OwnedTable), seenKey(r.LastSeenAt)
+		if r.Retired() {
+			r.SyncRank, r.SeenKey = readmodel.RetiredRank, r.RetiredAt.UTC()
+		}
 		if q.After != nil {
 			a := q.After
 			after := r.SyncRank > a.SyncRank || (r.SyncRank == a.SyncRank && (r.SeenKey.Before(a.SeenKey) || (r.SeenKey.Equal(a.SeenKey) && r.ID.String() > a.ID.String())))

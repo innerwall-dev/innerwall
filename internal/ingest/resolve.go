@@ -28,12 +28,17 @@ type groupEntry struct {
 	key    string
 }
 
-// BuildIndex indexes the workloads' current addresses and the address
-// groups' CIDRs.
+// BuildIndex indexes the active workloads' current addresses and the
+// address groups' CIDRs. A retired workload's last addresses are no longer
+// its own and may already belong to whatever replaced it, so nothing
+// resolves to it (ADR-0023); such an address falls through to the groups.
 func BuildIndex(workloads []registry.Workload, groups []policy.AddressGroup) *Index {
 	idx := &Index{workloads: map[netip.Addr]workloadEntry{}}
 	for i := range workloads {
 		w := &workloads[i]
+		if w.Retired() {
+			continue
+		}
 		entry := workloadEntry{key: w.ID.String(), labels: w.LabelMap()}
 		for _, a := range w.Addresses {
 			a = a.Unmap()
@@ -70,7 +75,7 @@ func BuildIndex(workloads []registry.Workload, groups []policy.AddressGroup) *In
 	return idx
 }
 
-// Resolve returns the peer behind addr. A workload's current address wins
+// Resolve returns the peer behind addr. An active workload's current address wins
 // over any address group containing it; the most specific group wins over
 // a wider one; an address matching neither is recorded as itself. The
 // workload's labels are copied so the snapshot is independent of later

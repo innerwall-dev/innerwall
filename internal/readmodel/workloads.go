@@ -48,15 +48,34 @@ type WorkloadCursor struct {
 }
 
 // WorkloadPageQuery selects one page of the fleet. An empty IDs means
-// every workload; a zero Mode or SyncState means any; a nil After is the
-// first page.
+// every workload; a zero Mode or SyncState means any; Retired selects the
+// retired workloads instead of the active ones, never both; a nil After
+// is the first page.
 type WorkloadPageQuery struct {
 	IDs       []identity.WorkloadID
 	Mode      innerwallv1.EnforcementMode
 	SyncState innerwallv1.SyncState
+	Retired   bool
 	After     *WorkloadCursor
 	Limit     int
 }
+
+// Lifecycle is where a workload stands in its life (ADR-0023): active, or
+// retired by the operator. It is a state of its own, distinct from every
+// sync state: offline is something to fix, and retired is something the
+// operator decided.
+type Lifecycle string
+
+// Lifecycle states.
+const (
+	LifecycleActive  Lifecycle = "active"
+	LifecycleRetired Lifecycle = "retired"
+)
+
+// RetiredRank is the fleet order's rank of a retired workload: below every
+// rank of the attention ordering, which a retired workload is outside.
+// The retired list sorts by retirement instant within it.
+const RetiredRank int32 = 5
 
 // CredentialState is the state of a workload's credential as the stored
 // expiry, the stored renewal error, and the clock give it (ADR-0016).
@@ -164,22 +183,34 @@ type Workload struct {
 	ListeningServices []registry.ListeningService
 	Sync              SyncStatus
 	Health            Health
+	// Lifecycle is active or retired, and RetiredAt when it was retired,
+	// nil while it is active.
+	Lifecycle Lifecycle
+	RetiredAt *time.Time
 }
 
 // WorkloadsRequest asks for one page of the fleet. An empty Selector
 // means every workload, otherwise the workloads it currently matches; a
-// zero Mode or SyncState means any; Cursor continues a previous page.
+// zero Mode or SyncState means any; Lifecycle selects the active fleet
+// (the default when empty) or the retired workloads; Cursor continues a
+// previous page.
 type WorkloadsRequest struct {
 	Selector  policy.Selector
 	Mode      innerwallv1.EnforcementMode
 	SyncState innerwallv1.SyncState
+	Lifecycle Lifecycle
 	Cursor    string
 	Limit     int
 }
 
-// WorkloadsPage is one page of the fleet in fleet order: attention rank
-// (degraded or enforcement removed, offline, pending, synced), then most
-// recently seen first.
+// ErrUnknownLifecycle is a fleet read asking for a lifecycle state that
+// does not exist.
+var ErrUnknownLifecycle = errors.New("readmodel: lifecycle must be active or retired")
+
+// WorkloadsPage is one page of the fleet in fleet order: for the active
+// fleet, attention rank (degraded or enforcement removed, offline,
+// pending, synced), then most recently seen first; for the retired
+// workloads, most recently retired first.
 type WorkloadsPage struct {
 	Workloads  []Workload
 	NextCursor string
@@ -220,6 +251,14 @@ func (s *Reader) ListWorkloads(ctx context.Context, req WorkloadsRequest) (*Work
 	if err != nil {
 		return nil, err
 	}
+	var retired bool
+	switch req.Lifecycle {
+	case "", LifecycleActive:
+	case LifecycleRetired:
+		retired = true
+	default:
+		return nil, ErrUnknownLifecycle
+	}
 	limit := req.Limit
 	if limit <= 0 {
 		limit = DefaultWorkloadPageLimit
@@ -235,7 +274,7 @@ func (s *Reader) ListWorkloads(ctx context.Context, req WorkloadsRequest) (*Work
 	if scoped && len(ids) == 0 {
 		return page, nil
 	}
-	records, err := s.Store.ListWorkloadPage(ctx, WorkloadPageQuery{IDs: ids, Mode: req.Mode, SyncState: req.SyncState, After: after, Limit: limit + 1})
+	records, err := s.Store.ListWorkloadPage(ctx, WorkloadPageQuery{IDs: ids, Mode: req.Mode, SyncState: req.SyncState, Retired: retired, After: after, Limit: limit + 1})
 	if err != nil {
 		return nil, err
 	}
@@ -254,23 +293,27 @@ func (s *Reader) ListWorkloads(ctx context.Context, req WorkloadsRequest) (*Work
 	return page, nil
 }
 
-// WorkloadCounts is the fleet's size, in total, by sync state, and
-// removed. A workload whose owned table is recorded absent counts in
-// Removed and in no sync state: its stored state is the agent's honest
-// record of the version it acknowledged, but the host enforces none of it
-// (issue #96). Every other workload is in exactly one sync state, so Total
-// is the sum of BySync and Removed.
+// WorkloadCounts is the active fleet's size, in total, by sync state, and
+// removed, beside the retired workloads. A workload whose owned table is
+// recorded absent counts in Removed and in no sync state: its stored state
+// is the agent's honest record of the version it acknowledged, but the
+// host enforces none of it (issue #96). Every other active workload is in
+// exactly one sync state, so Total is the sum of BySync and Removed. A
+// retired workload is outside the attention ordering and counts in Retired
+// alone, in no bucket and not in Total (ADR-0023).
 type WorkloadCounts struct {
 	Total   int64
 	BySync  map[innerwallv1.SyncState]int64
 	Removed int64
+	Retired int64
 }
 
 // StatusCount is how many workloads hold one sync state with their owned
-// table recorded absent (Removed), or not.
+// table recorded absent (Removed), or not, and retired, or not.
 type StatusCount struct {
 	SyncState innerwallv1.SyncState
 	Removed   bool
+	Retired   bool
 	Workloads int64
 }
 
@@ -285,9 +328,10 @@ var syncStates = []innerwallv1.SyncState{
 
 // CountWorkloads returns how many workloads the fleet holds, in total,
 // in each sync state, and removed, from one read of the store, so the
-// counts agree with each other. A count is exact or the read fails: a
-// workload stored in a state outside the four is an error, removed or
-// not, never left out of a total.
+// counts agree with each other. A count is exact or the read fails: an
+// active workload stored in a state outside the four is an error, removed
+// or not, never left out of a total. A retired workload counts in Retired
+// whatever its last sync state.
 func (s *Reader) CountWorkloads(ctx context.Context) (*WorkloadCounts, error) {
 	stored, err := s.Store.CountWorkloadsByStatus(ctx)
 	if err != nil {
@@ -299,6 +343,10 @@ func (s *Reader) CountWorkloads(ctx context.Context) (*WorkloadCounts, error) {
 	}
 	for _, c := range stored {
 		if c.Workloads == 0 {
+			continue
+		}
+		if c.Retired {
+			out.Retired += c.Workloads
 			continue
 		}
 		if _, known := out.BySync[c.SyncState]; !known {
@@ -341,6 +389,11 @@ func (s *Reader) workload(rec *WorkloadRecord, now time.Time) Workload {
 			LastFlowReportAt:      rec.LastFlowReportAt,
 			TelemetryLive:         telemetryLive(rec.LastFlowReportAt, s.FlowWindow, now),
 		},
+		Lifecycle: LifecycleActive,
+		RetiredAt: rec.RetiredAt,
+	}
+	if rec.Retired() {
+		w.Lifecycle = LifecycleRetired
 	}
 	if w.Labels == nil {
 		w.Labels = []registry.Label{}

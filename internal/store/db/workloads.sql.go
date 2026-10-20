@@ -71,21 +71,23 @@ func (q *Queries) AddWorkloadListeningService(ctx context.Context, arg AddWorklo
 }
 
 const countWorkloadsByStatus = `-- name: CountWorkloadsByStatus :many
-SELECT sync_state, (owned_table_state = 2)::boolean AS removed, count(*)::bigint AS workloads
+SELECT sync_state, (owned_table_state = 2)::boolean AS removed, (retired_at IS NOT NULL)::boolean AS retired, count(*)::bigint AS workloads
 FROM workloads
-GROUP BY 1, 2
-ORDER BY 1, 2
+GROUP BY 1, 2, 3
+ORDER BY 1, 2, 3
 `
 
 type CountWorkloadsByStatusRow struct {
 	SyncState int32
 	Removed   bool
+	Retired   bool
 	Workloads int64
 }
 
 // How many workloads hold each sync state, split by whether their owned
-// table is recorded absent (migration 00012), in one statement so the
-// counts agree with each other. A pair no workload holds has no row.
+// table is recorded absent (migration 00012) and by whether they are
+// retired (ADR-0023), in one statement so the counts agree with each
+// other. A combination no workload holds has no row.
 func (q *Queries) CountWorkloadsByStatus(ctx context.Context) ([]CountWorkloadsByStatusRow, error) {
 	rows, err := q.db.Query(ctx, countWorkloadsByStatus)
 	if err != nil {
@@ -95,7 +97,12 @@ func (q *Queries) CountWorkloadsByStatus(ctx context.Context) ([]CountWorkloadsB
 	items := []CountWorkloadsByStatusRow{}
 	for rows.Next() {
 		var i CountWorkloadsByStatusRow
-		if err := rows.Scan(&i.SyncState, &i.Removed, &i.Workloads); err != nil {
+		if err := rows.Scan(
+			&i.SyncState,
+			&i.Removed,
+			&i.Retired,
+			&i.Workloads,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -210,6 +217,19 @@ func (q *Queries) GetWorkload(ctx context.Context, id uuid.UUID) (Workload, erro
 		&i.RetiredAt,
 	)
 	return i, err
+}
+
+const getWorkloadRetiredAt = `-- name: GetWorkloadRetiredAt :one
+SELECT retired_at FROM workloads
+WHERE id = $1
+`
+
+// Why a conditioned write found no row: absent, or retired since when.
+func (q *Queries) GetWorkloadRetiredAt(ctx context.Context, id uuid.UUID) (*time.Time, error) {
+	row := q.db.QueryRow(ctx, getWorkloadRetiredAt, id)
+	var retired_at *time.Time
+	err := row.Scan(&retired_at)
+	return retired_at, err
 }
 
 const getWorkloadWithPolicy = `-- name: GetWorkloadWithPolicy :one
@@ -497,33 +517,36 @@ SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at,
        w.credential_renewal_error, w.last_snapshot_sent_at, w.last_acked_at, w.last_apply_failed_at,
        w.source_overruns, w.clock_skew_offset_ms, w.clock_skew_observed_at, w.clock_skew_current,
        w.owned_table_state, w.owned_table_absent_since, w.last_flow_report_at,
-       w.late_renewal_at, w.late_renewal_expired_at,
+       w.late_renewal_at, w.late_renewal_expired_at, w.retired_at,
        w.sync_rank::integer AS sync_rank, w.seen_key::timestamptz AS seen_key,
        p.version AS latest_version, p.rendered_at AS latest_rendered_at
 FROM (
     SELECT workloads.id, workloads.region_id, workloads.provisioning_token_id, workloads.hostname, workloads.enrolled_at, workloads.credential_serial, workloads.credential_expires_at, workloads.last_renewed_at, workloads.mode, workloads.facts, workloads.agent_version, workloads.agent_capabilities, workloads.last_seen_at, workloads.sync_state, workloads.applied_policy_version, workloads.sync_error, workloads.dropped_flow_records, workloads.credential_renewal_error, workloads.last_snapshot_sent_at, workloads.last_acked_at, workloads.last_apply_failed_at, workloads.source_overruns, workloads.clock_skew_offset_ms, workloads.clock_skew_observed_at, workloads.clock_skew_current, workloads.owned_table_state, workloads.owned_table_absent_since, workloads.last_flow_report_at, workloads.late_renewal_at, workloads.late_renewal_expired_at, workloads.last_heartbeat_at, workloads.agent_started_at, workloads.retired_at,
-           CASE WHEN workloads.owned_table_state = 2 THEN 0
+           CASE WHEN workloads.retired_at IS NOT NULL THEN 5
+                WHEN workloads.owned_table_state = 2 THEN 0
                 WHEN workloads.sync_state = 3 THEN 0 WHEN workloads.sync_state = 4 THEN 1
                 WHEN workloads.sync_state = 2 THEN 2 WHEN workloads.sync_state = 1 THEN 3 ELSE 4 END AS sync_rank,
-           coalesce(workloads.last_seen_at, '1970-01-01 00:00:00+00'::timestamptz) AS seen_key
+           coalesce(workloads.retired_at, workloads.last_seen_at, '1970-01-01 00:00:00+00'::timestamptz) AS seen_key
     FROM workloads
 ) AS w
 LEFT JOIN workload_policies p ON p.workload_id = w.id
 WHERE (cardinality($1::uuid[]) = 0 OR w.id = ANY($1::uuid[]))
   AND ($2::integer = 0 OR w.mode = $2::integer)
   AND ($3::integer = 0 OR w.sync_state = $3::integer)
-  AND (w.sync_rank > $4::integer
-       OR (w.sync_rank = $4::integer
-           AND (w.seen_key < $5::timestamptz
-                OR (w.seen_key = $5::timestamptz AND w.id > $6::uuid))))
+  AND (($4::integer = 2) = (w.retired_at IS NOT NULL))
+  AND (w.sync_rank > $5::integer
+       OR (w.sync_rank = $5::integer
+           AND (w.seen_key < $6::timestamptz
+                OR (w.seen_key = $6::timestamptz AND w.id > $7::uuid))))
 ORDER BY w.sync_rank, w.seen_key DESC, w.id
-LIMIT $7
+LIMIT $8
 `
 
 type ListWorkloadPageParams struct {
 	WorkloadIds []uuid.UUID
 	Mode        int32
 	SyncState   int32
+	Lifecycle   int32
 	CursorRank  int32
 	CursorSeen  time.Time
 	CursorID    uuid.UUID
@@ -561,6 +584,7 @@ type ListWorkloadPageRow struct {
 	LastFlowReportAt       *time.Time
 	LateRenewalAt          *time.Time
 	LateRenewalExpiredAt   *time.Time
+	RetiredAt              *time.Time
 	SyncRank               int32
 	SeenKey                time.Time
 	LatestVersion          pgtype.Int8
@@ -578,11 +602,18 @@ type ListWorkloadPageRow struct {
 // as if seen at the epoch. An empty id array means every workload; a zero
 // mode or sync state means any. The latest rendered version rides along
 // from workload_policies so sync drift is one read.
+//
+// A retired workload is outside the attention ordering (ADR-0023): the
+// lifecycle argument selects active workloads (1) or retired ones (2),
+// never both, and a retired one takes a rank of its own below every
+// other with its retirement instant as the sort key, so the retired list
+// runs most recently retired first through the same cursor.
 func (q *Queries) ListWorkloadPage(ctx context.Context, arg ListWorkloadPageParams) ([]ListWorkloadPageRow, error) {
 	rows, err := q.db.Query(ctx, listWorkloadPage,
 		arg.WorkloadIds,
 		arg.Mode,
 		arg.SyncState,
+		arg.Lifecycle,
 		arg.CursorRank,
 		arg.CursorSeen,
 		arg.CursorID,
@@ -626,6 +657,7 @@ func (q *Queries) ListWorkloadPage(ctx context.Context, arg ListWorkloadPagePara
 			&i.LastFlowReportAt,
 			&i.LateRenewalAt,
 			&i.LateRenewalExpiredAt,
+			&i.RetiredAt,
 			&i.SyncRank,
 			&i.SeenKey,
 			&i.LatestVersion,
@@ -702,10 +734,42 @@ func (q *Queries) ListWorkloads(ctx context.Context) ([]Workload, error) {
 	return items, nil
 }
 
+const lockWorkload = `-- name: LockWorkload :one
+
+SELECT retired_at, last_flow_report_at, last_heartbeat_at, agent_started_at
+FROM workloads
+WHERE id = $1
+FOR UPDATE
+`
+
+type LockWorkloadRow struct {
+	RetiredAt        *time.Time
+	LastFlowReportAt *time.Time
+	LastHeartbeatAt  *time.Time
+	AgentStartedAt   *time.Time
+}
+
+// --- retirement (ADR-0023) ----------------------------------------------------
+// The row a retirement or a label write locks before it reads, so the two
+// serialize with each other and with flow ingest's receipt: the instant it
+// was retired (NULL while active), and what the silence derivation reads,
+// the last report's receipt and the latest heartbeat's pair.
+func (q *Queries) LockWorkload(ctx context.Context, id uuid.UUID) (LockWorkloadRow, error) {
+	row := q.db.QueryRow(ctx, lockWorkload, id)
+	var i LockWorkloadRow
+	err := row.Scan(
+		&i.RetiredAt,
+		&i.LastFlowReportAt,
+		&i.LastHeartbeatAt,
+		&i.AgentStartedAt,
+	)
+	return i, err
+}
+
 const recordWorkloadAgent = `-- name: RecordWorkloadAgent :execrows
 UPDATE workloads
 SET agent_version = $2, agent_capabilities = $3, applied_policy_version = $4, last_seen_at = $5
-WHERE id = $1
+WHERE id = $1 AND retired_at IS NULL
 `
 
 type RecordWorkloadAgentParams struct {
@@ -735,7 +799,7 @@ UPDATE workloads
 SET applied_policy_version = $2, sync_state = $3, sync_error = '', last_seen_at = $4, last_acked_at = $4,
     owned_table_state = CASE WHEN owned_table_state = 2 THEN 1 ELSE owned_table_state END,
     owned_table_absent_since = NULL
-WHERE id = $1
+WHERE id = $1 AND retired_at IS NULL
 `
 
 type RecordWorkloadAppliedParams struct {
@@ -765,7 +829,7 @@ func (q *Queries) RecordWorkloadApplied(ctx context.Context, arg RecordWorkloadA
 const recordWorkloadApplyFailed = `-- name: RecordWorkloadApplyFailed :execrows
 UPDATE workloads
 SET sync_state = $2, sync_error = $3, last_seen_at = $4, last_apply_failed_at = $4
-WHERE id = $1
+WHERE id = $1 AND retired_at IS NULL
 `
 
 type RecordWorkloadApplyFailedParams struct {
@@ -825,12 +889,14 @@ UPDATE workloads
 SET last_flow_report_at = $1
 FROM (
     SELECT w.id AS locked_id, w.last_flow_report_at AS prev,
-           w.last_heartbeat_at AS heartbeat_at, w.agent_started_at AS started_at
+           w.last_heartbeat_at AS heartbeat_at, w.agent_started_at AS started_at,
+           w.retired_at AS retired_at
     FROM workloads w
     WHERE w.id = $2
     FOR UPDATE
 ) locked
 WHERE workloads.id = locked.locked_id
+  AND locked.retired_at IS NULL
   AND (locked.prev IS NULL OR locked.prev < $1)
 RETURNING locked.prev, locked.heartbeat_at, locked.started_at
 `
@@ -854,7 +920,9 @@ type RecordWorkloadFlowReportRow struct {
 // heartbeat's receipt and process start ride along, read under the same
 // lock, so the derivation can tell a quiet agent from an absent one
 // (migration 00016). No row means the receipt did not advance (a stale
-// report, or no such workload).
+// report, or no such workload). A retired workload's receipt never moves:
+// its retirement closed the silence the receipt would bound, under the same
+// row lock, so a report racing it derives nothing twice (ADR-0023).
 func (q *Queries) RecordWorkloadFlowReport(ctx context.Context, arg RecordWorkloadFlowReportParams) ([]RecordWorkloadFlowReportRow, error) {
 	rows, err := q.db.Query(ctx, recordWorkloadFlowReport, arg.ReceivedAt, arg.ID)
 	if err != nil {
@@ -885,7 +953,7 @@ SET last_seen_at = $1, dropped_flow_records = $2,
         WHEN $6::smallint = 2 THEN coalesce(owned_table_absent_since, $1)
         ELSE NULL END,
     owned_table_state = CASE WHEN $6::smallint = 0 THEN owned_table_state ELSE $6::smallint END
-WHERE id = $7
+WHERE id = $7 AND retired_at IS NULL
 `
 
 type RecordWorkloadHeartbeatParams struct {
@@ -922,7 +990,7 @@ func (q *Queries) RecordWorkloadHeartbeat(ctx context.Context, arg RecordWorkloa
 const recordWorkloadHeartbeatSeen = `-- name: RecordWorkloadHeartbeatSeen :execrows
 UPDATE workloads
 SET last_seen_at = $2
-WHERE id = $1
+WHERE id = $1 AND retired_at IS NULL
 `
 
 type RecordWorkloadHeartbeatSeenParams struct {
@@ -941,7 +1009,7 @@ func (q *Queries) RecordWorkloadHeartbeatSeen(ctx context.Context, arg RecordWor
 const recordWorkloadInventory = `-- name: RecordWorkloadInventory :execrows
 UPDATE workloads
 SET facts = $2, hostname = $3, last_seen_at = $4
-WHERE id = $1
+WHERE id = $1 AND retired_at IS NULL
 `
 
 type RecordWorkloadInventoryParams struct {
@@ -951,6 +1019,10 @@ type RecordWorkloadInventoryParams struct {
 	LastSeenAt *time.Time
 }
 
+// The writes a sync stream makes from what its agent sends (inventory,
+// Hello, heartbeats, acknowledgements) are conditioned on the workload not
+// being retired: no row means it is unknown or retired, and the stream of a
+// retired workload ends at the next one (ADR-0023).
 func (q *Queries) RecordWorkloadInventory(ctx context.Context, arg RecordWorkloadInventoryParams) (int64, error) {
 	result, err := q.db.Exec(ctx, recordWorkloadInventory,
 		arg.ID,
@@ -972,7 +1044,7 @@ SET credential_serial = $1,
     late_renewal_at = CASE WHEN $4::timestamptz IS NULL
                            THEN late_renewal_at ELSE $3 END,
     late_renewal_expired_at = coalesce($4::timestamptz, late_renewal_expired_at)
-WHERE id = $5
+WHERE id = $5 AND retired_at IS NULL
 `
 
 type RecordWorkloadRenewalParams struct {
@@ -986,6 +1058,9 @@ type RecordWorkloadRenewalParams struct {
 // A late renewal (one made with an already-expired credential, within the
 // grace) also replaces the workload's late-renewal record; an on-time one
 // leaves it (ADR-0016 as amended).
+// A retired workload renews nothing (ADR-0023): the write is conditioned
+// on it, so a retirement committed after the renewal was admitted still
+// refuses it here.
 func (q *Queries) RecordWorkloadRenewal(ctx context.Context, arg RecordWorkloadRenewalParams) (int64, error) {
 	result, err := q.db.Exec(ctx, recordWorkloadRenewal,
 		arg.CredentialSerial,
@@ -1015,6 +1090,26 @@ type RecordWorkloadSnapshotSentParams struct {
 // whatever caused it; nothing else writes it (ADR-0018 as amended).
 func (q *Queries) RecordWorkloadSnapshotSent(ctx context.Context, arg RecordWorkloadSnapshotSentParams) (int64, error) {
 	result, err := q.db.Exec(ctx, recordWorkloadSnapshotSent, arg.ID, arg.LastSnapshotSentAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const retireWorkload = `-- name: RetireWorkload :execrows
+UPDATE workloads
+SET retired_at = $1
+WHERE id = $2 AND retired_at IS NULL
+`
+
+type RetireWorkloadParams struct {
+	RetiredAt *time.Time
+	ID        uuid.UUID
+}
+
+// Retirement stamps the instant once; nothing clears it.
+func (q *Queries) RetireWorkload(ctx context.Context, arg RetireWorkloadParams) (int64, error) {
+	result, err := q.db.Exec(ctx, retireWorkload, arg.RetiredAt, arg.ID)
 	if err != nil {
 		return 0, err
 	}

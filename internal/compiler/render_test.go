@@ -3,6 +3,7 @@ package compiler_test
 import (
 	"net/netip"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -290,5 +291,37 @@ func TestPlanBumpsVersionsOnlyOnChange(t *testing.T) {
 				t.Fatalf("c moved: %+v", o)
 			}
 		}
+	}
+}
+
+// TestRetiredWorkloadIsNoInput checks that a retired workload is neither
+// rendered nor resolved as anyone's peer, and that its retirement moves
+// the state version a dry run is judged stale by (ADR-0023).
+func TestRetiredWorkloadIsNoInput(t *testing.T) {
+	db := wl(t, map[string]string{"role": "db"}, "10.0.0.10")
+	web := wl(t, map[string]string{"role": "web"}, "10.0.0.20")
+	rs := policy.Ruleset{ID: uuid.New(), Name: "web-to-db", Enabled: true, Scope: policy.Selector{"role": {"db"}}, Rules: []policy.Rule{{
+		ID: uuid.New(), Direction: innerwallv1.Direction_DIRECTION_INBOUND, Enabled: true,
+		Peers:   []policy.Peer{{Kind: policy.PeerWorkloads, Workloads: policy.Selector{"role": {"web"}}}},
+		Entries: []policy.ServiceEntry{{Protocol: tcp, Ports: []policy.PortRange{{Start: 5432, End: 5432}}}},
+	}}}
+	in := &compiler.Inputs{Workloads: []registry.Workload{db, web}, Rulesets: []policy.Ruleset{rs}}
+	before := compiler.StateVersion(in)
+	ruleID := rendered.RuleID(rs.Rules[0].ID.String(), tcp)
+	if r := findRule(compiler.Render(in)[db.ID], ruleID); r == nil || len(r.GetPeerCidrs()) != 1 {
+		t.Fatalf("db's rule before retirement = %v", r)
+	}
+
+	retiredAt := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
+	in.Workloads[1].RetiredAt = &retiredAt
+	out := compiler.Render(in)
+	if _, rendered := out[web.ID]; rendered {
+		t.Fatal("a retired workload was rendered")
+	}
+	if r := findRule(out[db.ID], ruleID); r == nil || len(r.GetPeerCidrs()) != 0 {
+		t.Fatalf("db's rule after retirement = %v, want no peers", r)
+	}
+	if compiler.StateVersion(in) == before {
+		t.Fatal("a retirement left the state version where it was")
 	}
 }

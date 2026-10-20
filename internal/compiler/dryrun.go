@@ -111,8 +111,8 @@ func indexRules(p *innerwallv1.WorkloadPolicy) map[string]*innerwallv1.ResolvedR
 
 // StateVersion is the version of the state a render reads: a digest over
 // everything in the inputs that can change a rendered policy (each
-// workload's labels, addresses, and mode; each authored object's id and
-// version). A caller that authored against one state version can tell
+// active workload's labels, addresses, and mode, and which workloads are
+// retired; each authored object's id and version). A caller that authored against one state version can tell
 // from another that the persisted state has moved since, and a dry run
 // reports the version it computed against so that staleness is
 // detectable rather than silent. It is derived, never stored.
@@ -121,6 +121,13 @@ func StateVersion(in *Inputs) string {
 	ws := make([]string, 0, len(in.Workloads))
 	for i := range in.Workloads {
 		w := &in.Workloads[i]
+		if w.Retired() {
+			// A retired workload renders nothing and resolves as no
+			// peer, so its labels and addresses no longer bear on any
+			// render; its retirement does.
+			ws = append(ws, fmt.Sprintf("x %s", w.ID))
+			continue
+		}
 		labels := make([]string, 0, len(w.Labels))
 		for _, l := range w.Labels {
 			labels = append(labels, l.Key+"="+l.Value)

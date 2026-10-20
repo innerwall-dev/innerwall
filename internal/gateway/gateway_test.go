@@ -38,6 +38,9 @@ type harness struct {
 	bundle       []byte
 	service      *enroll.Service
 	engine       *compiler.Engine
+	// gw is the gateway itself, the streams a retirement made through
+	// this replica ends directly.
+	gw *gateway.Server
 }
 
 func newHarness(t *testing.T, st enroll.Store, opts ...func(*gateway.Deps)) *harness {
@@ -82,6 +85,7 @@ func newHarnessWith(t *testing.T, st enroll.Store, authority *fileca.Authority, 
 		opt(&deps)
 	}
 	gw := gateway.New(deps)
+	h.gw = gw
 	srv := gateway.NewGRPCServer(tlsCfg, gw)
 
 	lis, err := net.Listen("tcp", "127.0.0.1:0")

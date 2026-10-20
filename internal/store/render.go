@@ -28,9 +28,13 @@ var _ compiler.Store = (*Store)(nil)
 // not know a payload's form skips it.
 const PolicyChannel = "innerwall_policy"
 
-// reconnectDirective is the payload word that asks the replica holding a
-// workload's stream to send it a Reconnect directive.
-const reconnectDirective = "reconnect"
+// The payload words of the directives: reconnect asks the replica holding
+// a workload's stream to send it a Reconnect directive, and end asks it to
+// end the stream of a retired workload (ADR-0023).
+const (
+	reconnectDirective = "reconnect"
+	endDirective       = "end"
+)
 
 // renderLockKey is the advisory lock every render transaction takes, so
 // that renders in any two processes (the control plane and the command
@@ -136,9 +140,25 @@ func (s *Store) DirectReconnect(ctx context.Context, id identity.WorkloadID) err
 	return nil
 }
 
+// DirectEnd asks the replica holding the stream of id, if any replica
+// does, to end it: the workload was retired (ADR-0023). Called inside the
+// retirement's transaction, which Postgres delivers notifications of only
+// on commit, so no replica ends a stream for a retirement that rolled
+// back. Best-effort like every directive; the stream's next heartbeat
+// write is the bound that does not depend on it.
+func (s *Store) DirectEnd(ctx context.Context, id identity.WorkloadID) error {
+	return directEnd(ctx, s.q, id)
+}
+
+func directEnd(ctx context.Context, q *db.Queries, id identity.WorkloadID) error {
+	if err := q.NotifyDirective(ctx, db.NotifyDirectiveParams{Channel: PolicyChannel, Payload: id.String() + " " + endDirective}); err != nil {
+		return fmt.Errorf("store: directing stream end: %w", err)
+	}
+	return nil
+}
+
 // ListenPolicyChanges delivers every render announcement to fn and every
-// reconnect directive to reconnect until ctx ends; a nil reconnect skips
-// directives. It holds one dedicated connection outside the pool; if that
+// directive to directed until ctx ends; a nil directed skips directives. It holds one dedicated connection outside the pool; if that
 // connection fails it reconnects with jittered backoff and calls onReady
 // again, because announcements made while it was down are gone and the
 // caller must reconcile against persisted state. A directive made while
@@ -146,13 +166,13 @@ func (s *Store) DirectReconnect(ctx context.Context, id identity.WorkloadID) err
 // request, not state. onReady is also called once the first LISTEN is in
 // place, so a caller can register streams only after it can hear about
 // their changes.
-func (s *Store) ListenPolicyChanges(ctx context.Context, log *slog.Logger, onReady func(), fn func(compiler.Announcement), reconnect func(identity.WorkloadID)) error {
+func (s *Store) ListenPolicyChanges(ctx context.Context, log *slog.Logger, onReady func(), fn func(compiler.Announcement), directed func(compiler.Directive)) error {
 	if log == nil {
 		log = slog.Default()
 	}
 	attempt := 0
 	for {
-		err := s.listenOnce(ctx, onReady, fn, reconnect)
+		err := s.listenOnce(ctx, onReady, fn, directed)
 		if ctx.Err() != nil {
 			return nil
 		}
@@ -167,7 +187,7 @@ func (s *Store) ListenPolicyChanges(ctx context.Context, log *slog.Logger, onRea
 	}
 }
 
-func (s *Store) listenOnce(ctx context.Context, onReady func(), fn func(compiler.Announcement), reconnect func(identity.WorkloadID)) error {
+func (s *Store) listenOnce(ctx context.Context, onReady func(), fn func(compiler.Announcement), directed func(compiler.Directive)) error {
 	pooled, err := s.pool.Acquire(ctx)
 	if err != nil {
 		return fmt.Errorf("store: acquiring listener connection: %w", err)
@@ -198,9 +218,15 @@ func (s *Store) listenOnce(ctx context.Context, onReady func(), fn func(compiler
 		if err != nil {
 			continue
 		}
-		if verText == reconnectDirective {
-			if reconnect != nil {
-				reconnect(id)
+		switch verText {
+		case reconnectDirective:
+			if directed != nil {
+				directed(compiler.Directive{ID: id, Kind: compiler.DirectiveReconnect})
+			}
+			continue
+		case endDirective:
+			if directed != nil {
+				directed(compiler.Directive{ID: id, Kind: compiler.DirectiveEnd})
 			}
 			continue
 		}

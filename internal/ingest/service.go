@@ -150,6 +150,11 @@ func (s *Service) Ingest(ctx context.Context, id identity.WorkloadID, req *inner
 	if reporter == nil {
 		return Result{}, registry.ErrWorkloadUnknown
 	}
+	if reporter.Retired() {
+		// The interceptor refuses a retired identity; this is a report
+		// admitted just before the retirement committed.
+		return Result{}, &registry.RetiredError{ID: id, RetiredAt: *reporter.RetiredAt}
+	}
 	var res Result
 	prev, proc, advanced := s.recordReport(ctx, id, receivedAt)
 	if advanced {
@@ -290,13 +295,7 @@ func (s *Service) recordSilence(ctx context.Context, id identity.WorkloadID, pre
 //     is no gap; what such a buffer dropped, the agent itself reports
 //     (buffer_overflow), so the one loss is not stored twice.
 func deriveSilence(prev *time.Time, proc *registry.AgentProcess, req *innerwallv1.ReportFlowsRequest, receivedAt time.Time, window time.Duration) (flowstore.Gap, bool) {
-	if window <= 0 || prev == nil {
-		return flowstore.Gap{}, false
-	}
-	if receivedAt.Sub(*prev) <= SilenceWindows*window {
-		return flowstore.Gap{}, false
-	}
-	if ranThrough(proc, *prev, receivedAt, window) {
+	if !silent(prev, proc, receivedAt, window) {
 		return flowstore.Gap{}, false
 	}
 	to := receivedAt
@@ -315,6 +314,41 @@ func deriveSilence(prev *time.Time, proc *registry.AgentProcess, req *innerwallv
 		From:   *prev,
 		To:     to,
 	}, true
+}
+
+// SilenceAtRetirement is the agent-silence gap a retirement at instant at
+// closes, if one is open (ADR-0023; issue #126): the gap deriveSilence
+// would have written had a report arrived at that instant, by the same
+// rules. A silence since the last receipt prev longer than SilenceWindows
+// flow windows, which no heartbeat shows one agent process running
+// through, is one gap from prev to at. A workload that never reported, or
+// whose agent was demonstrably running and quiet, has none. No report can
+// follow a retirement, so there is no arriving window to refine the bound
+// by and the gap is never derived twice.
+func SilenceAtRetirement(prev *time.Time, proc *registry.AgentProcess, at time.Time, window time.Duration) (flowstore.Gap, bool) {
+	if !silent(prev, proc, at, window) {
+		return flowstore.Gap{}, false
+	}
+	return flowstore.Gap{
+		Kind:   innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_AGENT_SILENT,
+		Source: innerwallv1.EvidenceSource_EVIDENCE_SOURCE_UNSPECIFIED,
+		From:   *prev,
+		To:     at,
+	}, true
+}
+
+// silent says the interval from the last receipt prev to instant at is a
+// silence the evidence lost: there was a receipt, there is a window length
+// to judge by, the interval exceeds SilenceWindows of them, and no agent
+// process ran through it.
+func silent(prev *time.Time, proc *registry.AgentProcess, at time.Time, window time.Duration) bool {
+	if window <= 0 || prev == nil {
+		return false
+	}
+	if at.Sub(*prev) <= SilenceWindows*window {
+		return false
+	}
+	return !ranThrough(proc, *prev, at, window)
 }
 
 // ranThrough says the agent process proc ran from at or before the

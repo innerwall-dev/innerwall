@@ -214,6 +214,9 @@ func (s *Server) Sync(stream innerwallv1.AgentService_SyncServer) error {
 	now := s.now()
 	agent := registry.AgentInfo{Version: hello.GetAgent().GetVersion(), Capabilities: hello.GetAgent().GetCapabilities()}
 	if err := s.registry.RecordAgent(ctx, id, agent, hello.GetAppliedPolicyVersion(), now); err != nil {
+		if isRetired(err) {
+			return refuseRetired(log, err, "sync stream open")
+		}
 		if errors.Is(err, registry.ErrWorkloadUnknown) {
 			// A valid credential for a workload the registry does not
 			// hold: the identity was granted but its record is gone.
@@ -226,8 +229,10 @@ func (s *Server) Sync(stream innerwallv1.AgentService_SyncServer) error {
 	if hello.GetFacts() != nil {
 		changed, err := s.registry.RecordFacts(ctx, id, hello.GetFacts(), now)
 		if err != nil {
-			log.Error("recording facts", "error", err)
-			return status.Error(codes.Internal, "recording facts")
+			if !isRetired(err) {
+				log.Error("recording facts", "error", err)
+			}
+			return s.writeFailed(log, err, "recording facts")
 		}
 		factsChanged = changed
 	}
@@ -325,12 +330,18 @@ func (s *Server) Sync(stream innerwallv1.AgentService_SyncServer) error {
 		log.Info("sync stream closed")
 		return nil
 	case err := <-writeErr:
+		if end := endedWith(sctx); end != nil {
+			return end
+		}
 		if cause := context.Cause(sctx); errors.Is(cause, errSuperseded) {
 			log.Info("sync stream superseded")
 			return status.Error(codes.Aborted, errSuperseded.Error())
 		}
 		return err
 	case <-sctx.Done():
+		if end := endedWith(sctx); end != nil {
+			return end
+		}
 		if cause := context.Cause(sctx); errors.Is(cause, errSuperseded) {
 			log.Info("sync stream superseded")
 			return status.Error(codes.Aborted, errSuperseded.Error())
@@ -343,7 +354,20 @@ func isEOF(err error) bool {
 	return err != nil && err.Error() == "EOF"
 }
 
-// handleMessage dispatches one agent message after Hello.
+// writeFailed is the error a failed registry write ends a stream with.
+// A write that found the workload retired ends it with the opaque
+// refusal, logged: whatever reached the stream meanwhile, its next such
+// write is the bound on how long it lasts (ADR-0023). Anything else is
+// internal, named by what failed.
+func (s *Server) writeFailed(log *slog.Logger, err error, what string) error {
+	if isRetired(err) {
+		return refuseRetired(log, err, what)
+	}
+	return status.Error(codes.Internal, what)
+}
+
+// handleMessage dispatches one agent message after Hello. The registry
+// writes it makes are conditioned on the workload not being retired.
 func (s *Server) handleMessage(ctx context.Context, log *slog.Logger, sess *session, msg *innerwallv1.SyncRequest) error {
 	now := s.now()
 	switch m := msg.GetMsg().(type) {
@@ -352,14 +376,14 @@ func (s *Server) handleMessage(ctx context.Context, log *slog.Logger, sess *sess
 	case *innerwallv1.SyncRequest_Inventory:
 		changed, err := s.registry.RecordFacts(ctx, sess.id, m.Inventory.GetFacts(), now)
 		if err != nil {
-			return status.Error(codes.Internal, "recording facts")
+			return s.writeFailed(log, err, "recording facts")
 		}
 		services := make([]registry.ListeningService, 0, len(m.Inventory.GetListeningServices()))
 		for _, ls := range m.Inventory.GetListeningServices() {
 			services = append(services, registry.ListeningService{Protocol: ls.GetProtocol(), Port: ls.GetPort(), ProcessName: ls.GetProcessName(), ProcessPath: ls.GetProcessPath()})
 		}
 		if err := s.registry.RecordListeningServices(ctx, sess.id, services, now); err != nil {
-			return status.Error(codes.Internal, "recording listening services")
+			return s.writeFailed(log, err, "recording listening services")
 		}
 		if changed {
 			log.Info("workload addresses changed; rendering")
@@ -375,7 +399,7 @@ func (s *Server) handleMessage(ctx context.Context, log *slog.Logger, sess *sess
 			RenewalError: hb.GetCredentialRenewalError(), OwnedTable: hb.GetOwnedTable(),
 			Uptime: heartbeatUptime(hb.GetUptimeSeconds()),
 		}, now); err != nil {
-			return status.Error(codes.Internal, "recording heartbeat")
+			return s.writeFailed(log, err, "recording heartbeat")
 		}
 		if hb.GetOwnedTable() == innerwallv1.OwnedTableState_OWNED_TABLE_STATE_ABSENT {
 			// Logged on every heartbeat that says so: the condition is the
@@ -414,14 +438,14 @@ func (s *Server) handleAck(ctx context.Context, log *slog.Logger, sess *session,
 			state = innerwallv1.SyncState_SYNC_STATE_SYNCED
 		}
 		if err := s.registry.RecordApplied(ctx, sess.id, ack.GetVersion(), state, now); err != nil {
-			return status.Error(codes.Internal, "recording applied version")
+			return s.writeFailed(log, err, "recording applied version")
 		}
 		log.Info("policy applied", "version", ack.GetVersion(), "state", state)
 		return nil
 	case innerwallv1.AckStatus_ACK_STATUS_FAILED:
 		log.Error("policy apply failed on agent", "version", ack.GetVersion(), "detail", ack.GetErrorDetail())
 		if err := s.registry.RecordApplyFailed(ctx, sess.id, ack.GetErrorDetail(), now); err != nil {
-			return status.Error(codes.Internal, "recording failed apply")
+			return s.writeFailed(log, err, "recording failed apply")
 		}
 		sess.mu.Lock()
 		stale := ack.GetVersion() <= sess.recovery
@@ -564,10 +588,10 @@ func (s *Server) pushLatest(sess *session) {
 // the stream of the workload it names, until ctx ends. It must run for
 // pushes and directives to happen; without it, agents receive policy only
 // at connect. Whenever the listener (re)connects, every live stream is
-// reconciled against persisted state. A directive naming a workload whose
-// stream this replica does not hold is dropped here, with a warning naming
-// the workload: another replica holds it, or none does, and no replica can
-// tell which.
+// reconciled against persisted state, its workload's retirement included.
+// A reconnect directive naming a workload whose stream this replica does
+// not hold is dropped here, with a warning naming the workload: another
+// replica holds it, or none does, and no replica can tell which.
 func (s *Server) Run(ctx context.Context) error {
 	if s.events == nil {
 		<-ctx.Done()
@@ -575,11 +599,11 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 	return s.events.ListenPolicyChanges(ctx, s.log, func() {
 		for _, sess := range s.sessions.all() {
-			go s.pushLatest(sess)
+			go s.reconcile(sess)
 		}
 	}, func(c compiler.Announcement) {
 		if sess := s.sessions.get(c.ID); sess != nil {
 			go s.pushLatest(sess)
 		}
-	}, s.directReconnect)
+	}, s.direct)
 }

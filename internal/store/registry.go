@@ -81,6 +81,7 @@ func workloadFromRow(row *db.Workload, labels []registry.Label, addrs []netip.Ad
 		OwnedTable:             innerwallv1.OwnedTableState(row.OwnedTableState),
 		OwnedTableAbsentSince:  row.OwnedTableAbsentSince,
 		LastFlowReportAt:       row.LastFlowReportAt,
+		RetiredAt:              row.RetiredAt,
 	}
 	if labels == nil {
 		w.Labels = []registry.Label{}
@@ -154,10 +155,17 @@ func (s *Store) SetWorkloadLabels(ctx context.Context, id identity.WorkloadID, l
 // stand.
 func (s *Store) ReplaceWorkloadLabels(ctx context.Context, id identity.WorkloadID, labels []registry.Label, expect string) error {
 	return s.tx(ctx, func(q *db.Queries) error {
-		if _, err := q.GetWorkload(ctx, id.UUID()); errors.Is(err, pgx.ErrNoRows) {
+		// The row lock serializes the write with a retirement: one
+		// committed first is seen here, and a retired workload's labels
+		// stay as they stood (ADR-0023).
+		row, err := q.LockWorkload(ctx, id.UUID())
+		if errors.Is(err, pgx.ErrNoRows) {
 			return registry.ErrWorkloadUnknown
 		} else if err != nil {
 			return fmt.Errorf("store: looking up workload: %w", err)
+		}
+		if row.RetiredAt != nil {
+			return &registry.RetiredError{ID: id, RetiredAt: *row.RetiredAt}
 		}
 		if expect != "" {
 			rows, err := q.ListWorkloadLabels(ctx, id.UUID())
@@ -213,7 +221,7 @@ func (s *Store) RecordFacts(ctx context.Context, id identity.WorkloadID, facts *
 			return fmt.Errorf("store: recording facts: %w", err)
 		}
 		if n == 0 {
-			return registry.ErrWorkloadUnknown
+			return absent(ctx, q, id)
 		}
 		old, err := q.ListWorkloadAddresses(ctx, id.UUID())
 		if err != nil {
@@ -245,7 +253,7 @@ func (s *Store) RecordListeningServices(ctx context.Context, id identity.Workloa
 			return fmt.Errorf("store: refreshing last seen: %w", err)
 		}
 		if n == 0 {
-			return registry.ErrWorkloadUnknown
+			return absent(ctx, q, id)
 		}
 		if err := q.DeleteWorkloadListeningServices(ctx, id.UUID()); err != nil {
 			return fmt.Errorf("store: replacing listening services: %w", err)
@@ -293,7 +301,7 @@ func (s *Store) RecordAgent(ctx context.Context, id identity.WorkloadID, agent r
 		return fmt.Errorf("store: recording agent: %w", err)
 	}
 	if n == 0 {
-		return registry.ErrWorkloadUnknown
+		return absent(ctx, s.q, id)
 	}
 	return nil
 }
@@ -345,7 +353,7 @@ func (s *Store) RecordHeartbeat(ctx context.Context, id identity.WorkloadID, hb 
 		return fmt.Errorf("store: recording heartbeat: %w", err)
 	}
 	if n == 0 {
-		return registry.ErrWorkloadUnknown
+		return absent(ctx, s.q, id)
 	}
 	return nil
 }
@@ -385,7 +393,7 @@ func (s *Store) RecordApplied(ctx context.Context, id identity.WorkloadID, versi
 		return fmt.Errorf("store: recording applied version: %w", err)
 	}
 	if n == 0 {
-		return registry.ErrWorkloadUnknown
+		return absent(ctx, s.q, id)
 	}
 	return nil
 }
@@ -397,7 +405,7 @@ func (s *Store) RecordApplyFailed(ctx context.Context, id identity.WorkloadID, d
 		return fmt.Errorf("store: recording failed apply: %w", err)
 	}
 	if n == 0 {
-		return registry.ErrWorkloadUnknown
+		return absent(ctx, s.q, id)
 	}
 	return nil
 }
@@ -412,4 +420,20 @@ func (s *Store) RecordSnapshotSent(ctx context.Context, id identity.WorkloadID, 
 		return registry.ErrWorkloadUnknown
 	}
 	return nil
+}
+
+// absent says why a write to id that is conditioned on the workload being
+// active found no row: it is not registered, or it was retired, and when.
+func absent(ctx context.Context, q *db.Queries, id identity.WorkloadID) error {
+	at, err := q.GetWorkloadRetiredAt(ctx, id.UUID())
+	if errors.Is(err, pgx.ErrNoRows) {
+		return registry.ErrWorkloadUnknown
+	}
+	if err != nil {
+		return fmt.Errorf("store: looking up workload: %w", err)
+	}
+	if at != nil {
+		return &registry.RetiredError{ID: id, RetiredAt: *at}
+	}
+	return registry.ErrWorkloadUnknown
 }
