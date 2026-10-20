@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/innerwall-dev/innerwall/internal/authn"
 	"github.com/innerwall-dev/innerwall/internal/buildinfo"
 	"github.com/innerwall-dev/innerwall/internal/enroll"
 	"github.com/innerwall-dev/innerwall/internal/fleet"
@@ -313,7 +314,7 @@ type Me struct {
 	Version        string  `json:"version"`
 }
 
-func (s *Server) me(p *operator.Principal) Me {
+func (s *Server) me(p *authn.Principal) Me {
 	me := Me{Site: s.site, GatewayAddress: optionalString(s.gateway), Version: buildinfo.Version()}
 	if p != nil {
 		me.DisplayName = p.DisplayName
@@ -377,7 +378,7 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, sessionCookie(id, sess.ExpiresAt.Sub(sess.CreatedAt)))
 	s.log.Info("operator logged in")
-	writeJSON(w, s.me(&operator.Principal{DisplayName: op.DisplayName}))
+	writeJSON(w, s.me(&authn.Principal{DisplayName: op.DisplayName}))
 }
 
 // deleteSession is DELETE /api/v1/session: revoke the current session and
@@ -394,7 +395,7 @@ func (s *Server) deleteSession(w http.ResponseWriter, r *http.Request) {
 // getMe is GET /api/v1/me: the authenticated operator, the site label,
 // the advertised agent gateway address, and the control plane's version.
 func (s *Server) getMe(w http.ResponseWriter, r *http.Request) {
-	p, ok := PrincipalFromContext(r.Context())
+	p, ok := authn.FromContext(r.Context())
 	if !ok {
 		// The middleware admits no unauthenticated request to this
 		// handler; reaching here is a wiring fault, not a client error.

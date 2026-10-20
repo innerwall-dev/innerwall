@@ -6,8 +6,9 @@
 //
 // Version 1 has one operator and binary authorization: a caller is
 // authenticated or it is not. Both credential forms (a session from a
-// password login, or a bearer token) resolve to the same Principal, and
-// nothing downstream can tell which one was presented.
+// password login, or a bearer token) resolve to the same principal
+// (authn.Principal), and nothing downstream can tell which one was
+// presented.
 package operator
 
 import (
@@ -70,12 +71,6 @@ type Token struct {
 	ExpiresAt  *time.Time
 	RevokedAt  *time.Time
 	LastUsedAt *time.Time
-}
-
-// Principal is the authenticated operator as handlers see it. It carries no
-// record of which credential form produced it.
-type Principal struct {
-	DisplayName *string
 }
 
 // Store is the persistence the domain needs.

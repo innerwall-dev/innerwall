@@ -44,6 +44,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/innerwall-dev/innerwall/internal/authn"
 	"github.com/innerwall-dev/innerwall/internal/buildinfo"
 )
 
@@ -111,6 +112,7 @@ func run(ctx context.Context, args []string) error {
 		usage()
 		return flag.ErrHelp
 	}
+	ctx = commandContext(ctx, args[0])
 	switch args[0] {
 	case "serve":
 		return runServe(ctx, args[1:])
@@ -146,6 +148,22 @@ func run(ctx context.Context, args []string) error {
 		usage()
 		return fmt.Errorf("unknown command %q", args[0])
 	}
+}
+
+// commandContext places the principal a command acts as. The command line
+// is its own caller of the domain layer, authenticated by the database's
+// credentials on the host rather than by an operator credential (ADR-0021),
+// and every command but serve acts as the one operator; the principal
+// reaches the domain boundary the way the surface's middleware places it.
+// It carries no display name: that is presentation the surface reads with
+// a credential, and a command reads no operator row to start. serve is not
+// a caller: each request it answers carries the principal its own
+// credential resolves to.
+func commandContext(ctx context.Context, command string) context.Context {
+	if command == "serve" {
+		return ctx
+	}
+	return authn.NewContext(ctx, &authn.Principal{})
 }
 
 // envOr returns the environment value for key, or fallback when unset.

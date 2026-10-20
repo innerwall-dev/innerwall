@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/innerwall-dev/innerwall/internal/authn"
 	"github.com/innerwall-dev/innerwall/internal/operator"
 )
 
@@ -22,26 +23,11 @@ var publicRoutes = map[string]struct{}{
 	http.MethodPost + " " + APIPrefix + "/session": {},
 }
 
-// authInfo is what the middleware derives from a request. The principal
-// is what handlers see; the session identifier is kept only so the surface
-// can end the session on logout, and no handler reads it.
-type authInfo struct {
-	principal *operator.Principal
-	sessionID string
-}
-
-type authKey struct{}
-
-// PrincipalFromContext returns the authenticated operator. Handlers on
-// authenticated routes call this and nothing else to learn who is calling;
-// it never reveals which credential form was presented.
-func PrincipalFromContext(ctx context.Context) (*operator.Principal, bool) {
-	info, ok := ctx.Value(authKey{}).(*authInfo)
-	if !ok || info == nil || info.principal == nil {
-		return nil, false
-	}
-	return info.principal, true
-}
+// sessionKey carries the identifier of the session a request authenticated
+// with, kept only so the surface can end the session on logout; no handler
+// reads it. The principal travels separately, through authn's context, so
+// what a handler can see never includes the credential form.
+type sessionKey struct{}
 
 // Authenticator resolves a session cookie or a bearer operator token to
 // the one operator principal.
@@ -61,7 +47,7 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		info, err := a.authenticate(r)
+		p, sessionID, err := a.authenticate(r)
 		if err != nil {
 			if c, cerr := r.Cookie(SessionCookie); cerr == nil && c.Value != "" {
 				http.SetCookie(w, clearSessionCookie())
@@ -71,45 +57,50 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 			writeProblem(w, problemUnauthenticated)
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), authKey{}, info)))
+		ctx := authn.NewContext(r.Context(), p)
+		if sessionID != "" {
+			ctx = context.WithValue(ctx, sessionKey{}, sessionID)
+		}
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
 var errNoCredential = errors.New("no credential presented")
 
-// authenticate resolves the request's credential. A bearer token, when
+// authenticate resolves the request's credential to the principal and,
+// when the credential was a session, its identifier. A bearer token, when
 // present, is the credential; the cookie is consulted only when there is
 // no authorization header, so automation that sends both cannot be
 // downgraded to a cookie it did not mean to present.
-func (a *Authenticator) authenticate(r *http.Request) (*authInfo, error) {
+func (a *Authenticator) authenticate(r *http.Request) (*authn.Principal, string, error) {
 	if auth := r.Header.Get("Authorization"); auth != "" {
 		scheme, token, ok := strings.Cut(auth, " ")
 		if !ok || !strings.EqualFold(scheme, "Bearer") || strings.TrimSpace(token) == "" {
-			return nil, operator.ErrTokenMalformed
+			return nil, "", operator.ErrTokenMalformed
 		}
 		p, err := a.Operators.ValidateToken(r.Context(), strings.TrimSpace(token))
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
-		return &authInfo{principal: p}, nil
+		return p, "", nil
 	}
 	c, err := r.Cookie(SessionCookie)
 	if err != nil || c.Value == "" {
-		return nil, errNoCredential
+		return nil, "", errNoCredential
 	}
 	p, err := a.Operators.ValidateSession(r.Context(), c.Value)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return &authInfo{principal: p, sessionID: c.Value}, nil
+	return p, c.Value, nil
 }
 
 // EndSession revokes the session the request authenticated with, if it
 // was a session, and clears the cookie either way. It is the one place the
 // credential form is consulted, and it is not a handler.
 func (a *Authenticator) EndSession(ctx context.Context, w http.ResponseWriter) error {
-	if info, ok := ctx.Value(authKey{}).(*authInfo); ok && info.sessionID != "" {
-		if err := a.Operators.DeleteSession(ctx, info.sessionID); err != nil {
+	if id, ok := ctx.Value(sessionKey{}).(string); ok && id != "" {
+		if err := a.Operators.DeleteSession(ctx, id); err != nil {
 			return err
 		}
 	}
