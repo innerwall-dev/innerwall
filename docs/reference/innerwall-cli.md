@@ -5,7 +5,7 @@ The control-plane binary, `innerwall`, serves the agent gateway and the operator
 ## Conventions
 
 - **Flags go before or after positional arguments.** `innerwall flows list --since 1h <workload-id>` and `innerwall flows list <workload-id> --since 1h` are the same command; this reference writes flags first. `--` ends the flags, and everything after it is positional. A positional argument beyond those the command takes ends its flags too, and the command refuses it with its usage line. `ruleset update` has the one asymmetry: with `-f` before the ruleset, nothing may follow the ruleset, because earlier versions ignored what did ([ruleset](#ruleset)). Flags take one dash or two (`-since` and `--since` are the same flag).
-- **The database.** Every command except `ca init` and `version` opens Postgres. `--database-url` names it; without the flag, `INNERWALL_DATABASE_URL` does. A command with neither is refused: `no database configured: set --database-url or INNERWALL_DATABASE_URL`.
+- **The database.** Every command except `ca init`, `ca issue-server`, and `version` opens Postgres. `--database-url` names it; without the flag, `INNERWALL_DATABASE_URL` does. A command with neither is refused: `no database configured: set --database-url or INNERWALL_DATABASE_URL`.
 - **Direct writes.** Authoring commands write Postgres directly and render there; the running control plane learns of the change through the database and pushes it to connected agents (ADR-0018). The command needs no running control plane, and none needs to be restarted.
 - **Help.** `innerwall <command> <subcommand> -h` prints a command's flags. `innerwall` with no arguments prints the command list.
 - **Identifiers.** Workloads are named by their id (the UUID in their identity). Services, address groups, and rulesets are named by id or by name.
@@ -13,7 +13,7 @@ The control-plane binary, `innerwall`, serves the agent gateway and the operator
 | Environment variable | Read by | Stands for |
 |---|---|---|
 | `INNERWALL_DATABASE_URL` | every command that opens the database | `--database-url` |
-| `INNERWALL_CA_DIR` | `serve`, `ca init` | `--ca-dir` |
+| `INNERWALL_CA_DIR` | `serve`, `ca init`, `ca issue-server` | `--ca-dir` |
 | `INNERWALL_SITE` | `serve` | `--site` |
 | `INNERWALL_GATEWAY_ADVERTISE_ADDRESS` | `serve` | `--gateway-advertise-address` |
 
@@ -46,7 +46,7 @@ Runs the agent gateway (enrollment, renewal, the sync stream, flow reports) and 
 | `--migrate` | | apply pending database migrations before serving |
 | `--database-url` | | Postgres connection string |
 
-`--tls-hosts` takes effect only when a certificate is generated: the server certificate when `--init-ca` creates the authority, and the operator certificate when none is persisted or the persisted one has expired. A certificate that already exists is kept as it is, whatever the flag says now ([multi-host evaluation](../deploy/multi-host-evaluation.md#name-the-control-plane-before-the-first-start)).
+`--tls-hosts` takes effect only when a certificate is generated: the server certificate when `--init-ca` creates the authority, and the operator certificate when none is persisted or the persisted one has expired. A certificate that already exists is kept as it is, whatever the flag says now ([multi-host evaluation](../deploy/multi-host-evaluation.md#name-the-control-plane-before-the-first-start)). To change the hosts the server certificate names afterwards, issue a new one with [`ca issue-server`](#ca-issue-server) and restart.
 
 ## migrate
 
@@ -71,6 +71,36 @@ Creates the file-backed signing authority and issues the agent gateway's server 
 | `--hosts` | `localhost,127.0.0.1` | comma-separated DNS names and IPs for the server certificate |
 | `--root-ttl` | `87600h` | lifetime of the root certificate |
 | `--server-ttl` | `8760h` | lifetime of the server certificate |
+
+## ca issue-server
+
+```sh
+innerwall ca issue-server --hosts HOSTS [flags]
+```
+
+Issues a new server certificate for the agent gateway from the signing authority already in `--ca-dir`, for the hosts `--hosts` names, and puts it in place of `server.crt` and `server.key` there. It is how a control plane whose certificate names the wrong hosts comes to name the right ones without starting over. The new certificate chains to the same root, so every enrolled agent keeps trusting the gateway: the root, its key, and the bundle agents hold (`ca.crt`) are untouched, and no agent is enrolled again.
+
+- **It refuses a directory that holds no authority**, and never creates one: `ca init` does that.
+- **The certificate names exactly `--hosts`.** It replaces the old one, so list every name and address agents dial, including the ones the old certificate named that are still in use.
+- **The pair is replaced whole.** Both files are written in full beside the old ones and only then renamed into place; an issue that fails leaves the previous certificate and key as they were.
+- **A restart presents it.** A running control plane keeps the certificate it loaded at start; restart it to present the new one. Agents reconnect by themselves with backoff.
+- **It touches nothing else.** The operator listener's certificate is not reissued, and a control plane started with `--tls-cert` and `--tls-key` naming another pair keeps reading that pair.
+
+A deployment with several replicas distributes the new `server.crt` and `server.key` with the rest of the authority directory to every replica and restarts each (ADR-0017).
+
+<!-- properties -->
+| Name | Default | Description |
+|---|---|---|
+| `--ca-dir` | `/var/lib/innerwall/ca` | directory holding the signing authority to issue from |
+| `--hosts` | | comma-separated DNS names and IPs for the server certificate (required) |
+| `--ttl` | `8760h` | lifetime of the server certificate |
+
+With Docker Compose, run it in the control plane's container and restart the container:
+
+```sh
+docker compose exec innerwall /innerwall ca issue-server --hosts localhost,127.0.0.1,innerwall,cp.example.internal,192.0.2.10
+docker compose restart innerwall
+```
 
 ## token
 
