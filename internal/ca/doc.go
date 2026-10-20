@@ -6,6 +6,12 @@
 // URI SAN with a control-plane-assigned UUID. Mutable attributes never enter a
 // certificate.
 //
+// The package also defines ServerIssuer, the separate contract for the agent
+// gateway's own TLS server certificate. Authority is not extended to cover
+// it: a server certificate names hosts, not a workload, and reissuing one
+// for a new host list from the same root leaves every enrolled agent
+// trusting the gateway.
+//
 // The file-backed implementation lives in the fileca subpackage. Nothing
 // outside that subpackage depends on how it stores its key.
 package ca

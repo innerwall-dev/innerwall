@@ -10,6 +10,9 @@
 //	               and the operator surface (REST/JSON façade, console)
 //	migrate        apply pending database migrations
 //	ca init        create the file-backed signing authority and a server certificate
+//	ca issue-server
+//	               issue a new server certificate for the agent gateway from
+//	               the existing authority, for a new host list
 //	token          mint, list, and revoke provisioning tokens
 //	operator       set the operator password; mint, list, and revoke
 //	               operator tokens (ADR-0021)
@@ -92,6 +95,8 @@ commands:
   serve          run the agent gateway and the operator surface
   migrate        apply pending database migrations
   ca init        create the signing authority and server certificate
+  ca issue-server
+                 issue a new gateway server certificate from the existing authority
   token          mint | list | revoke provisioning tokens
   operator       set-password | token mint | token list | token revoke
   service        create | update | delete | get | list services
@@ -119,7 +124,7 @@ func run(ctx context.Context, args []string) error {
 	case "migrate":
 		return runMigrate(ctx, args[1:])
 	case "ca":
-		return runCA(args[1:])
+		return runCA(ctx, args[1:])
 	case "token":
 		return runToken(ctx, args[1:])
 	case "operator":
