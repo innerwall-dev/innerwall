@@ -15,8 +15,8 @@ On first start the control plane applies migrations, creates its signing authori
 
 ```sh
 docker compose exec innerwall /innerwall token mint --name dev --label env=dev
-docker compose cp innerwall:/var/lib/innerwall/ca/ca.crt ./bootstrap-ca.crt
-innerwall-agent enroll --server localhost:8443 --token <token> --bootstrap-ca ./bootstrap-ca.crt --state-dir ./agent-state
+docker compose cp innerwall:/var/lib/innerwall/ca/ca.crt ./ca.crt
+innerwall-agent enroll --server localhost:8443 --token <token> --bootstrap-ca ./ca.crt --state-dir ./agent-state
 innerwall-agent daemon --server localhost:8443 --state-dir ./agent-state
 ```
 
