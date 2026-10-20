@@ -72,7 +72,7 @@ An agent fails static: never open, never closed (ADR-0011).
 Root on the host can remove enforcement at any time, without the control plane:
 
 ```sh
-sudo innerwall-agent down
+sudo /usr/local/bin/innerwall-agent down
 ```
 
 It deletes the owned table and nothing else, and says what it did and what happens next:

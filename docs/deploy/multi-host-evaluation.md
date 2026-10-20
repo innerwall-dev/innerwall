@@ -21,6 +21,9 @@ services:
       INNERWALL_GATEWAY_ADVERTISE_ADDRESS: cp.example.internal:8443
 ```
 
+> [!NOTE]
+> **Agents in VMs on the same machine.** A VM reaches the machine that runs it at its virtual network's gateway address, not at `localhost`, which inside the VM is the VM itself. From inside any of the VMs, `ip route show default` prints that address: `default via <address> …`. It is the address to put in `--tls-hosts` and in `INNERWALL_GATEWAY_ADVERTISE_ADDRESS` (as `<address>:8443`), and the stack must first start with it there, since the gateway's certificate is generated once. The machine's own firewall must admit port 8443 from the VM network too.
+
 The `command` replaces the one in `docker-compose.yml`, so it repeats its flags and adds the hosts. Then start the stack as the [quickstart](../../README.md#with-docker-compose) does, `docker compose up -d` with the released image named in `.env` (or `make dev` to build from the checkout). The mint dialog now prints `--server cp.example.internal:8443`, and agents can dial either the name or the address.
 
 Git does not track the override file, and an untracked file marks the checkout as changed: a control plane built from it (`make dev`, `make build`) reports its version with `.dirty` from now on. That is expected; the released image is not built from the checkout and is unaffected ([version strings](../reference/versioning-and-install.md#version-strings)).
@@ -49,7 +52,7 @@ Mint a token (in the console, **Workloads → Provisioning tokens → Mint token
 
 ```sh
 sudo install -D -m 0644 ca.crt /etc/innerwall/ca.crt
-sudo env INNERWALL_TOKEN='<provisioning-token>' innerwall-agent enroll --server cp.example.internal:8443 --bootstrap-ca /etc/innerwall/ca.crt
+sudo env INNERWALL_TOKEN='<provisioning-token>' /usr/local/bin/innerwall-agent enroll --server cp.example.internal:8443 --bootstrap-ca /etc/innerwall/ca.crt
 ```
 
 The token in `INNERWALL_TOKEN` stays out of the process list; `--token` works too. Enrollment stores the key and credential in `/var/lib/innerwall-agent` and prints the workload's identity and labels.

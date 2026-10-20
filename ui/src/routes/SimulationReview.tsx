@@ -585,7 +585,7 @@ function FreshReview() {
 				actions={
 					<div className="mt-1 flex gap-2">
 						<Button asChild>
-							<Link to="/workloads">Open enrollment</Link>
+							<Link to="/workloads/tokens">Open provisioning tokens</Link>
 						</Button>
 						<Button variant="secondary" asChild>
 							<Link to="/policy">Create a ruleset</Link>

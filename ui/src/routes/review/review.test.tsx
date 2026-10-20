@@ -903,6 +903,10 @@ describe("simulation review states", () => {
 		expect(document.body).toHaveTextContent(
 			"Enroll workloads — mint a token in Workloads → Provisioning tokens, copy the agent binary and CA certificate to the host.",
 		);
+		// The button beside it opens the tab the step names.
+		expect(
+			screen.getByRole("link", { name: "Open provisioning tokens" }),
+		).toHaveAttribute("href", "/workloads/tokens");
 	});
 
 	it("says when every ruleset is disabled", async () => {

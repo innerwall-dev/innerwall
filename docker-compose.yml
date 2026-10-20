@@ -39,8 +39,10 @@ services:
     # already present, and run as pulled. This file never builds. Unset, every
     # `docker compose` command stops with the error below and starts nothing.
     # `make dev` builds the image from this checkout instead, through
-    # docker-compose.dev.yml, and names its build innerwall:dev.
-    image: ${INNERWALL_IMAGE:?add INNERWALL_IMAGE=ghcr.io/innerwall-dev/innerwall:<version> to .env, as the quickstart does, or run make dev to build from this checkout}
+    # docker-compose.dev.yml, and names its build innerwall:dev; in such a
+    # checkout, INNERWALL_IMAGE=innerwall:dev in .env lets plain `docker
+    # compose` commands (exec, logs, down) reach that stack.
+    image: ${INNERWALL_IMAGE:?add INNERWALL_IMAGE=ghcr.io/innerwall-dev/innerwall:<version> to .env as the quickstart does, or, in a checkout run with make dev, INNERWALL_IMAGE=innerwall:dev}
     depends_on:
       postgres:
         condition: service_healthy
