@@ -42,7 +42,18 @@ Past the grace, the renewal is refused too: `workload credential has expired: it
 4. **Set the mode again.** The new workload starts in visibility, like every new workload: on its first snapshot the host's table becomes the observe-only table, and nothing is enforced until you move it to simulation and promote it again.
 
 > [!IMPORTANT]
-> Re-enrollment mints a new identity. The new workload has a new id and no history: the old workload's flows, gaps, and totals stay under the old id, and the old workload stays in the fleet as a permanently offline row. There is no way to retire or delete a workload in this version.
+> Re-enrollment mints a new identity. The new workload has a new id and no history: the old workload's flows, gaps, and totals stay under the old id, and the old workload stays in the fleet as a permanently offline row until you [retire it](#retiring-a-workload).
+
+## Retiring a workload
+
+Retire a workload when its host is gone for good, when it was re-enrolled as a new workload, or when its key may have been copied: `innerwall workload retire <workload-id>` on the control-plane host, or `POST /api/v1/workloads/{id}/retire`. Retirement is one way (ADR-0023):
+
+- its credential is refused from then on, at renewal and on every agent call, so a copy of its key renews nothing; a live sync stream is ended at once on the replica holding it, and in any case by its next heartbeat;
+- its addresses leave every rendered peer set, and only the workloads whose policy changed advance a version;
+- a silence its agent was in is stored as an `agent_silent` evidence gap ending at the retirement;
+- its flows, gaps, and totals stay readable under its id, and the workload reads as retired rather than offline ([states](../reference/states.md#retired)).
+
+The refusal the agent receives says only that its credential is refused; the control plane's log names the workload and when it was retired. There is no un-retire: a host that should come back enrolls again with a provisioning token and becomes a new workload. Retiring does not revoke the token that enrolled the workload; revoke the token too if nothing should enroll with it again.
 
 ## Rotating a credential by hand
 
