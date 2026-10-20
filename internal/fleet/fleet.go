@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"time"
 
@@ -71,6 +72,9 @@ type Store interface {
 	// LoadRenderState reads the render inputs and every persisted policy
 	// as one consistent snapshot, without a lock and without writing.
 	LoadRenderState(ctx context.Context) (*compiler.Inputs, map[identity.WorkloadID]*innerwallv1.WorkloadPolicy, error)
+	// RetireTx runs fn in one transaction holding the render lock and
+	// commits when fn returns nil.
+	RetireTx(ctx context.Context, fn func(ctx context.Context, tx RetireTx) error) error
 }
 
 // Service is the fleet write domain.
@@ -82,6 +86,14 @@ type Service struct {
 	// both, nothing else here uses them.
 	Reads      *readmodel.Reader
 	Directives Directives
+	// Streams ends the live streams this process holds when a workload
+	// is retired; nil in a process that holds none.
+	Streams Streams
+	// FlowWindow is the flow window agents are handed, which judges the
+	// silence a retirement closes (ADR-0019 as amended); with none, no
+	// silence is closed.
+	FlowWindow time.Duration
+	Log        *slog.Logger
 	// Now is the clock; time.Now if nil.
 	Now func() time.Time
 }
@@ -117,7 +129,9 @@ var ErrDuplicateLabelKey = policy.ErrDuplicateLabelKey
 
 // SetLabels replaces a workload's labels and renders, since a label change
 // moves the workload in and out of selectors (ADR-0018). expect is the
-// version of the labels the caller read; empty writes unconditionally.
+// version of the labels the caller read; empty writes unconditionally. A
+// retired workload's labels are frozen, and the write is refused with a
+// *registry.RetiredError (ADR-0023).
 func (s *Service) SetLabels(ctx context.Context, id identity.WorkloadID, labels []registry.Label, expect string) error {
 	if err := ValidateLabels(labels); err != nil {
 		return err
@@ -139,7 +153,8 @@ type Preview struct {
 }
 
 // PreviewSelector resolves a selector against the registry through the
-// renderer's scope match, exactly as a mode change resolves it.
+// renderer's scope match, exactly as a mode change resolves it: retired
+// workloads match no selector.
 func (s *Service) PreviewSelector(ctx context.Context, sel policy.Selector) (*Preview, error) {
 	if err := policy.ValidateSelector(sel); err != nil {
 		return nil, rebase(err, "selector")
@@ -151,11 +166,15 @@ func (s *Service) PreviewSelector(ctx context.Context, sel policy.Selector) (*Pr
 	return &Preview{Matched: resolve(sel, workloads)}, nil
 }
 
-// resolve applies the scope match to a set of workloads.
+// resolve applies the scope match to the active workloads of a set; a
+// retired workload matches no selector (ADR-0023).
 func resolve(sel policy.Selector, workloads []registry.Workload) []WorkloadRef {
 	index := make(map[identity.WorkloadID]map[string]string, len(workloads))
 	byID := make(map[identity.WorkloadID]*registry.Workload, len(workloads))
 	for i := range workloads {
+		if workloads[i].Retired() {
+			continue
+		}
 		index[workloads[i].ID] = workloads[i].LabelMap()
 		byID[workloads[i].ID] = &workloads[i]
 	}
@@ -274,7 +293,9 @@ func validateModeChange(req *ModeChangeRequest, hasExpected bool) error {
 // refuses when the resolved count is not the expected one, records the
 // intent with the resolved set, flips the desired mode of exactly that
 // set by id, and renders so that every affected workload's version
-// advances and is announced on commit. A label change committed by
+// advances and is announced on commit. A selector resolves to active
+// workloads only; an explicit id naming a retired workload is refused
+// with a *registry.RetiredError, since its mode is frozen (ADR-0023). A label change committed by
 // another process meanwhile cannot move the set: the flip names the ids
 // the resolution produced, never the selector again.
 func (s *Service) ChangeMode(ctx context.Context, req ModeChangeRequest, hasExpected bool) (*ModeChangeResult, error) {
@@ -300,9 +321,13 @@ func (s *Service) ChangeMode(ctx context.Context, req ModeChangeRequest, hasExpe
 			f := &policy.Findings{}
 			seen := map[identity.WorkloadID]bool{}
 			for i, id := range req.WorkloadIDs {
-				if _, ok := byID[id]; !ok {
+				w, ok := byID[id]
+				if !ok {
 					f.Errors = append(f.Errors, &policy.ValidationError{Path: fmt.Sprintf("workload_ids[%d]", i), Err: ErrUnknownWorkload, Detail: id.String()})
 					continue
+				}
+				if err := refuseRetired(w); err != nil {
+					return err
 				}
 				if !seen[id] {
 					seen[id] = true

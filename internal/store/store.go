@@ -18,6 +18,7 @@ import (
 	"github.com/innerwall-dev/innerwall/internal/enroll"
 	"github.com/innerwall-dev/innerwall/internal/flowstore"
 	"github.com/innerwall-dev/innerwall/internal/identity"
+	"github.com/innerwall-dev/innerwall/internal/registry"
 	"github.com/innerwall-dev/innerwall/internal/store/db"
 )
 
@@ -62,6 +63,23 @@ func (s *Store) Flows() *flowstore.Postgres { return s.flows }
 // serializes concurrent callers (two replicas starting with --migrate, or
 // test packages sharing one database), so exactly one applies each file.
 func Migrate(ctx context.Context, databaseURL string) error {
+	return MigrateFrom(ctx, databaseURL, []fs.FS{Migrations()})
+}
+
+// Migrations is the embedded migration set, its files at the root.
+func Migrations() fs.FS { return migrationsFS() }
+
+// MigrateFrom applies every pending migration found in sources, read as
+// one set: each source holds goose files at its root, and the set is their
+// union by file name, applied in version order as Migrate applies one. A
+// file name present in more than one source is refused rather than
+// shadowed, since which copy ran would otherwise depend on argument order.
+// Migrate is MigrateFrom over the embedded set alone.
+func MigrateFrom(ctx context.Context, databaseURL string, sources []fs.FS) error {
+	fsys, err := unionFS(sources)
+	if err != nil {
+		return err
+	}
 	cfg, err := pgx.ParseConfig(databaseURL)
 	if err != nil {
 		return fmt.Errorf("store: parsing database url: %w", err)
@@ -73,7 +91,7 @@ func Migrate(ctx context.Context, databaseURL string) error {
 	if err != nil {
 		return fmt.Errorf("store: preparing migration lock: %w", err)
 	}
-	provider, err := goose.NewProvider(goose.DialectPostgres, sqlDB, migrationsFS(), goose.WithSessionLocker(locker))
+	provider, err := goose.NewProvider(goose.DialectPostgres, sqlDB, fsys, goose.WithSessionLocker(locker))
 	if err != nil {
 		return fmt.Errorf("store: preparing migrations: %w", err)
 	}
@@ -231,6 +249,7 @@ func (s *Store) GetWorkload(ctx context.Context, id identity.WorkloadID) (*enrol
 		CredentialSerial:    row.CredentialSerial,
 		CredentialExpiresAt: row.CredentialExpiresAt,
 		LastRenewedAt:       row.LastRenewedAt,
+		RetiredAt:           row.RetiredAt,
 	}
 	if row.LateRenewalAt != nil && row.LateRenewalExpiredAt != nil {
 		w.LateRenewal = &enroll.LateRenewal{RenewedAt: *row.LateRenewalAt, ExpiredAt: *row.LateRenewalExpiredAt}
@@ -259,6 +278,9 @@ func (s *Store) RecordRenewal(ctx context.Context, id identity.WorkloadID, seria
 		return fmt.Errorf("store: recording renewal: %w", err)
 	}
 	if n == 0 {
+		if err := absent(ctx, s.q, id); !errors.Is(err, registry.ErrWorkloadUnknown) {
+			return err
+		}
 		return enroll.ErrWorkloadUnknown
 	}
 	return nil

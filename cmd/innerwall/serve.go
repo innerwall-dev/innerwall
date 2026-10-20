@@ -25,6 +25,7 @@ import (
 	"github.com/innerwall-dev/innerwall/internal/fleet"
 	"github.com/innerwall-dev/innerwall/internal/flowstore"
 	"github.com/innerwall-dev/innerwall/internal/gateway"
+	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 	"github.com/innerwall-dev/innerwall/internal/ingest"
 	"github.com/innerwall-dev/innerwall/internal/operator"
 	"github.com/innerwall-dev/innerwall/internal/policy"
@@ -198,7 +199,7 @@ func runServe(ctx context.Context, args []string) error {
 	// telemetry is live, against the flow window the agents are handed, so
 	// all three read the one configuration.
 	syncCfg := gateway.DefaultSyncConfig()
-	flowWindow := time.Duration(syncCfg.GetFlowAggregationWindowSeconds()) * time.Second
+	flowWindow := syncFlowWindow(syncCfg)
 	reads := &readmodel.Reader{Store: st, Flows: st.Flows(), FlowWindow: flowWindow}
 	// The console is served at every path outside the API prefix; a
 	// build without one (the noconsole tag, or a checkout where `make
@@ -207,7 +208,24 @@ func runServe(ctx context.Context, args []string) error {
 	// The write endpoints call the same domain functions the command
 	// line's authoring commands call (ADR-0007 as amended).
 	authoring := &policy.Authoring{Store: st, Renderer: renderer{engine}}
-	fleetSvc := &fleet.Service{Store: st, Engine: engine, Reads: reads, Directives: st}
+	srv := gateway.New(gateway.Deps{
+		Enroll:   svc,
+		Registry: st,
+		Policies: st,
+		Engine:   engine,
+		Events:   st,
+		Ingest: &ingest.Service{
+			Directory: st, Flows: st.Flows(), Clock: st, Reports: st,
+			FlowWindow: flowWindow,
+			Log:        log.With("service", "ingest"),
+		},
+		SyncConfig: syncCfg,
+		Log:        log,
+	})
+	// A retirement ends the retired workload's stream directly when this
+	// replica holds it, and closes its agent's open silence judged by the
+	// flow window the agents are handed (ADR-0023).
+	fleetSvc := &fleet.Service{Store: st, Engine: engine, Reads: reads, Directives: st, Streams: srv, FlowWindow: flowWindow, Log: log.With("service", "fleet")}
 	// The operator surface is composed explicitly: the authenticator and
 	// the domain services are injected here, and the listener's handler is
 	// built from the composition the surface returns, its middleware and
@@ -225,20 +243,6 @@ func runServe(ctx context.Context, args []string) error {
 		Log:            log.With("service", "api"),
 	}).Surface()
 	httpServer := api.NewHTTPServer(api.ServerTLSConfig(operatorCert), operatorSurface.Handler())
-	srv := gateway.New(gateway.Deps{
-		Enroll:   svc,
-		Registry: st,
-		Policies: st,
-		Engine:   engine,
-		Events:   st,
-		Ingest: &ingest.Service{
-			Directory: st, Flows: st.Flows(), Clock: st, Reports: st,
-			FlowWindow: flowWindow,
-			Log:        log.With("service", "ingest"),
-		},
-		SyncConfig: syncCfg,
-		Log:        log,
-	})
 	retention := &flowstore.Retention{
 		Store:    st.Flows(),
 		Horizon:  *flowRetention,
@@ -299,4 +303,11 @@ func runServe(ctx context.Context, args []string) error {
 	case err := <-errc:
 		return err
 	}
+}
+
+// syncFlowWindow is the flow window a sync configuration hands agents:
+// what ingest judges clock skew and agent silence by, the read model
+// whether telemetry is live, and a retirement which silence it closes.
+func syncFlowWindow(cfg *innerwallv1.SyncConfig) time.Duration {
+	return time.Duration(cfg.GetFlowAggregationWindowSeconds()) * time.Second
 }

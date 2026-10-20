@@ -27,7 +27,7 @@ A request without a valid credential is `401 unauthenticated`. A request that is
 - **Cursors.** Unbounded reads page by an opaque `cursor`; a page carries `next_cursor`, null on the last page.
 - **Timestamps** are RFC 3339 in UTC; fields are `snake_case`.
 - **Fan-out** is acknowledged, not awaited. `POST /mode-changes` records an intent; convergence is observed on the workload reads as each workload's applied version against its latest. `POST /workloads/{id}/resend-snapshot` is best-effort by design ([states](states.md#resend-snapshot)).
-- **Filters.** `label` filters are repeatable `key=value` requirements in the label grammar, ANDed. The `sync_state` filter on `GET /workloads` matches the stored sync state, so it does not exclude workloads whose enforcement was removed on the host; `GET /workloads/counts` counts those in `removed` and in no sync state ([states](states.md#sync-states)).
+- **Filters.** `label` filters are repeatable `key=value` requirements in the label grammar, ANDed. The `sync_state` filter on `GET /workloads` matches the stored sync state, so it does not exclude workloads whose enforcement was removed on the host; `GET /workloads/counts` counts those in `removed` and in no sync state ([states](states.md#sync-states)). `GET /workloads` lists the active fleet; `lifecycle=retired` lists the retired workloads instead ([states](states.md#retired)).
 
 ## Endpoints
 
@@ -46,12 +46,13 @@ Paths are relative to `/api/v1`. Parameters, request and response schemas, and e
 | Method | Path | What it does |
 |---|---|---|
 | `GET` | `/workloads` | One page of the fleet in fleet order. |
-| `GET` | `/workloads/counts` | How many workloads the fleet holds, in total, in each sync state, and with enforcement removed. |
+| `GET` | `/workloads/counts` | How many workloads the active fleet holds, in total, in each sync state, and with enforcement removed, and how many are retired. |
 | `GET` | `/workloads/{id}` | One workload, in the shape the list uses. |
 | `GET` | `/workloads/{id}/rendered-policy` | The persisted rendered policy of one workload. |
 | `GET` | `/workloads/{id}/labels` | A workload's labels, as the resource a label edit is conditioned on. |
 | `PUT` | `/workloads/{id}/labels` | Replace a workload's labels. |
 | `POST` | `/workloads/{id}/resend-snapshot` | Direct a workload's agent to reconnect and receive a fresh snapshot. |
+| `POST` | `/workloads/{id}/retire` | Retire a workload, one way: its credential is refused from then on and it leaves every peer set ([states](states.md#retired)). |
 
 ### Flows
 
@@ -106,4 +107,4 @@ Paths are relative to `/api/v1`. Parameters, request and response schemas, and e
 
 ## Deliberately absent
 
-Generic bulk operations, any endpoint that sets or resets the operator password, any job or progress resource, and roles, scopes, or permissions of any kind (ADR-0021). There is also no endpoint, and no command, that deletes or retires a workload in this version.
+Generic bulk operations, any endpoint that sets or resets the operator password, any job or progress resource, and roles, scopes, or permissions of any kind (ADR-0021). There is also no endpoint, and no command, that deletes a workload or undoes a retirement (ADR-0023).

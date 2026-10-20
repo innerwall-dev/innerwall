@@ -22,6 +22,9 @@ ORDER BY key;
 -- A late renewal (one made with an already-expired credential, within the
 -- grace) also replaces the workload's late-renewal record; an on-time one
 -- leaves it (ADR-0016 as amended).
+-- A retired workload renews nothing (ADR-0023): the write is conditioned
+-- on it, so a retirement committed after the renewal was admitted still
+-- refuses it here.
 -- name: RecordWorkloadRenewal :execrows
 UPDATE workloads
 SET credential_serial = sqlc.arg(credential_serial),
@@ -30,7 +33,7 @@ SET credential_serial = sqlc.arg(credential_serial),
     late_renewal_at = CASE WHEN sqlc.narg(late_expired_at)::timestamptz IS NULL
                            THEN late_renewal_at ELSE sqlc.arg(last_renewed_at) END,
     late_renewal_expired_at = coalesce(sqlc.narg(late_expired_at)::timestamptz, late_renewal_expired_at)
-WHERE id = sqlc.arg(id);
+WHERE id = sqlc.arg(id) AND retired_at IS NULL;
 
 -- --- inventory and status (ADR-0018) ------------------------------------------
 
@@ -51,15 +54,19 @@ UPDATE workloads
 SET mode = $2
 WHERE id = $1;
 
+-- The writes a sync stream makes from what its agent sends (inventory,
+-- Hello, heartbeats, acknowledgements) are conditioned on the workload not
+-- being retired: no row means it is unknown or retired, and the stream of a
+-- retired workload ends at the next one (ADR-0023).
 -- name: RecordWorkloadInventory :execrows
 UPDATE workloads
 SET facts = $2, hostname = $3, last_seen_at = $4
-WHERE id = $1;
+WHERE id = $1 AND retired_at IS NULL;
 
 -- name: RecordWorkloadAgent :execrows
 UPDATE workloads
 SET agent_version = $2, agent_capabilities = $3, applied_policy_version = $4, last_seen_at = $5
-WHERE id = $1;
+WHERE id = $1 AND retired_at IS NULL;
 
 -- name: ListWorkloadAddresses :many
 SELECT address FROM workload_addresses
@@ -108,7 +115,7 @@ SET last_seen_at = sqlc.arg(last_seen_at), dropped_flow_records = sqlc.arg(dropp
         WHEN sqlc.arg(owned_table_state)::smallint = 2 THEN coalesce(owned_table_absent_since, sqlc.arg(last_seen_at))
         ELSE NULL END,
     owned_table_state = CASE WHEN sqlc.arg(owned_table_state)::smallint = 0 THEN owned_table_state ELSE sqlc.arg(owned_table_state)::smallint END
-WHERE id = sqlc.arg(id);
+WHERE id = sqlc.arg(id) AND retired_at IS NULL;
 
 -- One flow report's reading of the agent's clock (migration 00010). A
 -- skewed reading records its offset and instant and marks the skew current;
@@ -129,18 +136,22 @@ WHERE id = sqlc.arg(id) AND (sqlc.arg(skewed)::boolean OR clock_skew_current);
 -- heartbeat's receipt and process start ride along, read under the same
 -- lock, so the derivation can tell a quiet agent from an absent one
 -- (migration 00016). No row means the receipt did not advance (a stale
--- report, or no such workload).
+-- report, or no such workload). A retired workload's receipt never moves:
+-- its retirement closed the silence the receipt would bound, under the same
+-- row lock, so a report racing it derives nothing twice (ADR-0023).
 -- name: RecordWorkloadFlowReport :many
 UPDATE workloads
 SET last_flow_report_at = sqlc.arg(received_at)
 FROM (
     SELECT w.id AS locked_id, w.last_flow_report_at AS prev,
-           w.last_heartbeat_at AS heartbeat_at, w.agent_started_at AS started_at
+           w.last_heartbeat_at AS heartbeat_at, w.agent_started_at AS started_at,
+           w.retired_at AS retired_at
     FROM workloads w
     WHERE w.id = sqlc.arg(id)
     FOR UPDATE
 ) locked
 WHERE workloads.id = locked.locked_id
+  AND locked.retired_at IS NULL
   AND (locked.prev IS NULL OR locked.prev < sqlc.arg(received_at))
 RETURNING locked.prev, locked.heartbeat_at, locked.started_at;
 
@@ -158,7 +169,7 @@ UPDATE workloads
 SET applied_policy_version = $2, sync_state = $3, sync_error = '', last_seen_at = $4, last_acked_at = $4,
     owned_table_state = CASE WHEN owned_table_state = 2 THEN 1 ELSE owned_table_state END,
     owned_table_absent_since = NULL
-WHERE id = $1;
+WHERE id = $1 AND retired_at IS NULL;
 
 -- A FAILED acknowledgement: the degraded state, the agent's detail, and the
 -- instant. The applied version is untouched; the agent is still on it.
@@ -166,12 +177,12 @@ WHERE id = $1;
 -- name: RecordWorkloadApplyFailed :execrows
 UPDATE workloads
 SET sync_state = $2, sync_error = $3, last_seen_at = $4, last_apply_failed_at = $4
-WHERE id = $1;
+WHERE id = $1 AND retired_at IS NULL;
 
 -- name: RecordWorkloadHeartbeatSeen :execrows
 UPDATE workloads
 SET last_seen_at = $2
-WHERE id = $1;
+WHERE id = $1 AND retired_at IS NULL;
 
 -- Stamped by the sync path whenever it sends the workload a snapshot,
 -- whatever caused it; nothing else writes it (ADR-0018 as amended).
@@ -192,6 +203,12 @@ WHERE id = $1;
 -- as if seen at the epoch. An empty id array means every workload; a zero
 -- mode or sync state means any. The latest rendered version rides along
 -- from workload_policies so sync drift is one read.
+--
+-- A retired workload is outside the attention ordering (ADR-0023): the
+-- lifecycle argument selects active workloads (1) or retired ones (2),
+-- never both, and a retired one takes a rank of its own below every
+-- other with its retirement instant as the sort key, so the retired list
+-- runs most recently retired first through the same cursor.
 -- name: ListWorkloadPage :many
 SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at,
        w.credential_serial, w.credential_expires_at, w.last_renewed_at,
@@ -200,21 +217,23 @@ SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at,
        w.credential_renewal_error, w.last_snapshot_sent_at, w.last_acked_at, w.last_apply_failed_at,
        w.source_overruns, w.clock_skew_offset_ms, w.clock_skew_observed_at, w.clock_skew_current,
        w.owned_table_state, w.owned_table_absent_since, w.last_flow_report_at,
-       w.late_renewal_at, w.late_renewal_expired_at,
+       w.late_renewal_at, w.late_renewal_expired_at, w.retired_at,
        w.sync_rank::integer AS sync_rank, w.seen_key::timestamptz AS seen_key,
        p.version AS latest_version, p.rendered_at AS latest_rendered_at
 FROM (
     SELECT workloads.*,
-           CASE WHEN workloads.owned_table_state = 2 THEN 0
+           CASE WHEN workloads.retired_at IS NOT NULL THEN 5
+                WHEN workloads.owned_table_state = 2 THEN 0
                 WHEN workloads.sync_state = 3 THEN 0 WHEN workloads.sync_state = 4 THEN 1
                 WHEN workloads.sync_state = 2 THEN 2 WHEN workloads.sync_state = 1 THEN 3 ELSE 4 END AS sync_rank,
-           coalesce(workloads.last_seen_at, '1970-01-01 00:00:00+00'::timestamptz) AS seen_key
+           coalesce(workloads.retired_at, workloads.last_seen_at, '1970-01-01 00:00:00+00'::timestamptz) AS seen_key
     FROM workloads
 ) AS w
 LEFT JOIN workload_policies p ON p.workload_id = w.id
 WHERE (cardinality(sqlc.arg(workload_ids)::uuid[]) = 0 OR w.id = ANY(sqlc.arg(workload_ids)::uuid[]))
   AND (sqlc.arg(mode)::integer = 0 OR w.mode = sqlc.arg(mode)::integer)
   AND (sqlc.arg(sync_state)::integer = 0 OR w.sync_state = sqlc.arg(sync_state)::integer)
+  AND ((sqlc.arg(lifecycle)::integer = 2) = (w.retired_at IS NOT NULL))
   AND (w.sync_rank > sqlc.arg(cursor_rank)::integer
        OR (w.sync_rank = sqlc.arg(cursor_rank)::integer
            AND (w.seen_key < sqlc.arg(cursor_seen)::timestamptz
@@ -246,10 +265,34 @@ WHERE workload_id = ANY(sqlc.arg(workload_ids)::uuid[])
 ORDER BY workload_id, protocol, port;
 
 -- How many workloads hold each sync state, split by whether their owned
--- table is recorded absent (migration 00012), in one statement so the
--- counts agree with each other. A pair no workload holds has no row.
+-- table is recorded absent (migration 00012) and by whether they are
+-- retired (ADR-0023), in one statement so the counts agree with each
+-- other. A combination no workload holds has no row.
 -- name: CountWorkloadsByStatus :many
-SELECT sync_state, (owned_table_state = 2)::boolean AS removed, count(*)::bigint AS workloads
+SELECT sync_state, (owned_table_state = 2)::boolean AS removed, (retired_at IS NOT NULL)::boolean AS retired, count(*)::bigint AS workloads
 FROM workloads
-GROUP BY 1, 2
-ORDER BY 1, 2;
+GROUP BY 1, 2, 3
+ORDER BY 1, 2, 3;
+
+-- --- retirement (ADR-0023) ----------------------------------------------------
+
+-- The row a retirement or a label write locks before it reads, so the two
+-- serialize with each other and with flow ingest's receipt: the instant it
+-- was retired (NULL while active), and what the silence derivation reads,
+-- the last report's receipt and the latest heartbeat's pair.
+-- name: LockWorkload :one
+SELECT retired_at, last_flow_report_at, last_heartbeat_at, agent_started_at
+FROM workloads
+WHERE id = $1
+FOR UPDATE;
+
+-- Retirement stamps the instant once; nothing clears it.
+-- name: RetireWorkload :execrows
+UPDATE workloads
+SET retired_at = sqlc.arg(retired_at)
+WHERE id = sqlc.arg(id) AND retired_at IS NULL;
+
+-- Why a conditioned write found no row: absent, or retired since when.
+-- name: GetWorkloadRetiredAt :one
+SELECT retired_at FROM workloads
+WHERE id = $1;

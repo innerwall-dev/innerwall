@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -129,6 +130,21 @@ func (p *Postgres) WriteWindow(ctx context.Context, w Window) (int, error) {
 // stored outside any window's transaction.
 func (p *Postgres) WriteGaps(ctx context.Context, id identity.WorkloadID, gaps []Gap) error {
 	return writeGaps(ctx, p.q, id, gaps)
+}
+
+// Within returns a writer of control-plane-derived gaps bound to tx, for
+// a gap that must commit or roll back with the caller's transaction: the
+// silence a workload's retirement closes is written with the retirement
+// itself (ADR-0023). The SQL stays here, behind the interface.
+func (p *Postgres) Within(tx pgx.Tx) GapWriter {
+	return txGaps{q: p.q.WithTx(tx)}
+}
+
+type txGaps struct{ q *db.Queries }
+
+// WriteGaps implements GapWriter inside the bound transaction.
+func (t txGaps) WriteGaps(ctx context.Context, id identity.WorkloadID, gaps []Gap) error {
+	return writeGaps(ctx, t.q, id, gaps)
 }
 
 // writeGaps stores gaps in one batch; one already stored is skipped.

@@ -163,8 +163,9 @@ func (s *Server) getFlows(w http.ResponseWriter, r *http.Request) {
 }
 
 // getWorkloads is GET /api/v1/workloads: one page of the fleet in fleet
-// order. label (repeatable), mode, and sync_state filter; cursor and
-// limit page.
+// order. label (repeatable), mode, sync_state, and lifecycle filter;
+// cursor and limit page. The active fleet is the default; lifecycle=retired
+// lists the retired workloads instead, most recently retired first.
 func (s *Server) getWorkloads(w http.ResponseWriter, r *http.Request) {
 	q := queryOf(r)
 	var req readmodel.WorkloadsRequest
@@ -181,6 +182,10 @@ func (s *Server) getWorkloads(w http.ResponseWriter, r *http.Request) {
 		s.readProblem(w, err)
 		return
 	}
+	if req.Lifecycle, err = q.lifecycle("lifecycle"); err != nil {
+		s.readProblem(w, err)
+		return
+	}
 	req.Cursor = q.text("cursor")
 	if req.Limit, err = q.limit("limit"); err != nil {
 		s.readProblem(w, err)
@@ -194,8 +199,9 @@ func (s *Server) getWorkloads(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, workloadsPageJSON(page))
 }
 
-// getWorkloadCounts is GET /api/v1/workloads/counts: the fleet's size,
-// in total and in each sync state, counted in one read.
+// getWorkloadCounts is GET /api/v1/workloads/counts: the active fleet's
+// size, in total and in each sync state, and the retired workloads beside
+// it, counted in one read.
 func (s *Server) getWorkloadCounts(w http.ResponseWriter, r *http.Request) {
 	counts, err := s.reads.CountWorkloads(r.Context())
 	if err != nil {

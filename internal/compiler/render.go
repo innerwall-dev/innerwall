@@ -19,14 +19,20 @@ type Inputs struct {
 	AddressGroups []policy.AddressGroup
 }
 
-// Render produces the policy of every workload in the inputs. Versions are
-// left at zero: assigning them is Plan's job, because a version is a
-// statement about change and rendering knows nothing about the past.
+// Render produces the policy of every active workload in the inputs.
+// Versions are left at zero: assigning them is Plan's job, because a
+// version is a statement about change and rendering knows nothing about
+// the past. A retired workload is no input to policy (ADR-0023): it is not
+// rendered, so its persisted policy and version stay as the record of what
+// it last held, and it resolves as nobody's peer.
 func Render(in *Inputs) map[identity.WorkloadID]*innerwallv1.WorkloadPolicy {
 	r := newResolver(in)
 	out := make(map[identity.WorkloadID]*innerwallv1.WorkloadPolicy, len(in.Workloads))
 	for i := range in.Workloads {
 		w := &in.Workloads[i]
+		if w.Retired() {
+			continue
+		}
 		out[w.ID] = r.renderWorkload(w)
 	}
 	return out
@@ -120,7 +126,7 @@ func (r *resolver) resolvePeers(peers []policy.Peer) []string {
 		switch peer.Kind {
 		case policy.PeerWorkloads:
 			for j := range r.in.Workloads {
-				if !peer.Workloads.Matches(r.labels[j]) {
+				if r.in.Workloads[j].Retired() || !peer.Workloads.Matches(r.labels[j]) {
 					continue
 				}
 				for _, addr := range r.in.Workloads[j].Addresses {

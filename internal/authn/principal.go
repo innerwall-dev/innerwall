@@ -1,6 +1,9 @@
 package authn
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 // Principal is the authenticated operator as the domain layer sees it. Both
 // operator credential forms resolve to it, and the command line acts as it;
@@ -10,6 +13,11 @@ import "context"
 type Principal struct {
 	DisplayName *string
 }
+
+// ErrNoPrincipal is a domain function's refusal of a caller whose context
+// carries no principal: it reached the domain layer without having been
+// authenticated, which only a wiring fault can do.
+var ErrNoPrincipal = errors.New("authn: no authenticated principal")
 
 type principalKey struct{}
 

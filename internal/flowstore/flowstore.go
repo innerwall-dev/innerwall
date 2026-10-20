@@ -176,6 +176,14 @@ type Total struct {
 	WindowCount     uint64
 }
 
+// GapWriter stores the gaps the control plane derived itself for one
+// workload, as FlowStore.WriteGaps does; a gap already stored is not
+// stored again. The Postgres store hands one out bound to a caller's
+// transaction (Postgres.Within).
+type GapWriter interface {
+	WriteGaps(ctx context.Context, id identity.WorkloadID, gaps []Gap) error
+}
+
 // FlowStore is the only path to flow data (ADR-0009). Every method is
 // implemented with hand-written SQL in internal/store/queries (ADR-0006).
 type FlowStore interface {

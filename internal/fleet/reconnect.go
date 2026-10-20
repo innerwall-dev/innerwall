@@ -8,6 +8,7 @@ import (
 
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 	"github.com/innerwall-dev/innerwall/internal/identity"
+	"github.com/innerwall-dev/innerwall/internal/registry"
 )
 
 // Directives sends a directive toward the stream of one workload. The
@@ -52,7 +53,9 @@ type ReconnectRequest struct {
 
 // RequestReconnect directs the agent of one workload to reconnect, so that
 // its stream restarts from a fresh snapshot. It refuses an unknown
-// workload with registry.ErrWorkloadUnknown, and refuses with an
+// workload with registry.ErrWorkloadUnknown, a retired one with a
+// *registry.RetiredError (its identity is refused at every door, so
+// there is nothing to reconnect; ADR-0023), and refuses with an
 // *AgentOfflineError when the read model's sync state says the agent is
 // offline. That judgment is the one the fleet screens show, recorded when
 // a stream closes; it approximates whether a stream exists and is not a
@@ -64,6 +67,9 @@ func (s *Service) RequestReconnect(ctx context.Context, id identity.WorkloadID) 
 	w, err := s.Reads.GetWorkload(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if w.RetiredAt != nil {
+		return nil, &registry.RetiredError{ID: id, RetiredAt: *w.RetiredAt}
 	}
 	if w.Sync.State == innerwallv1.SyncState_SYNC_STATE_OFFLINE {
 		return nil, &AgentOfflineError{LastSeenAt: w.Health.LastSeenAt}

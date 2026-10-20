@@ -227,14 +227,16 @@ innerwall workload status <workload-id>
 innerwall workload set-labels --label key=value [--label key=value ...] <workload-id>
 innerwall workload set-mode <workload-id> visibility|simulation|enforced
 innerwall workload resend-snapshot <workload-id>
+innerwall workload retire <workload-id>
 ```
 
-- **`list`** prints every workload's id, hostname, labels, mode, sync state (with `ENFORCEMENT REMOVED` when its owned table is recorded absent), applied and latest policy versions, and when it was last seen.
-- **`counts`** prints the fleet's size: `removed`, then each sync state, then the total. A removed workload is counted in `removed` alone, so the lines sum to the total. It is the read `GET /api/v1/workloads/counts` serves.
-- **`status`** prints one workload in full: mode, sync state, the owned table's state, applied and latest versions, last seen on the control channel, last flow report, last snapshot sent, last acknowledgment, last failed apply, credential expiry and any late renewal, agent version, dropped flow records, source overruns, clock skew, addresses, host facts, and listening services.
+- **`list`** prints every workload's id, hostname, labels, mode, sync state (with `ENFORCEMENT REMOVED` when its owned table is recorded absent, and `RETIRED` with the instant in place of the sync state for a retired workload), applied and latest policy versions, and when it was last seen.
+- **`counts`** prints the active fleet's size: `removed`, then each sync state, then the total, then `retired`. A removed workload is counted in `removed` alone, so the lines above the total sum to it; a retired workload is outside the total and counted in `retired` alone. It is the read `GET /api/v1/workloads/counts` serves.
+- **`status`** prints one workload in full: mode, lifecycle (active, or retired and when), sync state, the owned table's state, applied and latest versions, last seen on the control channel, last flow report, last snapshot sent, last acknowledgment, last failed apply, credential expiry and any late renewal, agent version, dropped flow records, source overruns, clock skew, addresses, host facts, and listening services.
 - **`set-labels`** replaces the workload's whole label set and renders. The labels are admitted against the grammar (ADR-0022).
 - **`set-mode`** changes one workload's mode, as a recorded mode change of exactly that workload, and renders. It does not consult the simulation review: the review's verdict and its acknowledgment gate are in the console's promote flow only ([promotion and enforcement](../guides/promotion-and-enforcement.md)).
 - **`resend-snapshot`** directs the workload's agent to reconnect, so its new stream begins with a snapshot. Delivery is not confirmed: the `last snapshot` instant in `workload status` advances when the agent has reconnected ([states](states.md#resend-snapshot)).
+- **`retire`** retires the workload, one way, through the function `POST /api/v1/workloads/{id}/retire` calls: its credential is refused from then on, its live stream is ended, its addresses leave every peer set, and an open silence of its agent is stored as an evidence gap. It prints the instant, how many workloads' policy versions advanced, and the silence it closed, if any. A retired workload's labels and mode can no longer be changed. Its history stays readable by its id; the host returns only by enrolling again, as a new workload ([states](states.md#retired)).
 
 ## policy
 

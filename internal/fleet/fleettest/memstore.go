@@ -17,6 +17,7 @@ import (
 
 	"github.com/innerwall-dev/innerwall/internal/compiler"
 	"github.com/innerwall-dev/innerwall/internal/fleet"
+	"github.com/innerwall-dev/innerwall/internal/flowstore"
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 	"github.com/innerwall-dev/innerwall/internal/identity"
 	"github.com/innerwall-dev/innerwall/internal/policy"
@@ -36,6 +37,14 @@ type MemStore struct {
 	Rulesets      []policy.Ruleset
 	Policies      map[identity.WorkloadID]*innerwallv1.WorkloadPolicy
 	ModeChanges   []*fleet.ModeChangeRecord
+	// Gaps are the gaps retirements wrote, by workload, and Ended the
+	// workloads whose stream a retirement directed ended, in order.
+	Gaps  map[identity.WorkloadID][]flowstore.Gap
+	Ended []identity.WorkloadID
+	// LastFlowReportAt and Processes are what a retirement's silence
+	// derivation reads for a workload, set by a test.
+	LastFlowReportAt map[identity.WorkloadID]time.Time
+	Processes        map[identity.WorkloadID]registry.AgentProcess
 	// Writes counts every write that reached the store, so a test can
 	// assert that a read left nothing behind.
 	Writes int
@@ -58,7 +67,12 @@ var (
 
 // New returns an empty store.
 func New() *MemStore {
-	return &MemStore{Policies: map[identity.WorkloadID]*innerwallv1.WorkloadPolicy{}}
+	return &MemStore{
+		Policies:         map[identity.WorkloadID]*innerwallv1.WorkloadPolicy{},
+		Gaps:             map[identity.WorkloadID][]flowstore.Gap{},
+		LastFlowReportAt: map[identity.WorkloadID]time.Time{},
+		Processes:        map[identity.WorkloadID]registry.AgentProcess{},
+	}
 }
 
 // Renderer adapts an engine over the store to the authoring service's
@@ -137,11 +151,16 @@ type snapshot struct {
 	rulesets  []policy.Ruleset
 	policies  map[identity.WorkloadID]*innerwallv1.WorkloadPolicy
 	changes   []*fleet.ModeChangeRecord
+	gaps      map[identity.WorkloadID][]flowstore.Gap
+	ended     []identity.WorkloadID
 	writes    int
 }
 
 func (m *MemStore) snapshot() snapshot {
-	s := snapshot{policies: map[identity.WorkloadID]*innerwallv1.WorkloadPolicy{}, writes: m.Writes, changes: slices.Clone(m.ModeChanges)}
+	s := snapshot{policies: map[identity.WorkloadID]*innerwallv1.WorkloadPolicy{}, writes: m.Writes, changes: slices.Clone(m.ModeChanges), ended: slices.Clone(m.Ended), gaps: map[identity.WorkloadID][]flowstore.Gap{}}
+	for id, g := range m.Gaps {
+		s.gaps[id] = slices.Clone(g)
+	}
 	for _, w := range m.Workloads {
 		s.workloads = append(s.workloads, cloneWorkload(w))
 	}
@@ -162,6 +181,7 @@ func (m *MemStore) snapshot() snapshot {
 
 func (m *MemStore) restore(s snapshot) {
 	m.Workloads, m.Services, m.AddressGroups, m.Rulesets, m.Policies, m.ModeChanges, m.Writes = s.workloads, s.services, s.groups, s.rulesets, s.policies, s.changes, s.writes
+	m.Gaps, m.Ended = s.gaps, s.ended
 }
 
 // --- policy.Store ------------------------------------------------------------
@@ -512,6 +532,9 @@ func (m *MemStore) ReplaceWorkloadLabels(_ context.Context, id identity.Workload
 	if idx < 0 {
 		return registry.ErrWorkloadUnknown
 	}
+	if w := &m.Workloads[idx]; w.Retired() {
+		return &registry.RetiredError{ID: id, RetiredAt: *w.RetiredAt}
+	}
 	if v := registry.LabelsVersion(m.Workloads[idx].Labels); expect != "" && expect != v {
 		return &registry.LabelsVersionError{Current: v}
 	}
@@ -629,6 +652,60 @@ func (m *MemStore) ModeChangeTx(ctx context.Context, fn func(ctx context.Context
 	return m.inTx(func(tx *memTx) error { return fn(ctx, tx) })
 }
 
+// RetireTx implements fleet.Store.
+func (m *MemStore) RetireTx(ctx context.Context, fn func(ctx context.Context, tx fleet.RetireTx) error) error {
+	return m.inTx(func(tx *memTx) error { return fn(ctx, tx) })
+}
+
+// LockWorkload implements fleet.RetireTx.
+func (t *memTx) LockWorkload(_ context.Context, id identity.WorkloadID) (*fleet.RetireSubject, error) {
+	t.m.mu.Lock()
+	defer t.m.mu.Unlock()
+	idx := slices.IndexFunc(t.m.Workloads, func(w registry.Workload) bool { return w.ID == id })
+	if idx < 0 {
+		return nil, registry.ErrWorkloadUnknown
+	}
+	subj := &fleet.RetireSubject{RetiredAt: t.m.Workloads[idx].RetiredAt}
+	if at, ok := t.m.LastFlowReportAt[id]; ok {
+		subj.LastFlowReportAt = &at
+	}
+	if p, ok := t.m.Processes[id]; ok {
+		subj.Process = &p
+	}
+	return subj, nil
+}
+
+// StampRetired implements fleet.RetireTx.
+func (t *memTx) StampRetired(_ context.Context, id identity.WorkloadID, at time.Time) error {
+	t.m.mu.Lock()
+	defer t.m.mu.Unlock()
+	t.m.Writes++
+	for i := range t.m.Workloads {
+		if t.m.Workloads[i].ID == id {
+			t.m.Workloads[i].RetiredAt = &at
+			return nil
+		}
+	}
+	return registry.ErrWorkloadUnknown
+}
+
+// WriteGaps implements fleet.RetireTx.
+func (t *memTx) WriteGaps(_ context.Context, id identity.WorkloadID, gaps []flowstore.Gap) error {
+	t.m.mu.Lock()
+	defer t.m.mu.Unlock()
+	t.m.Writes++
+	t.m.Gaps[id] = append(t.m.Gaps[id], gaps...)
+	return nil
+}
+
+// DirectEnd implements fleet.RetireTx.
+func (t *memTx) DirectEnd(_ context.Context, id identity.WorkloadID) error {
+	t.m.mu.Lock()
+	defer t.m.mu.Unlock()
+	t.m.Ended = append(t.m.Ended, id)
+	return nil
+}
+
 // GetWorkloadPolicy returns a workload's rendered policy, or nil.
 func (m *MemStore) GetWorkloadPolicy(_ context.Context, id identity.WorkloadID) (*innerwallv1.WorkloadPolicy, error) {
 	m.mu.Lock()
@@ -676,6 +753,9 @@ func (m *MemStore) record(w *registry.Workload) readmodel.WorkloadRecord {
 	if w.LastSeenAt != nil {
 		rec.SeenKey = w.LastSeenAt.UTC()
 	}
+	if w.Retired() {
+		rec.SyncRank, rec.SeenKey = readmodel.RetiredRank, w.RetiredAt.UTC()
+	}
 	if p, ok := m.Policies[w.ID]; ok {
 		rec.LatestVersion = p.GetVersion()
 	}
@@ -703,7 +783,7 @@ func (m *MemStore) CountWorkloadsByStatus(context.Context) ([]readmodel.StatusCo
 	at := map[readmodel.StatusCount]int{}
 	var out []readmodel.StatusCount
 	for i := range m.Workloads {
-		key := readmodel.StatusCount{SyncState: m.Workloads[i].SyncState, Removed: m.Workloads[i].OwnedTable == innerwallv1.OwnedTableState_OWNED_TABLE_STATE_ABSENT}
+		key := readmodel.StatusCount{SyncState: m.Workloads[i].SyncState, Removed: m.Workloads[i].OwnedTable == innerwallv1.OwnedTableState_OWNED_TABLE_STATE_ABSENT, Retired: m.Workloads[i].Retired()}
 		j, ok := at[key]
 		if !ok {
 			j = len(out)
@@ -727,7 +807,7 @@ func (m *MemStore) ListWorkloadPage(_ context.Context, q readmodel.WorkloadPageQ
 	var out []readmodel.WorkloadRecord
 	for i := range m.Workloads {
 		w := &m.Workloads[i]
-		if (len(want) > 0 && !want[w.ID]) || (q.Mode != 0 && w.Mode != q.Mode) || (q.SyncState != 0 && w.SyncState != q.SyncState) {
+		if (len(want) > 0 && !want[w.ID]) || (q.Mode != 0 && w.Mode != q.Mode) || (q.SyncState != 0 && w.SyncState != q.SyncState) || w.Retired() != q.Retired {
 			continue
 		}
 		r := m.record(w)

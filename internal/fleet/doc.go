@@ -21,4 +21,10 @@
 // presence table, so nothing can say for certain that a stream exists,
 // and the directive is a request whose outcome is observed as the
 // workload's last snapshot instant advancing.
+//
+// Retirement is one way (ADR-0023): in one transaction under the render
+// lock it stamps the workload's row, closes an open agent silence as a
+// stored gap, renders without the workload, and directs its live stream
+// ended. Afterwards no selector resolves to the workload and every write
+// naming it is refused with the instant.
 package fleet

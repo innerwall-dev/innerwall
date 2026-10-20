@@ -54,12 +54,12 @@ func TestSnapshotInstantAndReconnectDirective(t *testing.T) {
 	}
 
 	announced := make(chan compiler.Announcement, 4)
-	directed := make(chan identity.WorkloadID, 4)
+	directed := make(chan compiler.Directive, 4)
 	ready := make(chan struct{})
 	lctx, lcancel := context.WithCancel(ctx)
 	defer lcancel()
 	go func() {
-		_ = s.ListenPolicyChanges(lctx, nil, func() { close(ready) }, func(c compiler.Announcement) { announced <- c }, func(id identity.WorkloadID) { directed <- id })
+		_ = s.ListenPolicyChanges(lctx, nil, func() { close(ready) }, func(c compiler.Announcement) { announced <- c }, func(d compiler.Directive) { directed <- d })
 	}()
 	<-ready
 	if err := s.DirectReconnect(ctx, id); err != nil {
@@ -67,11 +67,24 @@ func TestSnapshotInstantAndReconnectDirective(t *testing.T) {
 	}
 	select {
 	case got := <-directed:
-		if got != id {
-			t.Fatalf("directed %s, want %s", got, id)
+		if got != (compiler.Directive{ID: id, Kind: compiler.DirectiveReconnect}) {
+			t.Fatalf("directed %+v, want a reconnect of %s", got, id)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("directive not delivered")
+	}
+	// The end directive a retirement publishes rides the same channel as
+	// a kind of its own (ADR-0023).
+	if err := s.DirectEnd(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case got := <-directed:
+		if got != (compiler.Directive{ID: id, Kind: compiler.DirectiveEnd}) {
+			t.Fatalf("directed %+v, want an end of %s", got, id)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("end directive not delivered")
 	}
 	select {
 	case c := <-announced:

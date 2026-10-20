@@ -254,3 +254,53 @@ func TestIngestRecordsEveryReportReceipt(t *testing.T) {
 		t.Fatalf("receipts = %+v, want two for %s at %v", reports.calls, db.ID, now)
 	}
 }
+
+// TestRetiredWorkloadResolvesNothing checks that a retired workload's
+// last addresses no longer resolve to it at ingest: they may already
+// belong to whatever replaced it, and fall through to the address groups,
+// then to the address itself (ADR-0023).
+func TestRetiredWorkloadResolvesNothing(t *testing.T) {
+	retiredAt := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
+	gone := registry.Workload{ID: mustID(t), Labels: []registry.Label{{Key: "role", Value: "web"}}, Addresses: []netip.Addr{netip.MustParseAddr("10.0.0.20"), netip.MustParseAddr("192.168.1.8")}, RetiredAt: &retiredAt}
+	group := policy.AddressGroup{ID: uuid.MustParse("00000000-0000-0000-0000-00000000aaaa"), Name: "corp", CIDRs: []string{"10.0.0.0/8"}}
+	idx := BuildIndex([]registry.Workload{gone}, []policy.AddressGroup{group})
+	if p := idx.Resolve(netip.MustParseAddr("10.0.0.20")); p.Kind != flowstore.PeerAddressGroup || p.Key != group.ID.String() {
+		t.Fatalf("a retired workload's address resolved to %+v, want the group", p)
+	}
+	if p := idx.Resolve(netip.MustParseAddr("192.168.1.8")); p.Kind != flowstore.PeerUnknown || p.Key != "192.168.1.8" {
+		t.Fatalf("a retired workload's address resolved to %+v, want the address", p)
+	}
+}
+
+// TestSilenceAtRetirement checks the retirement form of the silence
+// derivation against the report form's rules (ADR-0023, issue #126).
+func TestSilenceAtRetirement(t *testing.T) {
+	at := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
+	window := time.Minute
+	old := at.Add(-10 * time.Minute)
+	recent := at.Add(-2 * window)
+	ran := &registry.AgentProcess{StartedAt: old.Add(-time.Hour), HeartbeatAt: at.Add(-20 * time.Second)}
+	restarted := &registry.AgentProcess{StartedAt: old.Add(time.Minute), HeartbeatAt: at.Add(-20 * time.Second)}
+	for _, c := range []struct {
+		name   string
+		prev   *time.Time
+		proc   *registry.AgentProcess
+		window time.Duration
+		gap    bool
+	}{
+		{"silent past the allowance", &old, nil, window, true},
+		{"a restart inside the silence", &old, restarted, window, true},
+		{"within the allowance", &recent, nil, window, false},
+		{"one process ran through", &old, ran, window, false},
+		{"never reported", nil, nil, window, false},
+		{"no window to judge by", &old, nil, 0, false},
+	} {
+		g, ok := SilenceAtRetirement(c.prev, c.proc, at, c.window)
+		if ok != c.gap {
+			t.Fatalf("%s: gap %v, want %v", c.name, ok, c.gap)
+		}
+		if ok && (g.Kind != innerwallv1.EvidenceGapKind_EVIDENCE_GAP_KIND_AGENT_SILENT || !g.From.Equal(*c.prev) || !g.To.Equal(at) || g.Count != nil) {
+			t.Fatalf("%s: gap %+v, want agent_silent from %v to %v", c.name, g, *c.prev, at)
+		}
+	}
+}

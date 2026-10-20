@@ -214,6 +214,7 @@ func (s *Server) mount(sf *Surface) {
 	sf.Handle(http.MethodGet, APIPrefix+"/workloads/{id}/labels", s.getWorkloadLabels)
 	sf.Handle(http.MethodPut, APIPrefix+"/workloads/{id}/labels", s.putWorkloadLabels)
 	sf.Handle(http.MethodPost, APIPrefix+"/workloads/{id}/resend-snapshot", s.resendSnapshot)
+	sf.Handle(http.MethodPost, APIPrefix+"/workloads/{id}/retire", s.retireWorkload)
 	sf.Handle(http.MethodGet, APIPrefix+"/rulesets", s.listRulesets)
 	sf.Handle(http.MethodPost, APIPrefix+"/rulesets", s.createRuleset)
 	sf.Handle(http.MethodGet, APIPrefix+"/rulesets/{id}", s.getRuleset)

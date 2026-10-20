@@ -36,6 +36,8 @@ export function workload(
 		},
 		agent: { version: "0.3.0", capabilities: ["nftables", "conntrack"] },
 		listening_services: [],
+		lifecycle: "active",
+		retired_at: null,
 		...rest,
 		sync: {
 			state: "synced",

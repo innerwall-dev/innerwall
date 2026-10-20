@@ -155,8 +155,9 @@ func SeedEstate(ctx context.Context, s *store.Store, f *Fleet, extra int) error 
 		if _, err := s.RecordFacts(ctx, id, facts, enrolled); err != nil {
 			return id, err
 		}
-		// Renewed six hours ago for a day, as the agent does in the last
-		// third of each lifetime: the next renewal falls due in ten hours.
+		// Renewed six hours ago for a day, as the agent does by the
+		// two-thirds mark of each lifetime: the next renewal falls due in
+		// ten hours.
 		renewed := f.Now.Add(-6 * time.Hour)
 		if err := s.RecordRenewal(ctx, id, hostname+"-2", renewed.Add(24*time.Hour), renewed, nil); err != nil {
 			return id, err

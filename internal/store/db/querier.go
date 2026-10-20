@@ -35,8 +35,9 @@ type Querier interface {
 	CountRulesReferencingAddressGroup(ctx context.Context, addressGroupID *uuid.UUID) (int64, error)
 	CountRulesReferencingService(ctx context.Context, serviceID uuid.UUID) (int64, error)
 	// How many workloads hold each sync state, split by whether their owned
-	// table is recorded absent (migration 00012), in one statement so the
-	// counts agree with each other. A pair no workload holds has no row.
+	// table is recorded absent (migration 00012) and by whether they are
+	// retired (ADR-0023), in one statement so the counts agree with each
+	// other. A combination no workload holds has no row.
 	CountWorkloadsByStatus(ctx context.Context) ([]CountWorkloadsByStatusRow, error)
 	// Address groups: named CIDR sets for peers that are not managed workloads
 	// (ADR-0018).
@@ -102,6 +103,8 @@ type Querier interface {
 	// label change committed meanwhile does not move it.
 	GetWorkloadModes(ctx context.Context, workloadIds []uuid.UUID) ([]GetWorkloadModesRow, error)
 	GetWorkloadPolicy(ctx context.Context, workloadID uuid.UUID) (WorkloadPolicy, error)
+	// Why a conditioned write found no row: absent, or retired since when.
+	GetWorkloadRetiredAt(ctx context.Context, id uuid.UUID) (*time.Time, error)
 	// One workload with its latest rendered version, for the detail read.
 	GetWorkloadWithPolicy(ctx context.Context, id uuid.UUID) (GetWorkloadWithPolicyRow, error)
 	// --- evidence gaps -------------------------------------------------------------
@@ -165,10 +168,22 @@ type Querier interface {
 	// as if seen at the epoch. An empty id array means every workload; a zero
 	// mode or sync state means any. The latest rendered version rides along
 	// from workload_policies so sync drift is one read.
+	//
+	// A retired workload is outside the attention ordering (ADR-0023): the
+	// lifecycle argument selects active workloads (1) or retired ones (2),
+	// never both, and a retired one takes a rank of its own below every
+	// other with its retirement instant as the sort key, so the retired list
+	// runs most recently retired first through the same cursor.
 	ListWorkloadPage(ctx context.Context, arg ListWorkloadPageParams) ([]ListWorkloadPageRow, error)
 	ListWorkloadPolicies(ctx context.Context) ([]WorkloadPolicy, error)
 	// --- inventory and status (ADR-0018) ------------------------------------------
 	ListWorkloads(ctx context.Context) ([]Workload, error)
+	// --- retirement (ADR-0023) ----------------------------------------------------
+	// The row a retirement or a label write locks before it reads, so the two
+	// serialize with each other and with flow ingest's receipt: the instant it
+	// was retired (NULL while active), and what the silence derivation reads,
+	// the last report's receipt and the latest heartbeat's pair.
+	LockWorkload(ctx context.Context, id uuid.UUID) (LockWorkloadRow, error)
 	// A directive for the stream of one workload rides the same channel as
 	// render announcements, keyed by the workload; the replica holding that
 	// stream, if any, sends it (ADR-0018 as amended). It is sent outside any
@@ -206,7 +221,9 @@ type Querier interface {
 	// heartbeat's receipt and process start ride along, read under the same
 	// lock, so the derivation can tell a quiet agent from an absent one
 	// (migration 00016). No row means the receipt did not advance (a stale
-	// report, or no such workload).
+	// report, or no such workload). A retired workload's receipt never moves:
+	// its retirement closed the silence the receipt would bound, under the same
+	// row lock, so a report racing it derives nothing twice (ADR-0023).
 	RecordWorkloadFlowReport(ctx context.Context, arg RecordWorkloadFlowReportParams) ([]RecordWorkloadFlowReportRow, error)
 	// A heartbeat's counters, renewal status, and owned-table state (migration
 	// 00012). An unknown state leaves the stored one; the absent instant is the
@@ -215,14 +232,23 @@ type Querier interface {
 	// written together, so the pair is always one heartbeat's (migration 00016).
 	RecordWorkloadHeartbeat(ctx context.Context, arg RecordWorkloadHeartbeatParams) (int64, error)
 	RecordWorkloadHeartbeatSeen(ctx context.Context, arg RecordWorkloadHeartbeatSeenParams) (int64, error)
+	// The writes a sync stream makes from what its agent sends (inventory,
+	// Hello, heartbeats, acknowledgements) are conditioned on the workload not
+	// being retired: no row means it is unknown or retired, and the stream of a
+	// retired workload ends at the next one (ADR-0023).
 	RecordWorkloadInventory(ctx context.Context, arg RecordWorkloadInventoryParams) (int64, error)
 	// A late renewal (one made with an already-expired credential, within the
 	// grace) also replaces the workload's late-renewal record; an on-time one
 	// leaves it (ADR-0016 as amended).
+	// A retired workload renews nothing (ADR-0023): the write is conditioned
+	// on it, so a retirement committed after the renewal was admitted still
+	// refuses it here.
 	RecordWorkloadRenewal(ctx context.Context, arg RecordWorkloadRenewalParams) (int64, error)
 	// Stamped by the sync path whenever it sends the workload a snapshot,
 	// whatever caused it; nothing else writes it (ADR-0018 as amended).
 	RecordWorkloadSnapshotSent(ctx context.Context, arg RecordWorkloadSnapshotSentParams) (int64, error)
+	// Retirement stamps the instant once; nothing clears it.
+	RetireWorkload(ctx context.Context, arg RetireWorkloadParams) (int64, error)
 	RevokeOperatorToken(ctx context.Context, arg RevokeOperatorTokenParams) (int64, error)
 	RevokeProvisioningToken(ctx context.Context, arg RevokeProvisioningTokenParams) (int64, error)
 	// The rollup the operator console issues for a label scope: the scope is

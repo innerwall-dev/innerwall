@@ -11,6 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
+	"github.com/innerwall-dev/innerwall/internal/enroll"
+	"github.com/innerwall-dev/innerwall/internal/enroll/enrolltest"
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 	"github.com/innerwall-dev/innerwall/internal/identity"
 )
@@ -270,5 +274,47 @@ func TestHeartbeatUptimeHeldInRange(t *testing.T) {
 	}
 	if got := heartbeatUptime(math.MaxUint64); got <= 0 {
 		t.Fatalf("heartbeatUptime(max) = %v, want positive", got)
+	}
+}
+
+// EndStream ends a held stream with the status given, which the stream's
+// handler returns, and reports that it held one; a stream this replica
+// does not hold is left to the replica that does.
+func TestEndStreamEndsAHeldStream(t *testing.T) {
+	s, _ := newDispatchServer()
+	sess := newSession(t, mustID(t), 1)
+	register(t, s, sess)
+	if s.EndStream(mustID(t), errRefused) {
+		t.Fatal("ended a stream this replica does not hold")
+	}
+	if !s.EndStream(sess.id, errRefused) {
+		t.Fatal("did not end the held stream")
+	}
+	<-sess.ctx.Done()
+	if err := endedWith(sess.ctx); !errors.Is(err, errRefused) {
+		t.Fatalf("stream ended with %v, want the refusal", err)
+	}
+}
+
+// The listener's reconnect re-sync ends a live stream whose workload was
+// retired while it could hear nothing (ADR-0023).
+func TestReconcileEndsARetiredWorkloadsStream(t *testing.T) {
+	st := enrolltest.NewMemStore()
+	id := mustID(t)
+	tok := enroll.Token{ID: uuid.New(), Name: "t", ExpiresAt: time.Now().Add(time.Hour)}
+	if err := st.CreateToken(context.Background(), tok); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.CreateWorkload(context.Background(), enroll.Workload{ID: id, TokenID: tok.ID}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	st.Retire(id, time.Now())
+	rec := &records{}
+	s := New(Deps{Enroll: &enroll.Service{Store: st}, Log: slog.New(rec)})
+	sess := newSession(t, id, 1)
+	register(t, s, sess)
+	s.reconcile(sess)
+	if err := endedWith(sess.ctx); !errors.Is(err, errRefused) {
+		t.Fatalf("stream ended with %v, want the refusal", err)
 	}
 }

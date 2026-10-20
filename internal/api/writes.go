@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/innerwall-dev/innerwall/internal/authn"
 	"github.com/innerwall-dev/innerwall/internal/enroll"
 	"github.com/innerwall-dev/innerwall/internal/fleet"
 	"github.com/innerwall-dev/innerwall/internal/identity"
@@ -54,6 +55,7 @@ func (s *Server) writeProblemFor(w http.ResponseWriter, err error) {
 	var lv *registry.LabelsVersionError
 	var mc *fleet.MatchCountError
 	var off *fleet.AgentOfflineError
+	var ret *registry.RetiredError
 	switch {
 	case policy.AsFindings(err) != nil:
 		writeProblem(w, validationProblem(policy.AsFindings(err)))
@@ -66,6 +68,10 @@ func (s *Server) writeProblemFor(w http.ResponseWriter, err error) {
 		writeProblem(w, Problem{Type: ProblemMatchCountMismatch, Title: "Match count mismatch", Status: http.StatusConflict, Detail: "the selection resolved to a different number of workloads than expected; preview it again", Expected: &expected, Matched: &matched})
 	case errors.As(err, &off):
 		writeProblem(w, Problem{Type: ProblemAgentOffline, Title: "Agent offline", Status: http.StatusConflict, Detail: "the workload's agent is offline as the control plane last recorded it, so no reconnect was directed; it receives a fresh snapshot whenever it next connects", LastSeenAt: &nullableInstant{At: optionalTimestamp(off.LastSeenAt)}})
+	case errors.As(err, &ret):
+		writeProblem(w, Problem{Type: ProblemWorkloadRetired, Title: "Workload retired", Status: http.StatusConflict, Detail: "the workload was retired; retirement is one way, its attributes stay as they stood, and its host returns only by enrolling again as a new workload", RetiredAt: timestamp(ret.RetiredAt)})
+	case errors.Is(err, authn.ErrNoPrincipal):
+		writeProblem(w, problemUnauthenticated)
 	case errors.Is(err, policy.ErrRulesetUnknown), errors.Is(err, policy.ErrRuleUnknown), errors.Is(err, policy.ErrServiceUnknown), errors.Is(err, policy.ErrAddressGroupUnknown),
 		errors.Is(err, registry.ErrWorkloadUnknown), errors.Is(err, enroll.ErrTokenUnknown), errors.Is(err, operator.ErrTokenUnknown):
 		writeProblem(w, problemNotFound)
@@ -597,6 +603,25 @@ func (s *Server) resendSnapshot(w http.ResponseWriter, r *http.Request) {
 	// line is the other end, so a request that no replica heard shows.
 	s.log.Info("reconnect requested", "workload_id", id)
 	writeJSON(w, resendSnapshotResponse{LastSnapshotSentAt: optionalTimestamp(res.LastSnapshotSentAt)})
+}
+
+// retireWorkload is POST /api/v1/workloads/{id}/retire: retire the
+// workload, one way (ADR-0023). The response names the retirement
+// instant, how many workloads' versions the render advanced, and the
+// silence of its agent the retirement closed as a stored gap, null when
+// none was open. An unknown workload is not found; one already retired is
+// a conflict naming the instant.
+func (s *Server) retireWorkload(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathWorkloadID(w, r)
+	if !ok {
+		return
+	}
+	res, err := s.fleet.Retire(r.Context(), id)
+	if err != nil {
+		s.writeProblemFor(w, err)
+		return
+	}
+	writeJSON(w, retirementJSON(res))
 }
 
 // --- mode changes, preview, dry run ------------------------------------------

@@ -38,6 +38,8 @@ func (s *Server) ReportFlows(stream innerwallv1.AgentService_ReportFlowsServer) 
 		}
 		res, err := s.ingest.Ingest(ctx, id, req)
 		switch {
+		case isRetired(err):
+			return refuseRetired(log, err, "flow report")
 		case errors.Is(err, ingest.ErrInvalidWindow):
 			return status.Error(codes.InvalidArgument, err.Error())
 		case errors.Is(err, registry.ErrWorkloadUnknown):

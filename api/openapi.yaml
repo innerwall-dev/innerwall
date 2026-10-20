@@ -34,7 +34,7 @@ info:
     `precondition-failed` problem carries `current_version`; a
     `match-count-mismatch` problem carries `expected` and `matched`; an
     `agent-offline` problem carries `last_seen_at`, null when the agent was
-    never seen.
+    never seen; a `workload-retired` problem carries `retired_at`.
 
     ## Versions and conditional writes
 
@@ -79,6 +79,21 @@ info:
     workload as `sync.last_snapshot_sent_at` advancing. A workload whose
     agent is offline, as the control plane last recorded it, is refused
     with the instant it was last seen.
+
+    ## Retirement
+
+    `POST /workloads/{id}/retire` retires a workload, one way (ADR-0023).
+    Its credential is refused from then on at renewal and at every agent
+    call, its live sync stream is ended, its addresses leave every rendered
+    peer set, and an open silence of its agent is stored as an evidence
+    gap. The workload stays readable by its id, with `lifecycle` `retired`
+    and `retired_at` set, and its flows and gaps stay readable, but it is
+    outside the fleet's attention ordering: `GET /workloads` lists the
+    active fleet unless asked for `lifecycle=retired`, and
+    `GET /workloads/counts` counts it in `retired` alone. Its labels, mode,
+    and stream are frozen: a write naming it is `409 workload-retired` with
+    the instant, and no selector resolves to it. There is no un-retire; the
+    host returns by enrolling again, as a new workload.
 
     ## Deliberately absent
 
@@ -383,7 +398,9 @@ paths:
         synced), most recently seen first within a rank. A workload whose
         `health.owned_table.state` is `absent` ranks with the degraded ones
         whatever its `sync.state`, so every such workload precedes the first
-        row that is neither degraded nor absent.
+        row that is neither degraded nor absent. Retired workloads are outside
+        that ordering and outside the default list; `lifecycle=retired` lists
+        them instead, most recently retired first.
       parameters:
         - $ref: "#/components/parameters/label"
         - name: mode
@@ -404,6 +421,15 @@ paths:
             workloads in it.
           schema:
             $ref: "#/components/schemas/SyncState"
+        - name: lifecycle
+          in: query
+          description: |
+            Which workloads to list: the active fleet (the default), or the
+            retired workloads. Never both: a retired workload is outside the
+            attention ordering the active fleet is listed in. A cursor
+            continues the list it was issued for.
+          schema:
+            $ref: "#/components/schemas/Lifecycle"
         - $ref: "#/components/parameters/cursor"
         - name: limit
           in: query
@@ -436,13 +462,15 @@ paths:
     get:
       operationId: countWorkloads
       tags: [workloads]
-      summary: How many workloads the fleet holds, in total, in each sync state, and with enforcement removed.
+      summary: How many workloads the active fleet holds, in total, in each sync state, and with enforcement removed, and how many are retired.
       description: |
         Counted in one statement over the fleet as it stands, so the totals
         agree with each other; no client pages through the fleet to count
         it. A workload whose `health.owned_table.state` is `absent` counts
         in `removed` and in no sync state. Every sync state is present,
-        zero included, and `total` is their sum plus `removed`.
+        zero included, and `total` is their sum plus `removed`. A retired
+        workload counts in `retired` alone: in no sync state, not in
+        `removed`, and not in `total`.
       responses:
         "200":
           description: The fleet's counts.
@@ -594,6 +622,52 @@ paths:
                 title: Agent offline
                 status: 409
                 last_seen_at: "2026-09-24T18:02:11Z"
+  /workloads/{id}/retire:
+    parameters:
+      - $ref: "#/components/parameters/workloadID"
+    post:
+      operationId: retireWorkload
+      tags: [workloads]
+      summary: Retire a workload, one way.
+      description: |
+        In one transaction the workload is stamped retired, its agent's open
+        silence (no flow report for longer than two flow windows, with no
+        heartbeat showing one agent process running through it) is stored as
+        an `agent_silent` evidence gap ending at the retirement instant, and
+        the policy is rendered: the workload's addresses leave every peer
+        set, and only workloads whose rendered output changed advance a
+        version. Its credential is refused from then on at renewal and at
+        every agent call, and its live sync stream is ended, with nothing
+        said to the agent about why. The workload stays readable by its id,
+        and its flows and gaps stay readable. There is no un-retire: the
+        host returns by enrolling again, which yields a new workload with no
+        history. Retiring does not revoke the provisioning token that
+        enrolled it. The same domain function serves
+        `innerwall workload retire`.
+      responses:
+        "200":
+          description: The workload is retired.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetirementAck"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/CrossOrigin"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The workload is already retired (`workload-retired`); `retired_at` is when.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              example:
+                type: "urn:innerwall:problem:workload-retired"
+                title: Workload retired
+                status: 409
+                retired_at: "2026-10-20T18:02:11Z"
   /rulesets:
     get:
       operationId: listRulesets
@@ -1619,6 +1693,7 @@ components:
             - "urn:innerwall:problem:in-use"
             - "urn:innerwall:problem:already-revoked"
             - "urn:innerwall:problem:agent-offline"
+            - "urn:innerwall:problem:workload-retired"
             - "urn:innerwall:problem:not-found"
             - "urn:innerwall:problem:method-not-allowed"
             - "urn:innerwall:problem:internal"
@@ -1646,6 +1721,10 @@ components:
           type: [string, "null"]
           format: date-time
           description: On an `agent-offline` problem, always present; when the agent was last heard from, null when it never was.
+        retired_at:
+          type: string
+          format: date-time
+          description: On a `workload-retired` problem, when the workload was retired.
     Finding:
       description: One admission failure of a refused write.
       type: object
@@ -1721,13 +1800,18 @@ components:
         items:
           type: string
     WorkloadCounts:
-      description: The fleet's size, in total, by sync state, and with enforcement removed.
+      description: The active fleet's size, in total, by sync state, and with enforcement removed, and the retired workloads beside it.
       type: object
-      required: [total, by_sync_state, removed]
+      required: [total, by_sync_state, removed, retired]
       properties:
         total:
           type: integer
           minimum: 0
+          description: How many active workloads the fleet holds; retired workloads are not counted.
+        retired:
+          type: integer
+          minimum: 0
+          description: How many workloads are retired. A retired workload is outside the attention ordering and is counted here alone, in no other count.
         removed:
           type: integer
           minimum: 0
@@ -1929,6 +2013,38 @@ components:
         expected_match_count:
           type: integer
           minimum: 0
+    RetirementAck:
+      type: object
+      required: [workload_id, retired_at, versions_advanced, silence_closed]
+      description: An acknowledgment of a committed retirement.
+      properties:
+        workload_id:
+          $ref: "#/components/schemas/WorkloadID"
+        retired_at:
+          type: string
+          format: date-time
+          description: The retirement instant, as stored and as every later refusal names it.
+        versions_advanced:
+          type: integer
+          minimum: 0
+          description: How many workloads' rendered policy changed, and so advanced a version, when the retired workload's addresses left their peer sets.
+        silence_closed:
+          type: [object, "null"]
+          description: The agent's open silence the retirement stored as an `agent_silent` evidence gap; null when none was open.
+          required: [from, to]
+          properties:
+            from:
+              type: string
+              format: date-time
+              description: The last flow report's receipt.
+            to:
+              type: string
+              format: date-time
+              description: The retirement instant.
+    Lifecycle:
+      type: string
+      enum: [active, retired]
+      description: Where a workload stands in its life. Retired is a state of its own, distinct from every sync state; offline is something to fix, retired something the operator decided.
     ResendSnapshotAck:
       type: object
       required: [last_snapshot_sent_at]
@@ -2296,7 +2412,7 @@ components:
     Workload:
       description: A workload as the fleet list and the detail read share it.
       type: object
-      required: [id, hostname, labels, mode, enrolled_at, addresses, os, agent, listening_services, sync, health]
+      required: [id, hostname, labels, mode, enrolled_at, addresses, os, agent, listening_services, sync, health, lifecycle, retired_at]
       properties:
         id:
           $ref: "#/components/schemas/WorkloadID"
@@ -2449,6 +2565,12 @@ components:
                   type: [string, "null"]
                   format: date-time
                   description: When the control plane first received a heartbeat saying the table was absent; null unless `state` is absent. The table may have gone up to one heartbeat interval earlier; the evidence gap carries the agent's own bound.
+        lifecycle:
+          $ref: "#/components/schemas/Lifecycle"
+        retired_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the workload was retired; null while it is active.
     RenderedPolicy:
       description: A workload's persisted rendered policy as configuration.
       type: object

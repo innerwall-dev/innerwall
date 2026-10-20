@@ -21,7 +21,6 @@ The milestones M1 to M5 shipped in v0.1.0; every release since, and what it carr
 Each of these is a decision or a named gap in the record; none is implied to exist.
 
 **Security and identity**
-- A deny-list of workload identities, for locking out an enrolled workload before its credential lapses (ADR-0004, ADR-0016 as amended).
 - Duplicate-identity (cloned image) detection on connect, with forced re-enrollment (ADR-0004 as amended).
 - A server-side evidence guard on mode changes, refusing an unacknowledged promotion at the domain layer; today the gate lives in the console (ADR-0001 as amended).
 - The signing tripwire: an authenticity envelope for rendered policy before it transits anything but the mutually authenticated sync stream (ADR-0012, ADR-0018).

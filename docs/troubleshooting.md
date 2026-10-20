@@ -158,6 +158,14 @@ Connections opened after that carry byte counts; ones already open stay at zero.
 
 **Remedy.** Restart the daemon so that it adopts the credential on disk, and do not run `renew` against a running daemon ([credential lifecycle](guides/credential-lifecycle.md#rotating-a-credential-by-hand)).
 
+### The agent logs "workload credential refused" on every attempt
+
+**Symptom.** The daemon's journal repeats `workload credential refused` for its sync stream, its flow reports, and its renewals, and keeps retrying with backoff. The host keeps enforcing the policy it last applied.
+
+**Cause.** The workload was retired (`innerwall workload retire`, ADR-0023). A retired identity is refused at every door, and the refusal deliberately names no reason to the agent. The control plane's log names it: `refused a retired workload's credential` with the workload and its `retired_at`, and the workload reads as retired in `innerwall workload status`.
+
+**Remedy.** Retirement is one way. If the host should come back, enroll it again with a provisioning token, which makes it a new workload ([credential lifecycle](guides/credential-lifecycle.md#retiring-a-workload)); if it should not, stop and remove the agent, since the host keeps enforcing its last policy until you do.
+
 ### An evidence gap: "the agent was not reporting"
 
 **Symptom.** A workload shows an evidence gap reading *the agent was not reporting between t1 and t2*, and a simulation review whose range includes it is not safe to enforce.

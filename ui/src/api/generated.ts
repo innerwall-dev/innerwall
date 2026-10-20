@@ -497,7 +497,9 @@ export interface paths {
          *     synced), most recently seen first within a rank. A workload whose
          *     `health.owned_table.state` is `absent` ranks with the degraded ones
          *     whatever its `sync.state`, so every such workload precedes the first
-         *     row that is neither degraded nor absent.
+         *     row that is neither degraded nor absent. Retired workloads are outside
+         *     that ordering and outside the default list; `lifecycle=retired` lists
+         *     them instead, most recently retired first.
          */
         get: operations["listWorkloads"];
         put?: never;
@@ -609,6 +611,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/workloads/{id}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The workload's id. */
+                id: components["parameters"]["workloadID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retire a workload, one way.
+         * @description In one transaction the workload is stamped retired, its agent's open
+         *     silence (no flow report for longer than two flow windows, with no
+         *     heartbeat showing one agent process running through it) is stored as
+         *     an `agent_silent` evidence gap ending at the retirement instant, and
+         *     the policy is rendered: the workload's addresses leave every peer
+         *     set, and only workloads whose rendered output changed advance a
+         *     version. Its credential is refused from then on at renewal and at
+         *     every agent call, and its live sync stream is ended, with nothing
+         *     said to the agent about why. The workload stays readable by its id,
+         *     and its flows and gaps stay readable. There is no un-retire: the
+         *     host returns by enrolling again, which yields a new workload with no
+         *     history. Retiring does not revoke the provisioning token that
+         *     enrolled it. The same domain function serves
+         *     `innerwall workload retire`.
+         */
+        post: operations["retireWorkload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/workloads/counts": {
         parameters: {
             query?: never;
@@ -617,12 +655,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * How many workloads the fleet holds, in total, in each sync state, and with enforcement removed.
+         * How many workloads the active fleet holds, in total, in each sync state, and with enforcement removed, and how many are retired.
          * @description Counted in one statement over the fleet as it stands, so the totals
          *     agree with each other; no client pages through the fleet to count
          *     it. A workload whose `health.owned_table.state` is `absent` counts
          *     in `removed` and in no sync state. Every sync state is present,
-         *     zero included, and `total` is their sum plus `removed`.
+         *     zero included, and `total` is their sum plus `removed`. A retired
+         *     workload counts in `retired` alone: in no sync state, not in
+         *     `removed`, and not in `total`.
          */
         get: operations["countWorkloads"];
         put?: never;
@@ -757,6 +797,11 @@ export interface components {
             labels: components["schemas"]["LabelMap"];
             version: components["schemas"]["Version"];
         };
+        /**
+         * @description Where a workload stands in its life. Retired is a state of its own, distinct from every sync state; offline is something to fix, retired something the operator decided.
+         * @enum {string}
+         */
+        Lifecycle: "active" | "retired";
         /** @description The operator as the console shows it, the site label configured on the control plane, and the build of the control plane answering. */
         Me: {
             display_name: string | null;
@@ -844,13 +889,18 @@ export interface components {
             last_seen_at?: string | null;
             /** @description On a `match-count-mismatch` problem, what the selection resolved to. */
             matched?: number;
+            /**
+             * Format: date-time
+             * @description On a `workload-retired` problem, when the workload was retired.
+             */
+            retired_at?: string;
             status: number;
             title: string;
             /**
              * @description The stable identifier of the condition.
              * @enum {string}
              */
-            type: "urn:innerwall:problem:unauthenticated" | "urn:innerwall:problem:invalid-credentials" | "urn:innerwall:problem:no-password" | "urn:innerwall:problem:cross-origin" | "urn:innerwall:problem:too-many-attempts" | "urn:innerwall:problem:invalid-request" | "urn:innerwall:problem:invalid-parameter" | "urn:innerwall:problem:validation" | "urn:innerwall:problem:precondition-required" | "urn:innerwall:problem:precondition-failed" | "urn:innerwall:problem:match-count-mismatch" | "urn:innerwall:problem:duplicate-name" | "urn:innerwall:problem:in-use" | "urn:innerwall:problem:already-revoked" | "urn:innerwall:problem:agent-offline" | "urn:innerwall:problem:not-found" | "urn:innerwall:problem:method-not-allowed" | "urn:innerwall:problem:internal";
+            type: "urn:innerwall:problem:unauthenticated" | "urn:innerwall:problem:invalid-credentials" | "urn:innerwall:problem:no-password" | "urn:innerwall:problem:cross-origin" | "urn:innerwall:problem:too-many-attempts" | "urn:innerwall:problem:invalid-request" | "urn:innerwall:problem:invalid-parameter" | "urn:innerwall:problem:validation" | "urn:innerwall:problem:precondition-required" | "urn:innerwall:problem:precondition-failed" | "urn:innerwall:problem:match-count-mismatch" | "urn:innerwall:problem:duplicate-name" | "urn:innerwall:problem:in-use" | "urn:innerwall:problem:already-revoked" | "urn:innerwall:problem:agent-offline" | "urn:innerwall:problem:workload-retired" | "urn:innerwall:problem:not-found" | "urn:innerwall:problem:method-not-allowed" | "urn:innerwall:problem:internal";
         };
         /**
          * @description A transport protocol.
@@ -925,6 +975,30 @@ export interface components {
              * @description The workload's snapshot instant as it stood when the directive was fired; null when none has been recorded.
              */
             last_snapshot_sent_at: string | null;
+        };
+        /** @description An acknowledgment of a committed retirement. */
+        RetirementAck: {
+            /**
+             * Format: date-time
+             * @description The retirement instant, as stored and as every later refusal names it.
+             */
+            retired_at: string;
+            /** @description The agent's open silence the retirement stored as an `agent_silent` evidence gap; null when none was open. */
+            silence_closed: {
+                /**
+                 * Format: date-time
+                 * @description The last flow report's receipt.
+                 */
+                from: string;
+                /**
+                 * Format: date-time
+                 * @description The retirement instant.
+                 */
+                to: string;
+            } | null;
+            /** @description How many workloads' rendered policy changed, and so advanced a version, when the retired workload's addresses left their peer sets. */
+            versions_advanced: number;
+            workload_id: components["schemas"]["WorkloadID"];
         };
         /** @description A grouped, bounded rollup of stored windows over a range. */
         Rollup: {
@@ -1119,6 +1193,7 @@ export interface components {
             hostname: string;
             id: components["schemas"]["WorkloadID"];
             labels: components["schemas"]["LabelMap"];
+            lifecycle: components["schemas"]["Lifecycle"];
             listening_services: {
                 port: number;
                 process_name: string;
@@ -1133,6 +1208,11 @@ export interface components {
                 name?: string;
                 version?: string;
             } | null;
+            /**
+             * Format: date-time
+             * @description When the workload was retired; null while it is active.
+             */
+            retired_at: string | null;
             /** @description Convergence with the rendered policy; `latest_version` ahead of `applied_version` is drift in flight. */
             sync: {
                 applied_version: number;
@@ -1158,7 +1238,7 @@ export interface components {
                 state: components["schemas"]["SyncState"];
             };
         };
-        /** @description The fleet's size, in total, by sync state, and with enforcement removed. */
+        /** @description The active fleet's size, in total, by sync state, and with enforcement removed, and the retired workloads beside it. */
         WorkloadCounts: {
             /** @description How many workloads are in each sync state, not counting those in `removed`; every state is present. */
             by_sync_state: {
@@ -1169,6 +1249,9 @@ export interface components {
             };
             /** @description How many workloads have their owned firewall table recorded absent (`health.owned_table.state` is `absent`). Removed is not a sync state; the stored sync state still records the version the agent acknowledged, but the host enforces and observes none of it. A removed workload is counted here and in no `by_sync_state` bucket. */
             removed: number;
+            /** @description How many workloads are retired. A retired workload is outside the attention ordering and is counted here alone, in no other count. */
+            retired: number;
+            /** @description How many active workloads the fleet holds; retired workloads are not counted. */
             total: number;
         };
         /**
@@ -2429,6 +2512,13 @@ export interface operations {
                 cursor?: components["parameters"]["cursor"];
                 /** @description A `key=value` requirement; repeat to AND keys, repeat a key to OR its values. Restricts to the workloads the selector currently matches. A key or value outside the label grammar (see LabelMap) can match no label and is refused as an invalid parameter. */
                 label?: components["parameters"]["label"];
+                /**
+                 * @description Which workloads to list: the active fleet (the default), or the
+                 *     retired workloads. Never both: a retired workload is outside the
+                 *     attention ordering the active fleet is listed in. A cursor
+                 *     continues the list it was issued for.
+                 */
+                lifecycle?: components["schemas"]["Lifecycle"];
                 /** @description Page size; the read model's default and maximum apply. */
                 limit?: number;
                 /** @description Restrict to workloads in this enforcement mode. */
@@ -2619,6 +2709,49 @@ export interface operations {
                      *       "title": "Agent offline",
                      *       "status": 409,
                      *       "last_seen_at": "2026-09-24T18:02:11Z"
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    retireWorkload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The workload's id. */
+                id: components["parameters"]["workloadID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The workload is retired. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetirementAck"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["CrossOrigin"];
+            404: components["responses"]["NotFound"];
+            /** @description The workload is already retired (`workload-retired`); `retired_at` is when. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "urn:innerwall:problem:workload-retired",
+                     *       "title": "Workload retired",
+                     *       "status": 409,
+                     *       "retired_at": "2026-10-20T18:02:11Z"
                      *     }
                      */
                     "application/problem+json": components["schemas"]["Problem"];

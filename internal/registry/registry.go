@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/netip"
 	"sort"
 	"time"
@@ -15,6 +16,24 @@ import (
 
 // ErrWorkloadUnknown is returned when an id is not registered.
 var ErrWorkloadUnknown = errors.New("registry: workload is not registered")
+
+// ErrWorkloadRetired is returned when an id names a workload the operator
+// has retired (ADR-0023). The error carrying it is a *RetiredError naming
+// the instant. It is for the operator and the logs: an agent presenting a
+// retired identity is told nothing but that its credential is refused.
+var ErrWorkloadRetired = errors.New("registry: workload is retired")
+
+// RetiredError is a refusal naming the workload and when it was retired.
+type RetiredError struct {
+	ID        identity.WorkloadID
+	RetiredAt time.Time
+}
+
+func (e *RetiredError) Error() string {
+	return fmt.Sprintf("registry: workload %s was retired at %s", e.ID, e.RetiredAt.UTC().Format(time.RFC3339))
+}
+
+func (e *RetiredError) Unwrap() error { return ErrWorkloadRetired }
 
 // Label is one key/value pair on a workload.
 type Label struct {
@@ -91,6 +110,25 @@ type Workload struct {
 	// on a connection of their own (ADR-0015), so this can move while the
 	// sync stream is down. Written by flow ingest alone.
 	LastFlowReportAt *time.Time
+	// RetiredAt is when the operator retired the workload; nil while it
+	// is active. Retirement is one way: the row is kept so history keeps
+	// naming the identity, and nothing that acts on the present (a
+	// render, a selector, ingest's peer resolution) sees it (ADR-0023).
+	RetiredAt *time.Time
+}
+
+// Retired says the operator has retired the workload.
+func (w *Workload) Retired() bool { return w.RetiredAt != nil }
+
+// Active returns the workloads that have not been retired, in order.
+func Active(workloads []Workload) []Workload {
+	out := make([]Workload, 0, len(workloads))
+	for i := range workloads {
+		if !workloads[i].Retired() {
+			out = append(out, workloads[i])
+		}
+	}
+	return out
 }
 
 // Heartbeat is what one heartbeat reports.
@@ -186,7 +224,13 @@ func (w *Workload) LabelMap() map[string]string {
 
 // Store is the persistence the registry needs, implemented with
 // hand-written SQL in internal/store (ADR-0006). Methods that take an id
-// return ErrWorkloadUnknown when it is not registered.
+// return ErrWorkloadUnknown when it is not registered. The writes a live
+// sync stream makes from what its agent sends (RecordAgent, RecordFacts,
+// RecordListeningServices, RecordHeartbeat, RecordApplied, and
+// RecordApplyFailed) are conditioned on the workload not being retired and
+// return a *RetiredError for one that is, so a stream of a retired
+// workload ends at its next such write whatever else reached it
+// (ADR-0023).
 type Store interface {
 	ListWorkloads(ctx context.Context) ([]Workload, error)
 	LookupWorkload(ctx context.Context, id identity.WorkloadID) (*Workload, error)

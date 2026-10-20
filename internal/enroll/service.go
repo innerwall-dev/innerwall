@@ -13,6 +13,7 @@ import (
 	"github.com/innerwall-dev/innerwall/internal/ca"
 	"github.com/innerwall-dev/innerwall/internal/identity"
 	"github.com/innerwall-dev/innerwall/internal/policy"
+	"github.com/innerwall-dev/innerwall/internal/registry"
 )
 
 // DefaultLeafTTL is the lifetime of an issued workload credential when the
@@ -59,6 +60,9 @@ type Workload struct {
 	// LateRenewal is the latest renewal made with an already-expired
 	// credential, within the grace; nil when there has been none.
 	LateRenewal *LateRenewal
+	// RetiredAt is when the operator retired the workload; nil while it
+	// is active. A retired identity renews nothing (ADR-0023).
+	RetiredAt *time.Time
 }
 
 // LateRenewal records a renewal made with a credential that had already
@@ -90,7 +94,8 @@ type Store interface {
 	// RecordRenewal stores the serial and expiry of a renewed credential,
 	// and, when late is non-nil, records it as the workload's latest late
 	// renewal in the same write. It returns ErrWorkloadUnknown when the id
-	// is not registered.
+	// is not registered and a *registry.RetiredError when the workload was
+	// retired, however recently: the write is conditioned on it.
 	RecordRenewal(ctx context.Context, id identity.WorkloadID, serial string, expiresAt, now time.Time, late *LateRenewal) error
 }
 
@@ -267,14 +272,21 @@ func (s *Service) Enroll(ctx context.Context, tokenPlaintext string, csrPEM []by
 // to presentedUntil. The same identity is bound; the CSR contributes only
 // its (possibly new) public key. A presented credential that has expired
 // renews within the grace and is recorded on the workload as a late
-// renewal; beyond it, or for a workload no longer registered, nothing is
-// issued.
+// renewal; beyond it, for a workload no longer registered, or for one the
+// operator retired (a *registry.RetiredError), nothing is issued. The
+// retirement is checked before anything is signed, and again by the
+// conditioned write, which keeps a credential signed meanwhile from being
+// recorded or returned.
 func (s *Service) Renew(ctx context.Context, id identity.WorkloadID, presentedFrom, presentedUntil time.Time, csrPEM []byte) (*Credential, error) {
 	if err := s.AdmitCredential(presentedFrom, presentedUntil, true); err != nil {
 		return nil, err
 	}
-	if _, err := s.Store.GetWorkload(ctx, id); err != nil {
+	w, err := s.Store.GetWorkload(ctx, id)
+	if err != nil {
 		return nil, err
+	}
+	if w.RetiredAt != nil {
+		return nil, &registry.RetiredError{ID: id, RetiredAt: *w.RetiredAt}
 	}
 	cred, err := s.issue(ctx, id, csrPEM)
 	if err != nil {
@@ -290,6 +302,25 @@ func (s *Service) Renew(ctx context.Context, id identity.WorkloadID, presentedFr
 		return nil, err
 	}
 	return cred, nil
+}
+
+// CheckNotRetired refuses an identity whose workload the operator has
+// retired, with a *registry.RetiredError naming the instant. It is the
+// rule every agent-service call is admitted by beside the credential's
+// validity (ADR-0023); a workload the registry does not hold passes here
+// and is refused by whatever needs its record, as before.
+func (s *Service) CheckNotRetired(ctx context.Context, id identity.WorkloadID) error {
+	w, err := s.Store.GetWorkload(ctx, id)
+	if errors.Is(err, ErrWorkloadUnknown) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if w.RetiredAt != nil {
+		return &registry.RetiredError{ID: id, RetiredAt: *w.RetiredAt}
+	}
+	return nil
 }
 
 func (s *Service) issue(ctx context.Context, id identity.WorkloadID, csrPEM []byte) (*Credential, error) {

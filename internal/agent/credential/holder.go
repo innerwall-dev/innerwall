@@ -132,8 +132,10 @@ func (h *Holder) TLSConfig() (*tls.Config, error) {
 	return cfg, nil
 }
 
-// RenewFraction is the point in a credential's lifetime at which the
-// daemon renews: when less than one third remains.
+// RenewFraction is the point in a credential's lifetime by which the
+// daemon begins renewal: the two-thirds mark. Jitter moves the first
+// attempt earlier, never later, so at least a third of the lifetime
+// always remains for retries.
 const RenewFraction = 2.0 / 3.0
 
 // RenewJitterFraction is the width of the jitter window before the renewal
@@ -167,12 +169,13 @@ const ExpiredRetryCap = 5 * time.Minute
 
 // Renewer renews the holder's credential on a timer.
 //
-// Expiry is never fatal. A credential renews in the last third of its
-// lifetime; if every attempt fails until it expires (the control plane
-// was unreachable through the whole window), the renewer keeps retrying
-// with backoff, because the control plane accepts an expired credential
-// for renewal, and nothing else, within its renewal grace (ADR-0016 as
-// amended). Enforcement meanwhile continues from the persisted policy, and
+// Expiry is never fatal. Renewal begins by the two-thirds mark of a
+// credential's lifetime, leaving at least the last third for retries; if
+// every attempt fails until it expires (the control plane was unreachable
+// through the whole window), the renewer keeps retrying with backoff,
+// because the control plane accepts an expired credential for renewal,
+// and nothing else, within its renewal grace (ADR-0016 as amended).
+// Enforcement meanwhile continues from the persisted policy, and
 // everything else resumes on the fresh credential. Beyond the grace the
 // refusals say re-enrollment is required; the renewer keeps trying until
 // the operator intervenes, and the reason rides every heartbeat that

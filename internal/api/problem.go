@@ -12,8 +12,9 @@ const ContentTypeProblem = "application/problem+json"
 // branches on; the other fields are for people, except the extensions,
 // which carry what a client needs to act: the findings of a refused
 // write, the current version of a resource a stale write named, the two
-// counts of a refused mode change, and the last-seen instant of an agent
-// a directed reconnect found offline.
+// counts of a refused mode change, the last-seen instant of an agent a
+// directed reconnect found offline, and the instant a workload a write
+// named was retired.
 type Problem struct {
 	Type   string `json:"type"`
 	Title  string `json:"title"`
@@ -32,6 +33,9 @@ type Problem struct {
 	// agent-offline problem, where it is always present and null when the
 	// agent never was.
 	LastSeenAt *nullableInstant `json:"last_seen_at,omitempty"`
+	// RetiredAt is when the workload was retired, on a workload-retired
+	// problem.
+	RetiredAt string `json:"retired_at,omitempty"`
 }
 
 // nullableInstant is an extension member that is present on its problem
@@ -71,7 +75,9 @@ const problemTypeBase = "urn:innerwall:problem:"
 // operator expected. ProblemDuplicateName, ProblemInUse, and
 // ProblemAlreadyRevoked are the conflicts an authored or token write can
 // meet. ProblemAgentOffline is a directed reconnect refused because the
-// workload's agent is offline as last recorded.
+// workload's agent is offline as last recorded. ProblemWorkloadRetired is
+// a write naming a workload the operator retired, whose attributes are
+// frozen, or a second retirement of one (ADR-0023).
 const (
 	ProblemUnauthenticated      = problemTypeBase + "unauthenticated"
 	ProblemInvalidCredentials   = problemTypeBase + "invalid-credentials"
@@ -88,6 +94,7 @@ const (
 	ProblemInUse                = problemTypeBase + "in-use"
 	ProblemAlreadyRevoked       = problemTypeBase + "already-revoked"
 	ProblemAgentOffline         = problemTypeBase + "agent-offline"
+	ProblemWorkloadRetired      = problemTypeBase + "workload-retired"
 	ProblemNotFound             = problemTypeBase + "not-found"
 	ProblemMethodNotAllowed     = problemTypeBase + "method-not-allowed"
 	ProblemInternal             = problemTypeBase + "internal"

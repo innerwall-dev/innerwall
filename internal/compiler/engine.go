@@ -39,6 +39,29 @@ type Announcement struct {
 	Version uint64
 }
 
+// DirectiveKind is what a directive asks of the stream it names.
+type DirectiveKind int
+
+// Directive kinds.
+const (
+	// DirectiveReconnect asks the replica holding the stream to send its
+	// agent a Reconnect directive (ADR-0018 as amended).
+	DirectiveReconnect DirectiveKind = iota + 1
+	// DirectiveEnd asks the replica holding the stream of a retired
+	// workload to end it with the refusal every door gives a retired
+	// identity (ADR-0023).
+	DirectiveEnd
+)
+
+// Directive is a request addressed to one workload's live stream, carried
+// over the same notification channel as announcements to every replica;
+// the one holding that stream acts on it and the others drop it. Delivery
+// is best-effort by design: it is a request, not state.
+type Directive struct {
+	ID   identity.WorkloadID
+	Kind DirectiveKind
+}
+
 // Change is one workload whose version advanced in a render.
 type Change struct {
 	ID      identity.WorkloadID
@@ -48,7 +71,7 @@ type Change struct {
 
 // Report summarizes one render.
 type Report struct {
-	// Workloads is how many workloads were rendered.
+	// Workloads is how many workloads were rendered: every active one.
 	Workloads int
 	// Changed lists the workloads whose rendered output changed, and
 	// therefore whose version advanced and whose stream is pushed.
@@ -57,7 +80,8 @@ type Report struct {
 
 // Engine renders on demand. Callers invoke Render after every change that
 // can affect a rendered policy: authored mutations, enrollment, label and
-// mode changes, and inventory reports that changed a workload's addresses.
+// mode changes, inventory reports that changed a workload's addresses, and
+// a workload's retirement.
 type Engine struct {
 	Store Store
 	Log   *slog.Logger

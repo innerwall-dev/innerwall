@@ -3,16 +3,20 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/innerwall-dev/innerwall/internal/compiler"
 	"github.com/innerwall-dev/innerwall/internal/fleet"
+	"github.com/innerwall-dev/innerwall/internal/flowstore"
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 	"github.com/innerwall-dev/innerwall/internal/identity"
 	"github.com/innerwall-dev/innerwall/internal/policy"
+	"github.com/innerwall-dev/innerwall/internal/registry"
 	"github.com/innerwall-dev/innerwall/internal/store/db"
 )
 
@@ -114,4 +118,73 @@ func (s *Store) LoadRenderState(ctx context.Context) (*compiler.Inputs, map[iden
 		return nil, nil, err
 	}
 	return in, previous, nil
+}
+
+// RetireTx implements fleet.Store: one transaction holding the render
+// lock, in which a retirement locks the workload's row, stamps it, writes
+// the silence it closes through the flow store bound to the same
+// transaction, renders, and publishes the directive that ends the
+// workload's stream, delivered on commit (ADR-0023). The render lock is
+// taken before the row lock, and nothing takes them in the other order.
+func (s *Store) RetireTx(ctx context.Context, fn func(ctx context.Context, tx fleet.RetireTx) error) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("store: beginning transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.q.WithTx(tx)
+	if err := q.AcquireRenderLock(ctx, renderLockKey); err != nil {
+		return fmt.Errorf("store: acquiring render lock: %w", err)
+	}
+	if err := fn(ctx, &retireTx{renderTx: renderTx{q: q}, gaps: s.flows.Within(tx)}); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("store: committing transaction: %w", err)
+	}
+	return nil
+}
+
+type retireTx struct {
+	renderTx
+	gaps flowstore.GapWriter
+}
+
+// LockWorkload implements fleet.RetireTx.
+func (t *retireTx) LockWorkload(ctx context.Context, id identity.WorkloadID) (*fleet.RetireSubject, error) {
+	row, err := t.q.LockWorkload(ctx, id.UUID())
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, registry.ErrWorkloadUnknown
+	}
+	if err != nil {
+		return nil, fmt.Errorf("store: locking workload: %w", err)
+	}
+	subj := &fleet.RetireSubject{RetiredAt: row.RetiredAt, LastFlowReportAt: row.LastFlowReportAt}
+	if row.AgentStartedAt != nil && row.LastHeartbeatAt != nil {
+		subj.Process = &registry.AgentProcess{StartedAt: *row.AgentStartedAt, HeartbeatAt: *row.LastHeartbeatAt}
+	}
+	return subj, nil
+}
+
+// StampRetired implements fleet.RetireTx.
+func (t *retireTx) StampRetired(ctx context.Context, id identity.WorkloadID, at time.Time) error {
+	n, err := t.q.RetireWorkload(ctx, db.RetireWorkloadParams{ID: id.UUID(), RetiredAt: &at})
+	if err != nil {
+		return fmt.Errorf("store: retiring workload: %w", err)
+	}
+	if n == 0 {
+		// The row is locked and was read active in this transaction.
+		return fmt.Errorf("store: workload %s changed under its lock", id)
+	}
+	return nil
+}
+
+// WriteGaps implements fleet.RetireTx through the flow store.
+func (t *retireTx) WriteGaps(ctx context.Context, id identity.WorkloadID, gaps []flowstore.Gap) error {
+	return t.gaps.WriteGaps(ctx, id, gaps)
+}
+
+// DirectEnd implements fleet.RetireTx.
+func (t *retireTx) DirectEnd(ctx context.Context, id identity.WorkloadID) error {
+	return directEnd(ctx, t.q, id)
 }

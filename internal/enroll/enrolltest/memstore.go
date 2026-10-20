@@ -10,6 +10,7 @@ import (
 
 	"github.com/innerwall-dev/innerwall/internal/enroll"
 	"github.com/innerwall-dev/innerwall/internal/identity"
+	"github.com/innerwall-dev/innerwall/internal/registry"
 )
 
 // MemStore is an in-memory enroll.Store for exercising enrollment without a
@@ -105,6 +106,9 @@ func (m *MemStore) RecordRenewal(_ context.Context, id identity.WorkloadID, seri
 	if !ok {
 		return enroll.ErrWorkloadUnknown
 	}
+	if w.RetiredAt != nil {
+		return &registry.RetiredError{ID: id, RetiredAt: *w.RetiredAt}
+	}
 	w.CredentialSerial = serial
 	w.CredentialExpiresAt = expiresAt
 	w.LastRenewedAt = &now
@@ -113,6 +117,19 @@ func (m *MemStore) RecordRenewal(_ context.Context, id identity.WorkloadID, seri
 		w.LateRenewal = &cp
 	}
 	return nil
+}
+
+// Retire stamps the workload retired at at, as the registry's retirement
+// does; it reports false for an unknown id.
+func (m *MemStore) Retire(id identity.WorkloadID, at time.Time) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	w, ok := m.workloads[id]
+	if !ok {
+		return false
+	}
+	w.RetiredAt = &at
+	return true
 }
 
 // Token returns a copy of the stored token, or nil.

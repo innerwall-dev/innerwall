@@ -27,7 +27,7 @@ func (s *Store) CountWorkloadsByStatus(ctx context.Context) ([]readmodel.StatusC
 	}
 	out := make([]readmodel.StatusCount, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, readmodel.StatusCount{SyncState: innerwallv1.SyncState(r.SyncState), Removed: r.Removed, Workloads: r.Workloads})
+		out = append(out, readmodel.StatusCount{SyncState: innerwallv1.SyncState(r.SyncState), Removed: r.Removed, Retired: r.Retired, Workloads: r.Workloads})
 	}
 	return out, nil
 }
@@ -49,8 +49,12 @@ func (s *Store) ListWorkloadPage(ctx context.Context, q readmodel.WorkloadPageQu
 	if limit <= 0 {
 		limit = readmodel.DefaultWorkloadPageLimit
 	}
+	lifecycle := int32(1)
+	if q.Retired {
+		lifecycle = 2
+	}
 	rows, err := s.q.ListWorkloadPage(ctx, db.ListWorkloadPageParams{
-		WorkloadIds: ids, Mode: int32(q.Mode), SyncState: int32(q.SyncState),
+		WorkloadIds: ids, Mode: int32(q.Mode), SyncState: int32(q.SyncState), Lifecycle: lifecycle,
 		CursorRank: cursorRank, CursorSeen: cursorSeen, CursorID: cursorID,
 		RowLimit: int32(limit), //nolint:gosec // bounded by the caller
 	})
@@ -77,7 +81,7 @@ func (s *Store) ListWorkloadPage(ctx context.Context, q readmodel.WorkloadPageQu
 			LastAckedAt: r.LastAckedAt, LastApplyFailedAt: r.LastApplyFailedAt, SourceOverruns: r.SourceOverruns,
 			ClockSkewOffsetMs: r.ClockSkewOffsetMs, ClockSkewObservedAt: r.ClockSkewObservedAt, ClockSkewCurrent: r.ClockSkewCurrent,
 			OwnedTableState: r.OwnedTableState, OwnedTableAbsentSince: r.OwnedTableAbsentSince, LastFlowReportAt: r.LastFlowReportAt,
-			LateRenewalAt: r.LateRenewalAt, LateRenewalExpiredAt: r.LateRenewalExpiredAt,
+			LateRenewalAt: r.LateRenewalAt, LateRenewalExpiredAt: r.LateRenewalExpiredAt, RetiredAt: r.RetiredAt,
 		}
 		w, err := workloadFromRow(&base, children.labels[r.ID], children.addrs[r.ID])
 		if err != nil {
