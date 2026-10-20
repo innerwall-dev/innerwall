@@ -65,7 +65,7 @@ Open `https://localhost:8080/` and log in. The certificate is self-signed, so th
 
 `docker compose up -d` never builds: it runs the image `.env` names, pulled if it is not already present. Without `INNERWALL_IMAGE` in `.env`, every `docker compose` command stops with an error that names the line to add.
 
-**Fallback: build the image from the checkout.** `make dev` builds the control-plane image from the checked-out source, console embedded, and starts the stack in the foreground. It ignores `INNERWALL_IMAGE` and names its build `innerwall:dev`, never a release's image name. Use it for a tree with changes, or a platform the released image does not cover.
+**Fallback: build the image from the checkout.** `make dev` builds the control-plane image from the checked-out source, console embedded, and starts the stack in the foreground. It ignores `INNERWALL_IMAGE` and names its build `innerwall:dev`, never a release's image name. Use it for a tree with changes, or a platform the released image does not cover. The plain `docker compose` commands on this page (`exec`, `logs`) still read `.env`, so in a checkout with no release named there, add the line for the dev build first: `echo 'INNERWALL_IMAGE=innerwall:dev' >> .env`.
 
 ### With the release binaries
 
