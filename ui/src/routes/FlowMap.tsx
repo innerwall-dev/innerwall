@@ -529,7 +529,7 @@ function FreshMap() {
 				width={480}
 				actions={
 					<Button asChild className="self-start">
-						<Link to="/workloads">Open enrollment</Link>
+						<Link to="/workloads/tokens">Open provisioning tokens</Link>
 					</Button>
 				}
 			>

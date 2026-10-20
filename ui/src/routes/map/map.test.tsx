@@ -789,8 +789,8 @@ describe("flow map", () => {
 			await screen.findByRole("heading", { name: "No flows observed yet" }),
 		).toBeInTheDocument();
 		expect(
-			screen.getByRole("link", { name: "Open enrollment" }),
-		).toHaveAttribute("href", "/workloads");
+			screen.getByRole("link", { name: "Open provisioning tokens" }),
+		).toHaveAttribute("href", "/workloads/tokens");
 	});
 
 	it("renders a failed read with the surface's words and retries", async () => {
