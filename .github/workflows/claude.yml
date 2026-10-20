@@ -124,24 +124,30 @@ jobs:
             5. In either mode, also report a document the change leaves inconsistent with the record it belongs to, and a dangling reference the change introduces (an ADR number, file, or heading that does not exist).
             6. If a contradiction is present, check whether the pull request adds a superseding ADR that covers it.
 
-            Post exactly one comment on the pull request, and keep it one across runs: update your earlier comment rather than adding another.
-            - The comment's first line is the marker `<!-- innerwall-adr-review -->`, exactly, on every post and every update.
-            - Find your prior comment by that marker: `gh api --paginate repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- innerwall-adr-review -->"))) | .id'`.
-            - If that prints an id, update that comment with `gh api --method PATCH repos/${{ github.repository }}/issues/comments/<id> -f body=<comment>`, quoting the body for the shell (the first id, if it prints more than one). If it prints nothing, create the comment with `gh api --method POST repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments -f body=<comment>`, quoted the same way.
-            Structure it as:
+            Post exactly one comment on the pull request, and keep it one across runs: update your earlier comment rather than adding another. Posting is a single write at the very end, done by this recipe and no other way:
+            - The finished review is the only comment you ever write. Never post a placeholder, a probe, a test comment, a progress marker, or a partial body, and never check whether posting works by trying it; the recipe below does work.
+            - Find your prior comment with this one call: `gh api --paginate repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- innerwall-adr-review -->"))) | .id'`.
+            - Write the whole review body with the Write tool to `${{ github.workspace }}/.adr-review-body.md`. Its first line is the marker `<!-- innerwall-adr-review -->`, exactly; the review follows from the second line. This is the only file you write.
+            - Then make exactly one write call that reads the body from that file with `-F body=@<path>`. If the lookup printed an id (the first one, if it printed more than one), update it: `gh api --method PATCH repos/${{ github.repository }}/issues/comments/<id> -F body=@${{ github.workspace }}/.adr-review-body.md`. If it printed nothing, create it: `gh api --method POST repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments -F body=@${{ github.workspace }}/.adr-review-body.md`.
+            - Never pass the body inline, through stdin (`@-`), a heredoc, a pipe, or command substitution, and never with `-f`, which posts its value literally.
+            Run every command as one command in exactly the shape written here, with no shell pipes, redirects, `&&`, or `$(...)` (the `|` inside the quoted `--jq` filter is part of its argument): any other shape is refused and costs a turn. Read files with Read, Glob, and Grep, not shell commands.
+
+            Structure the review body as:
             - A one-line verdict, naming the mode used: "No ADR contradictions found" or "ADR review: N finding(s)".
             - For each finding: the ADR number and title, the file and line, what the change does, why it contradicts the ADR, and whether a superseding ADR is present. Quote the ADR text you are relying on.
             - If a superseding ADR is present, note whether it follows the format in docs/adr/README.md.
 
-            Stay within the ADRs: do not review style, naming, or test coverage. Do not modify files. This review is advisory; it informs the human reviewers and does not block the merge.
+            Stay within the ADRs: do not review style, naming, or test coverage. Do not modify any file in the repository; the review body file is the one file you write. This review is advisory; it informs the human reviewers and does not block the merge.
           # The action's own `model` input is deprecated in favor of `--model`.
           # The turn cap is a backstop against wandering the corpus, not a
-          # budget: even a full-corpus audit that reads one document per turn
-          # fits well inside it.
+          # budget. A full-corpus audit reads every ADR as well as the diff,
+          # so it is sized for that mode, not the diff-anchored one. Write is
+          # allowed only so the review body can go to a file before it is
+          # posted in one call.
           claude_args: |
             --model claude-sonnet-5
-            --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api:*),Read,Glob,Grep"
-            --max-turns 40
+            --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api:*),Read,Glob,Grep,Write"
+            --max-turns 80
       # continue-on-error lets the job decide what a failed review means.
       # On a branch's pull request the review had every credential it needs,
       # so a failure is a broken review: name it and fail the job. On a
