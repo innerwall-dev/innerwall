@@ -87,6 +87,15 @@ func (q query) syncState(name string) (innerwallv1.SyncState, error) {
 	return s, nil
 }
 
+func (q query) lifecycle(name string) (readmodel.Lifecycle, error) {
+	switch l := readmodel.Lifecycle(q.text(name)); l {
+	case "", readmodel.LifecycleActive, readmodel.LifecycleRetired:
+		return l, nil
+	default:
+		return "", &paramError{name, "one of active, retired"}
+	}
+}
+
 func (q query) workloadID(name string) (*identity.WorkloadID, error) {
 	s := q.text(name)
 	if s == "" {

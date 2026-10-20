@@ -19,7 +19,7 @@
 //	service        author reusable protocol/port sets
 //	address-group  author named CIDR sets
 //	ruleset        author rulesets from JSON documents
-//	workload       inspect workloads; set labels and enforcement mode
+//	workload       inspect workloads; set labels and enforcement mode; retire
 //	policy         force a render; show a workload's rendered policy
 //	flows          query stored flow records: a workload's windows, a rollup
 //	               over a label scope, a workload's totals since first seen
@@ -102,7 +102,7 @@ commands:
   service        create | update | delete | get | list services
   address-group  create | update | delete | get | list address groups
   ruleset        create | update | delete | get | list rulesets (JSON documents)
-  workload       list | counts | status | set-labels | set-mode | resend-snapshot
+  workload       list | counts | status | set-labels | set-mode | resend-snapshot | retire
   policy         render | show
   flows          list | rollup | totals | gaps
   dev            seed: load the recognizable review fleet (builds with -tags dev only)

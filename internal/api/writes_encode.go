@@ -362,6 +362,28 @@ type operatorTokensResponse struct {
 	Tokens []operatorTokenJSON `json:"tokens"`
 }
 
+// retirementResponse acknowledges a retirement.
+type retirementResponse struct {
+	WorkloadID       string        `json:"workload_id"`
+	RetiredAt        string        `json:"retired_at"`
+	VersionsAdvanced int           `json:"versions_advanced"`
+	SilenceClosed    *intervalJSON `json:"silence_closed"`
+}
+
+// intervalJSON is a closed interval of instants.
+type intervalJSON struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+func retirementJSON(r *fleet.Retirement) retirementResponse {
+	out := retirementResponse{WorkloadID: r.ID.String(), RetiredAt: timestamp(r.RetiredAt), VersionsAdvanced: len(r.Rendered.Changed)}
+	if g := r.Closed; g != nil {
+		out.SilenceClosed = &intervalJSON{From: timestamp(g.From), To: timestamp(g.To)}
+	}
+	return out
+}
+
 // resendSnapshotResponse acknowledges a directed reconnect with the
 // workload's snapshot instant as it stood when the directive was fired.
 type resendSnapshotResponse struct {

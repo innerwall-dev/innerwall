@@ -20,7 +20,7 @@ import (
 
 func runWorkload(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return usageError("usage: innerwall workload list|counts|status|set-labels|set-mode|resend-snapshot [flags]")
+		return usageError("usage: innerwall workload list|counts|status|set-labels|set-mode|resend-snapshot|retire [flags]")
 	}
 	switch args[0] {
 	case "list":
@@ -35,8 +35,10 @@ func runWorkload(ctx context.Context, args []string) error {
 		return runWorkloadSetMode(ctx, args[1:])
 	case "resend-snapshot":
 		return runWorkloadResendSnapshot(ctx, args[1:])
+	case "retire":
+		return runWorkloadRetire(ctx, args[1:])
 	default:
-		return usageError("unknown workload command %q (list|counts|status|set-labels|set-mode|resend-snapshot)", args[0])
+		return usageError("unknown workload command %q (list|counts|status|set-labels|set-mode|resend-snapshot|retire)", args[0])
 	}
 }
 
@@ -84,7 +86,11 @@ func runWorkloadList(ctx context.Context, args []string) error {
 			latest = fmt.Sprint(p.GetVersion())
 		}
 		sync := syncStateName(*wl)
-		if wl.OwnedTable == innerwallv1.OwnedTableState_OWNED_TABLE_STATE_ABSENT {
+		if wl.Retired() {
+			// Retired is a state of its own, not a sync state; the
+			// stored one is only the last the stream recorded (ADR-0023).
+			sync = "RETIRED " + wl.RetiredAt.UTC().Format(time.RFC3339)
+		} else if wl.OwnedTable == innerwallv1.OwnedTableState_OWNED_TABLE_STATE_ABSENT {
 			// The version stands acknowledged; the table it was installed
 			// in is gone (issue #64).
 			sync += ", ENFORCEMENT REMOVED"
@@ -94,10 +100,11 @@ func runWorkloadList(ctx context.Context, args []string) error {
 	return w.Flush()
 }
 
-// runWorkloadCounts prints the fleet's size in total, removed, and in
-// each sync state, through the read the operator surface's GET
-// /workloads/counts serves. A removed workload is counted in removed
-// alone, so the lines sum to the total.
+// runWorkloadCounts prints the active fleet's size in total, removed, and
+// in each sync state, and the retired workloads, through the read the
+// operator surface's GET /workloads/counts serves. A removed workload is
+// counted in removed alone, so the lines above the total sum to it; a
+// retired workload is outside it and counted in retired alone.
 func runWorkloadCounts(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall workload counts", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
@@ -125,6 +132,7 @@ func runWorkloadCounts(ctx context.Context, args []string) error {
 		_, _ = fmt.Fprintf(w, "%s\t%d\n", readmodel.SyncStateName(state), counts.BySync[state])
 	}
 	_, _ = fmt.Fprintf(w, "total\t%d\n", counts.Total)
+	_, _ = fmt.Fprintf(w, "retired\t%d\n", counts.Retired)
 	return w.Flush()
 }
 
@@ -165,6 +173,11 @@ func runWorkloadStatus(ctx context.Context, args []string) error {
 	fmt.Printf("hostname        %s\n", wl.Hostname)
 	fmt.Printf("labels          %s\n", labelString(wl.Labels))
 	fmt.Printf("mode            %s\n", policy.ModeName(wl.Mode))
+	if wl.Retired() {
+		fmt.Printf("lifecycle       RETIRED at %s: its credential is refused and it renders nothing; the record stays\n", wl.RetiredAt.UTC().Format(time.RFC3339))
+	} else {
+		fmt.Printf("lifecycle       active\n")
+	}
 	fmt.Printf("sync state      %s\n", syncStateName(*wl))
 	switch wl.OwnedTable {
 	case innerwallv1.OwnedTableState_OWNED_TABLE_STATE_ABSENT:
@@ -314,5 +327,40 @@ func runWorkloadResendSnapshot(ctx context.Context, args []string) error {
 	}
 	fmt.Printf("workload %s directed to reconnect; last snapshot sent %s\n", id, ago(res.LastSnapshotSentAt, time.Now()))
 	fmt.Println("delivery is not confirmed: the snapshot instant in `innerwall workload status` advances when the agent has reconnected")
+	return nil
+}
+
+// runWorkloadRetire retires one workload through the domain function the
+// operator surface's POST /workloads/{id}/retire calls (ADR-0023). This
+// process holds no streams: the directive it commits reaches the replica
+// holding the workload's stream, and the stream's next heartbeat bounds it
+// if the directive is lost.
+func runWorkloadRetire(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("innerwall workload retire", flag.ContinueOnError)
+	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
+	if err := cli.Parse(fs, args, 1); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return usageError("usage: innerwall workload retire <workload-id>")
+	}
+	id, err := identity.ParseWorkloadID(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	a, err := openAuthoring(ctx, *dbURL)
+	if err != nil {
+		return err
+	}
+	defer a.close()
+	res, err := a.fleet.Retire(ctx, id)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("workload %s retired at %s; %d workloads' policy versions advanced\n", id, res.RetiredAt.UTC().Format(time.RFC3339), len(res.Rendered.Changed))
+	if g := res.Closed; g != nil {
+		fmt.Printf("its agent's silence since %s is stored as an evidence gap\n", g.From.UTC().Format(time.RFC3339))
+	}
+	fmt.Println("retirement is one way: the credential is refused from now on, and the host returns only by enrolling again as a new workload")
 	return nil
 }

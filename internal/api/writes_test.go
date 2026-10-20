@@ -152,6 +152,7 @@ func TestWriteEndpointsRequireCredential(t *testing.T) {
 		{http.MethodGet, "/api/v1/address-groups"}, {http.MethodPost, "/api/v1/address-groups"}, {http.MethodGet, "/api/v1/address-groups/" + id}, {http.MethodPut, "/api/v1/address-groups/" + id}, {http.MethodDelete, "/api/v1/address-groups/" + id},
 		{http.MethodGet, "/api/v1/workloads/" + s.db.String() + "/labels"}, {http.MethodPut, "/api/v1/workloads/" + s.db.String() + "/labels"},
 		{http.MethodPost, "/api/v1/workloads/" + s.db.String() + "/resend-snapshot"},
+		{http.MethodPost, "/api/v1/workloads/" + s.db.String() + "/retire"},
 		{http.MethodPost, "/api/v1/mode-changes"}, {http.MethodPost, "/api/v1/selectors/preview"}, {http.MethodPost, "/api/v1/policies/render-dryrun"},
 		{http.MethodGet, "/api/v1/provisioning-tokens"}, {http.MethodPost, "/api/v1/provisioning-tokens"}, {http.MethodDelete, "/api/v1/provisioning-tokens/" + id},
 		{http.MethodGet, "/api/v1/operator-tokens"}, {http.MethodPost, "/api/v1/operator-tokens"}, {http.MethodDelete, "/api/v1/operator-tokens/" + id},

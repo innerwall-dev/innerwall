@@ -342,6 +342,8 @@ type workloadResponse struct {
 	ListeningServices []listeningServiceJSON `json:"listening_services"`
 	Sync              syncJSON               `json:"sync"`
 	Health            healthJSON             `json:"health"`
+	Lifecycle         string                 `json:"lifecycle"`
+	RetiredAt         *string                `json:"retired_at"`
 }
 
 func labelMap(labels []registry.Label) map[string]string {
@@ -371,6 +373,8 @@ func workloadJSON(w *readmodel.Workload) workloadResponse {
 			SourceOverruns:     w.Health.SourceOverruns,
 			OwnedTable:         ownedTableJSON{State: readmodel.OwnedTableStateName(w.Health.OwnedTable), AbsentSince: optionalTimestamp(w.Health.OwnedTableAbsentSince)},
 		},
+		Lifecycle: string(w.Lifecycle),
+		RetiredAt: optionalTimestamp(w.RetiredAt),
 	}
 	if l := w.Health.Credential.LastLateRenewal; l != nil {
 		out.Health.Credential.LastLateRenewal = &lateRenewalJSON{RenewedAt: timestamp(l.RenewedAt), ExpiredAt: timestamp(l.ExpiredAt)}
@@ -410,10 +414,11 @@ type workloadCountsResponse struct {
 	Total       int64            `json:"total"`
 	BySyncState map[string]int64 `json:"by_sync_state"`
 	Removed     int64            `json:"removed"`
+	Retired     int64            `json:"retired"`
 }
 
 func workloadCountsJSON(c *readmodel.WorkloadCounts) workloadCountsResponse {
-	out := workloadCountsResponse{Total: c.Total, BySyncState: make(map[string]int64, len(c.BySync)), Removed: c.Removed}
+	out := workloadCountsResponse{Total: c.Total, BySyncState: make(map[string]int64, len(c.BySync)), Removed: c.Removed, Retired: c.Retired}
 	for st, n := range c.BySync {
 		out.BySyncState[readmodel.SyncStateName(st)] = n
 	}

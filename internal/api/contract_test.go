@@ -10,6 +10,7 @@ import (
 
 	"github.com/innerwall-dev/innerwall/internal/api"
 	"github.com/innerwall-dev/innerwall/internal/flowstore"
+	"github.com/innerwall-dev/innerwall/internal/readmodel"
 )
 
 // contract is the hand-authored operator surface contract, as far as
@@ -18,6 +19,7 @@ type contract struct {
 	Paths      map[string]map[string]any `yaml:"paths"`
 	Components struct {
 		Schemas map[string]struct {
+			Enum       []string `yaml:"enum"`
 			Properties map[string]struct {
 				Enum []string `yaml:"enum"`
 			} `yaml:"properties"`
@@ -102,12 +104,17 @@ func TestContractClosedSets(t *testing.T) {
 	code := []string{
 		api.ProblemUnauthenticated, api.ProblemInvalidCredentials, api.ProblemNoPassword, api.ProblemCrossOrigin, api.ProblemTooManyAttempts,
 		api.ProblemInvalidRequest, api.ProblemInvalidParameter, api.ProblemValidation, api.ProblemPreconditionRequired, api.ProblemPreconditionFailed,
-		api.ProblemMatchCountMismatch, api.ProblemDuplicateName, api.ProblemInUse, api.ProblemAlreadyRevoked, api.ProblemAgentOffline, api.ProblemNotFound, api.ProblemMethodNotAllowed, api.ProblemInternal,
+		api.ProblemMatchCountMismatch, api.ProblemDuplicateName, api.ProblemInUse, api.ProblemAlreadyRevoked, api.ProblemAgentOffline, api.ProblemWorkloadRetired, api.ProblemNotFound, api.ProblemMethodNotAllowed, api.ProblemInternal,
 	}
 	sort.Strings(problemTypes)
 	sort.Strings(code)
 	if strings.Join(problemTypes, "\n") != strings.Join(code, "\n") {
 		t.Fatalf("problem types documented:\n%s\nin code:\n%s", strings.Join(problemTypes, "\n"), strings.Join(code, "\n"))
+	}
+
+	lifecycle := c.Components.Schemas["Lifecycle"].Enum
+	if want := []string{string(readmodel.LifecycleActive), string(readmodel.LifecycleRetired)}; strings.Join(lifecycle, "|") != strings.Join(want, "|") {
+		t.Fatalf("Lifecycle enum = %v, code = %v", lifecycle, want)
 	}
 }
 
