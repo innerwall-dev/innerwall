@@ -116,6 +116,41 @@ func TestContractClosedSets(t *testing.T) {
 	if want := []string{string(readmodel.LifecycleActive), string(readmodel.LifecycleRetired)}; strings.Join(lifecycle, "|") != strings.Join(want, "|") {
 		t.Fatalf("Lifecycle enum = %v, code = %v", lifecycle, want)
 	}
+
+	// The credential's lifecycle is nested in the workload, below what
+	// the typed contract reads.
+	var nested struct {
+		Components struct {
+			Schemas struct {
+				Workload struct {
+					Properties struct {
+						Health struct {
+							Properties struct {
+								Credential struct {
+									Properties struct {
+										Lifecycle struct {
+											Enum []string `yaml:"enum"`
+										} `yaml:"lifecycle"`
+									} `yaml:"properties"`
+								} `yaml:"credential"`
+							} `yaml:"properties"`
+						} `yaml:"health"`
+					} `yaml:"properties"`
+				} `yaml:"Workload"`
+			} `yaml:"schemas"`
+		} `yaml:"components"`
+	}
+	raw, err := os.ReadFile("../../api/openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := yaml.Unmarshal(raw, &nested); err != nil {
+		t.Fatal(err)
+	}
+	credLifecycle := nested.Components.Schemas.Workload.Properties.Health.Properties.Credential.Properties.Lifecycle.Enum
+	if want := []string{string(readmodel.CredentialValid), string(readmodel.CredentialInGrace), string(readmodel.CredentialPastGrace)}; strings.Join(credLifecycle, "|") != strings.Join(want, "|") {
+		t.Fatalf("credential lifecycle enum = %v, code = %v", credLifecycle, want)
+	}
 }
 
 // TestContractDeclaresTheOriginGuard checks that every operation that is

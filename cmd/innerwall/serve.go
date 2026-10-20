@@ -200,7 +200,7 @@ func runServe(ctx context.Context, args []string) error {
 	// all three read the one configuration.
 	syncCfg := gateway.DefaultSyncConfig()
 	flowWindow := syncFlowWindow(syncCfg)
-	reads := &readmodel.Reader{Store: st, Flows: st.Flows(), FlowWindow: flowWindow}
+	reads := &readmodel.Reader{Store: st, Flows: st.Flows(), FlowWindow: flowWindow, RenewalGrace: *renewalGrace}
 	// The console is served at every path outside the API prefix; a
 	// build without one (the noconsole tag, or a checkout where `make
 	// console` has not run) answers those paths with a marked problem.

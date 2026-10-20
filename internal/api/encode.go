@@ -297,6 +297,8 @@ type syncJSON struct {
 
 type credentialJSON struct {
 	State           string           `json:"state"`
+	Lifecycle       string           `json:"lifecycle"`
+	RenewableUntil  string           `json:"renewable_until"`
 	ExpiresAt       string           `json:"expires_at"`
 	LastRenewedAt   *string          `json:"last_renewed_at"`
 	LastError       string           `json:"last_error"`
@@ -367,7 +369,8 @@ func workloadJSON(w *readmodel.Workload) workloadResponse {
 			LastSeenAt:       optionalTimestamp(w.Health.LastSeenAt),
 			LastFlowReportAt: optionalTimestamp(w.Health.LastFlowReportAt),
 			TelemetryLive:    w.Health.TelemetryLive,
-			Credential: credentialJSON{State: string(w.Health.Credential.State), ExpiresAt: timestamp(w.Health.Credential.ExpiresAt),
+			Credential: credentialJSON{State: string(w.Health.Credential.State), Lifecycle: string(w.Health.Credential.Lifecycle),
+				RenewableUntil: timestamp(w.Health.Credential.RenewableUntil), ExpiresAt: timestamp(w.Health.Credential.ExpiresAt),
 				LastRenewedAt: optionalTimestamp(w.Health.Credential.LastRenewedAt), LastError: w.Health.Credential.LastError},
 			DroppedFlowRecords: w.Health.DroppedFlowRecords,
 			SourceOverruns:     w.Health.SourceOverruns,
