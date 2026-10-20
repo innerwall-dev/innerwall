@@ -53,6 +53,30 @@ func Parse(fs *flag.FlagSet, args []string, maxPositional int) error {
 	return fs.Parse(append(append(flags, "--"), positional...))
 }
 
+// Leading reports how fs.Parse alone would read args: the names of the
+// flags it would read, those before the first positional argument or
+// `--`, and every argument from that positional on, `--` itself left out.
+// It reads nothing into fs. A command whose earlier versions ignored some
+// arguments uses it to refuse them rather than read them differently.
+func Leading(fs *flag.FlagSet, args []string) (names, rest []string) {
+	for len(args) > 0 {
+		arg := args[0]
+		if arg == "--" {
+			return names, args[1:]
+		}
+		if len(arg) < 2 || arg[0] != '-' {
+			return names, args
+		}
+		name, _, _ := strings.Cut(strings.TrimPrefix(arg[1:], "-"), "=")
+		names = append(names, name)
+		args = args[1:]
+		if takesValue(fs, arg) && len(args) > 0 {
+			args = args[1:]
+		}
+	}
+	return names, nil
+}
+
 // takesValue reports whether the flag arg names reads the next argument as
 // its value: a defined, non-boolean flag written without "=".
 func takesValue(fs *flag.FlagSet, arg string) bool {

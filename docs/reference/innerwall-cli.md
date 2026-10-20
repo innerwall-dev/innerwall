@@ -4,7 +4,7 @@ The control-plane binary, `innerwall`, serves the agent gateway and the operator
 
 ## Conventions
 
-- **Flags go before or after positional arguments.** `innerwall flows list --since 1h <workload-id>` and `innerwall flows list <workload-id> --since 1h` are the same command; this reference writes flags first. `--` ends the flags, and everything after it is positional. A positional argument beyond those the command takes ends its flags too, and the command refuses it with its usage line. `ruleset update` reads its flags only before the ruleset it names. Flags take one dash or two (`-since` and `--since` are the same flag).
+- **Flags go before or after positional arguments.** `innerwall flows list --since 1h <workload-id>` and `innerwall flows list <workload-id> --since 1h` are the same command; this reference writes flags first. `--` ends the flags, and everything after it is positional. A positional argument beyond those the command takes ends its flags too, and the command refuses it with its usage line. `ruleset update` has the one asymmetry: with `-f` before the ruleset, nothing may follow the ruleset, because earlier versions ignored what did ([ruleset](#ruleset)). Flags take one dash or two (`-since` and `--since` are the same flag).
 - **The database.** Every command except `ca init` and `version` opens Postgres. `--database-url` names it; without the flag, `INNERWALL_DATABASE_URL` does. A command with neither is refused: `no database configured: set --database-url or INNERWALL_DATABASE_URL`.
 - **Direct writes.** Authoring commands write Postgres directly and render there; the running control plane learns of the change through the database and pushes it to connected agents (ADR-0018). The command needs no running control plane, and none needs to be restarted.
 - **Help.** `innerwall <command> <subcommand> -h` prints a command's flags. `innerwall` with no arguments prints the command list.
@@ -161,7 +161,7 @@ innerwall ruleset get <id|name>
 innerwall ruleset list
 ```
 
-`-f -` reads the document from standard input. `update` named on the command line is written against the version it reads first, so a ruleset changed meanwhile is refused; a document that carries its own `id` and no name argument is written unconditionally. Every write is admitted in full (every finding reported in one pass) and renders before it returns.
+`-f -` reads the document from standard input. `update` reads flags on either side of the ruleset (`innerwall ruleset update <id|name> -f FILE --database-url URL`) unless `-f` comes before it: then the ruleset must be the last argument, and anything after it is refused with the arguments named, since earlier versions accepted such a command and ignored them. A second ruleset is refused. `update` named on the command line is written against the version it reads first, so a ruleset changed meanwhile is refused; a document that carries its own `id` and no name argument is written unconditionally. Every write is admitted in full (every finding reported in one pass) and renders before it returns.
 
 ```json title="web-to-db.json"
 {

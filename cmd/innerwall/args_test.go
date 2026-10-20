@@ -2,11 +2,9 @@ package main
 
 import (
 	"context"
-	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/innerwall-dev/innerwall/internal/policy"
 )
 
 // TestCommandsReadFlagsOnEitherSide pins that the commands that take a
@@ -21,6 +19,8 @@ func TestCommandsReadFlagsOnEitherSide(t *testing.T) {
 	// before anything dials.
 	badDB := []string{"--database-url", "postgres://%zz"}
 	const atDB = "store: opening pool"
+	// A document that is not there fails as it is read, naming the path.
+	missing := filepath.Join(t.TempDir(), "missing.json")
 	for _, tc := range []struct {
 		name  string
 		run   func(context.Context, []string) error
@@ -34,6 +34,7 @@ func TestCommandsReadFlagsOnEitherSide(t *testing.T) {
 		{"workload set-mode", runWorkloadSetMode, []string{id, "simulation"}, badDB, atDB},
 		{"service update", func(ctx context.Context, args []string) error { return runServiceWrite(ctx, "update", args) }, []string{"postgres"}, append([]string{"--entry", "tcp:5432"}, badDB...), atDB},
 		{"address-group update", func(ctx context.Context, args []string) error { return runAddressGroupWrite(ctx, "update", args) }, []string{"corp"}, append([]string{"--cidr", "10.0.0.0/8"}, badDB...), atDB},
+		{"ruleset update", func(ctx context.Context, args []string) error { return runRulesetWrite(ctx, "update", args) }, []string{"web-to-db"}, []string{"-f", missing}, "open " + missing + ": no such file"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
@@ -67,14 +68,28 @@ func TestCommandsKeepRefusingExtraPositionals(t *testing.T) {
 	}
 }
 
-// TestRulesetUpdateReadsFlagsBeforeItsRuleset pins that ruleset update
-// still reads its flags only before the ruleset it names: an update given
-// more than one positional ignores them all when the document carries its
-// own id, so a flag among them is not read.
-func TestRulesetUpdateReadsFlagsBeforeItsRuleset(t *testing.T) {
+// TestRulesetUpdateRefusesWhatWasIgnored pins ruleset update's one
+// asymmetry. Earlier versions read its flags only before the ruleset and,
+// given more than one positional, ignored every one when the document
+// carried its own id; each such invocation is now refused, naming what was
+// ignored, never read another way. None reaches the document or the
+// database.
+func TestRulesetUpdateRefusesWhatWasIgnored(t *testing.T) {
 	t.Setenv(envDatabaseURL, "")
-	err := runRulesetWrite(context.Background(), "update", []string{"web-to-db", "-f", "ruleset.json"})
-	if !errors.Is(err, policy.ErrNoDocument) {
-		t.Errorf("ruleset update <name> -f <file>: %v, want %v", err, policy.ErrNoDocument)
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"-f", "a.json", "web-to-db", "extra"}, `refusing "extra" after web-to-db: with -f before the ruleset`},
+		{[]string{"-f", "a.json", "web-to-db", "--database-url", "X"}, `refusing "--database-url" "X" after web-to-db: with -f before the ruleset`},
+		{[]string{"-f", "a.json", "web-to-db", "-f", "b.json"}, `refusing "-f" "b.json" after web-to-db: with -f before the ruleset`},
+		{[]string{"-f", "a.json", "web-to-db", "--"}, `refusing "--" after web-to-db: with -f before the ruleset`},
+		{[]string{"-f", "a.json", "--", "web-to-db", "extra"}, `refusing "extra" after web-to-db: with -f before the ruleset`},
+		{[]string{"web-to-db", "extra", "-f", "a.json"}, `ruleset update takes one ruleset: refusing "extra" "-f" "a.json" after web-to-db`},
+	} {
+		err := runRulesetWrite(context.Background(), "update", tc.args)
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("ruleset update %q: %v, want an error containing %q", tc.args, err, tc.want)
+		}
 	}
 }

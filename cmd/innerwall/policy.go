@@ -7,6 +7,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"slices"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -459,16 +461,44 @@ func readAll(f *os.File) ([]byte, error) {
 	}
 }
 
+// refuseIgnoredRulesetArgs refuses the arguments earlier versions of
+// ruleset update accepted by ignoring them. Those versions read flags only
+// before the ruleset, and given more than one positional they ignored every
+// one when the document carried its own id. So with -f before the ruleset,
+// whatever follows it is refused rather than read; and, as for every other
+// command, a second positional is refused. Both errors name what was
+// ignored.
+func refuseIgnoredRulesetArgs(fs *flag.FlagSet, args []string) error {
+	names, rest := cli.Leading(fs, args)
+	if slices.Contains(names, "f") && len(rest) > 1 {
+		return usageError("ruleset update: refusing %s after %s: with -f before the ruleset nothing may follow it (earlier versions could ignore it); put every flag before the ruleset, or name the ruleset first",
+			quoteAll(rest[1:]), rest[0])
+	}
+	if fs.NArg() > 1 {
+		return usageError("ruleset update takes one ruleset: refusing %s after %s", quoteAll(fs.Args()[1:]), fs.Arg(0))
+	}
+	return nil
+}
+
+func quoteAll(args []string) string {
+	quoted := make([]string, len(args))
+	for i, a := range args {
+		quoted[i] = strconv.Quote(a)
+	}
+	return strings.Join(quoted, " ")
+}
+
 func runRulesetWrite(ctx context.Context, verb string, args []string) error {
 	fs := flag.NewFlagSet("innerwall ruleset "+verb, flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
 	file := fs.String("f", "", "ruleset document (JSON); - for stdin")
-	// Neither verb reads flags after a positional. An update ignores every
-	// positional when it is given more than one and the document carries
-	// its own id, so reading flags among them would change what such an
-	// invocation writes.
-	if err := cli.Parse(fs, args, 0); err != nil {
+	if err := cli.Parse(fs, args, writePositionals(verb)); err != nil {
 		return err
+	}
+	if verb == "update" {
+		if err := refuseIgnoredRulesetArgs(fs, args); err != nil {
+			return err
+		}
 	}
 	data, err := readDocument(*file)
 	if err != nil {

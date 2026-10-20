@@ -138,3 +138,31 @@ func TestParseAddsOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestLeading(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		args      []string
+		wantNames []string
+		wantRest  []string
+	}{
+		{"flags then positionals", []string{"--since", "1h", "--json", "id", "--label", "a=b"}, []string{"since", "json"}, []string{"id", "--label", "a=b"}},
+		{"one dash and =", []string{"-since=1h", "id"}, []string{"since"}, []string{"id"}},
+		{"-- ends the flags and is left out", []string{"--json", "--", "id", "x"}, []string{"json"}, []string{"id", "x"}},
+		{"a flag-shaped value is a value", []string{"--since", "-f", "id"}, []string{"since"}, []string{"id"}},
+		{"no positional", []string{"--json"}, []string{"json"}, nil},
+		{"a value missing at the end", []string{"--since"}, []string{"since"}, nil},
+		{"positional first", []string{"id", "--json"}, nil, []string{"id", "--json"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fs, p := newFlags()
+			names, rest := Leading(fs, tc.args)
+			if !reflect.DeepEqual(names, tc.wantNames) || !reflect.DeepEqual(rest, tc.wantRest) {
+				t.Errorf("Leading(%q) = %q, %q, want %q, %q", tc.args, names, rest, tc.wantNames, tc.wantRest)
+			}
+			if p.since != "24h" || p.json || p.labels != nil {
+				t.Errorf("Leading(%q) read flags into the set", tc.args)
+			}
+		})
+	}
+}
