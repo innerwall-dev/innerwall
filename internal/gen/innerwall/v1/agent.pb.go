@@ -1342,8 +1342,14 @@ type Directive_Reconnect struct {
 }
 
 type Directive_Reenroll struct {
-	// Discard the current credential and repeat enrollment. Requires a new
-	// provisioning token delivered out of band.
+	// Never sent; deprecated and reserved-unused. The control plane does
+	// not direct re-enrollment: a workload whose credential is past the
+	// renewal grace is refused, with a reason naming re-enrollment, at
+	// renewal and at stream open, and its agent keeps enforcing from disk
+	// and retrying until the operator enrolls the host again with a new
+	// provisioning token. The field stays so its number is never reassigned,
+	// and agents keep handling it for wire compatibility (ADR-0015 as
+	// amended).
 	Reenroll *Reenroll `protobuf:"bytes,2,opt,name=reenroll,proto3,oneof"`
 }
 
