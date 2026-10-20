@@ -176,8 +176,23 @@ func runServe(ctx context.Context, args []string) error {
 	// line's authoring commands call (ADR-0007 as amended).
 	authoring := &policy.Authoring{Store: st, Renderer: renderer{engine}}
 	fleetSvc := &fleet.Service{Store: st, Engine: engine, Reads: reads, Directives: st}
-	apiSrv := api.New(api.Deps{Operators: operators, Reads: reads, Authoring: authoring, Fleet: fleetSvc, Enroll: svc, Site: *site, GatewayAddress: *gatewayAddr, Console: console, Log: log.With("service", "api")})
-	httpServer := api.NewHTTPServer(api.ServerTLSConfig(operatorCert), apiSrv.Handler())
+	// The operator surface is composed explicitly: the authenticator and
+	// the domain services are injected here, and the listener's handler is
+	// built from the composition the surface returns, its middleware and
+	// routes registered in order.
+	operatorSurface := api.New(api.Deps{
+		Authenticator:  operator.NewAuthenticator(operators),
+		Operators:      operators,
+		Reads:          reads,
+		Authoring:      authoring,
+		Fleet:          fleetSvc,
+		Enroll:         svc,
+		Site:           *site,
+		GatewayAddress: *gatewayAddr,
+		Console:        console,
+		Log:            log.With("service", "api"),
+	}).Surface()
+	httpServer := api.NewHTTPServer(api.ServerTLSConfig(operatorCert), operatorSurface.Handler())
 	srv := gateway.New(gateway.Deps{
 		Enroll:   svc,
 		Registry: st,

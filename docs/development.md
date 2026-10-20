@@ -156,6 +156,8 @@ cmd/innerwall/            control-plane main
 cmd/innerwall-agent/      agent main
 api/openapi.yaml          the operator surface contract, hand-authored OpenAPI 3.1; api/vacuum-ruleset.yaml is its lint ruleset
 internal/api              operator surface: REST/JSON handlers (reads and writes), auth middleware, listener TLS
+internal/authn            the operator surface's authentication boundary: the one principal and its context, the Authenticator interface (a verifier per credential form over one session minter)
+internal/operator         operator authentication domain: the password, sessions, operator tokens; NewAuthenticator implements authn.Authenticator over it
 internal/readmodel        operator read model: rollups, flow pages, workloads, rendered policy (shared by the surface and the command line); readmodeltest/ holds its doubles
 internal/fleet            operator write domain over the registry and the renderer: label edits, bulk mode changes, selector preview, dry-run render; fleettest/ holds an in-memory store for it and for policy
 internal/gateway          agent gRPC surface: enrollment, renewal, the sync stream and its pushes

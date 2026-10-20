@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/innerwall-dev/innerwall/internal/authn"
 )
 
 // DefaultSessionTTL is the fixed lifetime of a session. It is set at
@@ -81,7 +83,7 @@ func (s *Service) CreateSession(ctx context.Context) (plaintext string, sess Ses
 // ValidateSession resolves a session identifier to the principal. Expiry is
 // judged here, at the instant of use, so a session past its lifetime is
 // refused whether or not retention has pruned it yet.
-func (s *Service) ValidateSession(ctx context.Context, plaintext string) (*Principal, error) {
+func (s *Service) ValidateSession(ctx context.Context, plaintext string) (*authn.Principal, error) {
 	hash, err := HashSessionID(plaintext)
 	if err != nil {
 		return nil, err
@@ -145,7 +147,7 @@ func (s *Service) RevokeToken(ctx context.Context, id uuid.UUID) error {
 // ValidateToken resolves a bearer token to the principal and records the
 // use. The token is checked before anything else is read, so a caller
 // without a valid token learns nothing.
-func (s *Service) ValidateToken(ctx context.Context, plaintext string) (*Principal, error) {
+func (s *Service) ValidateToken(ctx context.Context, plaintext string) (*authn.Principal, error) {
 	hash, err := HashToken(plaintext)
 	if err != nil {
 		return nil, err
@@ -166,13 +168,13 @@ func (s *Service) ValidateToken(ctx context.Context, plaintext string) (*Princip
 
 // principal builds the one principal. A token can exist before a password
 // has been set; the principal then simply has no display name.
-func (s *Service) principal(ctx context.Context) (*Principal, error) {
+func (s *Service) principal(ctx context.Context) (*authn.Principal, error) {
 	op, err := s.Store.GetOperator(ctx)
 	if errors.Is(err, ErrNoOperator) {
-		return &Principal{}, nil
+		return &authn.Principal{}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return &Principal{DisplayName: op.DisplayName}, nil
+	return &authn.Principal{DisplayName: op.DisplayName}, nil
 }
