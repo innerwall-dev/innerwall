@@ -11,13 +11,13 @@ docker compose up -d
 
 It starts Postgres with a persistent volume and the control plane from the released image, with the console embedded in the binary (ADR-0008); the [quickstart](../../README.md#with-docker-compose) has the whole sequence, and [versioning and install](../reference/versioning-and-install.md) how to verify the image and the binaries. `make dev` builds the image from the checkout instead. The control plane reads its Postgres connection string from `INNERWALL_DATABASE_URL`. Ports: the operator surface on 8080, over TLS only, serving the console and the REST/JSON API it uses (bound to localhost in the compose file); the agent gateway on 8443. To place agents on other machines, the gateway's certificate and advertised address must name the control plane's host before the first start ([multi-host evaluation](multi-host-evaluation.md)).
 
-On first start the control plane applies migrations, creates its signing authority in the `innerwall-state` volume, and serves the agent gateway on 8443. Enrolling an agent from the host:
+On first start the control plane applies migrations, creates its signing authority in the `innerwall-state` volume, and serves the agent gateway on 8443. Enrolling an agent from the host, with the agent installed at `/usr/local/bin/innerwall-agent` as the [quickstart](../../README.md#enroll-an-agent) installs it:
 
 ```sh
 docker compose exec innerwall /innerwall token mint --name dev --label env=dev
 docker compose cp innerwall:/var/lib/innerwall/ca/ca.crt ./ca.crt
-innerwall-agent enroll --server localhost:8443 --token <token> --bootstrap-ca ./ca.crt --state-dir ./agent-state
-innerwall-agent daemon --server localhost:8443 --state-dir ./agent-state
+sudo /usr/local/bin/innerwall-agent enroll --server localhost:8443 --token <token> --bootstrap-ca ./ca.crt
+sudo /usr/local/bin/innerwall-agent daemon --server localhost:8443
 ```
 
 Labels follow one grammar everywhere they enter (ADR-0022): a key is 1 to 63 ASCII letters, digits, `.`, `_`, `-`, or `/`, a value 1 to 63 letters, digits, `.`, `_`, or `-`, each beginning and ending with a letter or digit, so `--label app=web --label env=lab` is two labels and nothing can be stored that the `key=value` form cannot write back. A token, a label edit, a selector, or a read filter outside the grammar is refused with the offending text quoted. A token minted before the grammar with labels outside it is refused at enrollment; mint a new one, and repair the labels of workloads it already enrolled with `innerwall workload set-labels` or the label editor on the workload's page in the console.
@@ -44,7 +44,7 @@ docker compose exec innerwall /innerwall policy show <workload-id>
 The scope is the destination: every rule in `web-to-db` applies to every workload `role=db` matches, and a rule names no destination of its own, so each protected tier gets a ruleset of its own ([docs/policy.md](../policy.md)). Only inbound rules are admitted (ADR-0010). A workload in `visibility` mode has no verdict installed: its table holds one chain, `observe`, whose one rule engages the kernel's connection tracking and accepts, so connections are observed on a host where nothing else engages it, and nothing is dropped; `simulation` installs the enforced ruleset with the terminal rule accepting and reporting what enforcement would drop as `would_block`; `enforced` drops it and reports `blocked` (ADR-0020). The agent re-applies its last acknowledged policy from disk on every start, before it dials the control plane, and leaves the kernel rules in place when it exits. Root on the host removes them with the local kill switch:
 
 ```sh
-innerwall-agent down --state-dir ./agent-state
+sudo /usr/local/bin/innerwall-agent down
 ```
 
 It deletes the owned table and nothing else, and says so: the persisted policy stays on disk, a running daemon re-applies it on its next update and a restarted one on start, so stopping enforcement for good means stopping the daemon too. Until then a running daemon reports the table gone on its next heartbeat (every 30 seconds): the console shows the workload as enforcement removed on host, and the time without the table is recorded as a `table_removed` evidence gap, because nothing is observed while it is gone. Resend snapshot on the workload reinstalls it. The agent writes its rule attribution into bits 16 through 31 of the connection mark (mask `0xffff0000`) and leaves the low sixteen bits exactly as it finds them, so a host tool that marks connections in the low bits keeps working; a tool that uses the high bits conflicts with the agent (ADR-0020). The other firewall tables on the host are never touched: the agent's chain runs at input priority `filter + 10`, after the host's own filter chains, and a packet must be accepted by both.
