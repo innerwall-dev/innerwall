@@ -49,7 +49,7 @@ Mint a token (in the console, **Workloads → Provisioning tokens → Mint token
 
 ```sh
 sudo install -D -m 0644 ca.crt /etc/innerwall/ca.crt
-sudo env INNERWALL_TOKEN='<provisioning-token>' innerwall-agent enroll --server cp.example.internal:8443 --bootstrap-ca /etc/innerwall/ca.crt
+sudo env INNERWALL_TOKEN='<provisioning-token>' /usr/local/bin/innerwall-agent enroll --server cp.example.internal:8443 --bootstrap-ca /etc/innerwall/ca.crt
 ```
 
 The token in `INNERWALL_TOKEN` stays out of the process list; `--token` works too. Enrollment stores the key and credential in `/var/lib/innerwall-agent` and prints the workload's identity and labels.
