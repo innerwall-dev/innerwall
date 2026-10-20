@@ -2,31 +2,19 @@
 
 Direction, not dates. Ordering follows ADR-0001: visibility value first, enforcement as the destination. Every item below that the record already names cites where; an item without a citation is a direction the record has not decided yet and gets its own ADR before it is built.
 
-## Shipped in v0.3.0
+## Shipped
 
-The evidence record hardened, and the operating loop documented; the full list is in [CHANGELOG.md](CHANGELOG.md).
+The milestones M1 to M5 shipped in v0.1.0; every release since, and what it carries, is on the [releases page](https://github.com/innerwall-dev/innerwall/releases).
 
-- **An agent's silence is an evidence gap.** The control plane derives the interval in which a workload's agent was not reporting into an `agent_silent` gap; a simulation review spanning it fails rather than reading safe (ADR-0019 amended).
-- **Operator documentation.** Task guides for the operating loop, a reference for both command lines, the operator API, and every workload state and evidence-gap kind, and a troubleshooting catalog ([docs/guides/](docs/guides/), [docs/reference/](docs/reference/)).
+## Near-term priorities
 
-## Shipped in v0.2.0
-
-Hardening of what v0.1.0 shipped, and the console restyled; the full list is in [CHANGELOG.md](CHANGELOG.md).
-
-- **Console v3.** Design package v3 ([`docs/design/`](docs/design/PACKAGE.md)), a workload page that lands on an Overview with its exceptional states as chips, a search palette, in-place label editing, deep links from the drawers into the policy editor, and a flow map whose edges route around its nodes.
-- **Honest state.** A removed owned table (the kill switch), a reconnecting control channel, a drifting agent clock, and a late credential renewal are each reported as what they are, end to end (ADR-0015, ADR-0019 amended).
-- **Recoverable credential expiry.** An expired credential may renew within a configurable grace, and expiry is never fatal to the agent (ADR-0016 amended).
-- **One label grammar**, admitted wherever a label enters (ADR-0022).
-
-## Shipped in v0.1.0
-
-The milestones M1 to M5 as first planned, delivered in this shape:
-
-- **Foundation.** Architecture and decision record, CI (build, test, lint, generated-code drift, proto breaking-change gate, migration immutability, known vulnerabilities, DCO, automated ADR review), the agent contract in protobuf.
-- **Enrollment and identity.** Provisioning tokens (scoped, expiring, revocable, hashed at rest), a file-backed signing authority behind the `ca.Authority` interface, one URI SAN per credential, 24-hour credentials renewed in the last third of their lifetime (ADR-0016). Enrollment is the agent's own command.
-- **Sync and flows.** One persistent sync stream per agent with snapshot-then-delta policy and full-jitter reconnects; flow windows aggregated at the agent and reported on their own RPC, with peers resolved at ingest and evidence gaps recorded wherever the agent knows it lost evidence (ADR-0015, ADR-0019).
-- **Policy, simulation, and enforcement.** Label-based rulesets, services, and address groups, edited live with conditional writes and a dry-run render; per-workload rendered policy versioned by diff (ADR-0018); simulation as the exact enforced ruleset with a logging terminal rule; enforcement into one owned nftables table, persisted before it is applied, with stable rule attribution and a local kill switch (ADR-0020); inbound only (ADR-0010).
-- **Operator surface and console.** One TLS-only listener with single-operator authentication (ADR-0021); the flow map, fleet, workload detail, policy editor, and simulation review with an acknowledgment-gated promotion.
+- Native packages (.deb/.rpm)
+- Modeling inbound connections to Docker published ports ([#176](https://github.com/innerwall-dev/innerwall/issues/176))
+- Outbound enforcement (ADR-0010)
+- Broader platform coverage
+- Notifications
+- Definitions management in the console
+- Flow retention controls
 
 ## Backlog: recorded, not yet built
 
@@ -53,17 +41,12 @@ Each of these is a decision or a named gap in the record; none is implied to exi
 **Scale**
 - An inverted label index that narrows each render to the workloads a change can affect (ADR-0018).
 - Time-partitioned flow tables with retention by partition drop (ADR-0009, ADR-0019).
-- A columnar FlowStore implementation, on a ClickHouse path, when a real estate's query latency demands it (ADR-0009).
-- The relay tier and regional federation, on their designed seams (ADR-0012).
 
 **1.0 gate (unchanged):** M1 to M5 complete (shipped, above), an upgrade path documented, and a security review of the enrollment and agent paths.
 
-## Post-1.0 themes (each gated on its own ADRs)
+## Longer horizon
 
-- **Outbound enforcement** as the layered model: shared baseline policies composed under app-scoped policies (ADR-0010)
-- **eBPF collector** as an additive backend beside conntrack (ADR-0003)
-- **Windows agent**, a second enforcement backend behind the enforcer interface (ADR-0003)
-- **External signing backends** behind the existing interface (ADR-0016)
+Each gated on its own ADRs: an eBPF collector as an additive backend beside conntrack, and a Windows agent as a second enforcement backend behind the enforcer interface (ADR-0003).
 
 ## Non-goals (deliberate)
 
