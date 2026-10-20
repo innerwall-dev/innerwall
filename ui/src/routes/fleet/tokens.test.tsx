@@ -269,8 +269,10 @@ describe("mint dialog", () => {
 		const done = await screen.findByRole("dialog", {
 			name: "Token minted — copy it now",
 		});
+		// Root, by the agent's full path, as every install document runs it:
+		// sudo's secure_path may not reach /usr/local/bin.
 		expect(done).toHaveTextContent(
-			"innerwall-agent enroll --server gw.iad1.example:8443",
+			"sudo /usr/local/bin/innerwall-agent enroll --server gw.iad1.example:8443",
 		);
 		// The CA certificate by the name every install document gives it.
 		expect(done).toHaveTextContent("--bootstrap-ca ca.crt");
