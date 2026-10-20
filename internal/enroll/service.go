@@ -151,6 +151,37 @@ func (s *Service) Grace() time.Duration {
 	return DefaultRenewalGrace
 }
 
+// Standing is where a credential stands against its expiry and the
+// renewal grace: what the control plane will still accept from it.
+type Standing int
+
+// Credential standings.
+const (
+	// StandingValid: not yet expired; it may make any call.
+	StandingValid Standing = iota
+	// StandingInGrace: expired within the grace; it may renew, and
+	// renewing recovers the workload with the same identity.
+	StandingInGrace
+	// StandingPastGrace: expired beyond the grace; nothing accepts it,
+	// and the workload returns only by enrolling again with a new
+	// provisioning token.
+	StandingPastGrace
+)
+
+// StandingAt is the standing, at now, of a credential that expires at
+// notAfter under the given renewal grace. It is the rule AdmitCredential
+// applies to a presented credential, and the one the operator surface
+// reports a workload's stored expiry by, so the two cannot disagree.
+func StandingAt(notAfter, now time.Time, grace time.Duration) Standing {
+	if !now.After(notAfter) {
+		return StandingValid
+	}
+	if now.Sub(notAfter).Truncate(time.Second) > grace {
+		return StandingPastGrace
+	}
+	return StandingInGrace
+}
+
 // AdmitCredential decides whether a verified workload credential valid
 // from notBefore to notAfter may make a call now. A credential within
 // its validity may make any call. An expired one may do exactly one
@@ -166,13 +197,14 @@ func (s *Service) AdmitCredential(notBefore, notAfter time.Time, renewal bool) e
 	if now.Before(notBefore) {
 		return fmt.Errorf("%w: its validity begins at %s and the control plane's clock reads %s", ErrCredentialNotYetValid, notBefore.UTC().Format(time.RFC3339), now.UTC().Format(time.RFC3339))
 	}
-	if !now.After(notAfter) {
+	grace := s.Grace()
+	standing := StandingAt(notAfter, now, grace)
+	if standing == StandingValid {
 		return nil
 	}
 	late := now.Sub(notAfter).Truncate(time.Second)
-	grace := s.Grace()
 	expired := notAfter.UTC().Format(time.RFC3339)
-	if late > grace {
+	if standing == StandingPastGrace {
 		return fmt.Errorf("%w: it expired at %s, %s ago, beyond the %s renewal grace; %s", ErrCredentialExpired, expired, late, grace, ReenrollRequired)
 	}
 	if renewal {

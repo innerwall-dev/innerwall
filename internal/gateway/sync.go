@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/innerwall-dev/innerwall/internal/compiler"
+	"github.com/innerwall-dev/innerwall/internal/enroll"
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 	"github.com/innerwall-dev/innerwall/internal/identity"
 	"github.com/innerwall-dev/innerwall/internal/registry"
@@ -42,6 +43,17 @@ const sendQueueDepth = 64
 // has stopped moving; the directive is given up, with a warning, rather
 // than left waiting where nothing would ever report it.
 var directiveQueueTimeout = 10 * time.Second
+
+// credentialEndLead is how long before the credential a stream opened on
+// expires that the session directs its agent to reconnect. An agent that
+// renewed on schedule holds a fresh credential by then and presents it on
+// the new stream, so the swap costs one snapshot and no error. It is far
+// longer than a redial, which is a handshake, a Hello, and a snapshot, and
+// takes seconds even after a backoff step; and far shorter than the
+// renewal margin, at least a third of the lifetime (eight hours of the
+// default day), so a stream is never sent away before its agent has had
+// every chance to renew.
+var credentialEndLead = 5 * time.Minute
 
 // offlineWriteTimeout bounds a status write that may run after a stream's
 // own context has already ended: the offline mark, and the snapshot
@@ -301,6 +313,9 @@ func (s *Server) Sync(stream innerwallv1.AgentService_SyncServer) error {
 		log.Error("recording sync state", "error", err)
 	}
 	log.Info("sync stream opened", "agent_version", agent.Version, "claimed_version", hello.GetAppliedPolicyVersion(), "snapshot_version", policy.GetVersion())
+	if _, notAfter := credentialValidity(ctx); !notAfter.IsZero() {
+		go s.boundByCredential(sess, log, notAfter, credentialEndLead)
+	}
 
 	// Reader loop.
 	recvErr := make(chan error, 1)
@@ -519,6 +534,52 @@ func (s *Server) recordSnapshotSent(ctx context.Context, log *slog.Logger, id id
 	defer cancel()
 	if err := s.registry.RecordSnapshotSent(wctx, id, s.now()); err != nil {
 		log.Error("recording snapshot sent", "error", err)
+	}
+}
+
+// boundByCredential holds sess to the credential it opened on (ADR-0016 as
+// amended): a stream is authorized by the credential presented when it
+// opened, and that authorization ends at the credential's expiry. lead
+// before notAfter the agent is directed to reconnect, which an agent that
+// has renewed does with its fresh credential; a stream still open at
+// notAfter is ended with a refusal naming the expiry. A stream that opened
+// within lead of notAfter is not directed: its agent has just dialed with
+// the credential it holds, and directing it again would hand back the
+// same one.
+func (s *Server) boundByCredential(sess *session, log *slog.Logger, notAfter time.Time, lead time.Duration) {
+	if remaining := notAfter.Sub(s.now()); remaining > lead {
+		if !wait(sess.ctx, remaining-lead) {
+			return
+		}
+		log.Info("the credential this stream opened on expires soon; directing a reconnect", "expires_at", notAfter)
+		go s.sendReconnect(sess)
+	}
+	if !wait(sess.ctx, notAfter.Sub(s.now())) {
+		return
+	}
+	log.Info("sync stream ended: the credential it opened on expired", "expired_at", notAfter)
+	sess.end(credentialExpired(notAfter))
+}
+
+// credentialExpired is the refusal a stream ends with when the credential
+// it opened on expires. Unlike a retired identity's refusal it names its
+// reason, as every validity refusal does (ADR-0016 decision 5): the agent
+// that receives it holds the key, and what it should do next, renew and
+// reconnect, follows from the reason.
+func credentialExpired(notAfter time.Time) error {
+	return status.Error(codes.Unauthenticated, fmt.Sprintf("%s: it expired at %s, and a sync stream ends with the credential it opened on; reconnect with a renewed credential",
+		enroll.ErrCredentialExpired, notAfter.UTC().Format(time.RFC3339)))
+}
+
+// wait waits d, and reports false instead if ctx ends first.
+func wait(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return true
+	case <-ctx.Done():
+		return false
 	}
 }
 
