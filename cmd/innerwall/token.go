@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/innerwall-dev/innerwall/internal/cli"
 	"github.com/innerwall-dev/innerwall/internal/enroll"
 	"github.com/innerwall-dev/innerwall/internal/store"
 )
@@ -67,7 +68,7 @@ func runTokenMint(ctx context.Context, args []string) error {
 	ttl := fs.Duration("ttl", enroll.DefaultTokenTTL, "token lifetime")
 	var labels labelFlags
 	fs.Var(&labels, "label", "label assigned to every workload the token enrolls, key=value (repeatable)")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 0); err != nil {
 		return err
 	}
 	st, err := openStore(ctx, *dbURL)
@@ -92,7 +93,7 @@ func runTokenMint(ctx context.Context, args []string) error {
 func runTokenList(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall token list", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 0); err != nil {
 		return err
 	}
 	st, err := openStore(ctx, *dbURL)
@@ -135,7 +136,7 @@ func runTokenList(ctx context.Context, args []string) error {
 func runTokenRevoke(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall token revoke", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 1); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/innerwall-dev/innerwall/internal/ca/fileca"
+	"github.com/innerwall-dev/innerwall/internal/cli"
 )
 
 // defaultServerTTL is the lifetime of the listener certificate `ca init`
@@ -26,7 +27,7 @@ func runCA(args []string) error {
 	hosts := fs.String("hosts", "localhost,127.0.0.1", "comma-separated DNS names and IPs for the server certificate")
 	rootTTL := fs.Duration("root-ttl", fileca.DefaultRootTTL, "lifetime of the root certificate")
 	serverTTL := fs.Duration("server-ttl", defaultServerTTL, "lifetime of the server certificate")
-	if err := fs.Parse(args[1:]); err != nil {
+	if err := cli.Parse(fs, args[1:], 0); err != nil {
 		return err
 	}
 	return initAuthority(*caDir, strings.Split(*hosts, ","), *rootTTL, *serverTTL, slog.Default())

@@ -7,12 +7,15 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"slices"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/innerwall-dev/innerwall/internal/cli"
 	"github.com/innerwall-dev/innerwall/internal/compiler"
 	"github.com/innerwall-dev/innerwall/internal/fleet"
 	"github.com/innerwall-dev/innerwall/internal/identity"
@@ -87,6 +90,15 @@ func usageError(format string, args ...any) error {
 	return fmt.Errorf(format, args...)
 }
 
+// writePositionals is how many positional arguments a create or update
+// command takes: an update names what it updates.
+func writePositionals(verb string) int {
+	if verb == "update" {
+		return 1
+	}
+	return 0
+}
+
 // --- service ---------------------------------------------------------------
 
 func runService(ctx context.Context, args []string) error {
@@ -113,7 +125,7 @@ func runServiceWrite(ctx context.Context, verb string, args []string) error {
 	name := fs.String("name", "", "service name")
 	var entries stringFlags
 	fs.Var(&entries, "entry", "protocol and ports, e.g. tcp:5432 or tcp:6000-6010,7000 or icmp (repeatable; replaces all entries on update)")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, writePositionals(verb)); err != nil {
 		return err
 	}
 	// The entries are read the way a document's are, so admission reports
@@ -136,7 +148,7 @@ func runServiceWrite(ctx context.Context, verb string, args []string) error {
 		return nil
 	}
 	if fs.NArg() != 1 {
-		return usageError("usage: innerwall service update <id|name> [flags]")
+		return usageError("usage: innerwall service update [flags] <id|name>")
 	}
 	existing, err := a.lookupService(ctx, fs.Arg(0))
 	if err != nil {
@@ -173,7 +185,7 @@ func (a *authoring) lookupService(ctx context.Context, ref string) (*policy.Serv
 func runServiceDelete(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall service delete", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 1); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
@@ -198,7 +210,7 @@ func runServiceDelete(ctx context.Context, args []string) error {
 func runServiceGet(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall service get", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 1); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
@@ -233,7 +245,7 @@ func serviceDoc(s *policy.Service) serviceJSON {
 func runServiceList(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall service list", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 0); err != nil {
 		return err
 	}
 	st, err := openStore(ctx, *dbURL)
@@ -280,7 +292,7 @@ func runAddressGroupWrite(ctx context.Context, verb string, args []string) error
 	name := fs.String("name", "", "address group name")
 	var cidrs stringFlags
 	fs.Var(&cidrs, "cidr", "member CIDR (repeatable; replaces all members on update)")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, writePositionals(verb)); err != nil {
 		return err
 	}
 	g := &policy.AddressGroup{Name: *name, CIDRs: cidrs}
@@ -297,7 +309,7 @@ func runAddressGroupWrite(ctx context.Context, verb string, args []string) error
 		return nil
 	}
 	if fs.NArg() != 1 {
-		return usageError("usage: innerwall address-group update <id|name> [flags]")
+		return usageError("usage: innerwall address-group update [flags] <id|name>")
 	}
 	existing, err := a.lookupAddressGroup(ctx, fs.Arg(0))
 	if err != nil {
@@ -332,7 +344,7 @@ func (a *authoring) lookupAddressGroup(ctx context.Context, ref string) (*policy
 func runAddressGroupDelete(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall address-group delete", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 1); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
@@ -363,7 +375,7 @@ type addressGroupJSON struct {
 func runAddressGroupGet(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall address-group get", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 1); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
@@ -384,7 +396,7 @@ func runAddressGroupGet(ctx context.Context, args []string) error {
 func runAddressGroupList(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall address-group list", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 0); err != nil {
 		return err
 	}
 	st, err := openStore(ctx, *dbURL)
@@ -449,12 +461,44 @@ func readAll(f *os.File) ([]byte, error) {
 	}
 }
 
+// refuseIgnoredRulesetArgs refuses the arguments earlier versions of
+// ruleset update accepted by ignoring them. Those versions read flags only
+// before the ruleset, and given more than one positional they ignored every
+// one when the document carried its own id. So with -f before the ruleset,
+// whatever follows it is refused rather than read; and, as for every other
+// command, a second positional is refused. Both errors name what was
+// ignored.
+func refuseIgnoredRulesetArgs(fs *flag.FlagSet, args []string) error {
+	names, rest := cli.Leading(fs, args)
+	if slices.Contains(names, "f") && len(rest) > 1 {
+		return usageError("ruleset update: refusing %s after %s: with -f before the ruleset nothing may follow it (earlier versions could ignore it); put every flag before the ruleset, or name the ruleset first",
+			quoteAll(rest[1:]), rest[0])
+	}
+	if fs.NArg() > 1 {
+		return usageError("ruleset update takes one ruleset: refusing %s after %s", quoteAll(fs.Args()[1:]), fs.Arg(0))
+	}
+	return nil
+}
+
+func quoteAll(args []string) string {
+	quoted := make([]string, len(args))
+	for i, a := range args {
+		quoted[i] = strconv.Quote(a)
+	}
+	return strings.Join(quoted, " ")
+}
+
 func runRulesetWrite(ctx context.Context, verb string, args []string) error {
 	fs := flag.NewFlagSet("innerwall ruleset "+verb, flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
 	file := fs.String("f", "", "ruleset document (JSON); - for stdin")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, writePositionals(verb)); err != nil {
 		return err
+	}
+	if verb == "update" {
+		if err := refuseIgnoredRulesetArgs(fs, args); err != nil {
+			return err
+		}
 	}
 	data, err := readDocument(*file)
 	if err != nil {
@@ -492,7 +536,7 @@ func runRulesetWrite(ctx context.Context, verb string, args []string) error {
 		rs.ID, expect = existing.ID, policy.FormatVersion(existing.Version)
 	}
 	if rs.ID == uuid.Nil {
-		return usageError("usage: innerwall ruleset update <id|name> -f <document>, or set \"id\" in the document")
+		return usageError("usage: innerwall ruleset update -f <document> <id|name>, or set \"id\" in the document")
 	}
 	if err := a.svc.UpdateRuleset(ctx, rs, expect); err != nil {
 		return err
@@ -520,7 +564,7 @@ func (a *authoring) lookupRuleset(ctx context.Context, ref string) (*policy.Rule
 func runRulesetDelete(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall ruleset delete", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 1); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
@@ -545,7 +589,7 @@ func runRulesetDelete(ctx context.Context, args []string) error {
 func runRulesetGet(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall ruleset get", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 1); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
@@ -570,7 +614,7 @@ func runRulesetGet(ctx context.Context, args []string) error {
 func runRulesetList(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall ruleset list", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 0); err != nil {
 		return err
 	}
 	st, err := openStore(ctx, *dbURL)
@@ -633,7 +677,7 @@ func runPolicy(ctx context.Context, args []string) error {
 func runPolicyRender(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall policy render", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 0); err != nil {
 		return err
 	}
 	a, err := openAuthoring(ctx, *dbURL)
@@ -655,7 +699,7 @@ func runPolicyRender(ctx context.Context, args []string) error {
 func runPolicyShow(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall policy show", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 1); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {

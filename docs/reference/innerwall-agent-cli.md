@@ -6,7 +6,7 @@ The agent binary, `innerwall-agent`, runs on each Linux workload: it enrolls, ho
 
 - **Root.** The agent runs as root: it programs nftables and subscribes to the kernel's connection-tracking events.
 - **The state directory** holds the agent's key (`workload.key`), credential (`workload.crt`), the trust bundle (`ca-bundle.crt`), and the last applied policy (`policy.bin`, with its rule marks in `marks.bin`). `--state-dir` names it; without the flag, `INNERWALL_AGENT_STATE_DIR` does; otherwise it is `/var/lib/innerwall-agent`.
-- **Flags come before positional arguments**, and take one dash or two. `innerwall-agent <command> -h` prints a command's flags.
+- **Flags** take one dash or two; no command takes a positional argument. `innerwall-agent <command> -h` prints a command's flags.
 
 | Environment variable | Read by | Stands for |
 |---|---|---|

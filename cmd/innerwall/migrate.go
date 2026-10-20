@@ -5,13 +5,14 @@ import (
 	"flag"
 	"fmt"
 
+	"github.com/innerwall-dev/innerwall/internal/cli"
 	"github.com/innerwall-dev/innerwall/internal/store"
 )
 
 func runMigrate(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall migrate", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 0); err != nil {
 		return err
 	}
 	url, err := databaseURL(*dbURL)

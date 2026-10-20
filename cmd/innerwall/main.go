@@ -98,7 +98,7 @@ commands:
   ruleset        create | update | delete | get | list rulesets (JSON documents)
   workload       list | counts | status | set-labels | set-mode | resend-snapshot
   policy         render | show
-  flows          list | rollup | totals
+  flows          list | rollup | totals | gaps
   dev            seed: load the recognizable review fleet (builds with -tags dev only)
   version        print the version
 

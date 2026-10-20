@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/innerwall-dev/innerwall/internal/agent/credential"
+	"github.com/innerwall-dev/innerwall/internal/cli"
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 	"github.com/innerwall-dev/innerwall/internal/identity"
 )
@@ -27,7 +28,7 @@ func runEnroll(ctx context.Context, args []string) error {
 	token := fs.String("token", "", "provisioning token (default $"+envToken+", which keeps it out of the process list)")
 	bootstrapCA := fs.String("bootstrap-ca", "", "PEM trust anchor for the control plane, delivered out of band with the token; empty uses the system trust store")
 	stateDir := fs.String("state-dir", stateDirDefault(), "directory for the key, credential, and bundle")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 0); err != nil {
 		return err
 	}
 	if *server == "" {
@@ -101,7 +102,7 @@ func runRenew(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall-agent renew", flag.ContinueOnError)
 	server := fs.String("server", "", "control-plane address, host:port")
 	stateDir := fs.String("state-dir", stateDirDefault(), "directory holding the key, credential, and bundle")
-	if err := fs.Parse(args); err != nil {
+	if err := cli.Parse(fs, args, 0); err != nil {
 		return err
 	}
 	if *server == "" {
