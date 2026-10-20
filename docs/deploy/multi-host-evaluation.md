@@ -9,7 +9,7 @@ The Docker Compose stack is set up for agents on the same machine:
 - **The gateway's certificate names only `localhost`, `127.0.0.1`, and `innerwall`** (the `--tls-hosts` in `docker-compose.yml`). An agent verifies the gateway against that certificate, so an agent dialing any other name or address is refused at the TLS handshake.
 - **The advertised gateway address is `localhost:8443`** (`INNERWALL_GATEWAY_ADVERTISE_ADDRESS`). It is what the console's mint dialog prints in the enroll command it shows.
 
-Both must name the address remote agents will dial, and the certificate must do so **before the stack first starts**: the gateway's certificate is generated once, when `--init-ca` creates the signing authority, and an existing certificate is never reissued. Changing `--tls-hosts` later changes nothing, and no command reissues it.
+Both must name the address remote agents will dial, and the certificate should do so **before the stack first starts**: the gateway's certificate is generated once, when `--init-ca` creates the signing authority, and starting again never reissues it. Changing `--tls-hosts` later changes nothing by itself; a stack that already started needs its certificate reissued, [below](#a-stack-that-has-already-started).
 
 Put the change in a `docker-compose.override.yml` beside `docker-compose.yml`. Docker Compose reads it automatically, and `make dev` passes it on. With the control plane reachable as `cp.example.internal` at `192.0.2.10`:
 
@@ -30,10 +30,20 @@ Git does not track the override file, and an untracked file marks the checkout a
 
 The gateway is published on port 8443 on every interface of the machine; let it through that machine's own firewall. The operator surface stays bound to the machine's loopback, so open the console on that machine.
 
-**A stack that has already started** keeps the certificate it generated. The way to a certificate with the new names is a fresh stack, which is reasonable only while there is nothing in it to keep. Either start one beside it under a new project name, which leaves the old volumes untouched ([a new clone starts with an earlier install's state](../troubleshooting.md#a-new-clone-starts-with-an-earlier-installs-state)), or delete the old one:
+### A stack that has already started
 
-> [!CAUTION]
-> `docker compose down -v` deletes both volumes: `pgdata`, which holds every workload, ruleset, token, flow, and the operator password, and `innerwall-state`, which holds the signing authority and the operator certificate. Every agent enrolled against the old authority can no longer connect and must be enrolled again, as a new workload. Use it only on a stack you are willing to start over.
+A stack that has already started keeps the certificate it generated. If you did not name the control plane before the first start, issue a new certificate from the existing signing authority with `innerwall ca issue-server`, then restart. Nothing is lost: the new certificate chains to the same root, so every agent already enrolled keeps trusting the gateway and nothing is enrolled again, and the database, the authority, and the operator certificate are untouched.
+
+1. Write the `docker-compose.override.yml` above, so the advertised address and `--tls-hosts` name the control plane too.
+2. Issue the certificate in the running container. It names exactly the hosts you list, so keep the local ones:
+
+   ```sh
+   docker compose exec innerwall /innerwall ca issue-server --hosts localhost,127.0.0.1,innerwall,cp.example.internal,192.0.2.10
+   ```
+
+3. Restart the control plane, applying the override: `docker compose up -d --force-recreate innerwall` (in a checkout run with `make dev`, stop it and run `make dev` again). It presents the new certificate from this start on; agents already enrolled reconnect by themselves.
+
+The command refuses a directory that holds no authority, and it reissues only the gateway's certificate ([`ca issue-server`](../reference/innerwall-cli.md#ca-issue-server)).
 
 ## Get the agent for the target
 

@@ -232,7 +232,7 @@ func TestIssueServerCertificate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	certPEM, keyPEM, err := a.IssueServerCertificate([]string{"localhost", "127.0.0.1"}, time.Hour)
+	certPEM, keyPEM, err := a.IssueServerCertificate(context.Background(), []string{"localhost", "127.0.0.1"}, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}

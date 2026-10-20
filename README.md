@@ -37,7 +37,7 @@ Each image puts a screen of the shipped console in its dark theme (left) beside 
 ## Quickstart
 
 > [!IMPORTANT]
-> **Before you start: decide where the agents will run.** The agent runs only on Linux, as root, with nftables. If any agent will run on a machine other than the one running the control plane (always the case when Docker runs on macOS or Windows), first read [Name the control plane before the first start](docs/deploy/multi-host-evaluation.md#name-the-control-plane-before-the-first-start). The gateway's certificate is generated once, at the first start, and names only that machine's local names. No command reissues it, and an agent on another machine cannot enroll against it. Changing the names afterwards means starting the stack over.
+> **Before you start: decide where the agents will run.** The agent runs only on Linux, as root, with nftables. If any agent will run on a machine other than the one running the control plane (always the case when Docker runs on macOS or Windows), first read [Name the control plane before the first start](docs/deploy/multi-host-evaluation.md#name-the-control-plane-before-the-first-start). The gateway's certificate is generated once, at the first start, and names only that machine's local names, so an agent on another machine cannot enroll against it. If the stack already started without the right names, `innerwall ca issue-server` reissues the certificate from the same signing authority and a restart presents it; nothing is enrolled again ([a stack that has already started](docs/deploy/multi-host-evaluation.md#a-stack-that-has-already-started)).
 
 The supported v1 deployment is one control-plane binary and one Postgres (ADR-0017). Run the released image with Docker Compose, or install the released binaries. These docs describe v0.4.1, and every command below names it.
 
@@ -78,7 +78,7 @@ innerwall operator set-password
 innerwall serve --init-ca --ca-dir ./state/ca --site lab --gateway-advertise-address localhost:8443
 ```
 
-`--init-ca` creates the signing authority in `./state/ca` on first start, with the listeners' certificates beside it; they name `--tls-hosts` (by default `localhost,127.0.0.1`), the same once-only choice as above. Open `https://localhost:8080/`, and compare the fingerprint in the `operator listener certificate` log line as above.
+`--init-ca` creates the signing authority in `./state/ca` on first start, with the listeners' certificates beside it; they name `--tls-hosts` (by default `localhost,127.0.0.1`), set before the first start as above; `innerwall ca issue-server` reissues the gateway's from the same authority if they need to change. Open `https://localhost:8080/`, and compare the fingerprint in the `operator listener certificate` log line as above.
 
 **Fallback: build from source.** It needs Go (the version `go.mod` names) and Node 22 for the console:
 

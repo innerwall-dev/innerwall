@@ -58,7 +58,7 @@ func newHarness(t *testing.T, st enroll.Store, opts ...func(*gateway.Deps)) *har
 func newHarnessWith(t *testing.T, st enroll.Store, authority *fileca.Authority, opts ...func(*gateway.Deps)) *harness {
 	t.Helper()
 	bundle, _ := authority.Bundle(context.Background())
-	certPEM, keyPEM, err := authority.IssueServerCertificate([]string{"127.0.0.1"}, time.Hour)
+	certPEM, keyPEM, err := authority.IssueServerCertificate(context.Background(), []string{"127.0.0.1"}, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestAgentServiceRejectsCertificateWithoutIdentity(t *testing.T) {
 	// A certificate the authority signed, but for a server, so it verifies
 	// and yet carries no workload URI SAN. The TLS layer accepts it; the
 	// interceptor must not.
-	certPEM, keyPEM, err := h.authority.IssueServerCertificate([]string{"impostor"}, time.Hour)
+	certPEM, keyPEM, err := h.authority.IssueServerCertificate(context.Background(), []string{"impostor"}, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}

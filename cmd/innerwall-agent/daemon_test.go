@@ -117,7 +117,7 @@ func TestDaemonStartsWithExpiredCredential(t *testing.T) {
 		t.Fatal(err)
 	}
 	bundle, _ := authority.Bundle(ctx)
-	certPEM, keyPEM, err := authority.IssueServerCertificate([]string{"127.0.0.1"}, time.Hour)
+	certPEM, keyPEM, err := authority.IssueServerCertificate(context.Background(), []string{"127.0.0.1"}, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}

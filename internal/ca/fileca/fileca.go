@@ -2,8 +2,9 @@
 // self-signed root certificate on local disk. It is the single Authority
 // implementation shipped in v1 and is suitable for development and for small
 // deployments where the control-plane host is itself the trust boundary.
-// Backends that keep the key elsewhere implement the same ca.Authority
-// interface; nothing outside this package depends on the files it keeps.
+// Backends that keep the key elsewhere implement the same ca.Authority and
+// ca.ServerIssuer interfaces; nothing outside this package depends on the
+// files it keeps.
 package fileca
 
 import (
@@ -55,7 +56,10 @@ type Authority struct {
 	now  func() time.Time
 }
 
-var _ ca.Authority = (*Authority)(nil)
+var (
+	_ ca.Authority    = (*Authority)(nil)
+	_ ca.ServerIssuer = (*Authority)(nil)
+)
 
 // InitOptions control root generation.
 type InitOptions struct {
@@ -198,12 +202,12 @@ func (a *Authority) Bundle(context.Context) ([]byte, error) {
 	return out, nil
 }
 
-// IssueServerCertificate issues a TLS server certificate for the control
-// plane's own listener, signed by this root, so agents can verify the server
-// with the same bundle they use for everything else. Hosts may be DNS names
-// or IP addresses. The returned key is a fresh PKCS#8 key; the root key is
-// never reused for a leaf.
-func (a *Authority) IssueServerCertificate(hosts []string, ttl time.Duration) (certPEM, keyPEM []byte, err error) {
+// IssueServerCertificate implements ca.ServerIssuer: a TLS server
+// certificate for the agent gateway, signed by this root, so agents verify
+// the server with the same bundle they use for everything else. Hosts may be
+// DNS names or IP addresses. The returned key is a fresh PKCS#8 key; the
+// root key is never reused for a leaf.
+func (a *Authority) IssueServerCertificate(_ context.Context, hosts []string, ttl time.Duration) (certPEM, keyPEM []byte, err error) {
 	if len(hosts) == 0 {
 		return nil, nil, errors.New("fileca: server certificate needs at least one host")
 	}

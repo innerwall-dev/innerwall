@@ -93,9 +93,16 @@ level=WARN msg="reconnect directive not sent" workload_id=… reason="…"
 
 **Symptom.** `innerwall-agent enroll --server <address>:8443` on another machine fails with a TLS error such as `x509: certificate is valid for localhost, innerwall, not <address>`.
 
-**Cause.** The gateway's certificate does not name the address the agent dials. The Docker Compose stack's certificate names `localhost`, `127.0.0.1`, and `innerwall` only, and the certificate is generated once, when the stack first starts.
+**Cause.** The gateway's certificate does not name the address the agent dials. The Docker Compose stack's certificate names `localhost`, `127.0.0.1`, and `innerwall` only, and the certificate is generated once, when the stack first starts: changing `--tls-hosts` afterwards changes nothing by itself. The error lists the names the certificate carries.
 
-**Remedy.** Name the control plane's address in `--tls-hosts` before the first start, and dial an address the certificate names ([multi-host evaluation](deploy/multi-host-evaluation.md#name-the-control-plane-before-the-first-start)).
+**Remedy.** Dial an address the certificate names, or make the certificate name the address. On a stack that has not started yet, name the control plane's address in `--tls-hosts` before the first start ([multi-host evaluation](deploy/multi-host-evaluation.md#name-the-control-plane-before-the-first-start)). On one that has, issue a new certificate from the existing signing authority for every name and address agents dial, then restart the control plane:
+
+```sh
+docker compose exec innerwall /innerwall ca issue-server --hosts localhost,127.0.0.1,innerwall,<address>
+docker compose restart innerwall
+```
+
+The new certificate chains to the same root, so agents already enrolled keep trusting the gateway; nothing is enrolled again, and nothing needs starting over ([a stack that has already started](deploy/multi-host-evaluation.md#a-stack-that-has-already-started), [`ca issue-server`](reference/innerwall-cli.md#ca-issue-server)).
 
 ### The agent is gone after the host restarts
 

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/innerwall-dev/innerwall/internal/api"
+	"github.com/innerwall-dev/innerwall/internal/ca"
 	"github.com/innerwall-dev/innerwall/internal/ca/fileca"
 	"github.com/innerwall-dev/innerwall/internal/cli"
 	"github.com/innerwall-dev/innerwall/internal/compiler"
@@ -76,6 +77,54 @@ func consoleServed(tree fs.FS) bool {
 	return err == nil
 }
 
+// gatewayTLS is where serve finds the agent gateway's credentials.
+type gatewayTLS struct {
+	CADir  string
+	InitCA bool
+	// Hosts name the server certificate InitCA issues.
+	Hosts []string
+	// CertFile and KeyFile default to server.crt and server.key in CADir.
+	CertFile, KeyFile string
+}
+
+// gatewayCredentials composes the agent gateway's side of serve from the
+// signing authority backend. With InitCA it first creates the authority,
+// and the server certificate through the authority's ServerIssuer, when the
+// directory holds none; an existing authority and certificate are kept.
+// It returns the authority enrollment signs through and the listener's TLS
+// configuration: the server certificate on disk, presented to agents, and
+// the authority's bundle, which verifies theirs.
+func gatewayCredentials(ctx context.Context, backend authorityBackend, cfg gatewayTLS, log *slog.Logger) (ca.Authority, *tls.Config, error) {
+	if cfg.InitCA {
+		if err := initAuthority(ctx, backend, cfg.CADir, cfg.Hosts, fileca.DefaultRootTTL, defaultServerTTL, log); err != nil && !errors.Is(err, fileca.ErrExists) {
+			return nil, nil, err
+		}
+	}
+	authority, err := backend.Open(cfg.CADir)
+	if err != nil {
+		return nil, nil, err
+	}
+	bundle, err := authority.Authority.Bundle(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	if cfg.CertFile == "" {
+		cfg.CertFile = filepath.Join(cfg.CADir, serverCertFile)
+	}
+	if cfg.KeyFile == "" {
+		cfg.KeyFile = filepath.Join(cfg.CADir, serverKeyFile)
+	}
+	serverCert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
+	if err != nil {
+		return nil, nil, fmt.Errorf("loading server certificate: %w", err)
+	}
+	tlsCfg, err := gateway.ServerTLSConfig(serverCert, bundle)
+	if err != nil {
+		return nil, nil, err
+	}
+	return authority.Authority, tlsCfg, nil
+}
+
 func runServe(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall serve", flag.ContinueOnError)
 	listen := fs.String("listen", defaultListen, "address for the agent gateway (gRPC over TLS)")
@@ -124,30 +173,13 @@ func runServe(ctx context.Context, args []string) error {
 	}
 	defer st.Close()
 
-	if *initCA {
-		if err := initAuthority(*caDir, strings.Split(*tlsHosts, ","), fileca.DefaultRootTTL, defaultServerTTL, log); err != nil && !errors.Is(err, fileca.ErrExists) {
-			return err
-		}
-	}
-	authority, err := fileca.Open(*caDir)
-	if err != nil {
-		return err
-	}
-	bundle, err := authority.Bundle(ctx)
-	if err != nil {
-		return err
-	}
-	if *tlsCert == "" {
-		*tlsCert = filepath.Join(*caDir, serverCertFile)
-	}
-	if *tlsKey == "" {
-		*tlsKey = filepath.Join(*caDir, serverKeyFile)
-	}
-	serverCert, err := tls.LoadX509KeyPair(*tlsCert, *tlsKey)
-	if err != nil {
-		return fmt.Errorf("loading server certificate: %w", err)
-	}
-	tlsCfg, err := gateway.ServerTLSConfig(serverCert, bundle)
+	authority, tlsCfg, err := gatewayCredentials(ctx, fileBackend, gatewayTLS{
+		CADir:    *caDir,
+		InitCA:   *initCA,
+		Hosts:    strings.Split(*tlsHosts, ","),
+		CertFile: *tlsCert,
+		KeyFile:  *tlsKey,
+	}, log)
 	if err != nil {
 		return err
 	}
