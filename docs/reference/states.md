@@ -57,6 +57,8 @@ A retired workload's credential is refused whatever its lifecycle says ([retired
 
 After a renewal made with an already expired credential, the console shows "renewed 3h late" beside the countdown, from `health.credential.last_late_renewal`. What each case means for the host is in [credential lifecycle](../guides/credential-lifecycle.md).
 
+`health.credential.serial` and `expires_at` describe the credential last issued; `health.credential.last_presented` is the serial and expiry of the one the workload's latest sync stream opened on, null until a stream has opened. A stream keeps its credential until that credential's end, so after a renewal the two differ until the next stream. `last_presented` is the credential in use only while `sync.state` is not `offline`.
+
 ## Other chips
 
 | Chip | Meaning | What to do |

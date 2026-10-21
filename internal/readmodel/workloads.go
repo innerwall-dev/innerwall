@@ -125,12 +125,20 @@ type CredentialStatus struct {
 	// its expiry ends.
 	Lifecycle      CredentialLifecycle
 	RenewableUntil time.Time
-	ExpiresAt      time.Time
-	LastRenewedAt  *time.Time
-	LastError      string
+	// Serial and ExpiresAt are the credential last issued, which State
+	// and Lifecycle judge.
+	Serial        string
+	ExpiresAt     time.Time
+	LastRenewedAt *time.Time
+	LastError     string
 	// LastLateRenewal is the workload's latest late renewal; nil when it
 	// has never renewed late. A later on-time renewal leaves it.
 	LastLateRenewal *registry.LateRenewal
+	// LastPresented is the credential the workload's most recent sync
+	// stream opened on; nil when none has been recorded. It is the one in
+	// use only while the sync state says a stream is open, and differs
+	// from the issued one while a stream outlives a renewal.
+	LastPresented *registry.PresentedCredential
 }
 
 // SyncStatus is a workload's convergence with its rendered policy: the
@@ -441,7 +449,7 @@ func (s *Reader) workload(rec *WorkloadRecord, now time.Time) Workload {
 // error stands, renews otherwise; and its lifecycle under grace, by the
 // rule admission applies.
 func credentialStatus(rec *WorkloadRecord, now time.Time, grace time.Duration) CredentialStatus {
-	st := CredentialStatus{State: CredentialRenews, ExpiresAt: rec.CredentialExpiresAt, LastRenewedAt: rec.LastRenewedAt, LastError: rec.CredentialRenewalError, LastLateRenewal: rec.LateRenewal}
+	st := CredentialStatus{State: CredentialRenews, Serial: rec.CredentialSerial, ExpiresAt: rec.CredentialExpiresAt, LastRenewedAt: rec.LastRenewedAt, LastError: rec.CredentialRenewalError, LastLateRenewal: rec.LateRenewal, LastPresented: rec.PresentedCredential}
 	switch {
 	case !now.Before(rec.CredentialExpiresAt):
 		st.State = CredentialExpired

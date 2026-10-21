@@ -104,7 +104,7 @@ func TestFlowReportCarriesAgentProcess(t *testing.T) {
 	}
 	want := registry.AgentProcess{StartedAt: hb.Add(-2 * time.Hour), HeartbeatAt: hb}
 	// Later sync-path writes refresh last-seen, never the pair.
-	if err := s.RecordAgent(ctx, id, registry.AgentInfo{Version: "v0.4.0"}, 0, hb.Add(10*time.Second)); err != nil {
+	if err := s.RecordAgent(ctx, id, registry.AgentInfo{Version: "v0.4.0"}, 0, nil, hb.Add(10*time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.SetSyncState(ctx, id, innerwallv1.SyncState_SYNC_STATE_SYNCED, "", hb.Add(20*time.Second)); err != nil {

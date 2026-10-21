@@ -52,7 +52,7 @@ func newReadFixture(now time.Time) *readFixture {
 	group := policy.AddressGroup{ID: uuid.New(), Name: "office", CIDRs: []string{"192.0.2.0/24"}}
 	st := &readmodeltest.MemStore{
 		Workloads: []readmodel.WorkloadRecord{
-			{Workload: registry.Workload{ID: web, Hostname: "web-1", Labels: []registry.Label{{Key: "env", Value: "prod"}, {Key: "role", Value: "web"}}, Mode: innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED, Addresses: []netip.Addr{netip.MustParseAddr("10.0.0.10")}, Agent: registry.AgentInfo{Version: "0.3.0", Capabilities: []string{"nftables"}}, EnrolledAt: now.Add(-24 * time.Hour), LastSeenAt: &seen, SyncState: innerwallv1.SyncState_SYNC_STATE_SYNCED, AppliedVersion: 3, LastAckedAt: &acked, CredentialExpiresAt: now.Add(20 * time.Hour), LateRenewal: &registry.LateRenewal{RenewedAt: renewedLate, ExpiredAt: renewedLate.Add(-14 * time.Hour)}, OwnedTable: innerwallv1.OwnedTableState_OWNED_TABLE_STATE_ABSENT, OwnedTableAbsentSince: &removed, LastFlowReportAt: &reported}, LatestVersion: 3, LatestRenderedAt: &renderedAt},
+			{Workload: registry.Workload{ID: web, Hostname: "web-1", Labels: []registry.Label{{Key: "env", Value: "prod"}, {Key: "role", Value: "web"}}, Mode: innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED, Addresses: []netip.Addr{netip.MustParseAddr("10.0.0.10")}, Agent: registry.AgentInfo{Version: "0.3.0", Capabilities: []string{"nftables"}}, EnrolledAt: now.Add(-24 * time.Hour), LastSeenAt: &seen, SyncState: innerwallv1.SyncState_SYNC_STATE_SYNCED, AppliedVersion: 3, LastAckedAt: &acked, CredentialSerial: "2c", CredentialExpiresAt: now.Add(20 * time.Hour), PresentedCredential: &registry.PresentedCredential{Serial: "1b", ExpiresAt: now.Add(10 * time.Minute)}, LateRenewal: &registry.LateRenewal{RenewedAt: renewedLate, ExpiredAt: renewedLate.Add(-14 * time.Hour)}, OwnedTable: innerwallv1.OwnedTableState_OWNED_TABLE_STATE_ABSENT, OwnedTableAbsentSince: &removed, LastFlowReportAt: &reported}, LatestVersion: 3, LatestRenderedAt: &renderedAt},
 			{Workload: registry.Workload{ID: db, Hostname: "db-1", Labels: []registry.Label{{Key: "env", Value: "prod"}, {Key: "role", Value: "db"}}, Mode: innerwallv1.EnforcementMode_ENFORCEMENT_MODE_SIMULATION, Facts: &innerwallv1.HostFacts{Os: &innerwallv1.OsInfo{Family: "linux", Name: "debian"}}, EnrolledAt: now.Add(-20 * time.Hour), SyncState: innerwallv1.SyncState_SYNC_STATE_DEGRADED, SyncError: "apply refused", LastApplyFailedAt: &failed, CredentialExpiresAt: now.Add(2 * time.Hour), CredentialRenewalError: "authority unreachable", DroppedFlowRecords: 42}, LatestVersion: 5, LatestRenderedAt: &renderedAt, ListeningServices: []registry.ListeningService{{Protocol: innerwallv1.Protocol_PROTOCOL_TCP, Port: 5432, ProcessName: "postgres"}}},
 		},
 		AddressGroups: []policy.AddressGroup{group},
@@ -404,6 +404,17 @@ func TestWorkloadEndpoints(t *testing.T) {
 		t.Fatalf("web-1 late renewal = %v", field(web, "health.credential"))
 	}
 	if c := field(db, "health.credential").(map[string]any); !hasNull(c, "last_late_renewal") {
+		t.Fatalf("db-1 credential = %v", c)
+	}
+	// The credential the live stream presented (issue #112), apart from
+	// the one last issued: web-1's stream opened before its renewal and
+	// still holds the replaced credential. Present and null for a
+	// workload with no stream recorded.
+	if field(web, "health.credential.serial") != "2c" || field(web, "health.credential.expires_at") != "2026-09-14T08:00:00Z" ||
+		field(web, "health.credential.last_presented.serial") != "1b" || field(web, "health.credential.last_presented.expires_at") != "2026-09-13T12:10:00Z" {
+		t.Fatalf("web-1 credential = %v", field(web, "health.credential"))
+	}
+	if c := field(db, "health.credential").(map[string]any); !hasNull(c, "last_presented") || c["serial"] != "" {
 		t.Fatalf("db-1 credential = %v", c)
 	}
 	// The owned table: synced on its version and removed on the host, the

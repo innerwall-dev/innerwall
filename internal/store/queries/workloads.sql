@@ -63,10 +63,16 @@ UPDATE workloads
 SET facts = $2, hostname = $3, last_seen_at = $4
 WHERE id = $1 AND retired_at IS NULL;
 
+-- The Hello also stamps the credential the stream opened on (migration
+-- 00018); a caller that knows of none passes both NULL and leaves the
+-- stamp as it was, so the pair is never half-written or made up.
 -- name: RecordWorkloadAgent :execrows
 UPDATE workloads
-SET agent_version = $2, agent_capabilities = $3, applied_policy_version = $4, last_seen_at = $5
-WHERE id = $1 AND retired_at IS NULL;
+SET agent_version = sqlc.arg(agent_version), agent_capabilities = sqlc.arg(agent_capabilities),
+    applied_policy_version = sqlc.arg(applied_policy_version), last_seen_at = sqlc.arg(last_seen_at),
+    presented_credential_serial = coalesce(sqlc.narg(presented_serial)::text, presented_credential_serial),
+    presented_credential_expires_at = coalesce(sqlc.narg(presented_expires_at)::timestamptz, presented_credential_expires_at)
+WHERE id = sqlc.arg(id) AND retired_at IS NULL;
 
 -- name: ListWorkloadAddresses :many
 SELECT address FROM workload_addresses
@@ -218,6 +224,7 @@ SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at,
        w.source_overruns, w.clock_skew_offset_ms, w.clock_skew_observed_at, w.clock_skew_current,
        w.owned_table_state, w.owned_table_absent_since, w.last_flow_report_at,
        w.late_renewal_at, w.late_renewal_expired_at, w.retired_at,
+       w.presented_credential_serial, w.presented_credential_expires_at,
        w.sync_rank::integer AS sync_rank, w.seen_key::timestamptz AS seen_key,
        p.version AS latest_version, p.rendered_at AS latest_rendered_at
 FROM (

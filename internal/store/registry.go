@@ -74,6 +74,7 @@ func workloadFromRow(row *db.Workload, labels []registry.Label, addrs []netip.Ad
 		DroppedFlowRecords:     uint64(row.DroppedFlowRecords), //nolint:gosec // non-negative by construction
 		SourceOverruns:         uint64(row.SourceOverruns),     //nolint:gosec // non-negative by construction
 		CredentialRenewalError: row.CredentialRenewalError,
+		CredentialSerial:       row.CredentialSerial,
 		CredentialExpiresAt:    row.CredentialExpiresAt,
 		LastSnapshotSentAt:     row.LastSnapshotSentAt,
 		LastAckedAt:            row.LastAckedAt,
@@ -88,6 +89,9 @@ func workloadFromRow(row *db.Workload, labels []registry.Label, addrs []netip.Ad
 	}
 	if row.LateRenewalAt != nil && row.LateRenewalExpiredAt != nil {
 		w.LateRenewal = &registry.LateRenewal{RenewedAt: *row.LateRenewalAt, ExpiredAt: *row.LateRenewalExpiredAt}
+	}
+	if row.PresentedCredentialSerial != nil && row.PresentedCredentialExpiresAt != nil {
+		w.PresentedCredential = &registry.PresentedCredential{Serial: *row.PresentedCredentialSerial, ExpiresAt: *row.PresentedCredentialExpiresAt}
 	}
 	if row.ClockSkewOffsetMs.Valid && row.ClockSkewObservedAt != nil {
 		w.ClockSkew = &registry.ClockSkew{Offset: time.Duration(row.ClockSkewOffsetMs.Int64) * time.Millisecond, ObservedAt: *row.ClockSkewObservedAt, Current: row.ClockSkewCurrent}
@@ -288,15 +292,19 @@ func sameAddresses(old []string, current []netip.Addr) bool {
 }
 
 // RecordAgent implements registry.Store.
-func (s *Store) RecordAgent(ctx context.Context, id identity.WorkloadID, agent registry.AgentInfo, appliedVersion uint64, now time.Time) error {
+func (s *Store) RecordAgent(ctx context.Context, id identity.WorkloadID, agent registry.AgentInfo, appliedVersion uint64, presented *registry.PresentedCredential, now time.Time) error {
 	caps := agent.Capabilities
 	if caps == nil {
 		caps = []string{}
 	}
-	n, err := s.q.RecordWorkloadAgent(ctx, db.RecordWorkloadAgentParams{
+	params := db.RecordWorkloadAgentParams{
 		ID: id.UUID(), AgentVersion: agent.Version, AgentCapabilities: caps,
 		AppliedPolicyVersion: int64(appliedVersion), LastSeenAt: &now, //nolint:gosec // versions are small
-	})
+	}
+	if presented != nil {
+		params.PresentedSerial, params.PresentedExpiresAt = &presented.Serial, &presented.ExpiresAt
+	}
+	n, err := s.q.RecordWorkloadAgent(ctx, params)
 	if err != nil {
 		return fmt.Errorf("store: recording agent: %w", err)
 	}

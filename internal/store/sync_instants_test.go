@@ -39,7 +39,7 @@ func TestAckAndApplyFailureInstants(t *testing.T) {
 
 	// Neither the version a Hello claims nor a plain state change is an
 	// acknowledgement.
-	if err := s.RecordAgent(ctx, id, registry.AgentInfo{Version: "0.3.0"}, 1, at); err != nil {
+	if err := s.RecordAgent(ctx, id, registry.AgentInfo{Version: "0.3.0"}, 1, nil, at); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.SetSyncState(ctx, id, innerwallv1.SyncState_SYNC_STATE_PENDING, "", at); err != nil {

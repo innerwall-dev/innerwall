@@ -333,5 +333,10 @@ func TestCredentialLifecycleOnTheWorkloadRead(t *testing.T) {
 		if field(body, "health.credential.lifecycle") != tc.lifecycle || field(body, "health.credential.state") != tc.state || field(body, "health.credential.renewable_until") != renewableUntil {
 			t.Fatalf("credential at %v = %v, want lifecycle %s, state %s, renewable until %s", tc.at, field(body, "health.credential"), tc.lifecycle, tc.state, renewableUntil)
 		}
+		// The issued serial is the enrolled one; no stream has opened, so
+		// nothing has been presented (issue #112).
+		if c := field(body, "health.credential").(map[string]any); c["serial"] != enrolled.Credential.Serial || !hasNull(c, "last_presented") {
+			t.Fatalf("credential at %v = %v, want serial %s and no presented credential", tc.at, c, enrolled.Credential.Serial)
+		}
 	}
 }

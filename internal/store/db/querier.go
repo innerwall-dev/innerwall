@@ -198,6 +198,9 @@ type Querier interface {
 	Ping(ctx context.Context) (int32, error)
 	RecordOperatorTokenUse(ctx context.Context, arg RecordOperatorTokenUseParams) error
 	RecordProvisioningTokenUse(ctx context.Context, arg RecordProvisioningTokenUseParams) error
+	// The Hello also stamps the credential the stream opened on (migration
+	// 00018); a caller that knows of none passes both NULL and leaves the
+	// stamp as it was, so the pair is never half-written or made up.
 	RecordWorkloadAgent(ctx context.Context, arg RecordWorkloadAgentParams) (int64, error)
 	// An APPLIED acknowledgement: the version, the resulting state, and the
 	// instant. Nothing else writes last_acked_at (migration 00007). An apply

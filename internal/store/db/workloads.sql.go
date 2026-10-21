@@ -174,7 +174,7 @@ func (q *Queries) DeleteWorkloadListeningServices(ctx context.Context, workloadI
 }
 
 const getWorkload = `-- name: GetWorkload :one
-SELECT id, region_id, provisioning_token_id, hostname, enrolled_at, credential_serial, credential_expires_at, last_renewed_at, mode, facts, agent_version, agent_capabilities, last_seen_at, sync_state, applied_policy_version, sync_error, dropped_flow_records, credential_renewal_error, last_snapshot_sent_at, last_acked_at, last_apply_failed_at, source_overruns, clock_skew_offset_ms, clock_skew_observed_at, clock_skew_current, owned_table_state, owned_table_absent_since, last_flow_report_at, late_renewal_at, late_renewal_expired_at, last_heartbeat_at, agent_started_at, retired_at FROM workloads
+SELECT id, region_id, provisioning_token_id, hostname, enrolled_at, credential_serial, credential_expires_at, last_renewed_at, mode, facts, agent_version, agent_capabilities, last_seen_at, sync_state, applied_policy_version, sync_error, dropped_flow_records, credential_renewal_error, last_snapshot_sent_at, last_acked_at, last_apply_failed_at, source_overruns, clock_skew_offset_ms, clock_skew_observed_at, clock_skew_current, owned_table_state, owned_table_absent_since, last_flow_report_at, late_renewal_at, late_renewal_expired_at, last_heartbeat_at, agent_started_at, retired_at, presented_credential_serial, presented_credential_expires_at FROM workloads
 WHERE id = $1
 `
 
@@ -215,6 +215,8 @@ func (q *Queries) GetWorkload(ctx context.Context, id uuid.UUID) (Workload, erro
 		&i.LastHeartbeatAt,
 		&i.AgentStartedAt,
 		&i.RetiredAt,
+		&i.PresentedCredentialSerial,
+		&i.PresentedCredentialExpiresAt,
 	)
 	return i, err
 }
@@ -233,7 +235,7 @@ func (q *Queries) GetWorkloadRetiredAt(ctx context.Context, id uuid.UUID) (*time
 }
 
 const getWorkloadWithPolicy = `-- name: GetWorkloadWithPolicy :one
-SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at, w.credential_serial, w.credential_expires_at, w.last_renewed_at, w.mode, w.facts, w.agent_version, w.agent_capabilities, w.last_seen_at, w.sync_state, w.applied_policy_version, w.sync_error, w.dropped_flow_records, w.credential_renewal_error, w.last_snapshot_sent_at, w.last_acked_at, w.last_apply_failed_at, w.source_overruns, w.clock_skew_offset_ms, w.clock_skew_observed_at, w.clock_skew_current, w.owned_table_state, w.owned_table_absent_since, w.last_flow_report_at, w.late_renewal_at, w.late_renewal_expired_at, w.last_heartbeat_at, w.agent_started_at, w.retired_at, p.version AS latest_version, p.rendered_at AS latest_rendered_at
+SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at, w.credential_serial, w.credential_expires_at, w.last_renewed_at, w.mode, w.facts, w.agent_version, w.agent_capabilities, w.last_seen_at, w.sync_state, w.applied_policy_version, w.sync_error, w.dropped_flow_records, w.credential_renewal_error, w.last_snapshot_sent_at, w.last_acked_at, w.last_apply_failed_at, w.source_overruns, w.clock_skew_offset_ms, w.clock_skew_observed_at, w.clock_skew_current, w.owned_table_state, w.owned_table_absent_since, w.last_flow_report_at, w.late_renewal_at, w.late_renewal_expired_at, w.last_heartbeat_at, w.agent_started_at, w.retired_at, w.presented_credential_serial, w.presented_credential_expires_at, p.version AS latest_version, p.rendered_at AS latest_rendered_at
 FROM workloads w
 LEFT JOIN workload_policies p ON p.workload_id = w.id
 WHERE w.id = $1
@@ -283,6 +285,8 @@ func (q *Queries) GetWorkloadWithPolicy(ctx context.Context, id uuid.UUID) (GetW
 		&i.Workload.LastHeartbeatAt,
 		&i.Workload.AgentStartedAt,
 		&i.Workload.RetiredAt,
+		&i.Workload.PresentedCredentialSerial,
+		&i.Workload.PresentedCredentialExpiresAt,
 		&i.LatestVersion,
 		&i.LatestRenderedAt,
 	)
@@ -518,10 +522,11 @@ SELECT w.id, w.region_id, w.provisioning_token_id, w.hostname, w.enrolled_at,
        w.source_overruns, w.clock_skew_offset_ms, w.clock_skew_observed_at, w.clock_skew_current,
        w.owned_table_state, w.owned_table_absent_since, w.last_flow_report_at,
        w.late_renewal_at, w.late_renewal_expired_at, w.retired_at,
+       w.presented_credential_serial, w.presented_credential_expires_at,
        w.sync_rank::integer AS sync_rank, w.seen_key::timestamptz AS seen_key,
        p.version AS latest_version, p.rendered_at AS latest_rendered_at
 FROM (
-    SELECT workloads.id, workloads.region_id, workloads.provisioning_token_id, workloads.hostname, workloads.enrolled_at, workloads.credential_serial, workloads.credential_expires_at, workloads.last_renewed_at, workloads.mode, workloads.facts, workloads.agent_version, workloads.agent_capabilities, workloads.last_seen_at, workloads.sync_state, workloads.applied_policy_version, workloads.sync_error, workloads.dropped_flow_records, workloads.credential_renewal_error, workloads.last_snapshot_sent_at, workloads.last_acked_at, workloads.last_apply_failed_at, workloads.source_overruns, workloads.clock_skew_offset_ms, workloads.clock_skew_observed_at, workloads.clock_skew_current, workloads.owned_table_state, workloads.owned_table_absent_since, workloads.last_flow_report_at, workloads.late_renewal_at, workloads.late_renewal_expired_at, workloads.last_heartbeat_at, workloads.agent_started_at, workloads.retired_at,
+    SELECT workloads.id, workloads.region_id, workloads.provisioning_token_id, workloads.hostname, workloads.enrolled_at, workloads.credential_serial, workloads.credential_expires_at, workloads.last_renewed_at, workloads.mode, workloads.facts, workloads.agent_version, workloads.agent_capabilities, workloads.last_seen_at, workloads.sync_state, workloads.applied_policy_version, workloads.sync_error, workloads.dropped_flow_records, workloads.credential_renewal_error, workloads.last_snapshot_sent_at, workloads.last_acked_at, workloads.last_apply_failed_at, workloads.source_overruns, workloads.clock_skew_offset_ms, workloads.clock_skew_observed_at, workloads.clock_skew_current, workloads.owned_table_state, workloads.owned_table_absent_since, workloads.last_flow_report_at, workloads.late_renewal_at, workloads.late_renewal_expired_at, workloads.last_heartbeat_at, workloads.agent_started_at, workloads.retired_at, workloads.presented_credential_serial, workloads.presented_credential_expires_at,
            CASE WHEN workloads.retired_at IS NOT NULL THEN 5
                 WHEN workloads.owned_table_state = 2 THEN 0
                 WHEN workloads.sync_state = 3 THEN 0 WHEN workloads.sync_state = 4 THEN 1
@@ -554,41 +559,43 @@ type ListWorkloadPageParams struct {
 }
 
 type ListWorkloadPageRow struct {
-	ID                     uuid.UUID
-	RegionID               string
-	ProvisioningTokenID    uuid.UUID
-	Hostname               string
-	EnrolledAt             time.Time
-	CredentialSerial       string
-	CredentialExpiresAt    time.Time
-	LastRenewedAt          *time.Time
-	Mode                   int32
-	Facts                  []byte
-	AgentVersion           string
-	AgentCapabilities      []string
-	LastSeenAt             *time.Time
-	SyncState              int32
-	AppliedPolicyVersion   int64
-	SyncError              string
-	DroppedFlowRecords     int64
-	CredentialRenewalError string
-	LastSnapshotSentAt     *time.Time
-	LastAckedAt            *time.Time
-	LastApplyFailedAt      *time.Time
-	SourceOverruns         int64
-	ClockSkewOffsetMs      pgtype.Int8
-	ClockSkewObservedAt    *time.Time
-	ClockSkewCurrent       bool
-	OwnedTableState        int16
-	OwnedTableAbsentSince  *time.Time
-	LastFlowReportAt       *time.Time
-	LateRenewalAt          *time.Time
-	LateRenewalExpiredAt   *time.Time
-	RetiredAt              *time.Time
-	SyncRank               int32
-	SeenKey                time.Time
-	LatestVersion          pgtype.Int8
-	LatestRenderedAt       *time.Time
+	ID                           uuid.UUID
+	RegionID                     string
+	ProvisioningTokenID          uuid.UUID
+	Hostname                     string
+	EnrolledAt                   time.Time
+	CredentialSerial             string
+	CredentialExpiresAt          time.Time
+	LastRenewedAt                *time.Time
+	Mode                         int32
+	Facts                        []byte
+	AgentVersion                 string
+	AgentCapabilities            []string
+	LastSeenAt                   *time.Time
+	SyncState                    int32
+	AppliedPolicyVersion         int64
+	SyncError                    string
+	DroppedFlowRecords           int64
+	CredentialRenewalError       string
+	LastSnapshotSentAt           *time.Time
+	LastAckedAt                  *time.Time
+	LastApplyFailedAt            *time.Time
+	SourceOverruns               int64
+	ClockSkewOffsetMs            pgtype.Int8
+	ClockSkewObservedAt          *time.Time
+	ClockSkewCurrent             bool
+	OwnedTableState              int16
+	OwnedTableAbsentSince        *time.Time
+	LastFlowReportAt             *time.Time
+	LateRenewalAt                *time.Time
+	LateRenewalExpiredAt         *time.Time
+	RetiredAt                    *time.Time
+	PresentedCredentialSerial    *string
+	PresentedCredentialExpiresAt *time.Time
+	SyncRank                     int32
+	SeenKey                      time.Time
+	LatestVersion                pgtype.Int8
+	LatestRenderedAt             *time.Time
 }
 
 // --- operator read model (ADR-0007 as amended) -------------------------------
@@ -658,6 +665,8 @@ func (q *Queries) ListWorkloadPage(ctx context.Context, arg ListWorkloadPagePara
 			&i.LateRenewalAt,
 			&i.LateRenewalExpiredAt,
 			&i.RetiredAt,
+			&i.PresentedCredentialSerial,
+			&i.PresentedCredentialExpiresAt,
 			&i.SyncRank,
 			&i.SeenKey,
 			&i.LatestVersion,
@@ -675,7 +684,7 @@ func (q *Queries) ListWorkloadPage(ctx context.Context, arg ListWorkloadPagePara
 
 const listWorkloads = `-- name: ListWorkloads :many
 
-SELECT id, region_id, provisioning_token_id, hostname, enrolled_at, credential_serial, credential_expires_at, last_renewed_at, mode, facts, agent_version, agent_capabilities, last_seen_at, sync_state, applied_policy_version, sync_error, dropped_flow_records, credential_renewal_error, last_snapshot_sent_at, last_acked_at, last_apply_failed_at, source_overruns, clock_skew_offset_ms, clock_skew_observed_at, clock_skew_current, owned_table_state, owned_table_absent_since, last_flow_report_at, late_renewal_at, late_renewal_expired_at, last_heartbeat_at, agent_started_at, retired_at FROM workloads
+SELECT id, region_id, provisioning_token_id, hostname, enrolled_at, credential_serial, credential_expires_at, last_renewed_at, mode, facts, agent_version, agent_capabilities, last_seen_at, sync_state, applied_policy_version, sync_error, dropped_flow_records, credential_renewal_error, last_snapshot_sent_at, last_acked_at, last_apply_failed_at, source_overruns, clock_skew_offset_ms, clock_skew_observed_at, clock_skew_current, owned_table_state, owned_table_absent_since, last_flow_report_at, late_renewal_at, late_renewal_expired_at, last_heartbeat_at, agent_started_at, retired_at, presented_credential_serial, presented_credential_expires_at FROM workloads
 ORDER BY enrolled_at, id
 `
 
@@ -723,6 +732,8 @@ func (q *Queries) ListWorkloads(ctx context.Context) ([]Workload, error) {
 			&i.LastHeartbeatAt,
 			&i.AgentStartedAt,
 			&i.RetiredAt,
+			&i.PresentedCredentialSerial,
+			&i.PresentedCredentialExpiresAt,
 		); err != nil {
 			return nil, err
 		}
@@ -768,25 +779,35 @@ func (q *Queries) LockWorkload(ctx context.Context, id uuid.UUID) (LockWorkloadR
 
 const recordWorkloadAgent = `-- name: RecordWorkloadAgent :execrows
 UPDATE workloads
-SET agent_version = $2, agent_capabilities = $3, applied_policy_version = $4, last_seen_at = $5
-WHERE id = $1 AND retired_at IS NULL
+SET agent_version = $1, agent_capabilities = $2,
+    applied_policy_version = $3, last_seen_at = $4,
+    presented_credential_serial = coalesce($5::text, presented_credential_serial),
+    presented_credential_expires_at = coalesce($6::timestamptz, presented_credential_expires_at)
+WHERE id = $7 AND retired_at IS NULL
 `
 
 type RecordWorkloadAgentParams struct {
-	ID                   uuid.UUID
 	AgentVersion         string
 	AgentCapabilities    []string
 	AppliedPolicyVersion int64
 	LastSeenAt           *time.Time
+	PresentedSerial      *string
+	PresentedExpiresAt   *time.Time
+	ID                   uuid.UUID
 }
 
+// The Hello also stamps the credential the stream opened on (migration
+// 00018); a caller that knows of none passes both NULL and leaves the
+// stamp as it was, so the pair is never half-written or made up.
 func (q *Queries) RecordWorkloadAgent(ctx context.Context, arg RecordWorkloadAgentParams) (int64, error) {
 	result, err := q.db.Exec(ctx, recordWorkloadAgent,
-		arg.ID,
 		arg.AgentVersion,
 		arg.AgentCapabilities,
 		arg.AppliedPolicyVersion,
 		arg.LastSeenAt,
+		arg.PresentedSerial,
+		arg.PresentedExpiresAt,
+		arg.ID,
 	)
 	if err != nil {
 		return 0, err

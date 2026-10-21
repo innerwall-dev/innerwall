@@ -77,7 +77,17 @@ type Workload struct {
 	// CredentialRenewalError is the reason the agent's last automatic
 	// renewal failed, as its heartbeat reported it; empty when healthy.
 	CredentialRenewalError string
-	CredentialExpiresAt    time.Time
+	// CredentialSerial and CredentialExpiresAt are the credential the
+	// control plane last issued the workload.
+	CredentialSerial    string
+	CredentialExpiresAt time.Time
+	// PresentedCredential is the credential the workload's most recent
+	// sync stream opened on; nil when no stream has opened since the
+	// control plane began recording it. A stream ending leaves it, so it
+	// is the credential in use only while SyncState says a stream is
+	// open; after a renewal the live stream keeps the one renewal
+	// replaced until its end. Written at stream open alone.
+	PresentedCredential *PresentedCredential
 	// LateRenewal is the latest renewal made with an already-expired
 	// credential, within the renewal grace; nil when the workload has
 	// never renewed late. Written by renewal alone (ADR-0016 as amended).
@@ -154,6 +164,14 @@ type Heartbeat struct {
 type AgentProcess struct {
 	StartedAt   time.Time
 	HeartbeatAt time.Time
+}
+
+// PresentedCredential is the certificate a sync stream opened on, as the
+// interceptor verified it: its serial, in the form issuance records
+// (enroll.CredentialSerial), and its expiry.
+type PresentedCredential struct {
+	Serial    string
+	ExpiresAt time.Time
 }
 
 // LateRenewal is a renewal made with a credential that had already
@@ -248,8 +266,9 @@ type Store interface {
 	// RecordListeningServices replaces the workload's listening services.
 	RecordListeningServices(ctx context.Context, id identity.WorkloadID, services []ListeningService, now time.Time) error
 	// RecordAgent stores what a Hello said: agent info and the version the
-	// agent claims to have applied.
-	RecordAgent(ctx context.Context, id identity.WorkloadID, agent AgentInfo, appliedVersion uint64, now time.Time) error
+	// agent claims to have applied; and the credential the stream opened
+	// on, which a nil presented leaves as it was.
+	RecordAgent(ctx context.Context, id identity.WorkloadID, agent AgentInfo, appliedVersion uint64, presented *PresentedCredential, now time.Time) error
 	// RecordHeartbeat refreshes last-seen and what the heartbeat carries:
 	// the loss counters, the renewal status, the owned table's state, and
 	// the agent process it came from.

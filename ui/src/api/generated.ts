@@ -1153,6 +1153,16 @@ export interface components {
                         expired_at: string;
                         renewed_at: components["schemas"]["Timestamp"];
                     } | null;
+                    /** @description The credential the workload's most recent sync stream opened on, as the control plane verified it; null when no stream has opened since the control plane began recording it. A stream keeps the credential it opened on until that credential's end, so after a renewal the live stream still presents the one the renewal replaced, and this differs from `serial` and `expires_at`. It is the credential in use only while `sync.state` is not `offline`; a stream ending leaves it, as what was presented last. */
+                    last_presented: {
+                        /**
+                         * Format: date-time
+                         * @description When the presented certificate expires.
+                         */
+                        expires_at: string;
+                        /** @description The presented certificate's serial number, in lowercase hexadecimal, as `serial` names the issued one. */
+                        serial: string;
+                    } | null;
                     /** Format: date-time */
                     last_renewed_at: string | null;
                     /**
@@ -1165,6 +1175,8 @@ export interface components {
                      * @description The end of the renewal grace after `expires_at`, by this control plane's configuration; past it the credential is `past-grace`.
                      */
                     renewable_until: string;
+                    /** @description The serial number, in lowercase hexadecimal, of the credential the control plane last issued the workload, at enrollment or its latest renewal. `expires_at`, `state`, and `lifecycle` describe this credential; the one a live stream uses can differ (`last_presented`). */
+                    serial: string;
                     /**
                      * @description renews — valid, and the last renewal that was due succeeded; renewal-failed — valid, but the agent's last renewal attempt failed (`last_error`); expired — past `expires_at`. An expired credential may still renew, and do nothing else, within the control plane's renewal grace (72 hours unless the operator sets otherwise); the agent keeps retrying, and beyond the grace the workload must re-enroll. `lifecycle` says which side of the grace it is on.
                      * @enum {string}

@@ -186,7 +186,7 @@ func Seed(ctx context.Context, s *store.Store, now time.Time) (*Fleet, error) {
 	}
 
 	// Sync and health, as the gateway would have recorded them.
-	if err := s.RecordAgent(ctx, f.Web, registry.AgentInfo{Version: "0.3.0", Capabilities: []string{"nftables", "conntrack"}}, webPolicy.GetVersion(), f.Now.Add(-time.Minute)); err != nil {
+	if err := s.RecordAgent(ctx, f.Web, registry.AgentInfo{Version: "0.3.0", Capabilities: []string{"nftables", "conntrack"}}, webPolicy.GetVersion(), nil, f.Now.Add(-time.Minute)); err != nil {
 		return nil, err
 	}
 	if err := s.RecordApplied(ctx, f.Web, webPolicy.GetVersion(), innerwallv1.SyncState_SYNC_STATE_SYNCED, f.Now.Add(-time.Minute)); err != nil {
@@ -195,7 +195,7 @@ func Seed(ctx context.Context, s *store.Store, now time.Time) (*Fleet, error) {
 	if err := s.RecordHeartbeat(ctx, f.Web, registry.Heartbeat{OwnedTable: innerwallv1.OwnedTableState_OWNED_TABLE_STATE_PRESENT}, f.Now.Add(-time.Minute)); err != nil {
 		return nil, err
 	}
-	if err := s.RecordAgent(ctx, f.DB, registry.AgentInfo{Version: "0.3.0", Capabilities: []string{"nftables", "conntrack"}}, 0, f.Now.Add(-5*time.Minute)); err != nil {
+	if err := s.RecordAgent(ctx, f.DB, registry.AgentInfo{Version: "0.3.0", Capabilities: []string{"nftables", "conntrack"}}, 0, nil, f.Now.Add(-5*time.Minute)); err != nil {
 		return nil, err
 	}
 	if err := s.RecordApplyFailed(ctx, f.DB, "apply refused: set element exceeds the table's size", f.Now.Add(-5*time.Minute)); err != nil {
@@ -204,7 +204,7 @@ func Seed(ctx context.Context, s *store.Store, now time.Time) (*Fleet, error) {
 	if err := s.RecordHeartbeat(ctx, f.DB, registry.Heartbeat{DroppedFlowRecords: 42, RenewalError: "renewal refused: authority unreachable", OwnedTable: innerwallv1.OwnedTableState_OWNED_TABLE_STATE_PRESENT}, f.Now.Add(-5*time.Minute)); err != nil {
 		return nil, err
 	}
-	if err := s.RecordAgent(ctx, f.Cache, registry.AgentInfo{Version: "0.2.0"}, 0, f.Now.Add(-3*time.Hour)); err != nil {
+	if err := s.RecordAgent(ctx, f.Cache, registry.AgentInfo{Version: "0.2.0"}, 0, nil, f.Now.Add(-3*time.Hour)); err != nil {
 		return nil, err
 	}
 	if err := s.SetSyncState(ctx, f.Cache, innerwallv1.SyncState_SYNC_STATE_OFFLINE, "", f.Now.Add(-3*time.Hour)); err != nil {
