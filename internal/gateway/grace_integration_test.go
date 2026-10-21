@@ -43,6 +43,7 @@ func (h *harness) issueAt(t *testing.T, key *ecdsa.PrivateKey, id identity.Workl
 	block, _ := pem.Decode(keyPEM)
 	if block == nil {
 		t.Fatal("root key holds no PEM block")
+		return tls.Certificate{}
 	}
 	var rootKey any
 	if rootKey, err = x509.ParsePKCS8PrivateKey(block.Bytes); err != nil {
