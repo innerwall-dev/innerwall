@@ -166,6 +166,22 @@ Connections opened after that carry byte counts; ones already open stay at zero.
 
 **Remedy.** Retirement is one way. If the host should come back, enroll it again with a provisioning token, which makes it a new workload ([credential lifecycle](guides/credential-lifecycle.md#retiring-a-workload)); if it should not, stop and remove the agent, since the host keeps enforcing its last policy until you do.
 
+### The agent's sync stream ends with "a sync stream ends with the credential it opened on"
+
+**Symptom.** The daemon logs `sync stream ended; reconnecting` with `workload credential has expired: it expired at …, and a sync stream ends with the credential it opened on; reconnect with a renewed credential`, then refusals of its new streams naming the expiry. The host keeps enforcing the policy it last applied.
+
+**Cause.** The credential the stream opened on expired before the agent renewed it. A stream is authorized by its credential for no longer than that credential's life (ADR-0016 as amended): five minutes before the expiry the control plane directs the agent to reconnect, which an agent that has renewed does on its fresh credential without an error, and a stream still open at the expiry is ended. The workload's `health.credential.last_error` (the renewal error on the workload page, or `renewal error` in `innerwall workload status`) says why renewal has not succeeded, usually the control plane or its signing authority being unreachable from the host.
+
+**Remedy.** Fix what the renewal error names. Within the renewal grace (`health.credential.lifecycle` reads `in-grace`) the agent's next renewal succeeds by itself and its next stream opens on the renewed credential ([credential lifecycle](guides/credential-lifecycle.md#the-renewal-grace)).
+
+### The agent logs "re-enrollment with a new provisioning token is required" on every attempt
+
+**Symptom.** The daemon's journal repeats `workload credential has expired: it expired at …, beyond the … renewal grace; re-enrollment with a new provisioning token is required` for its renewals and its sync stream, and keeps retrying with backoff. The host keeps enforcing the policy it last applied. The workload's `health.credential.lifecycle` reads `past-grace`.
+
+**Cause.** The credential expired longer ago than the control plane's renewal grace (`innerwall serve --renewal-grace`, 72 hours by default), usually because the host or its agent was down, or cut off from the control plane, for that long. Nothing will accept the credential again, and the control plane never directs the agent to stop: the daemon fails static and keeps retrying until an operator acts (ADR-0011, ADR-0015 as amended).
+
+**Remedy.** Enroll the host again with a new provisioning token, over the expired credential, and restart the daemon; it becomes a new workload, so set its mode again and retire the old one ([credential lifecycle](guides/credential-lifecycle.md#beyond-the-grace-re-enrollment)).
+
 ### An evidence gap: "the agent was not reporting"
 
 **Symptom.** A workload shows an evidence gap reading *the agent was not reporting between t1 and t2*, and a simulation review whose range includes it is not safe to enforce.

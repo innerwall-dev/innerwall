@@ -43,7 +43,17 @@ A workload the operator retired (`innerwall workload retire`, `POST /api/v1/work
 |---|---|---|
 | `renews` | "renewal due in 9h", then "renewal due now" | Valid, and the last renewal that was due succeeded. |
 | `renewal-failed` | "renewal failed · retrying" | Valid, but the agent's last renewal attempt failed; the error is on the workload page. |
-| `expired` | "expired 5h ago", and the **Credential expired** chip | Past its expiry. It may still renew, and do nothing else, within the control plane's renewal grace (72 hours unless set otherwise); beyond it the workload must be re-enrolled. The console does not yet say which of the two applies: read the expiry against the grace. |
+| `expired` | "expired 5h ago", and the **Credential expired** chip | Past its expiry. It may still renew, and do nothing else, within the control plane's renewal grace (72 hours unless set otherwise); beyond it the workload must be re-enrolled. The console does not yet say which of the two applies; `health.credential.lifecycle` does. |
+
+`health.credential.lifecycle` says what the control plane will still accept from the credential, judged against the renewal grace it is configured with, which no client can know; `health.credential.renewable_until` is when that grace ends.
+
+| API `health.credential.lifecycle` | Meaning |
+|---|---|
+| `valid` | Not yet expired. |
+| `in-grace` | Expired, and may still renew until `renewable_until`. The agent keeps retrying; the workload recovers by itself, with the same identity, once a renewal succeeds. |
+| `past-grace` | Expired beyond the grace. Nothing accepts it; the agent keeps enforcing its last policy and retrying, and the workload returns only by enrolling the host again with a new provisioning token, as a new workload ([credential lifecycle](../guides/credential-lifecycle.md#beyond-the-grace-re-enrollment)). |
+
+A retired workload's credential is refused whatever its lifecycle says ([retired](#retired)).
 
 After a renewal made with an already expired credential, the console shows "renewed 3h late" beside the countdown, from `health.credential.last_late_renewal`. What each case means for the host is in [credential lifecycle](../guides/credential-lifecycle.md).
 

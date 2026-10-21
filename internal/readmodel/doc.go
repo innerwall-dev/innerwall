@@ -14,5 +14,6 @@
 // cursor keyed on window start and row id. Workload reads pair the
 // registry's record with the latest rendered version so sync drift is one
 // read, and derive nothing but the credential state, which is a function
-// of the stored expiry, the stored renewal error, and the clock.
+// of the stored expiry, the stored renewal error, the clock, and the
+// renewal grace the control plane serves with.
 package readmodel

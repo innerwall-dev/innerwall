@@ -55,18 +55,27 @@ func endedWith(ctx context.Context) error {
 	return nil
 }
 
+// end ends sess with err as the status its agent receives. It is the
+// one mechanism every deliberate end of a stream shares: EndStream from
+// outside the stream, and the stream's own credential bound from inside
+// it (ADR-0016 as amended). The stream's own cleanup runs as for any
+// other end, the offline mark included.
+func (sess *session) end(err error) {
+	sess.cancel(&streamEnd{err: err})
+}
+
 // EndStream ends the live sync stream of id, if this replica holds one,
 // with err as the status its agent receives, and reports whether it held
-// one. It is the gateway's one lever for ending a stream from outside it:
-// retirement pulls it today, and a stream whose credential has lapsed is
-// the same act (issue #105). The stream's own cleanup runs as for any
-// other end, the offline mark included.
+// one. It is the gateway's one lever for ending a stream from outside it;
+// retirement pulls it, with the opaque refusal. A stream whose credential
+// expires is ended by the same mechanism from inside its own session,
+// with a refusal that names the expiry (boundByCredential).
 func (s *Server) EndStream(id identity.WorkloadID, err error) bool {
 	sess := s.sessions.get(id)
 	if sess == nil {
 		return false
 	}
-	sess.cancel(&streamEnd{err: err})
+	sess.end(err)
 	return true
 }
 

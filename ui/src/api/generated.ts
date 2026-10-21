@@ -1156,7 +1156,17 @@ export interface components {
                     /** Format: date-time */
                     last_renewed_at: string | null;
                     /**
-                     * @description renews — valid, and the last renewal that was due succeeded; renewal-failed — valid, but the agent's last renewal attempt failed (`last_error`); expired — past `expires_at`. An expired credential may still renew, and do nothing else, within the control plane's renewal grace (72 hours unless the operator sets otherwise); the agent keeps retrying, and beyond the grace the workload must re-enroll.
+                     * @description What the control plane will still accept from the credential, judged on `expires_at` by the rule that admits a presented credential and the renewal grace this control plane is configured with. valid — not yet expired; in-grace — expired, and may still renew until `renewable_until`; the agent keeps retrying, and the workload recovers by itself, with the same identity, once a renewal succeeds; past-grace — expired beyond the grace; nothing accepts it, the agent keeps enforcing its last policy and retrying, and the workload returns only by enrolling again with a new provisioning token, as a new identity. A retired workload's credential is refused whatever this says (`lifecycle` of the workload).
+                     * @enum {string}
+                     */
+                    lifecycle: "valid" | "in-grace" | "past-grace";
+                    /**
+                     * Format: date-time
+                     * @description The end of the renewal grace after `expires_at`, by this control plane's configuration; past it the credential is `past-grace`.
+                     */
+                    renewable_until: string;
+                    /**
+                     * @description renews — valid, and the last renewal that was due succeeded; renewal-failed — valid, but the agent's last renewal attempt failed (`last_error`); expired — past `expires_at`. An expired credential may still renew, and do nothing else, within the control plane's renewal grace (72 hours unless the operator sets otherwise); the agent keeps retrying, and beyond the grace the workload must re-enroll. `lifecycle` says which side of the grace it is on.
                      * @enum {string}
                      */
                     state: "renews" | "renewal-failed" | "expired";

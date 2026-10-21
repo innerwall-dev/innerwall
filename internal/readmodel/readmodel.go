@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/innerwall-dev/innerwall/internal/enroll"
 	"github.com/innerwall-dev/innerwall/internal/flowstore"
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 	"github.com/innerwall-dev/innerwall/internal/identity"
@@ -74,6 +75,11 @@ type Reader struct {
 	// agents; a workload's telemetry is live while a report has arrived
 	// within TelemetryLiveWindows of it. Zero judges no telemetry live.
 	FlowWindow time.Duration
+	// RenewalGrace is the renewal grace the control plane admits expired
+	// credentials under, which a workload's credential lifecycle is
+	// judged by; enroll.DefaultRenewalGrace if zero. The control plane
+	// passes the grace it serves with.
+	RenewalGrace time.Duration
 	// Now is the clock; time.Now if nil.
 	Now func() time.Time
 }
@@ -83,6 +89,13 @@ func (s *Reader) now() time.Time {
 		return s.Now()
 	}
 	return time.Now()
+}
+
+func (s *Reader) renewalGrace() time.Duration {
+	if s.RenewalGrace > 0 {
+		return s.RenewalGrace
+	}
+	return enroll.DefaultRenewalGrace
 }
 
 // Range is a half-open time range [From, To).

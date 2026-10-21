@@ -271,3 +271,67 @@ func TestMintedTokenEnrollsSelectableWorkload(t *testing.T) {
 		t.Fatalf("a refused enrollment stored a workload: %v", body)
 	}
 }
+
+// TestCredentialLifecycleOnTheWorkloadRead reads an enrolled workload's
+// credential through the surface, over Postgres, at three instants: before
+// its expiry, within the renewal grace after it, and beyond the grace. The
+// grace is this control plane's configuration, set here to something other
+// than the default, so the read can only be right if the server's grace
+// reaches it; the console cannot know it. It skips without a database.
+func TestCredentialLifecycleOnTheWorkloadRead(t *testing.T) {
+	st := storetest.Open(t)
+	ctx := context.Background()
+	now := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	authority, err := fileca.Init(t.TempDir(), fileca.InitOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const grace = 2 * time.Hour
+	enrollSvc := &enroll.Service{Store: st, Authority: authority, LeafTTL: time.Hour, RenewalGrace: grace, Now: clock}
+	reads := &readmodel.Reader{Store: st, Flows: st.Flows(), RenewalGrace: grace, Now: clock}
+	s := newSurface(t, api.Deps{Reads: reads, Enroll: enrollSvc})
+	s.setPassword(t, "Ada")
+	bearer, _, err := s.operators.MintToken(ctx, "e2e", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws := &writeSurface{surface: s, bearer: map[string]string{"Authorization": "Bearer " + bearer}}
+
+	plain, _, err := enrollSvc.MintToken(ctx, "lifecycle", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := credential.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	csr, err := credential.NewCSR(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enrolled, err := enrollSvc.Enroll(ctx, plain, csr, "life-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	expires := enrolled.Credential.ExpiresAt
+	renewableUntil := expires.Add(grace).UTC().Format(time.RFC3339)
+	for _, tc := range []struct {
+		at        time.Time
+		lifecycle string
+		state     string
+	}{
+		{expires.Add(-time.Minute), "valid", "renews"},
+		{expires.Add(time.Hour), "in-grace", "expired"},
+		{expires.Add(grace + time.Minute), "past-grace", "expired"},
+	} {
+		now = tc.at
+		resp, body := ws.call(t, http.MethodGet, "/api/v1/workloads/"+enrolled.Workload.ID.String(), "", nil)
+		if resp.status != http.StatusOK {
+			t.Fatalf("read at %v: %d %v", tc.at, resp.status, body)
+		}
+		if field(body, "health.credential.lifecycle") != tc.lifecycle || field(body, "health.credential.state") != tc.state || field(body, "health.credential.renewable_until") != renewableUntil {
+			t.Fatalf("credential at %v = %v, want lifecycle %s, state %s, renewable until %s", tc.at, field(body, "health.credential"), tc.lifecycle, tc.state, renewableUntil)
+		}
+	}
+}

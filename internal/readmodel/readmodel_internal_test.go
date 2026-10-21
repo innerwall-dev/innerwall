@@ -47,22 +47,28 @@ func TestCursorsRoundTripAndRefuse(t *testing.T) {
 func TestCredentialState(t *testing.T) {
 	now := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
 	renewed := now.Add(-time.Hour)
+	grace := 2 * time.Hour
 	cases := []struct {
-		name    string
-		expires time.Time
-		err     string
-		want    CredentialState
+		name      string
+		expires   time.Time
+		err       string
+		want      CredentialState
+		lifecycle CredentialLifecycle
 	}{
-		{"valid and quiet", now.Add(time.Hour), "", CredentialRenews},
-		{"valid but failing", now.Add(time.Hour), "authority unreachable", CredentialRenewalFailed},
-		{"expired", now.Add(-time.Second), "", CredentialExpired},
-		{"expired and failing", now, "authority unreachable", CredentialExpired},
+		{"valid and quiet", now.Add(time.Hour), "", CredentialRenews, CredentialValid},
+		{"valid but failing", now.Add(time.Hour), "authority unreachable", CredentialRenewalFailed, CredentialValid},
+		{"expired", now.Add(-time.Second), "", CredentialExpired, CredentialInGrace},
+		// Admission accepts a credential through its expiry instant, and
+		// the lifecycle follows admission.
+		{"expired and failing", now, "authority unreachable", CredentialExpired, CredentialValid},
+		{"expired the grace ago", now.Add(-grace), "", CredentialExpired, CredentialInGrace},
+		{"expired beyond the grace", now.Add(-grace - time.Second), "authority unreachable", CredentialExpired, CredentialPastGrace},
 	}
 	for _, tc := range cases {
 		rec := &WorkloadRecord{LastRenewedAt: &renewed}
 		rec.CredentialExpiresAt, rec.CredentialRenewalError = tc.expires, tc.err
-		st := credentialStatus(rec, now)
-		if st.State != tc.want || st.LastError != tc.err || st.LastRenewedAt != &renewed || !st.ExpiresAt.Equal(tc.expires) {
+		st := credentialStatus(rec, now, grace)
+		if st.State != tc.want || st.Lifecycle != tc.lifecycle || !st.RenewableUntil.Equal(tc.expires.Add(grace)) || st.LastError != tc.err || st.LastRenewedAt != &renewed || !st.ExpiresAt.Equal(tc.expires) {
 			t.Fatalf("%s: %+v", tc.name, st)
 		}
 	}

@@ -18,7 +18,7 @@ A credential expires when the control plane was unreachable for the whole stretc
 - **Enforcement continues.** The daemon keeps enforcing its persisted policy, at start or while running (fail static, ADR-0011), and logs that the credential has expired.
 - **Renewal keeps trying**: at once, then with jittered backoff, never more than about five minutes between attempts.
 - **Flow reports are refused** while the credential is expired, because each report opens a new connection that must authenticate. The daemon holds the closed windows in its bounded buffer (`--flow-buffer-records`, 50,000 by default) and delivers them once it has renewed; beyond the buffer, the oldest are dropped and recorded as a `buffer_overflow` evidence gap.
-- **A sync stream already open survives.** A stream opened on a valid credential is authenticated when it opens and stays up past the credential's expiry for as long as its connection lasts. A new stream after expiry is refused until the credential is renewed.
+- **A sync stream ends with the credential it opened on** (ADR-0016 as amended). Five minutes before that credential expires, the control plane directs the agent to reconnect: an agent that renewed on schedule redials with its fresh credential, and the swap costs one snapshot and no error. A stream still open at the expiry is ended with `workload credential has expired: it expired at …, and a sync stream ends with the credential it opened on; reconnect with a renewed credential`, and a new stream is refused until the credential is renewed. The host's enforcement is untouched either way.
 
 ## The renewal grace
 
@@ -29,11 +29,11 @@ The control plane accepts an expired credential for **one thing only, renewal**,
 - **After a late renewal, give it a few minutes.** The sync stream and the flow reporter take the renewed credential on their next connection, which comes when their current reconnect backoff ends: up to about five minutes. Until then the workload may still read offline or show stale state; nothing on the host is affected.
 
 > [!NOTE]
-> The console shows an expired credential as **Credential expired** ("expired 5h ago") whether or not it is still within the grace. Read the expiry against the grace: a credential expired for less than the grace (72 hours unless the control plane sets otherwise) renews by itself the next time the agent reaches the control plane; one expired for longer needs re-enrollment.
+> The console shows an expired credential as **Credential expired** ("expired 5h ago") whether or not it is still within the grace. The API says which: the workload's `health.credential.lifecycle` is `in-grace` while the credential renews by itself the next time the agent reaches the control plane, and `past-grace` once it needs re-enrollment, judged against the grace this control plane is configured with; `health.credential.renewable_until` is when the grace ends.
 
 ## Beyond the grace: re-enrollment
 
-Past the grace, the renewal is refused too: `workload credential has expired: it expired at …, … ago, beyond the 72h0m0s renewal grace; re-enrollment with a new provisioning token is required`. The daemon still enforces from disk and still retries, and logs that refusal on every attempt; it does not stop by itself. The workload can only be re-enrolled:
+Past the grace, the renewal is refused too: `workload credential has expired: it expired at …, … ago, beyond the 72h0m0s renewal grace; re-enrollment with a new provisioning token is required`. The daemon still enforces from disk and still retries, and logs that refusal on every attempt; it does not stop by itself, and the control plane never tells it to. The workload reads `past-grace` in `health.credential.lifecycle`. It can only be re-enrolled:
 
 <!-- steps -->
 1. **Mint a provisioning token** with the labels the host should carry (the console's **Mint token**, or `innerwall token mint`). The new workload takes the token's labels, not the old workload's.

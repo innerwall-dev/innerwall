@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/innerwall-dev/innerwall/internal/enroll"
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 	"github.com/innerwall-dev/innerwall/internal/identity"
 	"github.com/innerwall-dev/innerwall/internal/policy"
@@ -96,12 +97,37 @@ const (
 	CredentialExpired CredentialState = "expired"
 )
 
+// CredentialLifecycle is what the control plane will still accept from a
+// workload's credential, judged on its stored expiry by the rule that
+// admits a presented one (enroll.StandingAt) and the renewal grace this
+// control plane is configured with, which no client can know.
+type CredentialLifecycle string
+
+// Credential lifecycle states.
+const (
+	// CredentialValid: not yet expired.
+	CredentialValid CredentialLifecycle = "valid"
+	// CredentialInGrace: expired within the renewal grace. The agent
+	// keeps retrying renewal, and the workload recovers by itself, with
+	// the same identity, once one succeeds.
+	CredentialInGrace CredentialLifecycle = "in-grace"
+	// CredentialPastGrace: expired beyond the renewal grace. Nothing
+	// accepts it; the workload returns only by enrolling again with a new
+	// provisioning token, as a new identity.
+	CredentialPastGrace CredentialLifecycle = "past-grace"
+)
+
 // CredentialStatus is a workload's credential as the console shows it.
 type CredentialStatus struct {
-	State         CredentialState
-	ExpiresAt     time.Time
-	LastRenewedAt *time.Time
-	LastError     string
+	State CredentialState
+	// Lifecycle is what the control plane will still accept from the
+	// credential, and RenewableUntil the instant the renewal grace after
+	// its expiry ends.
+	Lifecycle      CredentialLifecycle
+	RenewableUntil time.Time
+	ExpiresAt      time.Time
+	LastRenewedAt  *time.Time
+	LastError      string
 	// LastLateRenewal is the workload's latest late renewal; nil when it
 	// has never renewed late. A later on-time renewal leaves it.
 	LastLateRenewal *registry.LateRenewal
@@ -380,7 +406,7 @@ func (s *Reader) workload(rec *WorkloadRecord, now time.Time) Workload {
 			LastAckedAt: rec.LastAckedAt, LastApplyFailedAt: rec.LastApplyFailedAt},
 		Health: Health{
 			LastSeenAt:            rec.LastSeenAt,
-			Credential:            credentialStatus(rec, now),
+			Credential:            credentialStatus(rec, now, s.renewalGrace()),
 			DroppedFlowRecords:    rec.DroppedFlowRecords,
 			SourceOverruns:        rec.SourceOverruns,
 			ClockSkew:             rec.ClockSkew,
@@ -412,8 +438,9 @@ func (s *Reader) workload(rec *WorkloadRecord, now time.Time) Workload {
 
 // credentialStatus derives the credential state: expired once the stored
 // expiry has passed, renewal-failed while the heartbeat's last renewal
-// error stands, renews otherwise.
-func credentialStatus(rec *WorkloadRecord, now time.Time) CredentialStatus {
+// error stands, renews otherwise; and its lifecycle under grace, by the
+// rule admission applies.
+func credentialStatus(rec *WorkloadRecord, now time.Time, grace time.Duration) CredentialStatus {
 	st := CredentialStatus{State: CredentialRenews, ExpiresAt: rec.CredentialExpiresAt, LastRenewedAt: rec.LastRenewedAt, LastError: rec.CredentialRenewalError, LastLateRenewal: rec.LateRenewal}
 	switch {
 	case !now.Before(rec.CredentialExpiresAt):
@@ -421,6 +448,15 @@ func credentialStatus(rec *WorkloadRecord, now time.Time) CredentialStatus {
 	case rec.CredentialRenewalError != "":
 		st.State = CredentialRenewalFailed
 	}
+	switch enroll.StandingAt(rec.CredentialExpiresAt, now, grace) {
+	case enroll.StandingValid:
+		st.Lifecycle = CredentialValid
+	case enroll.StandingInGrace:
+		st.Lifecycle = CredentialInGrace
+	case enroll.StandingPastGrace:
+		st.Lifecycle = CredentialPastGrace
+	}
+	st.RenewableUntil = rec.CredentialExpiresAt.Add(grace)
 	return st
 }
 

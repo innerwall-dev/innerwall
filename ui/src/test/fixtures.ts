@@ -61,6 +61,8 @@ export function workload(
 			...health,
 			credential: {
 				state: "renews",
+				lifecycle: "valid",
+				renewable_until: hoursFromNow(81),
 				expires_at: hoursFromNow(9),
 				last_renewed_at: null,
 				last_error: "",

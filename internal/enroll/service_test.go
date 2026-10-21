@@ -299,6 +299,32 @@ func TestAdmitCredential(t *testing.T) {
 	}
 }
 
+// TestStandingAt is the classification admission applies and the
+// operator surface reports: valid through the expiry instant, in grace
+// through exactly the grace after it, past grace beyond.
+func TestStandingAt(t *testing.T) {
+	notAfter := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
+	grace := 72 * time.Hour
+	for _, tc := range []struct {
+		name string
+		at   time.Duration
+		want enroll.Standing
+	}{
+		{"before expiry", -time.Hour, enroll.StandingValid},
+		{"at expiry", 0, enroll.StandingValid},
+		{"just after expiry", time.Nanosecond, enroll.StandingInGrace},
+		{"exactly the grace", grace, enroll.StandingInGrace},
+		{"within a second past the grace", grace + 500*time.Millisecond, enroll.StandingInGrace},
+		{"a second past the grace", grace + time.Second, enroll.StandingPastGrace},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := enroll.StandingAt(notAfter, notAfter.Add(tc.at), grace); got != tc.want {
+				t.Fatalf("standing = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestRenewLate renews with a credential expired within the grace: a
 // credential is issued, the renewal is recorded as late with the expiry
 // it replaced, and a later on-time renewal leaves that record. Beyond the
