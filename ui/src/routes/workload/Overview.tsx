@@ -1,9 +1,12 @@
 import type { EvidenceGaps, Workload } from "@/api/schema";
 import { LabelChip } from "@/components/fleet/status";
+import { Icon } from "@/components/Icon";
 import { SeverityNote, StatusGlyph } from "@/components/StatusGlyph";
-import { count, labelPairs } from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { ago, count, exact, labelPairs } from "@/lib/format";
 import { between, kindText } from "@/lib/gaps";
 import type { Resource } from "@/lib/resource";
+import { retired } from "../fleet/describe";
 import type { ScreenRange } from "./range";
 import { StatusCard } from "./StatusCard";
 import { AlertCards, type ExceptionalState, gapsShown } from "./states";
@@ -12,7 +15,9 @@ import { AlertCards, type ExceptionalState, gapsShown } from "./states";
 // (content-max), with the active exceptional states as alert cards, then
 // three cards (Status, Labels, Host facts) that wrap to fewer columns on
 // a narrow screen, then the history of evidence gaps over the screen's
-// range. Mode and last seen are in the header strip.
+// range. Mode and last seen are in the header strip. A retired
+// workload's page leads with its retirement, and its labels and identity
+// are frozen, so neither offers an edit.
 export function Overview({
 	w,
 	gaps,
@@ -20,6 +25,7 @@ export function Overview({
 	states,
 	onReread,
 	onEditLabels,
+	onRetire,
 }: {
 	w: Workload;
 	gaps: Resource<EvidenceGaps>;
@@ -27,10 +33,12 @@ export function Overview({
 	states: ExceptionalState[];
 	onReread: () => void;
 	onEditLabels: () => void;
+	onRetire: () => void;
 }) {
 	return (
 		<div className="min-h-0 flex-1 overflow-auto">
 			<div className="mx-auto flex max-w-content flex-col gap-4 px-5 pt-5 pb-8">
+				{retired(w) ? <RetiredCard w={w} /> : null}
 				<AlertCards states={states} />
 				<div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] items-start gap-4">
 					<StatusCard
@@ -41,7 +49,7 @@ export function Overview({
 						onReread={onReread}
 					/>
 					<LabelsCard w={w} onEdit={onEditLabels} />
-					<HostFacts w={w} />
+					<HostFacts w={w} onRetire={onRetire} />
 				</div>
 				<GapHistory gaps={gaps} range={range} />
 			</div>
@@ -51,6 +59,48 @@ export function Overview({
 
 const card =
 	"flex flex-col gap-3 rounded-panel border border-hairline bg-card p-4";
+
+// RetiredCard says the workload was retired, when, and what that means
+// for reading the page: a state the operator decided, drawn as chrome on
+// the card surface, not in a status tint, since nothing here is wrong
+// and nothing is to be fixed.
+function RetiredCard({ w }: { w: Workload }) {
+	return (
+		<section
+			aria-label="Retired"
+			data-testid="retired"
+			className="flex items-start gap-3 rounded-panel border border-hairline bg-card px-3.5 py-2.5 type-dense"
+		>
+			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
+				<span className="inline-flex items-center gap-1.5 font-medium text-status-neutral-fg">
+					<Icon name="circle-minus" />
+					<span>
+						Retired
+						{w.retired_at ? (
+							<>
+								{" "}
+								<time dateTime={w.retired_at}>{ago(w.retired_at)}</time>
+							</>
+						) : null}
+					</span>
+				</span>
+				<div className="text-primary">
+					{w.retired_at ? (
+						<>
+							Since <span className="type-mono-sm">
+								{exact(w.retired_at)}
+							</span>{" "}
+						</>
+					) : null}
+					{w.retired_at ? "its" : "Its"} credential is refused, its addresses
+					are in no peer set, and its labels and mode are frozen. Its flows and
+					evidence gaps stay readable under this id. There is no un-retire: the
+					host returns by enrolling again, as a new workload.
+				</div>
+			</div>
+		</section>
+	);
+}
 const title = "type-card-title text-primary";
 const field = "type-meta-label text-tertiary";
 const value = "min-w-0 type-mono-sm break-words text-primary";
@@ -63,14 +113,18 @@ function LabelsCard({ w, onEdit }: { w: Workload; onEdit: () => void }) {
 				<h2 id="labels-card-title" className={title}>
 					Labels
 				</h2>
-				<button
-					type="button"
-					onClick={onEdit}
-					aria-label="Edit labels"
-					className="ml-auto type-caption link"
-				>
-					edit
-				</button>
+				{retired(w) ? (
+					<span className="ml-auto type-caption text-tertiary">frozen</span>
+				) : (
+					<button
+						type="button"
+						onClick={onEdit}
+						aria-label="Edit labels"
+						className="ml-auto type-caption link"
+					>
+						edit
+					</button>
+				)}
 			</div>
 			<div className="flex flex-wrap gap-1">
 				{labels.length === 0 ? (
@@ -89,7 +143,7 @@ function LabelsCard({ w, onEdit }: { w: Workload; onEdit: () => void }) {
 	);
 }
 
-function HostFacts({ w }: { w: Workload }) {
+function HostFacts({ w, onRetire }: { w: Workload; onRetire: () => void }) {
 	const os = w.os;
 	return (
 		<section aria-labelledby="host-facts-title" className={card}>
@@ -127,6 +181,18 @@ function HostFacts({ w }: { w: Workload }) {
 					</div>
 				</dd>
 			</dl>
+			{retired(w) ? null : (
+				// Retiring ends the identity above, so its action sits with it.
+				<div className="flex flex-col items-start gap-2 border-t border-hairline pt-3">
+					<Button variant="secondary" size="sm" onClick={onRetire}>
+						Retire…
+					</Button>
+					<span className="type-caption text-tertiary">
+						Ends this identity for good: its credential is refused and its
+						addresses leave every peer set.
+					</span>
+				</div>
+			)}
 		</section>
 	);
 }

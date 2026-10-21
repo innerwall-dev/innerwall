@@ -30,7 +30,7 @@ The control plane accepts an expired credential for **one thing only, renewal**,
 - **After a late renewal, give it a few minutes.** The sync stream and the flow reporter take the renewed credential on their next connection, which comes when their current reconnect backoff ends: up to about five minutes. Until then the workload may still read offline or show stale state; nothing on the host is affected.
 
 > [!NOTE]
-> The console shows an expired credential as **Credential expired** ("expired 5h ago") whether or not it is still within the grace. The API says which: the workload's `health.credential.lifecycle` is `in-grace` while the credential renews by itself the next time the agent reaches the control plane, and `past-grace` once it needs re-enrollment, judged against the grace this control plane is configured with; `health.credential.renewable_until` is when the grace ends.
+> The console says which side of the grace an expired credential is on, as the control plane judges it against the grace it is configured with: within it, "will recover by renewal" until the instant the grace ends; beyond it, "needs re-enrollment", with the way to mint a provisioning token. The API's `health.credential.lifecycle` is `in-grace` or `past-grace`, and `health.credential.renewable_until` is when the grace ends.
 
 ## Beyond the grace: re-enrollment
 
@@ -47,7 +47,7 @@ Past the grace, the renewal is refused too: `workload credential has expired: it
 
 ## Retiring a workload
 
-Retire a workload when its host is gone for good, when it was re-enrolled as a new workload, or when its key may have been copied: `innerwall workload retire <workload-id>` on the control-plane host, or `POST /api/v1/workloads/{id}/retire`. Retirement is one way (ADR-0023):
+Retire a workload when its host is gone for good, when it was re-enrolled as a new workload, or when its key may have been copied: **Retire…** on its page in the console (or **Retire selected…** on the fleet), `innerwall workload retire <workload-id>` on the control-plane host, or `POST /api/v1/workloads/{id}/retire`. Retirement is one way (ADR-0023):
 
 - its credential is refused from then on, at renewal and on every agent call, so a copy of its key renews nothing; a live sync stream is ended at once on the replica holding it, and in any case by its next heartbeat;
 - its addresses leave every rendered peer set, and only the workloads whose policy changed advance a version;
@@ -61,7 +61,7 @@ The refusal the agent receives says only that its credential is refused; the con
 `innerwall-agent renew` renews the credential in a state directory once, from the command line. Use it only on a host whose daemon is **not** running.
 
 > [!WARNING]
-> Never run `innerwall-agent renew` against the state directory of a running daemon. The daemon reads its credential from disk once, at start, and keeps presenting the one it holds in memory; it never re-reads the file. The control plane's record then tracks the credential the command issued while the agent presents a different one, so what the console says about the credential no longer describes what the agent uses. If it has happened, restart the daemon so that it adopts the credential on disk, or simply let its own renewer replace both.
+> Never run `innerwall-agent renew` against the state directory of a running daemon. The daemon reads its credential from disk once, at start, and keeps presenting the one it holds in memory; it never re-reads the file. The control plane's record then tracks the credential the command issued while the agent presents a different one: the workload page's credential in use is marked as not the one issued, and the expiry and renewal it states describe a credential the agent does not use. If it has happened, restart the daemon so that it adopts the credential on disk, or simply let its own renewer replace both.
 
 ## Related
 
