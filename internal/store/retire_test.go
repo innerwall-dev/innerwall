@@ -120,7 +120,7 @@ func TestRetiredWorkloadRefusesStreamWrites(t *testing.T) {
 	_, err := s.RecordFacts(ctx, id, &innerwallv1.HostFacts{Hostname: "h"}, now)
 	wantRetired("facts", err)
 	wantRetired("listening services", s.RecordListeningServices(ctx, id, nil, now))
-	wantRetired("hello", s.RecordAgent(ctx, id, registry.AgentInfo{Version: "test"}, 1, now))
+	wantRetired("hello", s.RecordAgent(ctx, id, registry.AgentInfo{Version: "test"}, 1, nil, now))
 	wantRetired("heartbeat", s.RecordHeartbeat(ctx, id, registry.Heartbeat{}, now))
 	wantRetired("applied", s.RecordApplied(ctx, id, 1, innerwallv1.SyncState_SYNC_STATE_SYNCED, now))
 	wantRetired("apply failed", s.RecordApplyFailed(ctx, id, "x", now))

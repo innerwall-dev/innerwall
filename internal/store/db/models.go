@@ -217,39 +217,41 @@ type ServiceEntry struct {
 }
 
 type Workload struct {
-	ID                     uuid.UUID
-	RegionID               string
-	ProvisioningTokenID    uuid.UUID
-	Hostname               string
-	EnrolledAt             time.Time
-	CredentialSerial       string
-	CredentialExpiresAt    time.Time
-	LastRenewedAt          *time.Time
-	Mode                   int32
-	Facts                  []byte
-	AgentVersion           string
-	AgentCapabilities      []string
-	LastSeenAt             *time.Time
-	SyncState              int32
-	AppliedPolicyVersion   int64
-	SyncError              string
-	DroppedFlowRecords     int64
-	CredentialRenewalError string
-	LastSnapshotSentAt     *time.Time
-	LastAckedAt            *time.Time
-	LastApplyFailedAt      *time.Time
-	SourceOverruns         int64
-	ClockSkewOffsetMs      pgtype.Int8
-	ClockSkewObservedAt    *time.Time
-	ClockSkewCurrent       bool
-	OwnedTableState        int16
-	OwnedTableAbsentSince  *time.Time
-	LastFlowReportAt       *time.Time
-	LateRenewalAt          *time.Time
-	LateRenewalExpiredAt   *time.Time
-	LastHeartbeatAt        *time.Time
-	AgentStartedAt         *time.Time
-	RetiredAt              *time.Time
+	ID                           uuid.UUID
+	RegionID                     string
+	ProvisioningTokenID          uuid.UUID
+	Hostname                     string
+	EnrolledAt                   time.Time
+	CredentialSerial             string
+	CredentialExpiresAt          time.Time
+	LastRenewedAt                *time.Time
+	Mode                         int32
+	Facts                        []byte
+	AgentVersion                 string
+	AgentCapabilities            []string
+	LastSeenAt                   *time.Time
+	SyncState                    int32
+	AppliedPolicyVersion         int64
+	SyncError                    string
+	DroppedFlowRecords           int64
+	CredentialRenewalError       string
+	LastSnapshotSentAt           *time.Time
+	LastAckedAt                  *time.Time
+	LastApplyFailedAt            *time.Time
+	SourceOverruns               int64
+	ClockSkewOffsetMs            pgtype.Int8
+	ClockSkewObservedAt          *time.Time
+	ClockSkewCurrent             bool
+	OwnedTableState              int16
+	OwnedTableAbsentSince        *time.Time
+	LastFlowReportAt             *time.Time
+	LateRenewalAt                *time.Time
+	LateRenewalExpiredAt         *time.Time
+	LastHeartbeatAt              *time.Time
+	AgentStartedAt               *time.Time
+	RetiredAt                    *time.Time
+	PresentedCredentialSerial    *string
+	PresentedCredentialExpiresAt *time.Time
 }
 
 type WorkloadAddress struct {

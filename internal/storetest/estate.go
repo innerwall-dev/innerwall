@@ -280,7 +280,7 @@ func SeedEstate(ctx context.Context, s *store.Store, f *Fleet, extra int) error 
 			}
 			v := p.GetVersion()
 			seen := f.Now.Add(-20 * time.Second)
-			if err := s.RecordAgent(ctx, id, registry.AgentInfo{Version: "0.3.0", Capabilities: []string{"nftables", "conntrack"}}, v, seen); err != nil {
+			if err := s.RecordAgent(ctx, id, registry.AgentInfo{Version: "0.3.0", Capabilities: []string{"nftables", "conntrack"}}, v, nil, seen); err != nil {
 				return err
 			}
 			if id == degraded && v > 1 {

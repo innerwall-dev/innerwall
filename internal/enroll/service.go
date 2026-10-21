@@ -382,9 +382,17 @@ func (s *Service) issue(ctx context.Context, id identity.WorkloadID, csrPEM []by
 	return &Credential{
 		CertificatePEM: certPEM,
 		BundlePEM:      bundle,
-		Serial:         cert.SerialNumber.Text(16),
+		Serial:         CredentialSerial(cert),
 		ExpiresAt:      cert.NotAfter,
 	}, nil
+}
+
+// CredentialSerial is a credential's serial as the control plane records
+// and names it: the certificate's serial number in lowercase hex. What
+// issuance stores and what the sync path records a stream presenting are
+// both written by it, so the two compare as text.
+func CredentialSerial(cert *x509.Certificate) string {
+	return cert.SerialNumber.Text(16)
 }
 
 // validateLabels admits a token's labels against the label grammar

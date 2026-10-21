@@ -2510,7 +2510,7 @@ components:
               description: Whether a flow report arrived within two flow aggregation windows of this read, so the agent is running and reaching the control plane. With `sync.state` offline it tells a control channel that is reconnecting from a host the control plane has no contact with at all.
             credential:
               type: object
-              required: [state, lifecycle, renewable_until, expires_at, last_renewed_at, last_error, last_late_renewal]
+              required: [state, lifecycle, renewable_until, serial, expires_at, last_renewed_at, last_error, last_late_renewal, last_presented]
               properties:
                 state:
                   type: string
@@ -2524,6 +2524,9 @@ components:
                   type: string
                   format: date-time
                   description: The end of the renewal grace after `expires_at`, by this control plane's configuration; past it the credential is `past-grace`.
+                serial:
+                  type: string
+                  description: The serial number, in lowercase hexadecimal, of the credential the control plane last issued the workload, at enrollment or its latest renewal. `expires_at`, `state`, and `lifecycle` describe this credential; the one a live stream uses can differ (`last_presented`).
                 expires_at:
                   $ref: "#/components/schemas/Timestamp"
                 last_renewed_at:
@@ -2542,6 +2545,18 @@ components:
                       type: string
                       format: date-time
                       description: When the credential that renewal replaced had expired; `renewed_at` minus this is how late the renewal was.
+                last_presented:
+                  type: [object, "null"]
+                  description: The credential the workload's most recent sync stream opened on, as the control plane verified it; null when no stream has opened since the control plane began recording it. A stream keeps the credential it opened on until that credential's end, so after a renewal the live stream still presents the one the renewal replaced, and this differs from `serial` and `expires_at`. It is the credential in use only while `sync.state` is not `offline`; a stream ending leaves it, as what was presented last.
+                  required: [serial, expires_at]
+                  properties:
+                    serial:
+                      type: string
+                      description: The presented certificate's serial number, in lowercase hexadecimal, as `serial` names the issued one.
+                    expires_at:
+                      type: string
+                      format: date-time
+                      description: When the presented certificate expires.
             dropped_flow_records:
               type: integer
             source_overruns:

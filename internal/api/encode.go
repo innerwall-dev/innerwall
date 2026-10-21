@@ -299,10 +299,17 @@ type credentialJSON struct {
 	State           string           `json:"state"`
 	Lifecycle       string           `json:"lifecycle"`
 	RenewableUntil  string           `json:"renewable_until"`
+	Serial          string           `json:"serial"`
 	ExpiresAt       string           `json:"expires_at"`
 	LastRenewedAt   *string          `json:"last_renewed_at"`
 	LastError       string           `json:"last_error"`
 	LastLateRenewal *lateRenewalJSON `json:"last_late_renewal"`
+	LastPresented   *presentedJSON   `json:"last_presented"`
+}
+
+type presentedJSON struct {
+	Serial    string `json:"serial"`
+	ExpiresAt string `json:"expires_at"`
 }
 
 type lateRenewalJSON struct {
@@ -370,7 +377,7 @@ func workloadJSON(w *readmodel.Workload) workloadResponse {
 			LastFlowReportAt: optionalTimestamp(w.Health.LastFlowReportAt),
 			TelemetryLive:    w.Health.TelemetryLive,
 			Credential: credentialJSON{State: string(w.Health.Credential.State), Lifecycle: string(w.Health.Credential.Lifecycle),
-				RenewableUntil: timestamp(w.Health.Credential.RenewableUntil), ExpiresAt: timestamp(w.Health.Credential.ExpiresAt),
+				RenewableUntil: timestamp(w.Health.Credential.RenewableUntil), Serial: w.Health.Credential.Serial, ExpiresAt: timestamp(w.Health.Credential.ExpiresAt),
 				LastRenewedAt: optionalTimestamp(w.Health.Credential.LastRenewedAt), LastError: w.Health.Credential.LastError},
 			DroppedFlowRecords: w.Health.DroppedFlowRecords,
 			SourceOverruns:     w.Health.SourceOverruns,
@@ -381,6 +388,9 @@ func workloadJSON(w *readmodel.Workload) workloadResponse {
 	}
 	if l := w.Health.Credential.LastLateRenewal; l != nil {
 		out.Health.Credential.LastLateRenewal = &lateRenewalJSON{RenewedAt: timestamp(l.RenewedAt), ExpiredAt: timestamp(l.ExpiredAt)}
+	}
+	if p := w.Health.Credential.LastPresented; p != nil {
+		out.Health.Credential.LastPresented = &presentedJSON{Serial: p.Serial, ExpiresAt: timestamp(p.ExpiresAt)}
 	}
 	if c := w.Health.ClockSkew; c != nil {
 		out.Health.ClockSkew = &clockSkewJSON{OffsetSeconds: int64(c.Offset.Round(time.Second) / time.Second), ObservedAt: timestamp(c.ObservedAt), Current: c.Current}

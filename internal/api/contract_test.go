@@ -153,6 +153,80 @@ func TestContractClosedSets(t *testing.T) {
 	}
 }
 
+// TestContractCredentialBlock checks the workload read's credential block
+// against what the surface encodes, in both directions: every key the
+// contract requires of it, and of the presented credential nested in it,
+// is the set the encoder writes. The issued and the presented credential
+// share their key names, so a key landing on the wrong one shows here.
+func TestContractCredentialBlock(t *testing.T) {
+	type object struct {
+		Required   []string             `yaml:"required"`
+		Properties map[string]yaml.Node `yaml:"properties"`
+	}
+	var doc struct {
+		Components struct {
+			Schemas struct {
+				Workload struct {
+					Properties struct {
+						Health struct {
+							Properties struct {
+								Credential struct {
+									Required   []string `yaml:"required"`
+									Properties struct {
+										LastPresented object `yaml:"last_presented"`
+									} `yaml:"properties"`
+								} `yaml:"credential"`
+							} `yaml:"properties"`
+						} `yaml:"health"`
+					} `yaml:"properties"`
+				} `yaml:"Workload"`
+			} `yaml:"schemas"`
+		} `yaml:"components"`
+	}
+	raw, err := os.ReadFile("../../api/openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	cred := doc.Components.Schemas.Workload.Properties.Health.Properties.Credential
+	presented := cred.Properties.LastPresented
+
+	// web-1 in the read fixture has a presented credential.
+	s := newReadSurface(t)
+	_, body := s.get(t, "/api/v1/workloads/"+s.fx.web.String())
+	encoded, _ := field(body, "health.credential").(map[string]any)
+	encodedPresented, _ := encoded["last_presented"].(map[string]any)
+	if encodedPresented == nil {
+		t.Fatalf("fixture credential carries no presented credential: %v", encoded)
+	}
+	for what, pair := range map[string][2][]string{
+		"credential":                {cred.Required, keys(encoded)},
+		"credential.last_presented": {presented.Required, keys(encodedPresented)},
+	} {
+		documented, written := append([]string(nil), pair[0]...), pair[1]
+		sort.Strings(documented)
+		if strings.Join(documented, "|") != strings.Join(written, "|") {
+			t.Errorf("%s required = %v, encoded = %v", what, documented, written)
+		}
+	}
+	for _, k := range presented.Required {
+		if _, ok := presented.Properties[k]; !ok {
+			t.Errorf("credential.last_presented requires %q and does not describe it", k)
+		}
+	}
+}
+
+func keys(m map[string]any) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // TestContractDeclaresTheOriginGuard checks that every operation that is
 // not a read declares the 403 the shared origin guard returns for a
 // cross-site request: the guard sits in front of every unsafe method, so

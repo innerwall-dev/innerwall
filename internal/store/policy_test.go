@@ -174,7 +174,7 @@ func TestRegistryAndRenderTx(t *testing.T) {
 	if err := s.SetWorkloadMode(ctx, id, innerwallv1.EnforcementMode_ENFORCEMENT_MODE_ENFORCED); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.RecordAgent(ctx, id, registry.AgentInfo{Version: "v", Capabilities: []string{"a"}}, 3, now); err != nil {
+	if err := s.RecordAgent(ctx, id, registry.AgentInfo{Version: "v", Capabilities: []string{"a"}}, 3, nil, now); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.RecordApplied(ctx, id, 4, innerwallv1.SyncState_SYNC_STATE_SYNCED, now); err != nil {

@@ -19,6 +19,7 @@ import (
 	"github.com/innerwall-dev/innerwall/internal/enroll"
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 	"github.com/innerwall-dev/innerwall/internal/identity"
+	"github.com/innerwall-dev/innerwall/internal/registry"
 )
 
 // enrollmentServicePrefix is the one service reachable without a client
@@ -34,10 +35,11 @@ const renewMethod = innerwallv1.AgentService_RenewCredential_FullMethodName
 type identityKey struct{}
 
 // principal is what the interceptor derived from the connection
-// credential: the identity, and the validity of the credential that
-// carried it.
+// credential: the identity, and the serial and validity of the credential
+// that carried it.
 type principal struct {
 	id        identity.WorkloadID
+	serial    string
 	notBefore time.Time
 	notAfter  time.Time
 }
@@ -62,6 +64,17 @@ func IdentityFromContext(ctx context.Context) (identity.WorkloadID, bool) {
 func credentialValidity(ctx context.Context) (notBefore, notAfter time.Time) {
 	p, _ := ctx.Value(identityKey{}).(principal)
 	return p.notBefore, p.notAfter
+}
+
+// presentedCredential returns the credential the identity in ctx was
+// derived from, as the registry records it; nil when the context was not
+// built by the interceptor.
+func presentedCredential(ctx context.Context) *registry.PresentedCredential {
+	p, _ := ctx.Value(identityKey{}).(principal)
+	if p.serial == "" || p.notAfter.IsZero() {
+		return nil
+	}
+	return &registry.PresentedCredential{Serial: p.serial, ExpiresAt: p.notAfter}
 }
 
 // ServerTLSConfig builds the listener's TLS configuration: the control
@@ -172,7 +185,7 @@ func (a *authenticator) authenticate(ctx context.Context, fullMethod string) (co
 		a.logger().Error("checking a credential's workload for retirement", "workload_id", id, "error", err)
 		return nil, status.Error(codes.Unavailable, "the control plane cannot admit credentials right now")
 	}
-	return context.WithValue(ctx, identityKey{}, principal{id: id, notBefore: leaf.NotBefore, notAfter: leaf.NotAfter}), nil
+	return context.WithValue(ctx, identityKey{}, principal{id: id, serial: enroll.CredentialSerial(leaf), notBefore: leaf.NotBefore, notAfter: leaf.NotAfter}), nil
 }
 
 // verifiedChain re-verifies the chain the connection presented, with the

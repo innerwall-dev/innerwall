@@ -225,7 +225,11 @@ func (s *Server) Sync(stream innerwallv1.AgentService_SyncServer) error {
 	}
 	now := s.now()
 	agent := registry.AgentInfo{Version: hello.GetAgent().GetVersion(), Capabilities: hello.GetAgent().GetCapabilities()}
-	if err := s.registry.RecordAgent(ctx, id, agent, hello.GetAppliedPolicyVersion(), now); err != nil {
+	// The credential this stream opened on is recorded with the Hello: a
+	// renewal replaces the issued credential while this stream keeps the
+	// one it opened with, and the record says which is in use.
+	presented := presentedCredential(ctx)
+	if err := s.registry.RecordAgent(ctx, id, agent, hello.GetAppliedPolicyVersion(), presented, now); err != nil {
 		if isRetired(err) {
 			return refuseRetired(log, err, "sync stream open")
 		}
@@ -312,7 +316,11 @@ func (s *Server) Sync(stream innerwallv1.AgentService_SyncServer) error {
 	if err := s.registry.SetSyncState(ctx, id, innerwallv1.SyncState_SYNC_STATE_PENDING, "", now); err != nil {
 		log.Error("recording sync state", "error", err)
 	}
-	log.Info("sync stream opened", "agent_version", agent.Version, "claimed_version", hello.GetAppliedPolicyVersion(), "snapshot_version", policy.GetVersion())
+	opened := []any{"agent_version", agent.Version, "claimed_version", hello.GetAppliedPolicyVersion(), "snapshot_version", policy.GetVersion()}
+	if presented != nil {
+		opened = append(opened, "credential_serial", presented.Serial, "credential_expires_at", presented.ExpiresAt)
+	}
+	log.Info("sync stream opened", opened...)
 	if _, notAfter := credentialValidity(ctx); !notAfter.IsZero() {
 		go s.boundByCredential(sess, log, notAfter, credentialEndLead)
 	}
