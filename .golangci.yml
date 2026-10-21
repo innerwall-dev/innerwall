@@ -30,6 +30,17 @@ linters:
       locale: US
   exclusions:
     generated: lax
+    # Release-branch only: under the go1.26.10 directive the nil-dereference
+    # analysis stops crediting this branch's test guards as terminating and
+    # reports them a few at a time. The same spots on main were rewritten by
+    # later work and lint clean there; test-only findings have no bearing on
+    # the released binaries, so the rule is excluded for tests on this branch
+    # rather than rewriting v0.4.2-era tests piecemeal.
+    rules:
+      - path: _test\.go$
+        text: "SA5011"
+        linters:
+          - staticcheck
     paths:
       - internal/gen
       - internal/store/db
