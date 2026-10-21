@@ -5,6 +5,7 @@ import type {
 	FlowsPage,
 	LabelMap,
 	Labels,
+	Lifecycle,
 	MintedToken,
 	MintTokenRequest,
 	ModeChangeAck,
@@ -12,6 +13,7 @@ import type {
 	ProvisioningToken,
 	RenderedPolicy,
 	ResendSnapshotAck,
+	RetirementAck,
 	Rollup,
 	RollupGrouping,
 	Verdict,
@@ -30,6 +32,9 @@ export interface WorkloadFilter {
 	label?: readonly string[];
 	sync_state?: Workload["sync"]["state"];
 	mode?: Workload["mode"];
+	// lifecycle lists the active fleet (the default) or the retired
+	// workloads, never both.
+	lifecycle?: Lifecycle;
 }
 
 export function listWorkloads(
@@ -40,8 +45,9 @@ export function listWorkloads(
 	return request("GET", withQuery("/workloads", { ...filter, cursor, limit }));
 }
 
-// countWorkloads is the fleet's size, in total and in each sync state,
-// counted by the control plane in one read.
+// countWorkloads is the active fleet's size, in total and in each sync
+// state, and the retired workloads beside it, counted by the control
+// plane in one read.
 export function countWorkloads(): Promise<WorkloadCounts> {
 	return request("GET", "/workloads/counts");
 }
@@ -82,6 +88,13 @@ export function resendSnapshot(id: string): Promise<ResendSnapshotAck> {
 		"POST",
 		`/workloads/${encodeURIComponent(id)}/resend-snapshot`,
 	);
+}
+
+// retireWorkload retires a workload, one way: refused as not found for
+// an id nothing is registered under, and as already retired with the
+// instant it was.
+export function retireWorkload(id: string): Promise<RetirementAck> {
+	return request("POST", `/workloads/${encodeURIComponent(id)}/retire`);
 }
 
 export function createModeChange(

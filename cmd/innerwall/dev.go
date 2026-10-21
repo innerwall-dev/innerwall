@@ -25,7 +25,7 @@ func runDev(ctx context.Context, args []string) error {
 	}
 	fs := flag.NewFlagSet("innerwall dev seed", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
-	estate := fs.Bool("estate", false, "also load the review estate: the flow map's label groups, address groups, and traffic, a few hundred workloads")
+	estate := fs.Bool("estate", false, "also load the review estate: the flow map's label groups, address groups, and traffic, a few hundred workloads, and one retired workload")
 	extra := fs.Int("estate-extra", 0, "with --estate, this many more app groups of three workloads each, for reviewing the map at estate scale")
 	if err := cli.Parse(fs, args[1:], 0); err != nil {
 		return err
@@ -54,7 +54,10 @@ func runDev(ctx context.Context, args []string) error {
 		if err := storetest.SeedEstate(ctx, st, f, *extra); err != nil {
 			return fmt.Errorf("seeding the estate: %w", err)
 		}
-		fmt.Printf("seeded the review estate (%d extra app groups)\n", *extra)
+		if _, err := storetest.SeedRetired(ctx, st, f); err != nil {
+			return fmt.Errorf("seeding the retired workload: %w", err)
+		}
+		fmt.Printf("seeded the review estate (%d extra app groups) and the retired workload %s\n", *extra, storetest.RetiredHost)
 	}
 	fmt.Printf("seeded fleet relative to %s: web-1 %s (enforced, synced), db-1 %s (simulation, degraded), cache-1 %s (visibility, offline); ruleset %q; address group %q\n",
 		now.Format(time.RFC3339), f.Web, f.DB, f.Cache, f.Ruleset.Name, f.Office.Name)

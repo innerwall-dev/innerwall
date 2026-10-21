@@ -267,6 +267,41 @@ func TestSeedEstate(t *testing.T) {
 	}
 }
 
+// The dev seed's retired workload is retired through the domain
+// function, readable by its id with the instant, outside the active
+// fleet, and counted in retired alone.
+func TestSeedRetired(t *testing.T) {
+	ctx := context.Background()
+	s := storetest.Open(t)
+	f := storetest.SeedFleet(t, s)
+	id, err := storetest.SeedRetired(ctx, s, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err := s.LookupWorkload(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w.Hostname != storetest.RetiredHost || w.RetiredAt == nil || !w.RetiredAt.Equal(f.Now.Add(-26*time.Hour)) {
+		t.Fatalf("retired workload = %s retired at %v", w.Hostname, w.RetiredAt)
+	}
+	counts, err := s.CountWorkloadsByStatus(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var active, retired int64
+	for _, c := range counts {
+		if c.Retired {
+			retired += c.Workloads
+		} else {
+			active += c.Workloads
+		}
+	}
+	if active != 3 || retired != 1 {
+		t.Fatalf("counts = %+v, want 3 active and 1 retired", counts)
+	}
+}
+
 // TestLabelScopedRollup checks the read model's label scope against the
 // seeded fleet in Postgres: a selector matching reporting workloads, one
 // that matches every workload, one that matches none, and either-endpoint

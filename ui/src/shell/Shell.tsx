@@ -8,7 +8,7 @@ import {
 } from "react-router";
 import { countWorkloads } from "@/api/fleet";
 import { listRulesets } from "@/api/policy";
-import type { SyncState } from "@/api/schema";
+import type { SyncState, WorkloadCounts } from "@/api/schema";
 import { useSession } from "@/auth/SessionProvider";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { useResource } from "@/lib/resource";
@@ -27,6 +27,9 @@ export interface OpenWorkload {
 	// reconnecting is an offline sync stream whose flow reports still
 	// arrive (issue #61).
 	reconnecting: boolean;
+	// retired is the operator's retirement of the workload, which
+	// outranks everything its last recorded health says (ADR-0023).
+	retired: boolean;
 }
 
 // ShellContext is what the screens tell the frame: the workload they
@@ -39,6 +42,9 @@ export interface ShellContext {
 	fleetChanged: () => void;
 	policyChanged: () => void;
 	strip: HTMLElement | null;
+	// counts is the fleet's counts as the frame last read them, null
+	// until read: the fleet screen takes the retired count from it.
+	counts: WorkloadCounts | null;
 }
 
 export function useShell(): ShellContext {
@@ -121,7 +127,12 @@ function Frame() {
 		() => listRulesets().then((r) => r.rulesets.length),
 		[policyGeneration],
 	);
-	const fleetEmpty = fleet.status === "ready" ? fleet.data.total === 0 : null;
+	// A fleet whose workloads are all retired is not a fresh install.
+	const fleetEmpty =
+		fleet.status === "ready"
+			? fleet.data.total === 0 && fleet.data.retired === 0
+			: null;
+	const counts = fleet.status === "ready" ? fleet.data : null;
 
 	const openWorkload = useCallback((w: OpenWorkload) => {
 		setOpen((cur) =>
@@ -130,7 +141,8 @@ function Frame() {
 			cur.hostname === w.hostname &&
 			cur.state === w.state &&
 			cur.removed === w.removed &&
-			cur.reconnecting === w.reconnecting
+			cur.reconnecting === w.reconnecting &&
+			cur.retired === w.retired
 				? cur
 				: w,
 		);
@@ -141,20 +153,20 @@ function Frame() {
 		[],
 	);
 	const context = useMemo<ShellContext>(
-		() => ({ openWorkload, fleetChanged, policyChanged, strip }),
-		[openWorkload, fleetChanged, policyChanged, strip],
+		() => ({ openWorkload, fleetChanged, policyChanged, strip, counts }),
+		[openWorkload, fleetChanged, policyChanged, strip, counts],
 	);
 
-	const counts: Partial<Record<string, Badge>> = {};
+	const badges: Partial<Record<string, Badge>> = {};
 	if (fleet.status === "ready") {
 		const b = attentionBadge(fleet.data);
-		if (b) counts["/workloads"] = b;
+		if (b) badges["/workloads"] = b;
 	}
-	if (rulesets.status === "ready") counts["/policy"] = { n: rulesets.data };
+	if (rulesets.status === "ready") badges["/policy"] = { n: rulesets.data };
 
 	return (
 		<SidebarProvider className="h-dvh overflow-hidden bg-canvas text-primary">
-			<Sidebar counts={counts} fleetEmpty={fleetEmpty} open={open} />
+			<Sidebar counts={badges} fleetEmpty={fleetEmpty} open={open} />
 			<div className="flex min-w-0 flex-1 flex-col">
 				<PageHeader
 					crumbs={crumbsFor(location.pathname, location.search)}

@@ -46,6 +46,30 @@ export function relative(iso: string, now = Date.now()): string {
 	return d >= 0 ? `in ${span(d)}` : `${span(d)} ago`;
 }
 
+const utcMinute = new Intl.DateTimeFormat("en-GB", {
+	month: "2-digit",
+	day: "2-digit",
+	hour: "2-digit",
+	minute: "2-digit",
+	hourCycle: "h23",
+	timeZone: "UTC",
+});
+
+// stamp is an instant in UTC to the minute, with its date: "10-21 16:20
+// UTC", for an instant read beside its relative form.
+export function stamp(iso: string): string {
+	const p = Object.fromEntries(
+		utcMinute.formatToParts(new Date(iso)).map((x) => [x.type, x.value]),
+	);
+	return `${p.month}-${p.day} ${p.hour}:${p.minute} UTC`;
+}
+
+// exact is an instant as the surface stores it, to the second:
+// "2026-10-20T18:02:11Z", for an instant a refusal names.
+export function exact(iso: string): string {
+	return new Date(iso).toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
 // isPast says whether an instant has passed.
 export function isPast(iso: string, now = Date.now()): boolean {
 	return Date.parse(iso) <= now;

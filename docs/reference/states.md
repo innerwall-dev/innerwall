@@ -35,7 +35,13 @@ The note beside the state says more: the version not yet applied, when an apply 
 
 ### Retired
 
-A workload the operator retired (`innerwall workload retire`, `POST /api/v1/workloads/{id}/retire`) is in a state of its own, not a sync state: offline is something to fix, and retired is something the operator decided (ADR-0023). In the API its `lifecycle` is `retired` and `retired_at` says when; its `sync.state` is only the last its stream recorded. It is outside the fleet's attention ordering: `GET /api/v1/workloads` lists the active fleet unless asked for `lifecycle=retired`, and `GET /api/v1/workloads/counts` counts it in `retired` alone, in no sync state and not in the total. Retirement is one way. The workload's credential is refused at renewal and on every agent call, with a refusal that names no reason; its live stream is ended; its addresses leave every peer set, and flow ingest no longer attributes them to it; and its labels and mode are frozen, so a write naming it is refused with the instant. Its flows, totals, and evidence gaps stay readable under its id, and a silence its agent was in when it was retired is stored as an `agent_silent` gap ending at the retirement. Retiring does not revoke the provisioning token that enrolled it. The console does not draw the state yet: a retired workload leaves the fleet list and its counts, and its own page, reached by id, still reads its last sync state.
+A workload the operator retired (`innerwall workload retire`, `POST /api/v1/workloads/{id}/retire`) is in a state of its own, not a sync state: offline is something to fix, and retired is something the operator decided (ADR-0023). In the API its `lifecycle` is `retired` and `retired_at` says when; its `sync.state` is only the last its stream recorded. It is outside the fleet's attention ordering: `GET /api/v1/workloads` lists the active fleet unless asked for `lifecycle=retired`, and `GET /api/v1/workloads/counts` counts it in `retired` alone, in no sync state and not in the total. Retirement is one way. The workload's credential is refused at renewal and on every agent call, with a refusal that names no reason; its live stream is ended; its addresses leave every peer set, and flow ingest no longer attributes them to it; and its labels and mode are frozen, so a write naming it is refused with the instant. Its flows, totals, and evidence gaps stay readable under its id, and a silence its agent was in when it was retired is stored as an `agent_silent` gap ending at the retirement. Retiring does not revoke the provisioning token that enrolled it.
+
+In the console a retired workload is drawn as the operator's decision, not as health: the gray circle-minus icon and the word **Retired** in the neutral tone, never a status glyph, so it reads apart from an offline row. The fleet's **retired** chip, beside the state chips and counted from `retired`, lists the retired workloads instead of the active fleet, most recently retired first; their rows cannot be selected, since their mode is frozen. The Workloads count in the sidebar never includes them. A retired workload's page leads with the retirement and its instant; its live chrome is quiet: no offline, removed, degraded, or expired-credential alarm, no **Resend snapshot**, no label edit or mode change, and the Status card's facts are what was last recorded before it. Only the states that change how its history reads (clock skew, evidence gaps) remain.
+
+![A retired workload's page: the retirement and its instant above the cards, the credential refused, and nothing live](../img/console/workload-detail-retired-dark.png "A retired workload.")
+
+**Retire…** on a workload's page (in Host facts, beside its identity) and **Retire selected…** on the fleet retire through `POST /api/v1/workloads/{id}/retire`, one request per workload, behind a dialog that says what retiring does and an acknowledgment that it cannot be undone. A workload already retired is reported with the instant it was, and an id nothing is registered under is reported as such; nothing changes for either.
 
 ## Credential
 
@@ -43,21 +49,23 @@ A workload the operator retired (`innerwall workload retire`, `POST /api/v1/work
 |---|---|---|
 | `renews` | "renewal due in 9h", then "renewal due now" | Valid, and the last renewal that was due succeeded. |
 | `renewal-failed` | "renewal failed · retrying" | Valid, but the agent's last renewal attempt failed; the error is on the workload page. |
-| `expired` | "expired 5h ago", and the **Credential expired** chip | Past its expiry. It may still renew, and do nothing else, within the control plane's renewal grace (72 hours unless set otherwise); beyond it the workload must be re-enrolled. The console does not yet say which of the two applies; `health.credential.lifecycle` does. |
+| `expired` | by `lifecycle`, below, and the **Credential expired** chip | Past its expiry. It may still renew, and do nothing else, within the control plane's renewal grace (72 hours unless set otherwise); beyond it the workload must be re-enrolled. |
 
 `health.credential.lifecycle` says what the control plane will still accept from the credential, judged against the renewal grace it is configured with, which no client can know; `health.credential.renewable_until` is when that grace ends.
 
-| API `health.credential.lifecycle` | Meaning |
-|---|---|
-| `valid` | Not yet expired. |
-| `in-grace` | Expired, and may still renew until `renewable_until`. The agent keeps retrying; the workload recovers by itself, with the same identity, once a renewal succeeds. |
-| `past-grace` | Expired beyond the grace. Nothing accepts it; the agent keeps enforcing its last policy and retrying, and the workload returns only by enrolling the host again with a new provisioning token, as a new workload ([credential lifecycle](../guides/credential-lifecycle.md#beyond-the-grace-re-enrollment)). |
+| API `health.credential.lifecycle` | Console (fleet · workload page) | Meaning |
+|---|---|---|
+| `valid` | the state's words · "valid · renews by 10-21 21:00 UTC" | Not yet expired. The page dates renewal by the two-thirds mark of the lifetime since the credential was issued: the agent's first attempt falls by then, never later. |
+| `in-grace` | "expired 5h ago · in grace" · "expired 5h ago · will recover by renewal", until `renewable_until` | Expired, and may still renew until `renewable_until`. The agent keeps retrying; the workload recovers by itself, with the same identity, once a renewal succeeds. |
+| `past-grace` | "expired 4d ago · re-enroll" · "expired 4d ago · needs re-enrollment", with **Mint a provisioning token** | Expired beyond the grace. Nothing accepts it; the agent keeps enforcing its last policy and retrying, and the workload returns only by enrolling the host again with a new provisioning token, as a new workload ([credential lifecycle](../guides/credential-lifecycle.md#beyond-the-grace-re-enrollment)). |
 
-A retired workload's credential is refused whatever its lifecycle says ([retired](#retired)).
+A retired workload's credential is refused whatever its lifecycle says ([retired](#retired)); the console says "refused · retired".
 
 After a renewal made with an already expired credential, the console shows "renewed 3h late" beside the countdown, from `health.credential.last_late_renewal`. What each case means for the host is in [credential lifecycle](../guides/credential-lifecycle.md).
 
 `health.credential.serial` and `expires_at` describe the credential last issued; `health.credential.last_presented` is the serial and expiry of the one the workload's latest sync stream opened on, null until a stream has opened. A stream keeps its credential until that credential's end, so after a renewal the two differ until the next stream. `last_presented` is the credential in use only while `sync.state` is not `offline`.
+
+The workload page's Status card shows both: **issued**, the serial last issued with its expiry, and **in use**, the serial the live stream presented with its expiry, or **presented** while the stream is down, as what the last stream opened on; nothing is shown before a stream has opened since the control plane began recording it. When the stream's credential is not the one issued, the in-use serial is marked with the alert glyph ("not the one issued"). After every renewal this is expected until the stream reconnects, by five minutes before its credential expires; a hand renewal under a running daemon reads the same ([credential lifecycle](../guides/credential-lifecycle.md#rotating-a-credential-by-hand)). If the two still differ after that reconnect, a second party may be renewing the identity with a copy of its key: retire the workload and enroll the host again.
 
 ## Other chips
 

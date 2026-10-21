@@ -12,6 +12,7 @@ export type Problem = Schemas["Problem"];
 
 export type Mode = Schemas["Mode"];
 export type SyncState = Schemas["SyncState"];
+export type Lifecycle = Schemas["Lifecycle"];
 export type Verdict = Schemas["Verdict"];
 export type Protocol = Schemas["Protocol"];
 export type LabelMap = Schemas["LabelMap"];
@@ -54,6 +55,7 @@ export type SelectorPreview =
 export type ModeChangeRequest = Schemas["ModeChangeRequest"];
 export type ModeChangeAck = Schemas["ModeChangeAck"];
 export type ResendSnapshotAck = Schemas["ResendSnapshotAck"];
+export type RetirementAck = Schemas["RetirementAck"];
 export type ProvisioningToken = Schemas["ProvisioningToken"];
 export type TokenState = Schemas["TokenState"];
 export type MintTokenRequest =
@@ -83,6 +85,7 @@ export const ProblemType = {
 	duplicateName: "urn:innerwall:problem:duplicate-name",
 	alreadyRevoked: "urn:innerwall:problem:already-revoked",
 	agentOffline: "urn:innerwall:problem:agent-offline",
+	workloadRetired: "urn:innerwall:problem:workload-retired",
 	validation: "urn:innerwall:problem:validation",
 	notFound: "urn:innerwall:problem:not-found",
 	methodNotAllowed: "urn:innerwall:problem:method-not-allowed",

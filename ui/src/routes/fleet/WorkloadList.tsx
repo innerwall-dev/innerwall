@@ -25,28 +25,34 @@ import {
 	StatusGlyph,
 } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
-import { labelPairs } from "@/lib/format";
+import { ago, count, labelPairs } from "@/lib/format";
 import { parseRequirements } from "@/lib/labels";
 import { asProblem, useResource } from "@/lib/resource";
 import { cn } from "@/lib/utils";
 import { useShell } from "@/shell/Shell";
 import {
 	credential,
+	credentialTone,
 	enforcementRemoved,
 	lastSeen,
 	reconnecting,
+	retired,
 	syncNote,
 	version,
 } from "./describe";
 import { ModeChangeDialog } from "./ModeChangeDialog";
+import { RetireDialog } from "./RetireDialog";
 
 const states: SyncState[] = ["synced", "pending", "degraded", "offline"];
 
-// Chip is one choice of the chip row: a sync state, or removed. Removed
-// is not a sync state: the stored state still records the version the
-// agent acknowledged. It is the health fact the row already reads
-// (enforcementRemoved), derived beside the states (issue #96).
-type Chip = SyncState | "removed";
+// Chip is one choice of the chip row: a sync state, removed, or retired.
+// Removed is not a sync state: the stored state still records the
+// version the agent acknowledged. It is the health fact the row already
+// reads (enforcementRemoved), derived beside the states (issue #96).
+// Retired is not one either, nor part of the active fleet the others
+// filter: it lists the retired workloads instead, which the surface
+// lists apart (`lifecycle=retired`), most recently retired first.
+type Chip = SyncState | "removed" | "retired";
 
 // largestPage is the page size the surface allows at most.
 const largestPage = 500;
@@ -102,9 +108,10 @@ export function labelRequirements(
 // WorkloadList is the fleet tab: the workloads in fleet order (the ones
 // needing attention first, most recently seen first within a rank),
 // filtered by sync state or enforcement removed, and label requirements,
-// a page at a time.
-// Selected rows feed a mode change; after one the list is read again
-// and shows convergence as each row's applied version against latest.
+// a page at a time; or the retired workloads, apart from it.
+// Selected rows feed a mode change or a retirement; after one the list
+// is read again and shows convergence as each row's applied version
+// against latest. Retired rows are frozen, so they are not selectable.
 export function WorkloadList({
 	onFresh,
 }: {
@@ -120,13 +127,21 @@ export function WorkloadList({
 	});
 	const [selected, setSelected] = useState<Set<string>>(new Set());
 	const [changing, setChanging] = useState(false);
+	// The selection a retirement was confirmed for, held while the
+	// dialog reports its outcomes over a list read again under it.
+	const [retiring, setRetiring] = useState<Workload[] | null>(null);
 
 	const removed = chip === "removed";
+	const showRetired = chip === "retired";
+	const retiredCount = shell.counts?.retired ?? 0;
 	const filter = useMemo<WorkloadFilter>(
-		() => ({
-			sync_state: chip === null || chip === "removed" ? undefined : chip,
-			label: labels,
-		}),
+		() =>
+			chip === "retired"
+				? { lifecycle: "retired", label: labels }
+				: {
+						sync_state: chip === null || chip === "removed" ? undefined : chip,
+						label: labels,
+					},
 		[chip, labels],
 	);
 	const filtered = chip !== null || labels.length > 0;
@@ -145,10 +160,13 @@ export function WorkloadList({
 
 	const rows = pages.flatMap((p) => p.workloads);
 	const cursor = pages.at(-1)?.next_cursor ?? null;
+	// A fleet whose workloads are all retired is not a fresh install: its
+	// retired workloads are still listed.
 	const fresh =
 		resource.status === "ready" &&
 		!filtered &&
-		resource.data.workloads.length === 0;
+		resource.data.workloads.length === 0 &&
+		retiredCount === 0;
 	useEffect(() => onFresh(fresh), [fresh, onFresh]);
 
 	async function loadMore() {
@@ -222,6 +240,16 @@ export function WorkloadList({
 						onClick={() => setChip(removed ? null : "removed")}
 					/>
 				</fieldset>
+				<fieldset className="m-0 flex min-w-0 gap-1 border-0 border-l border-hairline p-0 pl-2">
+					<legend className="sr-only">Lifecycle</legend>
+					<FilterChip
+						on={showRetired}
+						glyph={<Icon name="circle-minus" />}
+						label="retired"
+						count={shell.counts ? retiredCount : undefined}
+						onClick={() => setChip(showRetired ? null : "retired")}
+					/>
+				</fieldset>
 				<div className="ml-auto flex items-center gap-2">
 					<LabelFilter labels={labels} onChange={setLabels} />
 					<Button
@@ -231,6 +259,14 @@ export function WorkloadList({
 						onClick={() => setChanging(true)}
 					>
 						Change mode for selected…
+					</Button>
+					<Button
+						variant="secondary"
+						size="sm"
+						disabled={selection.length === 0}
+						onClick={() => setRetiring(selection)}
+					>
+						Retire selected…
 					</Button>
 				</div>
 			</div>
@@ -247,24 +283,26 @@ export function WorkloadList({
 					<table className="w-full border-separate border-spacing-0">
 						<thead className="sticky top-0 z-10">
 							<tr>
-								<th className={cn(th, "w-px pr-1 pl-5")}>
-									<Checkbox
-										label="Select all shown"
-										checked={allSelected}
-										indeterminate={someSelected && !allSelected}
-										onChange={() =>
-											setSelected(
-												allSelected
-													? new Set()
-													: new Set(rows.map((w) => w.id)),
-											)
-										}
-									/>
-								</th>
-								<th className={th}>Hostname</th>
+								{showRetired ? null : (
+									<th className={cn(th, "w-px pr-1 pl-5")}>
+										<Checkbox
+											label="Select all shown"
+											checked={allSelected}
+											indeterminate={someSelected && !allSelected}
+											onChange={() =>
+												setSelected(
+													allSelected
+														? new Set()
+														: new Set(rows.map((w) => w.id)),
+												)
+											}
+										/>
+									</th>
+								)}
+								<th className={cn(th, showRetired && "pl-5")}>Hostname</th>
 								<th className={th}>Labels</th>
 								<th className={th}>Mode</th>
-								<th className={th}>Sync</th>
+								<th className={th}>{showRetired ? "Lifecycle" : "Sync"}</th>
 								<th className={cn(th, "text-right")}>Applied</th>
 								<th className={th}>Credential</th>
 								<th className={th}>Agent</th>
@@ -289,7 +327,24 @@ export function WorkloadList({
 						<LoadingRow what="workloads" />
 					</div>
 				) : null}
-				{resource.status === "ready" && rows.length === 0 ? (
+				{resource.status === "ready" && rows.length === 0 && !filtered ? (
+					// Only retired workloads remain: the active fleet is empty,
+					// and the retired ones are a chip away.
+					<div className="flex flex-col items-start gap-2 px-5 py-6 type-dense text-tertiary">
+						<span>
+							No active workloads; {count(retiredCount)}{" "}
+							{retiredCount === 1 ? "workload is" : "workloads are"} retired.
+						</span>
+						<button
+							type="button"
+							className="cursor-pointer link"
+							onClick={() => setChip("retired")}
+						>
+							Show retired
+						</button>
+					</div>
+				) : null}
+				{resource.status === "ready" && rows.length === 0 && filtered ? (
 					<div className="flex flex-col items-start gap-2 px-5 py-6 type-dense text-tertiary">
 						<span>No workloads match these filters.</span>
 						<button
@@ -307,7 +362,10 @@ export function WorkloadList({
 				{resource.status === "ready" && rows.length > 0 ? (
 					<div className="flex items-center gap-3 px-5 py-3 type-caption text-tertiary">
 						<span>
-							Showing {rows.length} · sorted by sync state, then last seen
+							Showing {rows.length} ·{" "}
+							{showRetired
+								? "most recently retired first"
+								: "sorted by sync state, then last seen"}
 						</span>
 						{cursor ? (
 							<Button
@@ -343,6 +401,18 @@ export function WorkloadList({
 					reload();
 				}}
 			/>
+			<RetireDialog
+				open={retiring !== null}
+				workloads={retiring ?? []}
+				onOpenChange={(o) => {
+					if (!o) setRetiring(null);
+				}}
+				onRetired={() => {
+					setSelected(new Set());
+					reload();
+					shell.fleetChanged();
+				}}
+			/>
 		</div>
 	);
 }
@@ -360,7 +430,12 @@ function Row({
 }) {
 	const labels = labelPairs(w.labels);
 	const cred = credential(w);
-	const note = syncNote(w);
+	const gone = retired(w);
+	const note = gone
+		? w.retired_at
+			? `retired ${ago(w.retired_at)}`
+			: ""
+		: syncNote(w);
 	// row-pitch is the row pitch including its hairline: the 22px mode
 	// pill, 9px above and 8px below it, and the 1px separator make 40.
 	const cell =
@@ -378,17 +453,22 @@ function Row({
 				selected ? "bg-wash-selected" : "hover:bg-wash-hover",
 			)}
 		>
-			<td className={cn(cell, "pr-1 pl-5")}>
-				<Checkbox
-					label={`Select ${w.hostname}`}
-					checked={selected}
-					onChange={onToggle}
-				/>
-			</td>
-			<td className={cn(cell, "whitespace-nowrap")}>
+			{gone ? null : (
+				<td className={cn(cell, "pr-1 pl-5")}>
+					<Checkbox
+						label={`Select ${w.hostname}`}
+						checked={selected}
+						onChange={onToggle}
+					/>
+				</td>
+			)}
+			<td className={cn(cell, "whitespace-nowrap", gone && "pl-5")}>
 				<Link
 					to={`/workloads/${w.id}`}
-					className="type-mono-data font-medium text-primary hover:underline"
+					className={cn(
+						"type-mono-data font-medium hover:underline",
+						gone ? "text-secondary" : "text-primary",
+					)}
 				>
 					{w.hostname}
 				</Link>
@@ -408,7 +488,18 @@ function Row({
 				<ModePill mode={w.mode} />
 			</td>
 			<td className={cn(cell, "whitespace-nowrap")}>
-				{enforcementRemoved(w) ? (
+				{gone ? (
+					// Retired is the operator's decision, not health: the
+					// chrome icon and the word, never a status glyph, so the
+					// row reads apart from an offline one.
+					<span
+						className="inline-flex items-center gap-1.5 whitespace-nowrap type-control text-status-neutral-fg"
+						data-testid="retired"
+					>
+						<Icon name="circle-minus" />
+						<span>Retired</span>
+					</span>
+				) : enforcementRemoved(w) ? (
 					// The acknowledged version is not what the host runs: its
 					// table is gone, so the row says that instead of the
 					// sync state.
@@ -429,9 +520,9 @@ function Row({
 			<td className={cn(cell, "text-right type-mono-data")}>
 				{version(w.sync.applied_version)}
 			</td>
-			<td className={cn(cell, "whitespace-nowrap")}>
-				{cred.tone === "ok" ? (
-					<span className="text-secondary">{cred.text}</span>
+			<td className={cn(cell, "whitespace-nowrap")} title={cred.title}>
+				{cred.tone === "ok" || cred.tone === "quiet" ? (
+					<span className={credentialTone[cred.tone]}>{cred.text}</span>
 				) : (
 					<SeverityNote level={cred.tone === "warn" ? "alert" : "error"}>
 						{cred.text}

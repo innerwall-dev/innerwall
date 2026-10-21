@@ -3,8 +3,10 @@ import { hoursFromNow, minutesAgo, workload } from "@/test/fixtures";
 import {
 	credential,
 	lastContact,
+	presented,
 	reconnecting,
 	renewsAt,
+	standing,
 	syncNote,
 	version,
 } from "./describe";
@@ -211,5 +213,153 @@ describe("credential", () => {
 			},
 		});
 		expect(credential(w).text).toBe("renewal due now");
+	});
+});
+
+describe("credential lifecycle", () => {
+	const now = Date.parse("2026-10-21T12:00:00Z");
+
+	it("words an expired credential by the side of the grace it is on", () => {
+		// INN-63: within the grace the workload renews by itself the next
+		// time its agent reaches the control plane; beyond it only
+		// re-enrollment brings the host back.
+		const inGrace = workload({
+			health: {
+				credential: {
+					state: "expired",
+					lifecycle: "in-grace",
+					expires_at: "2026-10-21T07:00:00Z",
+					renewable_until: "2026-10-24T07:00:00Z",
+				},
+			},
+		});
+		expect(credential(inGrace, now)).toEqual({
+			text: "expired 5h ago · in grace",
+			tone: "bad",
+			title:
+				"Renews by itself the next time its agent reaches the control plane, until 10-24 07:00 UTC.",
+		});
+		expect(standing(inGrace, now)).toEqual({
+			text: "expired 5h ago · will recover by renewal",
+			tone: "bad",
+			note: "It may still renew until 10-24 07:00 UTC (in 2d), and do nothing else. The agent keeps retrying and enforcing its last policy; once a renewal succeeds the workload carries on with the same identity.",
+			reenroll: false,
+		});
+
+		const pastGrace = workload({
+			health: {
+				credential: {
+					state: "expired",
+					lifecycle: "past-grace",
+					expires_at: "2026-10-17T08:00:00Z",
+					renewable_until: "2026-10-20T08:00:00Z",
+				},
+			},
+		});
+		expect(credential(pastGrace, now)).toMatchObject({
+			text: "expired 4d ago · re-enroll",
+			tone: "bad",
+		});
+		const s = standing(pastGrace, now);
+		expect(s.text).toBe("expired 4d ago · needs re-enrollment");
+		expect(s.note).toBe(
+			"Its renewal grace ended 1d ago, so nothing accepts it. The agent keeps enforcing its last policy; the host returns only by enrolling again with a new provisioning token, as a new workload.",
+		);
+		expect(s.reenroll).toBe(true);
+	});
+
+	it("says a valid credential renews by the two-thirds mark", () => {
+		// Issued 05:00 for 24h: the first attempt falls by 21:00, never
+		// later (ADR-0016, decision 4, as corrected).
+		const w = workload({
+			enrolled_at: "2026-10-01T00:00:00Z",
+			health: {
+				credential: {
+					last_renewed_at: "2026-10-21T05:00:00Z",
+					expires_at: "2026-10-22T05:00:00Z",
+				},
+			},
+		});
+		const s = standing(w, now);
+		expect(s.text).toBe("valid · renews by 10-21 21:00 UTC");
+		expect(s.tone).toBe("ok");
+		expect(s.note).toBe(
+			"Valid until 10-22 05:00 UTC (in 17h). Renewal begins by two thirds of its lifetime (in 9h), never later.",
+		);
+		const failing = workload({
+			...w,
+			health: {
+				credential: { ...w.health.credential, state: "renewal-failed" },
+			},
+		});
+		expect(standing(failing, now)).toMatchObject({
+			text: "renewal failed · retrying",
+			tone: "warn",
+			note: "Valid until 10-22 05:00 UTC (in 17h). The agent retries with backoff until it renews.",
+		});
+	});
+
+	it("calls a retired workload's credential refused, whatever it says", () => {
+		const w = workload({
+			lifecycle: "retired",
+			retired_at: "2026-10-20T18:02:11Z",
+			health: {
+				credential: {
+					state: "expired",
+					lifecycle: "past-grace",
+					expires_at: "2026-10-17T08:00:00Z",
+				},
+			},
+		});
+		expect(credential(w, now)).toEqual({
+			text: "refused · retired",
+			tone: "quiet",
+		});
+		expect(standing(w, now)).toMatchObject({
+			text: "refused · workload retired",
+			tone: "quiet",
+			reenroll: false,
+		});
+	});
+});
+
+describe("presented credential", () => {
+	const issued = { serial: "4e2b", expires_at: "2026-10-22T05:00:00Z" };
+
+	it("is in use only while the stream is up, and marks divergence", () => {
+		const same = workload({
+			health: {
+				credential: {
+					...issued,
+					last_presented: { ...issued },
+				},
+			},
+		});
+		expect(presented(same)).toEqual({
+			...issued,
+			inUse: true,
+			diverged: false,
+		});
+		// The stream outlived a renewal, or two parties renew one identity:
+		// the live stream presents a credential other than the one issued.
+		const older = { serial: "3c9a", expires_at: "2026-10-21T13:00:00Z" };
+		const diverged = workload({
+			health: { credential: { ...issued, last_presented: older } },
+		});
+		expect(presented(diverged)).toEqual({
+			...older,
+			inUse: true,
+			diverged: true,
+		});
+		// Offline, it is only what the last stream presented.
+		const offline = workload({
+			sync: { state: "offline" },
+			health: { credential: { ...issued, last_presented: older } },
+		});
+		expect(presented(offline)?.inUse).toBe(false);
+	});
+
+	it("is nothing before a stream has opened since it was recorded", () => {
+		expect(presented(workload())).toBeNull();
 	});
 });

@@ -126,7 +126,11 @@ describe("sidebar", () => {
 });
 
 describe("workloads badge", () => {
-	const withCounts = (by: Partial<Record<SyncState, number>>, removed = 0) => {
+	const withCounts = (
+		by: Partial<Record<SyncState, number>>,
+		removed = 0,
+		retired = 0,
+	) => {
 		const by_sync_state = {
 			synced: 0,
 			pending: 0,
@@ -140,7 +144,10 @@ describe("workloads badge", () => {
 			{
 				method: "GET",
 				path: "/api/v1/workloads/counts",
-				reply: { status: 200, json: { total, by_sync_state, removed } },
+				reply: {
+					status: 200,
+					json: { total, by_sync_state, removed, retired },
+				},
 			},
 			...freshInstall,
 		]);
@@ -182,6 +189,31 @@ describe("workloads badge", () => {
 			expect(screen.queryByText("no workloads")).not.toBeInTheDocument(),
 		);
 		expect(screen.queryByTestId("count-Workloads")).not.toBeInTheDocument();
+	});
+
+	it("leaves retired workloads out of the attention count", async () => {
+		// A retired workload is counted in retired alone and needs no
+		// attention (ADR-0023).
+		withCounts({ synced: 4, offline: 1 }, 0, 6);
+		renderApp("/policy");
+		const badge = await screen.findByTestId("count-Workloads");
+		expect(badge).toHaveTextContent("1");
+		expect(badge).toHaveAttribute(
+			"aria-label",
+			expect.stringMatching(/^1 workload needs attention: 1 offline\./),
+		);
+	});
+
+	it("does not call a fleet of retired workloads a fresh install", async () => {
+		withCounts({}, 0, 2);
+		renderApp("/policy");
+		const badge = await screen.findByTestId("count-Workloads");
+		expect(badge).toHaveTextContent("0");
+		expect(badge).toHaveAttribute(
+			"aria-label",
+			"No active workloads; 2 retired",
+		);
+		expect(screen.queryByText("no workloads")).not.toBeInTheDocument();
 	});
 
 	it("keeps the fresh install's zero, the cue to enroll", async () => {
