@@ -120,14 +120,26 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
+    # The analysis cache is keyed on the Go toolchain and the linter, so a
+    # toolchain change never reuses verdicts computed under the previous
+    # one. The action's own cache cannot be keyed that way: it restores
+    # from a key prefix holding only the OS and the week, so it served
+    # verdicts from before the move to Go 1.26.10. It is off.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
+        id: go
         with:
           go-version-file: go.mod
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/golangci-lint
+          key: golangci-lint-${{ runner.os }}-go${{ steps.go.outputs.go-version }}-${{ env.GOLANGCI_LINT_VERSION }}-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: golangci-lint-${{ runner.os }}-go${{ steps.go.outputs.go-version }}-${{ env.GOLANGCI_LINT_VERSION }}-
       - uses: golangci/golangci-lint-action@v8
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
+          skip-cache: true
 
   vulncheck:
     name: known vulnerabilities
