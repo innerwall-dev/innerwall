@@ -114,6 +114,7 @@ func TestValidateReportsDocumentFaultsWithAdmission(t *testing.T) {
 		f := policy.AsFindings(err)
 		if f == nil {
 			t.Fatal("admitted")
+			return
 		}
 		if len(f.Errors) != len(want) {
 			t.Fatalf("%d findings, want %d: %v", len(f.Errors), len(want), err)

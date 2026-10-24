@@ -207,6 +207,7 @@ func TestChangeModeRequestShape(t *testing.T) {
 			fs := policy.AsFindings(err)
 			if fs == nil {
 				t.Fatalf("err = %v, want findings", err)
+				return
 			}
 			found := false
 			for _, e := range fs.Errors {
