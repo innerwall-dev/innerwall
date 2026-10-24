@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { EvidenceGap, Flow, RenderedPolicy, Workload } from "@/api/schema";
-import { minutesAgo, workload } from "@/test/fixtures";
+import { hoursFromNow, minutesAgo, workload } from "@/test/fixtures";
 import {
 	chip,
 	gapsOf,
@@ -540,7 +540,9 @@ describe("workload detail", () => {
 					credential: {
 						...synced.health.credential,
 						state: "expired" as const,
+						lifecycle: "in-grace" as const,
 						expires_at: minutesAgo(2 * 24 * 60),
+						renewable_until: hoursFromNow(24),
 					},
 				},
 			}),
@@ -548,11 +550,11 @@ describe("workload detail", () => {
 		renderApp(`/workloads/${db.id}`);
 		const card = await screen.findByTestId("status-card");
 		expect(screen.getByTestId("alert-credential")).toHaveTextContent(
-			"Credential expiredexpired 2d ago",
+			/^Credential expiredexpired 2d ago · will recover by renewal\./,
 		);
 		const row = within(card).getByText("credential")
 			.nextElementSibling as HTMLElement;
-		expect(row).toHaveTextContent("expired 2d ago");
+		expect(row).toHaveTextContent("expired 2d ago · will recover by renewal");
 		expect(row.querySelector("[data-slot=status-glyph]")).toBeNull();
 	});
 
@@ -1230,5 +1232,371 @@ describe("label editor", () => {
 		expect(
 			within(dialog).getByRole("button", { name: "Review change" }),
 		).toBeEnabled();
+	});
+});
+
+describe("retirement on the workload detail", () => {
+	const healthy = {
+		...db,
+		sync: { ...db.sync, state: "synced" as const, error: "" },
+		health: {
+			...db.health,
+			credential: {
+				...db.health.credential,
+				state: "renews" as const,
+				last_error: "",
+			},
+		},
+	};
+
+	it("retires behind an explicit acknowledgment, then reads the workload again", async () => {
+		let gone = false;
+		const { calls } = surface({
+			workload: () =>
+				gone
+					? {
+							...healthy,
+							lifecycle: "retired" as const,
+							retired_at: minutesAgo(0),
+						}
+					: healthy,
+			extra: [
+				{
+					method: "POST",
+					path: `/api/v1/workloads/${db.id}/retire`,
+					reply: () => {
+						gone = true;
+						return {
+							status: 200,
+							json: {
+								workload_id: db.id,
+								retired_at: minutesAgo(0),
+								versions_advanced: 2,
+								silence_closed: null,
+							},
+						};
+					},
+				},
+			],
+		});
+		const user = userEvent.setup();
+		renderApp(`/workloads/${db.id}`);
+		await screen.findByTestId("status-card");
+		await user.click(screen.getByRole("button", { name: "Retire…" }));
+		const dialog = await screen.findByRole("dialog", {
+			name: "Retire db-1?",
+		});
+		const confirm = within(dialog).getByRole("button", {
+			name: "Retire workload",
+		});
+		await user.click(confirm);
+		expect(calls.some((c) => c.method === "POST")).toBe(false);
+		await user.click(within(dialog).getByRole("checkbox"));
+		await user.click(confirm);
+		await waitFor(() =>
+			expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+		);
+		expect(calls.filter((c) => c.method === "POST").map((c) => c.path)).toEqual(
+			[`/api/v1/workloads/${db.id}/retire`],
+		);
+		expect(await screen.findByTestId("retired")).toHaveTextContent(
+			/^Retired 0s agoSince \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ its credential is refused/,
+		);
+	});
+
+	it("renders an already retired workload's 409 with its instant, and a 404", async () => {
+		surface({
+			workload: () => healthy,
+			extra: [
+				{
+					method: "POST",
+					path: `/api/v1/workloads/${db.id}/retire`,
+					reply: {
+						status: 409,
+						problem: {
+							...problem("workload-retired", 409),
+							retired_at: "2026-10-20T18:02:11.482193Z",
+						},
+					},
+				},
+			],
+		});
+		const user = userEvent.setup();
+		renderApp(`/workloads/${db.id}`);
+		await screen.findByTestId("status-card");
+		await user.click(screen.getByRole("button", { name: "Retire…" }));
+		const dialog = await screen.findByRole("dialog");
+		await user.click(within(dialog).getByRole("checkbox"));
+		await user.click(
+			within(dialog).getByRole("button", { name: "Retire workload" }),
+		);
+		expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+			/^Already retired .* ago \(2026-10-20T18:02:11Z\); nothing changed\.$/,
+		);
+		expect(
+			within(dialog).queryByRole("button", { name: "Retire workload" }),
+		).not.toBeInTheDocument();
+	});
+
+	it("says so for an id nothing is registered under", async () => {
+		surface({
+			workload: () => healthy,
+			extra: [
+				{
+					method: "POST",
+					path: `/api/v1/workloads/${db.id}/retire`,
+					reply: { status: 404, problem: problem("not-found", 404) },
+				},
+			],
+		});
+		const user = userEvent.setup();
+		renderApp(`/workloads/${db.id}`);
+		await screen.findByTestId("status-card");
+		await user.click(screen.getByRole("button", { name: "Retire…" }));
+		const dialog = await screen.findByRole("dialog");
+		await user.click(within(dialog).getByRole("checkbox"));
+		await user.click(
+			within(dialog).getByRole("button", { name: "Retire workload" }),
+		);
+		expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+			"No workload is registered under this id; nothing was retired.",
+		);
+	});
+
+	it("draws a retired workload as retired, its live chrome quiet and its edits gone", async () => {
+		// Its last record says offline, credential expired, table absent,
+		// and degraded: none of it is live, and none of it is drawn as an
+		// alarm.
+		surface({
+			workload: () => ({
+				...db,
+				lifecycle: "retired" as const,
+				retired_at: "2026-10-20T18:02:11Z",
+				sync: { ...db.sync, state: "offline" as const },
+				health: {
+					...db.health,
+					telemetry_live: false,
+					owned_table: { state: "absent", absent_since: minutesAgo(3000) },
+					credential: {
+						...db.health.credential,
+						state: "expired" as const,
+						lifecycle: "past-grace" as const,
+						expires_at: minutesAgo(5000),
+						last_presented: {
+							serial: "3c9a",
+							expires_at: minutesAgo(5000),
+						},
+					},
+				},
+			}),
+		});
+		renderApp(`/workloads/${db.id}`);
+		const card = await screen.findByTestId("retired");
+		expect(card).toHaveTextContent(
+			/^Retired .* agoSince 2026-10-20T18:02:11Z its/,
+		);
+		expect(card).toHaveTextContent(/There is no un-retire/);
+		expect(screen.getByTestId("retired-strip")).toHaveTextContent(/^Retired/);
+		// The strip and the sidebar's open workload draw retired, not health.
+		expect(
+			within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByRole(
+				"img",
+				{ name: "Retired" },
+			),
+		).toBeInTheDocument();
+		expect(
+			within(screen.getByRole("navigation", { name: "Sections" })).getByRole(
+				"img",
+				{ name: "Retired" },
+			),
+		).toBeInTheDocument();
+		for (const k of ["removed", "offline", "credential", "degraded"]) {
+			expect(screen.queryByTestId(`alert-${k}`)).not.toBeInTheDocument();
+		}
+		const status = screen.getByTestId("status-card");
+		expect(status).toHaveTextContent(
+			/^As last recorded before the retirement; nothing here is live\./,
+		);
+		expect(within(status).getByTestId("credential-standing")).toHaveTextContent(
+			/^refused · workload retired/,
+		);
+		// Its loss counters are history, not alarms.
+		expect(
+			within(status)
+				.getByText("dropped flows")
+				.nextElementSibling?.querySelector("[data-slot=status-glyph]"),
+		).toBeNull();
+		// Presented last, never in use; the re-enrollment path is not
+		// offered for a workload nothing will renew.
+		expect(within(status).getByText("presented")).toBeInTheDocument();
+		expect(within(status).queryByText("in use")).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("link", { name: "Mint a provisioning token" }),
+		).not.toBeInTheDocument();
+		for (const name of ["Resend snapshot", "Retire…", "Edit labels"]) {
+			expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+		}
+		expect(
+			screen.queryByRole("button", { name: "change…" }),
+		).not.toBeInTheDocument();
+	});
+});
+
+describe("credential card", () => {
+	const at = (credential: Partial<Workload["health"]["credential"]>) => ({
+		...db,
+		sync: { ...db.sync, state: "synced" as const, error: "" },
+		health: {
+			...db.health,
+			credential: {
+				...db.health.credential,
+				state: "renews" as const,
+				last_error: "",
+				...credential,
+			},
+		},
+	});
+
+	it("says a credential within the grace will recover by renewal until its end", async () => {
+		surface({
+			workload: () =>
+				at({
+					state: "expired",
+					lifecycle: "in-grace",
+					expires_at: minutesAgo(300),
+					renewable_until: hoursFromNow(67),
+				}),
+		});
+		renderApp(`/workloads/${db.id}`);
+		const alert = await screen.findByTestId("alert-credential");
+		expect(alert).toHaveTextContent(
+			/^Credential expiredexpired 5h ago · will recover by renewal\. It may still renew until \d\d-\d\d \d\d:\d\d UTC \(in 2d\)/,
+		);
+		expect(
+			screen.queryByRole("link", { name: "Mint a provisioning token" }),
+		).not.toBeInTheDocument();
+	});
+
+	it("says a credential past the grace needs re-enrollment, and names the token path", async () => {
+		const user = userEvent.setup();
+		surface({
+			workload: () =>
+				at({
+					state: "expired",
+					lifecycle: "past-grace",
+					expires_at: minutesAgo(5 * 24 * 60),
+					renewable_until: minutesAgo(2 * 24 * 60),
+				}),
+			extra: [
+				{
+					method: "GET",
+					path: "/api/v1/provisioning-tokens",
+					reply: { status: 200, json: { tokens: [] } },
+				},
+			],
+		});
+		renderApp(`/workloads/${db.id}`);
+		const alert = await screen.findByTestId("alert-credential");
+		expect(alert).toHaveTextContent(
+			/expired 5d ago · needs re-enrollment\. Its renewal grace ended 2d ago/,
+		);
+		const status = screen.getByTestId("status-card");
+		const mint = within(status).getByRole("link", {
+			name: "Mint a provisioning token",
+		});
+		expect(
+			within(status).getByText(/innerwall-agent enroll/),
+		).toBeInTheDocument();
+		await user.click(mint);
+		expect(
+			await screen.findByRole("button", { name: "Mint token" }),
+		).toBeInTheDocument();
+	});
+
+	it("says a valid credential renews by the two-thirds mark", async () => {
+		surface({
+			workload: () =>
+				at({
+					last_renewed_at: minutesAgo(7 * 60),
+					expires_at: hoursFromNow(17),
+					serial: "4e2b91",
+				}),
+		});
+		renderApp(`/workloads/${db.id}`);
+		const status = await screen.findByTestId("status-card");
+		expect(within(status).getByTestId("credential-standing")).toHaveTextContent(
+			/^valid · renews by \d\d-\d\d \d\d:\d\d UTC/,
+		);
+		expect(within(status).getByTestId("credential-standing")).toHaveTextContent(
+			/Renewal begins by two thirds of its lifetime \(in 9h\), never later\./,
+		);
+		expect(within(status).getByTestId("credential-issued")).toHaveTextContent(
+			/^4e2b91Last issued; expires in 17h\.$/,
+		);
+		// No stream has opened since the control plane began recording
+		// it: nothing is said of the presented credential.
+		expect(
+			within(status).queryByTestId("credential-presented"),
+		).not.toBeInTheDocument();
+	});
+
+	it("shows the credential in use beside the one issued, and marks a divergence", async () => {
+		// INN-70: the live stream presents a credential other than the one
+		// last issued.
+		surface({
+			workload: () =>
+				at({
+					serial: "4e2b91",
+					expires_at: hoursFromNow(23),
+					last_presented: { serial: "3c9a07", expires_at: hoursFromNow(6) },
+				}),
+		});
+		renderApp(`/workloads/${db.id}`);
+		const status = await screen.findByTestId("status-card");
+		expect(within(status).getByText("in use")).toBeInTheDocument();
+		const p = within(status).getByTestId("credential-presented");
+		expect(p).toHaveTextContent(
+			/^3c9a07 · not the one issuedOn the live sync stream; expires in 6h\./,
+		);
+		expect(p.querySelector("[data-status=alert]")).not.toBeNull();
+		expect(within(status).getByTestId("credential-diverged")).toHaveTextContent(
+			/a second party may be renewing this identity/,
+		);
+	});
+
+	it("shows an agreeing credential in use plainly, and an offline one as presented last", async () => {
+		const agree = at({
+			serial: "4e2b91",
+			last_presented: { serial: "4e2b91", expires_at: hoursFromNow(23) },
+		});
+		surface({ workload: () => agree });
+		const { unmount } = renderApp(`/workloads/${db.id}`);
+		let status = await screen.findByTestId("status-card");
+		let p = within(status).getByTestId("credential-presented");
+		expect(p).toHaveTextContent(/^4e2b91On the live sync stream/);
+		expect(p.querySelector("[data-slot=status-glyph]")).toBeNull();
+		unmount();
+
+		surface({
+			workload: () => ({
+				...agree,
+				sync: { ...agree.sync, state: "offline" as const },
+				health: {
+					...agree.health,
+					credential: {
+						...agree.health.credential,
+						last_presented: { serial: "3c9a07", expires_at: hoursFromNow(6) },
+					},
+				},
+			}),
+		});
+		renderApp(`/workloads/${db.id}`);
+		status = await screen.findByTestId("status-card");
+		expect(within(status).getByText("presented")).toBeInTheDocument();
+		p = within(status).getByTestId("credential-presented");
+		expect(p).toHaveTextContent(
+			/^3c9a07What the last sync stream opened on; expires in 6h\.Not the credential last issued\.$/,
+		);
+		expect(p.querySelector("[data-slot=status-glyph]")).toBeNull();
 	});
 });

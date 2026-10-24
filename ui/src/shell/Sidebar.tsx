@@ -35,12 +35,20 @@ export interface Badge {
 // operator, those pending, degraded, or offline, and those whose
 // enforcement was removed on the host, from the control plane's counts.
 // The control plane counts a removed workload in removed alone, so the
-// sum counts no workload twice (issue #96). A fleet with none needing
-// attention shows no count; a fleet with no workloads at all shows its
-// zero, the fresh install's cue to enroll the first.
+// sum counts no workload twice (issue #96). A retired workload is
+// outside the attention ordering and counted in retired alone, so it
+// needs no attention and is in no part of the sum. A fleet with none
+// needing attention shows no count; a fleet with no active workloads
+// shows its zero, the cue to enroll one.
 export function attentionBadge(c: WorkloadCounts): Badge | null {
 	if (c.total === 0) {
-		return { n: 0, hint: "No workloads enrolled" };
+		return {
+			n: 0,
+			hint:
+				c.retired === 0
+					? "No workloads enrolled"
+					: `No active workloads; ${c.retired} retired`,
+		};
 	}
 	const s = c.by_sync_state;
 	const n = s.pending + s.degraded + s.offline + c.removed;
@@ -162,13 +170,21 @@ export function Sidebar({
 										tooltip={`${open.hostname} · ${openLabel(open)}`}
 									>
 										<NavLink to={`/workloads/${open.id}`}>
-											<StatusGlyph
-												status={
-													open.removed ? "error" : syncStates[open.state].status
-												}
-												size="md"
-												label={openLabel(open)}
-											/>
+											{open.retired ? (
+												// Retired is the operator's decision, not health:
+												// a chrome icon, never a status glyph.
+												<Icon name="circle-minus" label={openLabel(open)} />
+											) : (
+												<StatusGlyph
+													status={
+														open.removed
+															? "error"
+															: syncStates[open.state].status
+													}
+													size="md"
+													label={openLabel(open)}
+												/>
+											)}
 											<span>{open.hostname}</span>
 										</NavLink>
 									</SidebarMenuButton>
@@ -213,9 +229,11 @@ function FleetSync() {
 	);
 }
 
-// openLabel names the open workload's state beside its glyph: a removed
-// table outranks the sync state it still holds (issue #64).
+// openLabel names the open workload's state beside its glyph: a
+// retirement outranks everything, and a removed table outranks the sync
+// state it still holds (issue #64).
 function openLabel(open: OpenWorkload): string {
+	if (open.retired) return "Retired";
 	if (open.removed) return "Enforcement removed on host";
 	if (open.reconnecting) return "Reconnecting";
 	return syncStates[open.state].label;

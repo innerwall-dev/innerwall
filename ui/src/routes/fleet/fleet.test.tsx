@@ -569,3 +569,231 @@ describe("mode change for selected", () => {
 		);
 	});
 });
+
+const decommissioned = workload({
+	hostname: "batch-prod-01",
+	labels: { app: "batch", env: "prod" },
+	lifecycle: "retired",
+	retired_at: minutesAgo(26 * 60),
+	sync: { state: "offline", applied_version: 7, latest_version: 7 },
+	health: {
+		last_seen_at: minutesAgo(30 * 60),
+		telemetry_live: false,
+		credential: {
+			state: "expired",
+			lifecycle: "in-grace",
+			expires_at: minutesAgo(20 * 60),
+		},
+	},
+});
+
+function counts(retired: number): Route {
+	return {
+		method: "GET",
+		path: "/api/v1/workloads/counts",
+		reply: {
+			status: 200,
+			json: {
+				total: 4,
+				by_sync_state: { synced: 1, pending: 1, degraded: 1, offline: 1 },
+				removed: 0,
+				retired,
+			},
+		},
+	};
+}
+
+describe("retired workloads", () => {
+	it("lists them apart, counted, frozen, and unlike an offline row", async () => {
+		const { calls } = mockSurface([
+			...frame,
+			counts(1),
+			fleet((q) => ({
+				workloads:
+					q.get("lifecycle") === "retired"
+						? [decommissioned]
+						: [checkout, auth, legacy, bastion],
+				next_cursor: null,
+			})),
+		]);
+		const user = userEvent.setup();
+		renderApp("/workloads");
+		await screen.findByRole("link", { name: "checkout-prod-07" });
+		// The active fleet never carries a retired row; the chip says how
+		// many there are, from the control plane's counts.
+		expect(
+			screen.queryByRole("link", { name: "batch-prod-01" }),
+		).not.toBeInTheDocument();
+		const lifecycle = screen.getByRole("group", { name: "Lifecycle" });
+		const toggle = within(lifecycle).getByRole("button", { name: /retired/ });
+		await waitFor(() => expect(toggle).toHaveTextContent("retired1"));
+
+		await user.click(toggle);
+		await screen.findByRole("link", { name: "batch-prod-01" });
+		const listed = calls.filter((c) => c.path.includes("lifecycle=retired"));
+		expect(listed).toHaveLength(1);
+		expect(listed[0]?.path).not.toContain("sync_state");
+		expect(
+			screen.queryByRole("link", { name: "checkout-prod-07" }),
+		).not.toBeInTheDocument();
+
+		const r = within(rowOf("batch-prod-01"));
+		expect(r.getByTestId("retired")).toHaveTextContent("Retired");
+		expect(r.getByText("retired 1d ago")).toBeInTheDocument();
+		expect(r.getByText("refused · retired")).toBeInTheDocument();
+		// Not offline: no health glyph, no offline word, no contact note.
+		expect(r.queryByText("Offline")).not.toBeInTheDocument();
+		expect(r.queryByText(/no contact/)).not.toBeInTheDocument();
+		expect(
+			rowOf("batch-prod-01").querySelector("[data-slot=status-glyph]"),
+		).toBeNull();
+		// Frozen: nothing to select for a mode change or a retirement.
+		expect(r.queryByRole("checkbox")).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("checkbox", { name: "Select all shown" }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.getByText("Showing 1 · most recently retired first"),
+		).toBeInTheDocument();
+	});
+
+	it("does not call a fleet of retired workloads empty", async () => {
+		mockSurface([
+			...frame,
+			{
+				method: "GET",
+				path: "/api/v1/workloads/counts",
+				reply: {
+					status: 200,
+					json: {
+						total: 0,
+						by_sync_state: { synced: 0, pending: 0, degraded: 0, offline: 0 },
+						removed: 0,
+						retired: 2,
+					},
+				},
+			},
+			fleet((q) => ({
+				workloads: q.get("lifecycle") === "retired" ? [decommissioned] : [],
+				next_cursor: null,
+			})),
+		]);
+		const user = userEvent.setup();
+		renderApp("/workloads");
+		expect(
+			await screen.findByText("No active workloads; 2 workloads are retired."),
+		).toBeInTheDocument();
+		expect(screen.queryByText("No workloads enrolled")).not.toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Show retired" }));
+		await screen.findByRole("link", { name: "batch-prod-01" });
+	});
+});
+
+describe("retire selected", () => {
+	it("asks for the acknowledgment, retires each, and reports every outcome", async () => {
+		let retiredIds: string[] = [];
+		const { calls } = mockSurface([
+			...frame,
+			counts(0),
+			fleet(() => ({
+				workloads: [checkout, auth, legacy, bastion].filter(
+					(w) => !retiredIds.includes(w.id),
+				),
+				next_cursor: null,
+			})),
+			{
+				method: "POST",
+				path: `/api/v1/workloads/${checkout.id}/retire`,
+				reply: () => {
+					retiredIds = [...retiredIds, checkout.id];
+					return {
+						status: 200,
+						json: {
+							workload_id: checkout.id,
+							retired_at: "2026-10-05T11:59:58.123456Z",
+							versions_advanced: 3,
+							silence_closed: null,
+						},
+					};
+				},
+			},
+			{
+				method: "POST",
+				path: `/api/v1/workloads/${auth.id}/retire`,
+				reply: {
+					status: 409,
+					problem: {
+						...problem("workload-retired", 409),
+						retired_at: "2026-10-05T10:00:00Z",
+					},
+				},
+			},
+			{
+				method: "POST",
+				path: `/api/v1/workloads/${legacy.id}/retire`,
+				reply: { status: 404, problem: problem("not-found", 404) },
+			},
+		]);
+		const user = userEvent.setup();
+		renderApp("/workloads");
+		await screen.findByRole("link", { name: "checkout-prod-07" });
+		const retire = screen.getByRole("button", { name: "Retire selected…" });
+		expect(retire).toBeDisabled();
+		for (const h of ["checkout-prod-07", "auth-prod-11", "legacy-vm-0117"]) {
+			await user.click(screen.getByLabelText(`Select ${h}`));
+		}
+		await user.click(retire);
+
+		const dialog = await screen.findByRole("dialog", {
+			name: "Retire 3 workloads?",
+		});
+		for (const said of [
+			/leave every peer set/,
+			/a live sync stream ends/,
+			/^It cannot be undone/,
+		]) {
+			expect(within(dialog).getByText(said)).toBeInTheDocument();
+		}
+		// Held back until acknowledged: a click sends nothing and says why.
+		const confirm = within(dialog).getByRole("button", {
+			name: "Retire 3 workloads",
+		});
+		expect(confirm).toHaveAttribute("aria-disabled", "true");
+		await user.click(confirm);
+		expect(
+			within(dialog).getByText(/Nothing was retired. Check the acknowledgment/),
+		).toBeInTheDocument();
+		expect(calls.some((c) => c.method === "POST")).toBe(false);
+
+		await user.click(
+			within(dialog).getByRole("checkbox", { name: /cannot be undone/ }),
+		);
+		await user.click(confirm);
+
+		const outcomes = await within(dialog).findByTestId("retire-outcomes");
+		const posts = calls.filter((c) => c.method === "POST").map((c) => c.path);
+		expect(posts).toEqual([
+			`/api/v1/workloads/${checkout.id}/retire`,
+			`/api/v1/workloads/${auth.id}/retire`,
+			`/api/v1/workloads/${legacy.id}/retire`,
+		]);
+		expect(outcomes).toHaveTextContent(
+			"checkout-prod-07Retired 2026-10-05T11:59:58Z; 3 workloads' policy advanced.",
+		);
+		// The 409 names the instant it was already retired.
+		expect(outcomes).toHaveTextContent(
+			"auth-prod-11Already retired 2h ago (2026-10-05T10:00:00Z); nothing changed.",
+		);
+		expect(outcomes).toHaveTextContent(
+			"legacy-vm-0117No workload is registered under this id; nothing was retired.",
+		);
+		// The one retired leaves the active list read again under it.
+		await waitFor(() =>
+			expect(
+				screen.queryByRole("link", { name: "checkout-prod-07" }),
+			).not.toBeInTheDocument(),
+		);
+		await user.click(within(dialog).getByRole("button", { name: "Close" }));
+		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+	});
+});

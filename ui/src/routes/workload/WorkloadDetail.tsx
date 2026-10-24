@@ -10,13 +10,21 @@ import {
 import { ProblemType, type Workload } from "@/api/schema";
 import { EmptyState } from "@/components/EmptyState";
 import { ModePill, syncStates } from "@/components/fleet/status";
+import { Icon } from "@/components/Icon";
 import { LoadingRow, ProblemNotice } from "@/components/Problem";
 import { StatusGlyph } from "@/components/StatusGlyph";
 import { TabList, UnderlineTab } from "@/components/Tabs";
+import { ago } from "@/lib/format";
 import { useResource } from "@/lib/resource";
 import { useShell } from "@/shell/Shell";
-import { enforcementRemoved, lastSeen, reconnecting } from "../fleet/describe";
+import {
+	enforcementRemoved,
+	lastSeen,
+	reconnecting,
+	retired,
+} from "../fleet/describe";
 import { ModeChangeDialog } from "../fleet/ModeChangeDialog";
+import { RetireDialog } from "../fleet/RetireDialog";
 import { FlowsTab } from "./FlowsTab";
 import { LabelsDialog } from "./LabelsDialog";
 import { ListeningTab } from "./ListeningTab";
@@ -60,6 +68,7 @@ export function WorkloadDetail() {
 	);
 	const [changing, setChanging] = useState(false);
 	const [editingLabels, setEditingLabels] = useState(false);
+	const [retiring, setRetiring] = useState(false);
 	const { resource: wl, reload } = useResource(() => getWorkload(id), [id]);
 	const { resource: policy, reload: reloadPolicy } = useResource(
 		() => getRenderedPolicy(id),
@@ -83,6 +92,7 @@ export function WorkloadDetail() {
 				state: wl.data.sync.state,
 				removed: enforcementRemoved(wl.data),
 				reconnecting: reconnecting(wl.data),
+				retired: retired(wl.data),
 			});
 		}
 	}, [wl, shell]);
@@ -153,6 +163,7 @@ export function WorkloadDetail() {
 					states={states}
 					onReread={reload}
 					onEditLabels={() => setEditingLabels(true)}
+					onRetire={() => setRetiring(true)}
 				/>
 			) : null}
 			{tab === "flows" ? (
@@ -187,6 +198,16 @@ export function WorkloadDetail() {
 					shell.fleetChanged();
 				}}
 			/>
+			<RetireDialog
+				open={retiring}
+				workloads={[w]}
+				onOpenChange={setRetiring}
+				onRetired={() => {
+					reload();
+					reloadPolicy();
+					shell.fleetChanged();
+				}}
+			/>
 			<ModeChangeDialog
 				title="Change mode"
 				open={changing}
@@ -211,7 +232,9 @@ export function WorkloadDetail() {
 // "Workloads /" in text-secondary, the page's own way back; the health
 // glyph and the name in text-primary, the page's title; the mode pill
 // with the way to change it; and, at the right, when it was last seen
-// on its control channel, in text-tertiary.
+// on its control channel, in text-tertiary. A retired workload's strip
+// says so in place of its health, with when, and its mode is frozen, so
+// there is no way to change it.
 function Identity({
 	w,
 	onChangeMode,
@@ -219,6 +242,7 @@ function Identity({
 	w: Workload;
 	onChangeMode: () => void;
 }) {
+	const gone = retired(w);
 	const removed = enforcementRemoved(w);
 	const health = removed
 		? { status: "error" as const, label: "Enforcement removed on host" }
@@ -240,22 +264,45 @@ function Identity({
 				<span className="text-tertiary" aria-hidden="true">
 					/
 				</span>
-				<StatusGlyph
-					status={health.status}
-					size="md"
-					label={health.label}
-					className="ml-0.5"
-				/>
+				{gone ? (
+					// Retired is the operator's decision, not health: the
+					// chrome icon, never a status glyph.
+					<Icon name="circle-minus" label="Retired" className="ml-0.5" />
+				) : (
+					<StatusGlyph
+						status={health.status}
+						size="md"
+						label={health.label}
+						className="ml-0.5"
+					/>
+				)}
 				<h1 className="min-w-16 truncate text-primary">{w.hostname}</h1>
 			</nav>
 			<ModePill mode={w.mode} />
-			<button
-				type="button"
-				onClick={onChangeMode}
-				className="shrink-0 type-caption link"
-			>
-				change…
-			</button>
+			{gone ? (
+				<span
+					className="shrink-0 type-control text-status-neutral-fg"
+					data-testid="retired-strip"
+				>
+					Retired
+					{w.retired_at ? (
+						<>
+							{" "}
+							<time dateTime={w.retired_at} className="type-mono-sm">
+								{ago(w.retired_at)}
+							</time>
+						</>
+					) : null}
+				</span>
+			) : (
+				<button
+					type="button"
+					onClick={onChangeMode}
+					className="shrink-0 type-caption link"
+				>
+					change…
+				</button>
+			)}
 			<span
 				className="ml-auto shrink-0 pr-2 text-tertiary"
 				title="On the control channel, the sync stream."

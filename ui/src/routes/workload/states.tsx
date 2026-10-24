@@ -6,6 +6,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { Link } from "react-router";
 import type { EvidenceGaps, Workload } from "@/api/schema";
 import {
 	type GlyphStatus,
@@ -23,9 +24,10 @@ import { ago, count, offset } from "@/lib/format";
 import type { Resource } from "@/lib/resource";
 import { cn } from "@/lib/utils";
 import {
-	credential,
 	enforcementRemoved,
 	reconnecting,
+	retired,
+	standing,
 	syncNote,
 	version,
 } from "../fleet/describe";
@@ -49,12 +51,21 @@ export interface ExceptionalState {
 
 // exceptionalStates are the workload's active states in severity order:
 // the critical ones first (a removed table before all), then the
-// warnings.
+// warnings. A retired workload has no live health to warn of: its
+// removed table, offline stream, expired credential, and failed apply
+// are what was last recorded and nothing to act on, so only the states
+// that change how its history reads (shifted timestamps, missing rows)
+// remain.
 export function exceptionalStates(
 	w: Workload,
 	gaps: Resource<EvidenceGaps>,
 	range: ScreenRange,
 ): ExceptionalState[] {
+	const history = historyStates(w, gaps, range);
+	return retired(w) ? history : liveStates(w).concat(history);
+}
+
+function liveStates(w: Workload): ExceptionalState[] {
 	const states: ExceptionalState[] = [];
 	const s = w.sync;
 	if (enforcementRemoved(w)) {
@@ -94,22 +105,29 @@ export function exceptionalStates(
 		});
 	}
 	if (w.health.credential.state === "expired") {
-		const cred = credential(w);
+		// The lead says the credential expired; the sentence says which
+		// side of the renewal grace it is on, and past it, the way back.
+		const cred = standing(w);
 		states.push({
 			key: "credential",
 			glyph: "error",
 			critical: true,
 			word: "Credential expired",
 			body: (
-				<>
-					{cred.text}
+				<span data-testid="credential-expired">
+					{cred.text}. {cred.note}
 					{w.health.credential.last_error ? (
 						<span className="block text-secondary">
 							{w.health.credential.last_error}
 						</span>
 					) : null}
-				</>
+				</span>
 			),
+			action: cred.reenroll ? (
+				<Button variant="secondary" size="sm" asChild>
+					<Link to="/workloads/tokens">Mint a provisioning token</Link>
+				</Button>
+			) : undefined,
 		});
 	}
 	if (s.state === "degraded" && !enforcementRemoved(w)) {
@@ -128,6 +146,15 @@ export function exceptionalStates(
 			),
 		});
 	}
+	return states;
+}
+
+function historyStates(
+	w: Workload,
+	gaps: Resource<EvidenceGaps>,
+	range: ScreenRange,
+): ExceptionalState[] {
+	const states: ExceptionalState[] = [];
 	const skew = clockSkew(w, range);
 	if (skew) {
 		states.push({

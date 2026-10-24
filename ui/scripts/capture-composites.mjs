@@ -323,6 +323,75 @@ const scenes = [
 			`/workloads/${await workloadId(api, "billing-prod-06")}`,
 		ready: '[data-testid="clock-skew"]',
 	},
+	// The fleet's cache-1 credential expired an hour ago, within the
+	// renewal grace: its chip says it will recover by renewal, and until
+	// when.
+	{
+		name: "workload-detail-credential-in-grace",
+		cp: "seeded",
+		path: async (api) => `/workloads/${await workloadId(api, "cache-1")}/flows`,
+		ready: '[data-testid="state-chips"]',
+		act: async (page) => {
+			await page
+				.getByTestId("state-chips")
+				.getByRole("button", { name: "Credential expired" })
+				.click();
+			await page.getByRole("dialog", { name: "Credential expired" }).waitFor();
+		},
+	},
+	// web-1's credential is valid: the card says when it renews by, the
+	// credential issued, and the retire action beside its identity.
+	{
+		name: "workload-detail-credential-valid",
+		cp: "seeded",
+		path: async (api) => `/workloads/${await workloadId(api, "web-1")}`,
+		ready: '[data-testid="status-card"]',
+	},
+	{
+		name: "workload-detail-retire-dialog",
+		cp: "seeded",
+		path: async (api) => `/workloads/${await workloadId(api, "cache-1")}`,
+		ready: '[data-testid="status-card"]',
+		act: async (page) => {
+			await page.getByRole("button", { name: "Retire…" }).click();
+			await page.getByRole("dialog", { name: "Retire cache-1?" }).waitFor();
+		},
+	},
+	// The estate's batch-prod-01 was retired a day ago: its page leads with
+	// the retirement, and its live chrome is quiet.
+	{
+		name: "workload-detail-retired",
+		cp: "seeded",
+		path: async (api) =>
+			`/workloads/${await workloadId(api, "batch-prod-01", "retired")}`,
+		ready: '[data-testid="retired"]',
+	},
+	{
+		name: "fleet-retired-workloads",
+		cp: "seeded",
+		path: "/workloads",
+		ready: "table",
+		act: async (page) => {
+			await page
+				.getByRole("group", { name: "Lifecycle" })
+				.getByRole("button", { name: /retired/ })
+				.click();
+			await page.getByRole("link", { name: "batch-prod-01" }).waitFor();
+		},
+	},
+	{
+		name: "fleet-retire-selected-dialog",
+		cp: "seeded",
+		path: "/workloads",
+		ready: "table",
+		act: async (page) => {
+			for (const host of ["cache-1", "ci-runners-prod-01"]) {
+				await page.getByRole("checkbox", { name: `Select ${host}` }).check();
+			}
+			await page.getByRole("button", { name: "Retire selected…" }).click();
+			await page.getByRole("dialog", { name: "Retire 2 workloads?" }).waitFor();
+		},
+	},
 	{
 		name: "13-fleet-workloads",
 		cp: "seeded",
@@ -574,8 +643,12 @@ async function fillMintForm(page) {
 	return form;
 }
 
-async function workloadId(api, hostname) {
-	const res = await api.get("/api/v1/workloads?limit=500");
+// workloadId finds a workload by hostname in the active fleet, or among
+// the retired workloads, which the fleet read lists apart.
+async function workloadId(api, hostname, lifecycle = "active") {
+	const res = await api.get(
+		`/api/v1/workloads?limit=500&lifecycle=${lifecycle}`,
+	);
 	const { workloads } = await res.json();
 	const w = workloads.find((x) => x.hostname === hostname);
 	if (!w) throw new Error(`no workload ${hostname}`);

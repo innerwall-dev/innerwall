@@ -1,19 +1,22 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import type { ProblemError } from "@/api/client";
 import { resendSnapshot } from "@/api/fleet";
 import { type EvidenceGaps, ProblemType, type Workload } from "@/api/schema";
 import { syncStates } from "@/components/fleet/status";
 import { SeverityNote, StatusGlyph, tone } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
-import { ago, count, since } from "@/lib/format";
+import { ago, count, relative, since, stamp } from "@/lib/format";
 import { type Resource, useWrite } from "@/lib/resource";
 import { cn } from "@/lib/utils";
 import {
-	credential,
 	credentialTone,
 	enforcementRemoved,
 	lastContact,
+	presented,
 	reconnecting,
+	retired,
+	standing,
 	version,
 } from "../fleet/describe";
 import type { ScreenRange } from "./range";
@@ -32,7 +35,10 @@ type Outcome =
 // evidence-gap summary over the screen's range, and the snapshot action.
 // It leads with the health line, unless an alert card above it already
 // says the workload's state; a fact an alert card carries (an expired
-// credential) is plain here, so the screen says each alarm once.
+// credential) is plain here, so the screen says each alarm once. A
+// retired workload's card leads with the retirement instead: every fact
+// below is what was last recorded before it, and the snapshot action,
+// which nothing can receive, is gone.
 export function StatusCard({
 	w,
 	gaps,
@@ -51,7 +57,8 @@ export function StatusCard({
 	// A removed table outranks every sync state: whatever version the
 	// agent acknowledged, the host holds none of it (issue #64).
 	const removed = enforcementRemoved(w);
-	const cred = credential(w);
+	const gone = retired(w);
+	const cred = standing(w);
 	const stated = alerts.some(
 		(k) => k === "removed" || k === "offline" || k === "degraded",
 	);
@@ -66,7 +73,13 @@ export function StatusCard({
 				Status
 			</h2>
 			<div className="flex flex-col gap-3" data-testid="status-card">
-				{stated ? null : (
+				{gone ? (
+					// The retirement is said once, above the cards; here only
+					// how to read what follows.
+					<div className="type-caption text-tertiary">
+						As last recorded before the retirement; nothing here is live.
+					</div>
+				) : stated ? null : (
 					<div
 						className={cn(
 							"flex items-center gap-2 type-dense-strong",
@@ -121,9 +134,13 @@ export function StatusCard({
 					<dt className={field}>enrolled</dt>
 					<dd className={value}>{ago(w.enrolled_at)}</dd>
 					<dt className={field}>credential</dt>
-					<dd className={value}>
-						{cred.tone === "ok" || credStated ? (
-							<span className={credStated ? "text-primary" : credentialTone.ok}>
+					<dd className={value} data-testid="credential-standing">
+						{cred.tone === "ok" || cred.tone === "quiet" || credStated ? (
+							<span
+								className={
+									credStated ? "text-primary" : credentialTone[cred.tone]
+								}
+							>
 								{cred.text}
 							</span>
 						) : (
@@ -135,13 +152,28 @@ export function StatusCard({
 								{cred.text}
 							</SeverityNote>
 						)}
-						{w.health.credential.last_error ? (
+						<div className={note}>{cred.note}</div>
+						{w.health.credential.last_error && !gone ? (
 							<div className={note}>{w.health.credential.last_error}</div>
 						) : null}
+						{cred.reenroll ? (
+							<div className="mt-1 type-caption">
+								<Link to="/workloads/tokens" className="link">
+									Mint a provisioning token
+								</Link>
+								<span className="text-tertiary">
+									{" "}
+									and run{" "}
+									<code className="type-mono-xs">innerwall-agent enroll</code>{" "}
+									on the host.
+								</span>
+							</div>
+						) : null}
 					</dd>
+					<Issued w={w} />
 					<dt className={field}>dropped flows</dt>
 					<dd className={value}>
-						<Counted n={w.health.dropped_flow_records} />
+						<Counted n={w.health.dropped_flow_records} quiet={gone} />
 						{w.health.dropped_flow_records > 0 ? (
 							<div className={note}>
 								Records the agent could not deliver; the flows shown are
@@ -151,7 +183,7 @@ export function StatusCard({
 					</dd>
 					<dt className={field}>overruns</dt>
 					<dd className={value}>
-						<Counted n={w.health.source_overruns} />
+						<Counted n={w.health.source_overruns} quiet={gone} />
 						{w.health.source_overruns > 0 ? (
 							<div className={note}>
 								Times the kernel dropped events because a flow source fell
@@ -169,9 +201,83 @@ export function StatusCard({
 						{s.error}
 					</div>
 				) : null}
-				<Resend w={w} onReread={onReread} />
+				{gone ? null : <Resend w={w} onReread={onReread} />}
 			</div>
 		</section>
+	);
+}
+
+// Issued and Presented are the two credentials the record names: the one
+// the control plane last issued, which the credential row describes, and
+// the one the latest sync stream opened on. A stream keeps the credential
+// it opened on until it reconnects, by five minutes before that
+// credential expires, so after each renewal the two differ for a while;
+// they also differ when the credential was renewed by hand under a
+// running daemon that never loaded it, and when a second party holding a
+// copy of the key renews the same identity. The divergence is marked so
+// it is seen; which reading holds is the operator's to judge. The
+// presented credential is in use only while the stream is up; otherwise
+// it is what was presented last, and none is shown before a stream has
+// opened since the control plane began recording it.
+function Issued({ w }: { w: Workload }) {
+	const c = w.health.credential;
+	const p = presented(w);
+	return (
+		<>
+			{c.serial ? (
+				<>
+					<dt className={field}>issued</dt>
+					<dd className={value} data-testid="credential-issued">
+						<span className="break-all">{c.serial}</span>
+						<div className={note}>
+							Last issued; expires{" "}
+							<time dateTime={c.expires_at} title={stamp(c.expires_at)}>
+								{relative(c.expires_at)}
+							</time>
+							.
+						</div>
+					</dd>
+				</>
+			) : null}
+			{p ? (
+				<>
+					<dt className={field}>{p.inUse ? "in use" : "presented"}</dt>
+					<dd className={value} data-testid="credential-presented">
+						{p.diverged && p.inUse ? (
+							<SeverityNote level="alert" size="sm" className={dense}>
+								<span className="break-all">{p.serial}</span> · not the one
+								issued
+							</SeverityNote>
+						) : (
+							<span className="break-all">{p.serial}</span>
+						)}
+						<div className={note}>
+							{p.inUse
+								? "On the live sync stream"
+								: "What the last sync stream opened on"}
+							; expires{" "}
+							<time dateTime={p.expires_at} title={stamp(p.expires_at)}>
+								{relative(p.expires_at)}
+							</time>
+							.
+						</div>
+						{p.diverged && p.inUse ? (
+							<div className={note} data-testid="credential-diverged">
+								The stream opened on a credential other than the one last
+								issued. After a renewal it keeps that credential until it
+								reconnects, by five minutes before it expires; a hand renewal
+								the running daemon never loaded reads the same. If they still
+								differ after that reconnect, a second party may be renewing this
+								identity with a copy of its key: retire it and enroll the host
+								again.
+							</div>
+						) : p.diverged ? (
+							<div className={note}>Not the credential last issued.</div>
+						) : null}
+					</dd>
+				</>
+			) : null}
+		</>
 	);
 }
 
@@ -203,9 +309,10 @@ function GapSummary({
 	);
 }
 
-// Counted is a loss counter: plain at zero, an alert past it.
-function Counted({ n }: { n: number }) {
-	if (n === 0) return <span>{count(n)}</span>;
+// Counted is a loss counter: plain at zero, an alert past it, and plain
+// when quiet, a retired workload's history rather than an alarm.
+function Counted({ n, quiet = false }: { n: number; quiet?: boolean }) {
+	if (n === 0 || quiet) return <span>{count(n)}</span>;
 	return (
 		<SeverityNote level="alert" size="sm" className={dense}>
 			{count(n)}
