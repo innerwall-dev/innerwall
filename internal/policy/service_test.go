@@ -246,6 +246,7 @@ func TestFindingsAreCollected(t *testing.T) {
 	f := policy.AsFindings(err)
 	if f == nil {
 		t.Fatalf("err = %v, want findings", err)
+		return
 	}
 	want := map[string]string{
 		"name":                   "name-required",
@@ -312,6 +313,7 @@ func TestDocumentCarriesVersions(t *testing.T) {
 	f := policy.AsFindings(policy.ValidateRuleset(bad, refs))
 	if f == nil {
 		t.Fatal("document faults admitted")
+		return
 	}
 	paths := map[string]string{}
 	for _, e := range f.Errors {
