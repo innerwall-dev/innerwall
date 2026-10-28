@@ -2,7 +2,7 @@
 
 Notable changes to Innerwall, newest first. Versions follow semantic versioning; before 1.0, a minor version may change anything.
 
-## Unreleased
+## v0.5.0 — 2026-10-28
 
 - **The retirement docs say how a retired host comes back** (#219). Retirement's return path is to enroll the host again, as a new workload, but enrollment refuses to overwrite a valid credential, and a retired workload's credential stays valid on the host until it expires: the agent is told only that its credential is refused, so it cannot know it was retired. The credential-lifecycle guide's re-enrollment section, its retirement section, the `workload retire` reference, the retired state, and the troubleshooting entry for a refused credential now say that a host returning before its previous credential expires must stop the daemon and remove the agent's state directory before enrolling, while an expired credential is replaced in place. Documentation only; the refusal stays as it is.
 - **The multi-host guide checks the VM-reachable address before the first start** (#215). Its same-machine-VM callout named the virtual network's default-route gateway as the address of the machine; on some virtual networks, OrbStack among them, that gateway is the network itself and refuses the connection, and a certificate minted for it can never work. The callout now has the reader confirm a TCP connection to `<address>:8443` from a VM, before the first start against a throwaway listener, falls back to the host alias the virtual network provides (such as `host.internal`) in both `--tls-hosts` and the advertised address, and points at `innerwall ca issue-server` for a stack that already started with an unreachable one. Documentation only.
