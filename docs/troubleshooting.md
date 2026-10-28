@@ -164,7 +164,7 @@ Connections opened after that carry byte counts; ones already open stay at zero.
 
 **Cause.** The workload was retired (`innerwall workload retire`, ADR-0023). A retired identity is refused at every door, and the refusal deliberately names no reason to the agent. The control plane's log names it: `refused a retired workload's credential` with the workload and its `retired_at`, and the workload reads as retired in `innerwall workload status`.
 
-**Remedy.** Retirement is one way. If the host should come back, enroll it again with a provisioning token, which makes it a new workload ([credential lifecycle](guides/credential-lifecycle.md#retiring-a-workload)); if it should not, stop and remove the agent, since the host keeps enforcing its last policy until you do.
+**Remedy.** Retirement is one way. If the host should come back, enroll it again with a provisioning token, which makes it a new workload ([credential lifecycle](guides/credential-lifecycle.md#retiring-a-workload)). Its old credential is still valid on the host until it expires, and enrollment refuses to overwrite a valid credential (`the state directory already holds a valid credential; remove it to enroll again`), so stop the daemon and remove the agent's state directory first ([a host returning before its previous credential expires](guides/credential-lifecycle.md#beyond-the-grace-re-enrollment)); if it should not, stop and remove the agent, since the host keeps enforcing its last policy until you do.
 
 ### The agent's sync stream ends with "a sync stream ends with the credential it opened on"
 

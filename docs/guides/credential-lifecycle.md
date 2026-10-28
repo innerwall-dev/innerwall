@@ -42,6 +42,9 @@ Past the grace, the renewal is refused too: `workload credential has expired: it
 3. **Restart the daemon.** A daemon still running over the state directory notices the new key the next time its renewer wakes (within about five minutes while expired), logs that the state directory was enrolled again underneath it, and exits so that its restart runs as the new workload. Restart it, or let the service manager do so.
 4. **Set the mode again.** The new workload starts in visibility, like every new workload: on its first snapshot the host's table becomes the observe-only table, and nothing is enforced until you move it to simulation and promote it again.
 
+> [!NOTE]
+> **A host returning before its previous credential expires.** Enrollment replaces an expired credential in place, with nothing to remove first, but it refuses to overwrite a valid one, and its error says so: `the state directory already holds a valid credential; remove it to enroll again (it expires …)`. A host enrolled again while its previous credential is still valid, which is always the case right after you [retire](#retiring-a-workload) it, must give that credential up first: stop the daemon (`sudo systemctl stop innerwall-agent`, or however it runs on the host), remove its state directory (`/var/lib/innerwall-agent` unless `--state-dir` names another; moving it aside does as well), then enroll with the new token and start the daemon. The agent cannot tell a retired credential from a healthy one, since the refusal it receives names no reason, so nothing on the host clears it by itself.
+
 > [!IMPORTANT]
 > Re-enrollment mints a new identity. The new workload has a new id and no history: the old workload's flows, gaps, and totals stay under the old id, and the old workload stays in the fleet as a permanently offline row until you [retire it](#retiring-a-workload).
 
@@ -54,7 +57,7 @@ Retire a workload when its host is gone for good, when it was re-enrolled as a n
 - a silence its agent was in is stored as an `agent_silent` evidence gap ending at the retirement;
 - its flows, gaps, and totals stay readable under its id, and the workload reads as retired rather than offline ([states](../reference/states.md#retired)).
 
-The refusal the agent receives says only that its credential is refused; the control plane's log names the workload and when it was retired. There is no un-retire: a host that should come back enrolls again with a provisioning token and becomes a new workload. Retiring does not revoke the token that enrolled the workload; revoke the token too if nothing should enroll with it again.
+The refusal the agent receives says only that its credential is refused; the control plane's log names the workload and when it was retired. There is no un-retire: a host that should come back enrolls again with a provisioning token and becomes a new workload. Its old credential is still valid on the host until it expires, and enrollment refuses to overwrite a valid credential, so stop the daemon and remove the agent's state directory before enrolling ([a host returning before its previous credential expires](#beyond-the-grace-re-enrollment)). Retiring does not revoke the token that enrolled the workload; revoke the token too if nothing should enroll with it again.
 
 ## Rotating a credential by hand
 
