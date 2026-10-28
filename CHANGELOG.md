@@ -2,6 +2,13 @@
 
 Notable changes to Innerwall, newest first. Versions follow semantic versioning; before 1.0, a minor version may change anything.
 
+## v0.5.1 — 2026-10-28
+
+- **The install docs name the release they ship in.** v0.5.0's install docs named v0.4.1 throughout: the README's status line, its quickstart's `git checkout` and `.env` image, the control-plane archive, and `VERSION=`; the versioning-and-install reference's download, `cosign verify` and its certificate identity, source fallback, and version-string examples; and the deploy page's `.env` line. A reader following the v0.5.0 quickstart therefore installed the previous release. Every one of those literals now names v0.5.1.
+- **The release gate refuses a tag whose docs name another release.** The releasing procedure already said to bump the literals in the notes PR, and nothing checked that it happened. A tag build now runs `scripts/check-release-literals.sh` beside the CI gate, and fails before goreleaser runs when README.md's `git checkout v…` does not name the tag; the failure names the procedure step. The procedure also gains a step to title the release's `CHANGELOG.md` section before tagging, and records the release-branch convention: a patch for a line `main` has moved past is cut on `release/vX.Y` from that line's last tag, carries only cherry-picks and branch-only conformance fixes, and is never merged back (first, `release/v0.4`).
+
+Documentation and release procedure only: neither binary carries a code change from v0.5.0. Install v0.5.1 in its place.
+
 ## v0.5.0 — 2026-10-28
 
 - **The retirement docs say how a retired host comes back** (#219). Retirement's return path is to enroll the host again, as a new workload, but enrollment refuses to overwrite a valid credential, and a retired workload's credential stays valid on the host until it expires: the agent is told only that its credential is refused, so it cannot know it was retired. The credential-lifecycle guide's re-enrollment section, its retirement section, the `workload retire` reference, the retired state, and the troubleshooting entry for a refused credential now say that a host returning before its previous credential expires must stop the daemon and remove the agent's state directory before enrolling, while an expired credential is replaced in place. Documentation only; the refusal stays as it is.
