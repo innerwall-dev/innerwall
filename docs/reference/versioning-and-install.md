@@ -15,7 +15,7 @@ Each release carries both binaries, the control-plane image, and what is needed 
 | `checksums.txt.sig`, `checksums.txt.pem` | The cosign signature over `checksums.txt`, and the certificate it was made with |
 | `ghcr.io/innerwall-dev/innerwall:<version>` | The control-plane image, for `linux/amd64` and `linux/arm64`, signed |
 
-`<version>` is the tag without its `v`: release `v0.4.1` carries `innerwall-agent_0.4.1_linux_amd64.tar.gz` and the image `ghcr.io/innerwall-dev/innerwall:0.4.1`. Each archive holds the binary and `LICENSE`. Images are tagged by version only; nothing is tagged `latest`.
+`<version>` is the tag without its `v`: release `v0.5.1` carries `innerwall-agent_0.5.1_linux_amd64.tar.gz` and the image `ghcr.io/innerwall-dev/innerwall:0.5.1`. Each archive holds the binary and `LICENSE`. Images are tagged by version only; nothing is tagged `latest`.
 
 Signing is keyless. No signing key exists to leak: the certificate names the release workflow, at the tag, as the signer, and the signature is recorded in the public transparency log. Verifying takes two checks. The signature proves `checksums.txt` came from that workflow at that tag, and the checksum proves the archive is the one the file lists.
 
@@ -24,7 +24,7 @@ Signing is keyless. No signing key exists to leak: the certificate names the rel
 Set the release and the asset (for the control plane, `innerwall_${VERSION}_<os>_<arch>.tar.gz`), and download it with the checksum file, its signature, and its certificate:
 
 ```sh
-VERSION=0.4.1
+VERSION=0.5.1
 ASSET=innerwall-agent_${VERSION}_linux_amd64.tar.gz
 base=https://github.com/innerwall-dev/innerwall/releases/download/v$VERSION
 for f in "$ASSET" checksums.txt checksums.txt.sig checksums.txt.pem; do curl -fsSLO "$base/$f"; done
@@ -59,8 +59,8 @@ A host without cosign can be served by a machine that has it: verify there, copy
 **The image.** The [quickstart](../../README.md#with-docker-compose) runs it with Docker Compose by naming it in `.env` as `INNERWALL_IMAGE`. The image is signed by the same workflow, by digest; to verify it before running it:
 
 ```sh
-cosign verify ghcr.io/innerwall-dev/innerwall:0.4.1 \
-  --certificate-identity https://github.com/innerwall-dev/innerwall/.github/workflows/release.yml@refs/tags/v0.4.1 \
+cosign verify ghcr.io/innerwall-dev/innerwall:0.5.1 \
+  --certificate-identity https://github.com/innerwall-dev/innerwall/.github/workflows/release.yml@refs/tags/v0.5.1 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
@@ -75,7 +75,7 @@ Build from source when no release asset fits: another architecture, an unrelease
 ```sh
 git clone https://github.com/innerwall-dev/innerwall.git
 cd innerwall
-git checkout v0.4.1   # the release to build; without it, the build is of main
+git checkout v0.5.1   # the release to build; without it, the build is of main
 make console    # builds the console into ui/dist/
 make build      # bin/innerwall and bin/innerwall-agent, the console embedded
 ```
@@ -94,9 +94,9 @@ Both binaries report one version string, semantic-version shaped, with the commi
 
 | String | Built from |
 |---|---|
-| `v0.4.1+6007581f652b` | a release, or a build of its tag from source |
+| `v0.5.1+6007581f652b` | a release, or a build of its tag from source |
 | `dev+f347cd966f58` | an untagged commit |
-| `dev+f347cd966f58.dirty` | an untagged commit with uncommitted changes (a tagged one reads `v0.4.1+6007581f652b.dirty`) |
+| `dev+f347cd966f58.dirty` | an untagged commit with uncommitted changes (a tagged one reads `v0.5.1+6007581f652b.dirty`) |
 | `dev+unknown` | a build that carries no commit at all |
 
 The commit is the one the Go toolchain embeds in every build made in a git checkout, so a plain `make build` needs no flags. The Docker image builds with git present for the same reason. A release sets both parts at link time, to the same string a source build of its tag reports.

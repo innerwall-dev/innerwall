@@ -1,8 +1,9 @@
 # Release: a pushed v* tag runs the whole CI gate on the tagged commit (ci.yml
 # itself, called rather than copied, so a tag never publishes assets CI did
-# not see), then goreleaser builds both binaries, archives them with an SBOM
-# each, signs the checksums keyless, pushes and signs the control-plane image
-# on GHCR, and uploads everything to a draft release. Publishing the draft,
+# not see) and checks that the install docs name the tag, then goreleaser
+# builds both binaries, archives them with an SBOM each, signs the checksums
+# keyless, pushes and signs the control-plane image on GHCR, and uploads
+# everything to a draft release. Publishing the draft,
 # with notes written from CHANGELOG.md, is a human act. The procedure is in
 # docs/development.md.
 #
@@ -34,8 +35,16 @@ jobs:
   ci:
     uses: ./.github/workflows/ci.yml
 
+  # The docs are read at the tag: a tag whose README still checks out an
+  # earlier release would publish a quickstart that installs that release.
+  literals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/check-release-literals.sh "${{ github.ref }}"
+
   goreleaser:
-    needs: ci
+    needs: [ci, literals]
     runs-on: ubuntu-latest
     permissions:
       contents: write # the draft release and its assets

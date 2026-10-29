@@ -4,7 +4,7 @@ Open-source microsegmentation for heterogeneous server estates: VMs, bare metal,
 
 A small agent on each workload observes the connections that reach it and programs the operating system's native firewall. A control plane turns label-based policy into per-host rulesets, pushes them over persistent streams, and renders the estate's real traffic as a live dependency map. An operator console embedded in the control plane shows that map, the fleet, the policy, and what enforcing it would break.
 
-**Status: v0.4.1.** Enrollment and short-lived workload identity, the policy sync stream, flow telemetry with evidence gaps, policy authoring with dry runs, simulation, and enforcement on Linux (nftables), and the operator console all work end to end. Releases ship binaries — downloadable, checksummed, and signed — and a published control-plane image, which the Docker Compose quickstart now runs exactly as published, never rebuilding it from the checkout. Install from a release: [docs/reference/versioning-and-install.md](docs/reference/versioning-and-install.md). What is deliberately not built yet, and what comes next, is in [ROADMAP.md](ROADMAP.md); what changed in each release is in [CHANGELOG.md](CHANGELOG.md).
+**Status: v0.5.1.** Enrollment and short-lived workload identity, the policy sync stream, flow telemetry with evidence gaps, policy authoring with dry runs, simulation, and enforcement on Linux (nftables), and the operator console all work end to end. Releases ship binaries — downloadable, checksummed, and signed — and a published control-plane image, which the Docker Compose quickstart now runs exactly as published, never rebuilding it from the checkout. Install from a release: [docs/reference/versioning-and-install.md](docs/reference/versioning-and-install.md). What is deliberately not built yet, and what comes next, is in [ROADMAP.md](ROADMAP.md); what changed in each release is in [CHANGELOG.md](CHANGELOG.md).
 
 ## The console
 
@@ -39,15 +39,15 @@ Each image puts a screen of the shipped console in its dark theme (left) beside 
 > [!IMPORTANT]
 > **Before you start: decide where the agents will run.** The agent runs only on Linux, as root, with nftables. If any agent will run on a machine other than the one running the control plane (always the case when Docker runs on macOS or Windows), first read [Name the control plane before the first start](docs/deploy/multi-host-evaluation.md#name-the-control-plane-before-the-first-start). The gateway's certificate is generated once, at the first start, and names only that machine's local names, so an agent on another machine cannot enroll against it. If the stack already started without the right names, `innerwall ca issue-server` reissues the certificate from the same signing authority and a restart presents it; nothing is enrolled again ([a stack that has already started](docs/deploy/multi-host-evaluation.md#a-stack-that-has-already-started)).
 
-The supported v1 deployment is one control-plane binary and one Postgres (ADR-0017). Run the released image with Docker Compose, or install the released binaries. These docs describe v0.4.1, and every command below names it.
+The supported v1 deployment is one control-plane binary and one Postgres (ADR-0017). Run the released image with Docker Compose, or install the released binaries. These docs describe v0.5.1, and every command below names it.
 
 ### With Docker Compose
 
 ```sh
 git clone https://github.com/innerwall-dev/innerwall.git
 cd innerwall
-git checkout v0.4.1     # the release these docs describe; a fresh clone is main
-echo 'INNERWALL_IMAGE=ghcr.io/innerwall-dev/innerwall:0.4.1' > .env
+git checkout v0.5.1     # the release these docs describe; a fresh clone is main
+echo 'INNERWALL_IMAGE=ghcr.io/innerwall-dev/innerwall:0.5.1' > .env
 docker compose up -d    # pulls the released control-plane image and starts it with Postgres
 ```
 
@@ -69,7 +69,7 @@ Open `https://localhost:8080/` and log in. The certificate is self-signed, so th
 
 ### With the release binaries
 
-The control plane is one binary, for Linux or macOS: download `innerwall_0.4.1_<os>_<arch>.tar.gz`, verify it, and install it as [versioning and install](docs/reference/versioning-and-install.md#install-from-a-release) shows (the agent below takes the same steps). Then, with a reachable Postgres:
+The control plane is one binary, for Linux or macOS: download `innerwall_0.5.1_<os>_<arch>.tar.gz`, verify it, and install it as [versioning and install](docs/reference/versioning-and-install.md#install-from-a-release) shows (the agent below takes the same steps). Then, with a reachable Postgres:
 
 ```sh
 export INNERWALL_DATABASE_URL='postgres://innerwall:innerwall@127.0.0.1:5432/innerwall?sslmode=disable'
@@ -105,7 +105,7 @@ cp ./state/ca/ca.crt ./ca.crt
 On the host to protect, download the agent, verify it against the release's signed checksums, and install it (`ARCH` is `amd64` or `arm64`):
 
 ```sh
-VERSION=0.4.1 ARCH=amd64
+VERSION=0.5.1 ARCH=amd64
 ASSET=innerwall-agent_${VERSION}_linux_${ARCH}.tar.gz
 base=https://github.com/innerwall-dev/innerwall/releases/download/v$VERSION
 for f in "$ASSET" checksums.txt checksums.txt.sig checksums.txt.pem; do curl -fsSLO "$base/$f"; done
