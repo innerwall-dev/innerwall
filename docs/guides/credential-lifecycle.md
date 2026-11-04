@@ -34,7 +34,7 @@ The control plane accepts an expired credential for **one thing only, renewal**,
 
 ## Beyond the grace: re-enrollment
 
-Past the grace, the renewal is refused too: `workload credential has expired: it expired at …, … ago, beyond the 72h0m0s renewal grace; re-enrollment with a new provisioning token is required`. The daemon still enforces from disk and still retries, and logs that refusal on every attempt; it does not stop by itself, and the control plane never tells it to. The workload reads `past-grace` in `health.credential.lifecycle`. It can only be re-enrolled:
+Past the grace, the renewal is refused too: `workload credential has expired: it expired at …, … ago, beyond the 72h0m0s renewal grace; re-enrollment with a new provisioning token is required`. The daemon still enforces from disk and still retries, and logs that refusal on every attempt; it does not stop by itself, and the control plane never tells it to. The workload reads `past-grace` in `health.credential.lifecycle`. The control plane logs each refusal at warning level, `refused a credential expired beyond the renewal grace`, with the workload, the call refused, and the expiry; a refusal within the grace, which renewal ends, is not logged. It can only be re-enrolled:
 
 <!-- steps -->
 1. **Mint a provisioning token** with the labels the host should carry (the console's **Mint token**, or `innerwall token mint`). The new workload takes the token's labels, not the old workload's.

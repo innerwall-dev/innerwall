@@ -2,6 +2,10 @@
 
 Notable changes to Innerwall, newest first. Versions follow semantic versioning; before 1.0, a minor version may change anything.
 
+## Unreleased
+
+- **The control plane logs a refusal of a credential expired beyond the renewal grace** (#221). Such a credential is refused at every door until the host is enrolled again, and its agent retries renewal and the sync stream indefinitely, each refusal naming re-enrollment; the control plane logged none of them, while a retired workload's identical retries log one line each, so a host stuck needing re-enrollment read as a stall in the control plane's log. Each refusal now logs `refused a credential expired beyond the renewal grace` at warning level, with `workload_id`, `door`, `expired_at`, and the `grace` in force, one line per refused call like the retired refusal. The transient refusal within the grace, which renewal ends, is not logged. The refusal the agent receives is unchanged. Nothing in the agent or the wire contract changes.
+
 ## v0.5.1 — the install docs name their own release
 
 - **The install docs name the release they ship in.** v0.5.0's install docs named v0.4.1 throughout: the README's status line, its quickstart's `git checkout` and `.env` image, the control-plane archive, and `VERSION=`; the versioning-and-install reference's download, `cosign verify` and its certificate identity, source fallback, and version-string examples; and the deploy page's `.env` line. A reader following the v0.5.0 quickstart therefore installed the previous release. Every one of those literals now names v0.5.1. The same stale literals ship inside the v0.4.2 and v0.4.3 tags, which are not re-cut; v0.5.1 is the corrected install path.

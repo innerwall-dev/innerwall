@@ -22,6 +22,7 @@ import (
 	"github.com/innerwall-dev/innerwall/internal/ca"
 	"github.com/innerwall-dev/innerwall/internal/ca/fileca"
 	"github.com/innerwall-dev/innerwall/internal/enroll"
+	"github.com/innerwall-dev/innerwall/internal/gateway"
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 	"github.com/innerwall-dev/innerwall/internal/identity"
 	"github.com/innerwall-dev/innerwall/internal/storetest"
@@ -73,7 +74,7 @@ func (h *harness) issueAt(t *testing.T, key *ecdsa.PrivateKey, id identity.Workl
 // newAgedHarness starts a control plane whose authority's root was
 // created a month ago, as any deployment's root predates the credentials
 // it signed; issueAt can then sign credentials that expired days ago.
-func newAgedHarness(t *testing.T, st enroll.Store) *harness {
+func newAgedHarness(t *testing.T, st enroll.Store, opts ...func(*gateway.Deps)) *harness {
 	t.Helper()
 	dir := t.TempDir()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -109,7 +110,7 @@ func newAgedHarness(t *testing.T, st enroll.Store) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := newHarnessWith(t, st, authority)
+	h := newHarnessWith(t, st, authority, opts...)
 	h.authorityDir = dir
 	return h
 }

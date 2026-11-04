@@ -286,15 +286,24 @@ func TestAdmitCredential(t *testing.T) {
 			if tc.mentions != "" && !strings.Contains(err.Error(), tc.mentions) {
 				t.Fatalf("err = %q, want it to say %q", err, tc.mentions)
 			}
+			// Only the refusal beyond the grace is permanent, and only it
+			// says so to a caller that cannot read the message (#221).
+			beyond := tc.mentions == enroll.ReenrollRequired
+			if errors.Is(err, enroll.ErrBeyondGrace) != beyond {
+				t.Fatalf("errors.Is(%v, ErrBeyondGrace) = %v, want %v", err, !beyond, beyond)
+			}
+			if err != nil && strings.Contains(err.Error(), enroll.ErrBeyondGrace.Error()) {
+				t.Fatalf("err = %q carries the sentinel's text; the refusal's message must be unchanged", err)
+			}
 		})
 	}
-	if err := svc.AdmitCredential(now.Add(time.Minute), now.Add(time.Hour), true); !errors.Is(err, enroll.ErrCredentialNotYetValid) {
+	if err := svc.AdmitCredential(now.Add(time.Minute), now.Add(time.Hour), true); !errors.Is(err, enroll.ErrCredentialNotYetValid) || errors.Is(err, enroll.ErrBeyondGrace) {
 		t.Fatalf("not yet valid: err = %v", err)
 	}
 	// The grace is configurable.
 	short := &enroll.Service{Now: svc.Now, RenewalGrace: time.Hour}
 	nb, na := issued(2 * time.Hour)
-	if err := short.AdmitCredential(nb, na, true); !errors.Is(err, enroll.ErrCredentialExpired) {
+	if err := short.AdmitCredential(nb, na, true); !errors.Is(err, enroll.ErrCredentialExpired) || !errors.Is(err, enroll.ErrBeyondGrace) {
 		t.Fatalf("beyond a 1h grace: err = %v", err)
 	}
 }
