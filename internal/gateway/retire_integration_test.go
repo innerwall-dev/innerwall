@@ -3,6 +3,7 @@ package gateway_test
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -135,7 +136,9 @@ func TestRetirementEndToEnd(t *testing.T) {
 	before := versions()
 	webPolicy, _ := st.GetWorkloadPolicy(ctx, web.id)
 
+	logs := &logLines{}
 	svc := fleetOver(st, h, h.gw)
+	svc.Log = slog.New(slog.NewJSONHandler(logs, nil))
 	if _, err := svc.Retire(ctx, web.id); !errors.Is(err, authn.ErrNoPrincipal) {
 		t.Fatalf("retire without a principal: err = %v", err)
 	}
@@ -146,6 +149,12 @@ func TestRetirementEndToEnd(t *testing.T) {
 	}
 	if len(res.Rendered.Changed) != 1 || res.Rendered.Changed[0].ID != db.id {
 		t.Fatalf("render report = %+v, want db alone advanced", res.Rendered)
+	}
+	// This replica held the stream, so the retirement says it ended here,
+	// whichever path ended it (#220). Retire writes the line before it
+	// returns.
+	if lines := logs.all(t, "workload retired"); len(lines) != 1 || lines[0]["stream_ended_here"] != true {
+		t.Fatalf("workload retired lines = %v, want one with stream_ended_here=true", lines)
 	}
 
 	// The live stream ends at once, with nothing said about why.

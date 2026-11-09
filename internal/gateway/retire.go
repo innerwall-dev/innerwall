@@ -55,13 +55,19 @@ func endedWith(ctx context.Context) error {
 	return nil
 }
 
-// end ends sess with err as the status its agent receives. It is the
-// one mechanism every deliberate end of a stream shares: EndStream from
-// outside the stream, and the stream's own credential bound from inside
-// it (ADR-0016 as amended). The stream's own cleanup runs as for any
-// other end, the offline mark included.
-func (sess *session) end(err error) {
-	sess.cancel(&streamEnd{err: err})
+// end ends sess with err as the status its agent receives, and reports
+// whether this call ended it: false when the stream had already ended,
+// through this mechanism or any other, since a stream's end has one
+// cause and the first one set is kept. It is the one mechanism every
+// deliberate end of a stream shares: EndStream from outside the stream,
+// and the stream's own credential bound from inside it (ADR-0016 as
+// amended). The stream's own cleanup runs as for any other end, the
+// offline mark included.
+func (sess *session) end(err error) bool {
+	cause := &streamEnd{err: err}
+	sess.cancel(cause)
+	var kept *streamEnd
+	return errors.As(context.Cause(sess.ctx), &kept) && kept == cause
 }
 
 // EndStream ends the live sync stream of id, if this replica holds one,
@@ -71,22 +77,49 @@ func (sess *session) end(err error) {
 // expires is ended by the same mechanism from inside its own session,
 // with a refusal that names the expiry (boundByCredential).
 func (s *Server) EndStream(id identity.WorkloadID, err error) bool {
-	sess := s.sessions.get(id)
-	if sess == nil {
-		return false
-	}
-	sess.end(err)
-	return true
+	held, _ := s.endStream(id, err)
+	return held
 }
 
-// EndRetired implements fleet.Streams: it ends the live stream of a
-// retired workload with the opaque refusal, if this replica holds it.
-func (s *Server) EndRetired(id identity.WorkloadID) bool {
-	if !s.EndStream(id, errRefused) {
-		return false
+// endStream is EndStream, also reporting whether this call is the one
+// that ended the stream: a held stream may already be ending, through
+// this lever or any other, until its cleanup takes it out of the
+// registry.
+func (s *Server) endStream(id identity.WorkloadID, err error) (held, ended bool) {
+	sess := s.sessions.get(id)
+	if sess == nil {
+		return false, false
 	}
-	s.log.Info("sync stream ended: the workload was retired", "workload_id", id)
-	return true
+	return true, sess.end(err)
+}
+
+// EndRetired ends the live stream of a retired workload with the opaque
+// refusal, if this replica holds it, and reports whether it held one.
+// More than one path pulls it for one retirement on the replica that made
+// the write (the retirement's own lever and the end directive this
+// replica also hears), so the stream's end is logged by the call that
+// ended it, once.
+func (s *Server) EndRetired(id identity.WorkloadID) bool {
+	held, ended := s.endStream(id, errRefused)
+	if ended {
+		s.log.Info("sync stream ended: the workload was retired", "workload_id", id)
+	}
+	return held
+}
+
+// WatchRetiring implements fleet.Streams. The watch it begins records
+// every stream of id that leaves this replica's registry until end is
+// called, so end's report covers a stream that another path ended and
+// cleaned up first: the end directive, which this replica hears as soon
+// as the retirement commits, or a stream write that found the workload
+// retired. The watch lives only for the retirement call that began it.
+func (s *Server) WatchRetiring(id identity.WorkloadID) (end func(committed bool) bool) {
+	w := s.sessions.watch(id)
+	return func(committed bool) bool {
+		held := committed && s.EndRetired(id)
+		left := s.sessions.unwatch(id, w)
+		return held || left
+	}
 }
 
 // direct routes one directive to the stream of the workload it names.
