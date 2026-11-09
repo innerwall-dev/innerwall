@@ -34,6 +34,21 @@ const DefaultRenewalGrace = 72 * time.Hour
 // the words the agent uses for the same state.
 var ErrCredentialExpired = errors.New("workload credential has expired")
 
+// ErrBeyondGrace is wrapped, beside ErrCredentialExpired, by every refusal
+// of a credential expired beyond the renewal grace. It tells a permanent
+// refusal, which only re-enrollment ends, from the transient one an
+// expired credential receives within the grace on any call but renewal,
+// without reading the message. Its text never appears in the refusal.
+var ErrBeyondGrace = errors.New("workload credential expired beyond the renewal grace")
+
+// beyondGraceError is the refusal of a credential expired beyond the
+// grace: its message is the wrapped error's alone, and it matches both
+// ErrCredentialExpired and ErrBeyondGrace.
+type beyondGraceError struct{ err error }
+
+func (e *beyondGraceError) Error() string   { return e.err.Error() }
+func (e *beyondGraceError) Unwrap() []error { return []error{e.err, ErrBeyondGrace} }
+
 // ErrCredentialNotYetValid is returned for a credential whose validity
 // has not begun on the control plane's clock.
 var ErrCredentialNotYetValid = errors.New("workload credential is not yet valid")
@@ -205,7 +220,7 @@ func (s *Service) AdmitCredential(notBefore, notAfter time.Time, renewal bool) e
 	late := now.Sub(notAfter).Truncate(time.Second)
 	expired := notAfter.UTC().Format(time.RFC3339)
 	if standing == StandingPastGrace {
-		return fmt.Errorf("%w: it expired at %s, %s ago, beyond the %s renewal grace; %s", ErrCredentialExpired, expired, late, grace, ReenrollRequired)
+		return &beyondGraceError{err: fmt.Errorf("%w: it expired at %s, %s ago, beyond the %s renewal grace; %s", ErrCredentialExpired, expired, late, grace, ReenrollRequired)}
 	}
 	if renewal {
 		return nil

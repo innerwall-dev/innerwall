@@ -176,7 +176,7 @@ Connections opened after that carry byte counts; ones already open stay at zero.
 
 ### The agent logs "re-enrollment with a new provisioning token is required" on every attempt
 
-**Symptom.** The daemon's journal repeats `workload credential has expired: it expired at …, beyond the … renewal grace; re-enrollment with a new provisioning token is required` for its renewals and its sync stream, and keeps retrying with backoff. The host keeps enforcing the policy it last applied. The workload's `health.credential.lifecycle` reads `past-grace`.
+**Symptom.** The daemon's journal repeats `workload credential has expired: it expired at …, beyond the … renewal grace; re-enrollment with a new provisioning token is required` for its renewals and its sync stream, and keeps retrying with backoff. The host keeps enforcing the policy it last applied. The workload's `health.credential.lifecycle` reads `past-grace`, and the control plane's log records each refusal at warning level: `refused a credential expired beyond the renewal grace`, with the workload, the door (`door`, the call refused), and the credential's `expired_at`.
 
 **Cause.** The credential expired longer ago than the control plane's renewal grace (`innerwall serve --renewal-grace`, 72 hours by default), usually because the host or its agent was down, or cut off from the control plane, for that long. Nothing will accept the credential again, and the control plane never directs the agent to stop: the daemon fails static and keeps retrying until an operator acts (ADR-0011, ADR-0015 as amended).
 
