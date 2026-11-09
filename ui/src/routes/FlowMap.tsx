@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { Centered, EmptyState } from "@/components/EmptyState";
 import { Icon } from "@/components/Icon";
@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/tooltip";
 import { count, headline } from "@/lib/format";
 import { between, kindText } from "@/lib/gaps";
-import { labelFormHint, shownLabelText } from "@/lib/labels";
+import { labelFormHint, notAdded, shownLabelText } from "@/lib/labels";
 import { useResource } from "@/lib/resource";
 import { cn } from "@/lib/utils";
 import { labelRequirements } from "./fleet/WorkloadList";
@@ -230,12 +230,20 @@ function Toolbar({
 	const [adding, setAdding] = useState(false);
 	const [draft, setDraft] = useState("");
 	const [invalid, setInvalid] = useState<string | null>(null);
+	// Escape closes the field without adding what it holds, even when the
+	// field losing focus as it closes would otherwise commit it.
+	const escaped = useRef(false);
+	// The field takes focus when it opens, and only then: a refusal on
+	// leaving it does not pull focus back.
+	const focusOnOpen = useCallback((el: HTMLInputElement | null) => {
+		el?.focus();
+	}, []);
 	const options = keys.includes(groupKey) ? keys : [groupKey, ...keys];
 
 	function addRequirement() {
 		const parsed = labelRequirements(draft);
 		if (!parsed.ok || parsed.requirements.length === 0) {
-			setInvalid(parsed.ok ? labelFormHint : parsed.error);
+			setInvalid(notAdded(parsed.ok ? labelFormHint : parsed.error));
 			return;
 		}
 		update((p) => {
@@ -312,13 +320,24 @@ function Toolbar({
 							aria-label="Label requirement"
 							placeholder="key=value"
 							value={draft}
-							ref={(el) => el?.focus()}
+							ref={focusOnOpen}
 							onChange={(ev) => {
 								setDraft(ev.target.value);
 								setInvalid(null);
 							}}
 							onKeyDown={(ev) => {
-								if (ev.key === "Escape") setAdding(false);
+								if (ev.key === "Escape") {
+									escaped.current = true;
+									setAdding(false);
+								}
+							}}
+							// A requirement typed and left pending is added when the
+							// field loses focus, as on Enter.
+							onFocus={() => {
+								escaped.current = false;
+							}}
+							onBlur={() => {
+								if (!escaped.current && draft.trim() !== "") addRequirement();
 							}}
 							className={cn(
 								"h-control w-[160px] rounded-control border bg-field-sunk px-2 type-mono-sm text-primary placeholder:text-tertiary",

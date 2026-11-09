@@ -282,6 +282,23 @@ describe("drafts and findings", () => {
 		expect(parseService("svc_legacy_ldap")).toEqual({ ref: "svc_legacy_ldap" });
 	});
 
+	it("reads a rule's inline entry in either form, the one grammar a definition admits", () => {
+		// The command line's colon form is the same entry as the slash
+		// form the console draws, never the name of a service.
+		for (const [colon, slash] of [
+			["tcp:5432", "tcp/5432"],
+			["UDP:53", "udp/53"],
+			["tcp:6000-6010,6012", "tcp/6000-6010,6012"],
+			["tcp:", "tcp"],
+		] as const) {
+			expect(parseService(colon)).toEqual(parseService(slash));
+			expect(parseService(colon)).toEqual(parseEntry(slash));
+			expect("entry" in parseService(colon)).toBe(true);
+		}
+		// A protocol the surface does not take is a name, as before.
+		expect(parseService("sctp:5432")).toEqual({ ref: "sctp:5432" });
+	});
+
 	it("writes a new rule without an id, and a persisted one under its own", () => {
 		const fresh = draftOf(null, "temp-1");
 		expect(draftInput(fresh)).not.toHaveProperty("id");
@@ -531,9 +548,20 @@ describe("definitions", () => {
 		expect(parseEntry("tcp/70000")).toEqual({
 			entry: { protocol: "tcp", ports: ["70000"] },
 		});
+		// Either separator, the same entry: what is sent does not depend
+		// on which was typed, and the console draws it as tcp/5432.
+		expect(parseEntry("tcp:5432")).toEqual(parseEntry("tcp/5432"));
+		expect(parseEntry("udp:53")).toEqual({
+			entry: { protocol: "udp", ports: ["53"] },
+		});
+		const colon = parseEntry("tcp:5432");
+		expect("entry" in colon && entryText(colon.entry)).toBe("tcp/5432");
+		// What is no entry in either form is refused, naming both forms.
+		expect(parseEntry("sctp:5432")).toHaveProperty("error");
+		expect(parseEntry("5432/tcp")).toHaveProperty("error");
 		expect(parseEntry("postgres")).toEqual({
 			error:
-				"an entry is a protocol with its ports: tcp/5432, udp/53, tcp/6000-6010, or icmp (postgres)",
+				"An entry is a protocol with its ports after a slash or a colon: tcp/5432 or tcp:5432, udp/53, tcp/6000-6010, or icmp (postgres).",
 		});
 		expect(entryText({ protocol: "tcp", ports: ["5432", "6000-6010"] })).toBe(
 			"tcp/5432,6000-6010",

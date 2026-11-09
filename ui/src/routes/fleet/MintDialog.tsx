@@ -16,6 +16,7 @@ import {
 	DialogHeader,
 } from "@/components/ui/dialog";
 import { labelPairs, span } from "@/lib/format";
+import { notAdded } from "@/lib/labels";
 import { useWrite } from "@/lib/resource";
 import { cn } from "@/lib/utils";
 import { labelRequirements } from "./WorkloadList";
@@ -94,7 +95,7 @@ function MintForm({ onMinted }: { onMinted: (m: MintedToken) => void }) {
 		if (draft.trim() === "") return labels;
 		const parsed = labelRequirements(draft);
 		if (!parsed.ok) {
-			setDraftInvalid(parsed.error);
+			setDraftInvalid(notAdded(parsed.error));
 			return null;
 		}
 		let next = labels;

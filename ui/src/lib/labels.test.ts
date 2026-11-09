@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	labelFormHint,
 	labelOutsideGrammar,
+	notAdded,
 	parseRequirements,
 	shownLabelText,
 	validLabelKey,
@@ -94,6 +95,14 @@ describe("parseRequirements", () => {
 		expect(
 			key.ok === false && key.error.startsWith('"-app" is not a label key'),
 		).toBe(true);
+	});
+});
+
+describe("notAdded", () => {
+	it("gives the reason, then says the field's text was not taken", () => {
+		expect(notAdded(labelFormHint)).toBe(
+			"A label is written key=value. The text in the field was not added.",
+		);
 	});
 });
 

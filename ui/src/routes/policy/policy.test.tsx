@@ -611,7 +611,11 @@ describe("policy editor", () => {
 		await user.type(add, "tier={Enter}");
 		expect(add).toHaveAttribute("aria-invalid", "true");
 		expect(add).toHaveValue("tier=");
-		expect(screen.getByText("tier has no value.")).toBeInTheDocument();
+		expect(
+			screen.getByText(
+				"tier has no value. The text in the field was not added.",
+			),
+		).toBeInTheDocument();
 		expect(
 			screen
 				.getAllByTestId("requirement")
@@ -1712,7 +1716,11 @@ describe("policy editor", () => {
 		await user.type(add, "app=");
 		await user.click(screen.getByRole("textbox", { name: "Ruleset name" }));
 		expect(add).toHaveValue("app=");
-		expect(screen.getByText("app has no value.")).toBeInTheDocument();
+		expect(
+			screen.getByText(
+				"app has no value. The text in the field was not added.",
+			),
+		).toBeInTheDocument();
 		await user.clear(add);
 		await user.type(add, "app = ledger env=lab");
 		await user.click(screen.getByRole("button", { name: /^Create ruleset/ }));
@@ -1725,6 +1733,79 @@ describe("policy editor", () => {
 				rules: [],
 			}),
 		);
+	});
+
+	it("commits a peer left pending when Save is clicked, and keeps one it cannot read as not added", async () => {
+		// INN-144: a peer typed, not entered, is committed as the field
+		// loses focus, so the rule saved is the one on screen.
+		const posted: unknown[] = [];
+		const s = surface({
+			extra: [
+				{
+					method: "POST",
+					path: `/api/v1/rulesets/${checkout.id}/rules`,
+					reply: (body) => {
+						posted.push(body);
+						const created = rule({
+							...(body as object),
+							id: "7a000000-0000-4000-8000-000000000098",
+							version: "1",
+						});
+						s.setRulesets([
+							{ ...checkout, rules: [...checkout.rules, created] },
+							auth,
+							billing,
+						]);
+						return { status: 201, json: created };
+					},
+				},
+			],
+		});
+		const user = userEvent.setup();
+		renderApp("/policy?ruleset=checkout-inbound");
+		await rulesTable();
+		await user.click(screen.getByRole("button", { name: "Add rule" }));
+		const editing = await row("New rule");
+		const peer = within(editing).getByRole("textbox", { name: "Add a peer" });
+		const svc = within(editing).getByRole("textbox", { name: "Add a service" });
+		const desc = within(editing).getByRole("textbox", { name: "Description" });
+		// Text outside the label grammar, left by tabbing on: it stays in
+		// the field, marked, saying it was not added, and adds no peer.
+		await user.type(peer, "role=");
+		await user.click(desc);
+		expect(peer).toHaveValue("role=");
+		expect(peer).toHaveAttribute("aria-invalid", "true");
+		expect(
+			within(editing).getByText(
+				"role has no value. The text in the field was not added.",
+			),
+		).toBeInTheDocument();
+		expect(within(editing).queryAllByTestId("chip")).toHaveLength(0);
+		// A valid peer left pending, then Save: committed on the way.
+		await user.clear(peer);
+		await user.type(peer, "role=db");
+		// The command line's entry form reads as an inline entry, not as
+		// the name of a service.
+		await user.type(svc, "tcp:5432{Enter}");
+		expect(peer).toHaveValue("");
+		await user.type(peer, "app=ledger");
+		await user.click(
+			screen.getByRole("button", { name: /Save — applies to 5 workloads now/ }),
+		);
+		await waitFor(() =>
+			expect(posted[0]).toEqual({
+				direction: "inbound",
+				enabled: true,
+				description: "",
+				peers: [
+					{ workloads: { role: ["db"] } },
+					{ workloads: { app: ["ledger"] } },
+				],
+				services: [],
+				entries: [{ protocol: "tcp", ports: ["5432"] }],
+			}),
+		);
+		expect(await screen.findByRole("status")).toHaveTextContent(/^Saved /);
 	});
 
 	it("shows the fresh state, a failed read with a retry, and loading", async () => {

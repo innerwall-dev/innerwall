@@ -26,7 +26,7 @@ import {
 } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
 import { ago, count, labelPairs } from "@/lib/format";
-import { parseRequirements } from "@/lib/labels";
+import { notAdded, parseRequirements } from "@/lib/labels";
 import { asProblem, useResource } from "@/lib/resource";
 import { cn } from "@/lib/utils";
 import { useShell } from "@/shell/Shell";
@@ -597,7 +597,7 @@ function LabelFilter({
 		}
 		const parsed = labelRequirements(text);
 		if (!parsed.ok) {
-			setInvalid(parsed.error);
+			setInvalid(notAdded(parsed.error));
 			return;
 		}
 		onChange([

@@ -42,7 +42,7 @@ export const kindText = {
 	service: {
 		noun: "service",
 		items: "Entries",
-		placeholder: "tcp/5432 · udp/53 · icmp",
+		placeholder: "tcp:5432 · udp/53 · icmp",
 		about:
 			"A named set of protocol and port entries. Rules reference it by name; creating it changes no workload's policy until one does.",
 	},

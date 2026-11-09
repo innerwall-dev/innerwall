@@ -469,6 +469,9 @@ function EditRow({
 							label="Add a peer"
 							placeholder="app=web · 10.0.0.0/8 · group"
 							className="w-full"
+							// A peer typed and left pending is committed before
+							// Save or Dry run reads the row.
+							commitOnBlur
 							onAdd={(text) => {
 								const peer = parsePeer(text);
 								if ("error" in peer) return peer.error;
