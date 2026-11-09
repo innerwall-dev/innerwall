@@ -22,6 +22,15 @@ export function validLabelValue(value: string): boolean {
 // `key=value`.
 export const labelFormHint = "A label is written key=value.";
 
+// notAdded is the refusal every chip input shows for text it holds and
+// did not take, whether Enter, leaving the field, or a save asked it to:
+// the reason, then that the text is still the field's and nothing was
+// added from it, so an error elsewhere is never the only sign that a
+// value typed was not taken.
+export function notAdded(reason: string): string {
+	return `${reason} The text in the field was not added.`;
+}
+
 // Requirement is one key with the values it accepts: one for a label, any
 // number (ORed) for a selector's requirement.
 export interface Requirement {

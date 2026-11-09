@@ -715,7 +715,9 @@ describe("flow map", () => {
 		await user.click(screen.getByRole("button", { name: "filter" }));
 		await user.type(screen.getByLabelText("Label requirement"), "bogus{Enter}");
 		expect(
-			screen.getByText("A label is written key=value."),
+			screen.getByText(
+				"A label is written key=value. The text in the field was not added.",
+			),
 		).toBeInTheDocument();
 		await user.clear(screen.getByLabelText("Label requirement"));
 		await user.type(
@@ -739,6 +741,51 @@ describe("flow map", () => {
 				screen.queryByRole("button", { name: "Remove env=prod" }),
 			).not.toBeInTheDocument(),
 		);
+	});
+
+	it("adds a requirement left pending when the field loses focus, and keeps one it cannot read", async () => {
+		const { calls } = surface();
+		const user = userEvent.setup();
+		await openMap();
+		await user.click(screen.getByRole("button", { name: "filter" }));
+		const input = screen.getByLabelText("Label requirement");
+		// Text outside the grammar, left: it stays, saying it was not added.
+		await user.type(input, "env=");
+		await user.click(screen.getByLabelText("Group by"));
+		expect(input).toHaveValue("env=");
+		expect(
+			screen.getByText(
+				"env has no value. The text in the field was not added.",
+			),
+		).toBeInTheDocument();
+		// The refusal does not pull focus back to the field.
+		expect(input).not.toHaveFocus();
+		// A valid requirement, left: added as on Enter.
+		await user.clear(input);
+		await user.type(input, "env=prod");
+		await user.click(screen.getByLabelText("Group by"));
+		await waitFor(() =>
+			expect(
+				calls.some(
+					(c) =>
+						c.path.includes("flows/rollup") &&
+						c.path.includes("label=env%3Dprod"),
+				),
+			).toBe(true),
+		);
+		expect(
+			await screen.findByRole("button", { name: "Remove env=prod" }),
+		).toBeInTheDocument();
+		// Escape closes the field and adds nothing from it.
+		await user.click(screen.getByRole("button", { name: "filter" }));
+		await user.type(screen.getByLabelText("Label requirement"), "app=web");
+		await user.keyboard("{Escape}");
+		expect(
+			screen.queryByLabelText("Label requirement"),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: "Remove app=web" }),
+		).not.toBeInTheDocument();
 	});
 
 	it("reads a pasted pair of requirements as two, and refuses a value outside the grammar", async () => {

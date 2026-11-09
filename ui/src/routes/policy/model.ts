@@ -448,19 +448,13 @@ export function parsePeer(text: string): Peer | { error: string } {
 	return { address_group: t };
 }
 
-// parseService reads one service as typed: a protocol, optionally with
-// its ports after a slash (`tcp/389`, `tcp/6000-6010,6012`, `icmp`), is
-// an inline entry; anything else names a service definition.
+// parseService reads one service as typed: text that parseEntry reads
+// as an entry (`tcp/389`, `tcp:389`, `tcp/6000-6010,6012`, `icmp`) is an
+// inline entry, so a rule admits the one entry grammar a definition
+// does; anything else names a service definition.
 export function parseService(text: string): { entry: Entry } | { ref: string } {
-	const t = text.trim();
-	const m = /^(tcp|udp|icmp)(?:\/(.*))?$/i.exec(t);
-	if (!m) return { ref: t };
-	const protocol = (m[1] ?? "").toLowerCase() as Entry["protocol"];
-	const ports = (m[2] ?? "")
-		.split(",")
-		.map((p) => p.trim())
-		.filter((p) => p !== "");
-	return { entry: ports.length > 0 ? { protocol, ports } : { protocol } };
+	const e = parseEntry(text);
+	return "entry" in e ? e : { ref: text.trim() };
 }
 
 // --- findings ----------------------------------------------------------------
@@ -624,17 +618,19 @@ export function defined(
 // --- definitions -------------------------------------------------------------
 
 // parseEntry reads one service entry as typed: a protocol, optionally
-// with its ports after a slash or, as the command line writes it, a
-// colon (`tcp/5432`, `tcp:6000-6010,6012`, `udp/53`, `icmp`). Ports are
-// kept as typed, so the control plane's admission names any fault in
-// them; text that is not a protocol at all is refused here, since an
-// entry has no other form.
+// with its ports after a slash, the form the console draws, or a colon,
+// the form the command line and the deploy guide write (`tcp/5432`,
+// `tcp:6000-6010,6012`, `udp/53`, `icmp`). Either reads as the same
+// entry, so what is sent is the same whichever was typed. Ports are kept
+// as typed, so the control plane's admission names any fault in them;
+// text that is not a protocol at all is refused here, since an entry has
+// no other form.
 export function parseEntry(text: string): { entry: Entry } | { error: string } {
 	const t = text.trim();
 	const m = /^(tcp|udp|icmp)(?:[/:](.*))?$/i.exec(t);
 	if (!m) {
 		return {
-			error: `an entry is a protocol with its ports: tcp/5432, udp/53, tcp/6000-6010, or icmp (${t})`,
+			error: `An entry is a protocol with its ports after a slash or a colon: tcp/5432 or tcp:5432, udp/53, tcp/6000-6010, or icmp (${t}).`,
 		};
 	}
 	const protocol = (m[1] ?? "").toLowerCase() as Entry["protocol"];

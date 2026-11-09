@@ -282,6 +282,37 @@ describe("fleet workloads", () => {
 		});
 	});
 
+	it("adds a label requirement left pending when the field loses focus, and keeps one it cannot read", async () => {
+		const { calls } = mockSurface([
+			...frame,
+			fleet(() => ({ workloads: [checkout, auth], next_cursor: null })),
+		]);
+		const user = userEvent.setup();
+		renderApp("/workloads");
+		await screen.findByRole("link", { name: "auth-prod-11" });
+		await user.click(screen.getByRole("button", { name: "label filter" }));
+		const input = screen.getByLabelText("Label requirement");
+		await user.type(input, "tier=");
+		await user.click(screen.getByRole("button", { name: /degraded/ }));
+		expect(input).toHaveValue("tier=");
+		expect(input).toHaveAttribute("aria-invalid", "true");
+		expect(input).toHaveAttribute(
+			"title",
+			"tier has no value. The text in the field was not added.",
+		);
+		await user.clear(input);
+		await user.type(input, "app=checkout");
+		await user.click(screen.getByRole("button", { name: /degraded/ }));
+		await waitFor(() => {
+			const last = calls.filter((c) => c.path.includes("/workloads")).at(-1);
+			const q = new URL(last?.path ?? "", "http://x").searchParams;
+			expect(q.getAll("label")).toEqual(["app=checkout"]);
+		});
+		expect(
+			screen.getByRole("button", { name: "Remove app=checkout" }),
+		).toBeInTheDocument();
+	});
+
 	it("filters to the workloads whose enforcement was removed", async () => {
 		// Issue #96: removed is not a sync state, so no query selects it.
 		// The fleet order ranks it with degraded at the top, and the chip

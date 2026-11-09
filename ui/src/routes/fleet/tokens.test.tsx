@@ -197,7 +197,9 @@ describe("mint dialog", () => {
 		await user.type(label, "app=search{Enter}env=staging ");
 		await user.type(label, "bogus{Enter}");
 		expect(
-			within(form).getByText("A label is written key=value."),
+			within(form).getByText(
+				"A label is written key=value. The text in the field was not added.",
+			),
 		).toBeInTheDocument();
 		await user.clear(label);
 		await user.click(within(form).getByRole("radio", { name: "7 d" }));
@@ -352,7 +354,9 @@ describe("mint dialog", () => {
 		await user.paste("app=web env");
 		await user.click(within(form).getByRole("button", { name: "Mint token" }));
 		expect(
-			within(form).getByText("A label is written key=value."),
+			within(form).getByText(
+				"A label is written key=value. The text in the field was not added.",
+			),
 		).toBeInTheDocument();
 		expect(label).toHaveValue("app=web env");
 		await user.clear(label);
@@ -381,6 +385,51 @@ describe("mint dialog", () => {
 		expect(calls.find((c) => c.method === "POST")?.body).toEqual({
 			name: "lab",
 			labels: { app: "web", env: "lab", tier: "api" },
+			ttl_seconds: 30 * 24 * 3600,
+		});
+	});
+
+	it("commits a label left pending on leaving the field or on Mint", async () => {
+		const { calls } = surface(
+			() => [],
+			[
+				{
+					method: "POST",
+					path: "/api/v1/provisioning-tokens",
+					reply: (body) => {
+						const b = body as { labels: Record<string, string> };
+						return {
+							status: 201,
+							json: {
+								...token({ name: "lab", labels: b.labels }),
+								token: secret,
+							},
+						};
+					},
+				},
+			],
+		);
+		const user = userEvent.setup();
+		renderApp("/workloads/tokens");
+		await user.click(await screen.findByRole("button", { name: "Mint token" }));
+		const form = await screen.findByRole("dialog");
+		const name = within(form).getByLabelText("Name");
+		const label = within(form).getByLabelText("Label");
+		// Typed, not entered, then on to another field: committed.
+		await user.type(label, "app=web");
+		await user.click(name);
+		expect(label).toHaveValue("");
+		expect(
+			within(form).getByRole("button", { name: "Remove app=web" }),
+		).toBeInTheDocument();
+		await user.type(name, "lab");
+		// Typed, not entered, then Mint: committed, and the mint succeeds.
+		await user.type(label, "env=lab");
+		await user.click(within(form).getByRole("button", { name: "Mint token" }));
+		await screen.findByRole("dialog", { name: "Token minted — copy it now" });
+		expect(calls.find((c) => c.method === "POST")?.body).toEqual({
+			name: "lab",
+			labels: { app: "web", env: "lab" },
 			ttl_seconds: 30 * 24 * 3600,
 		});
 	});

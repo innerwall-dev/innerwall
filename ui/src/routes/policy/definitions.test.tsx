@@ -284,7 +284,7 @@ describe("service definitions", () => {
 		const add = within(dialog).getByRole("textbox", { name: "Add an entry" });
 		await user.type(add, "postgres{Enter}");
 		expect(dialog).toHaveTextContent(
-			"an entry is a protocol with its ports: tcp/5432, udp/53, tcp/6000-6010, or icmp (postgres)",
+			"An entry is a protocol with its ports after a slash or a colon: tcp/5432 or tcp:5432, udp/53, tcp/6000-6010, or icmp (postgres). The text in the field was not added.",
 		);
 		await user.clear(add);
 		// The command line's form reads too; a name taken is refused on it.
@@ -323,6 +323,55 @@ describe("service definitions", () => {
 		expect(
 			screen.getByRole("navigation", { name: "Definitions" }),
 		).toHaveTextContent("Service definitions2");
+	});
+
+	it("reads the command line's entry form and the console's as the same entries, drawn in one form", async () => {
+		// INN-143: `tcp:5432` as the command line and the deploy guide
+		// write it, `tcp/5432` as the console draws it; either is sent as
+		// the same entry, and an entry left pending is committed on Create.
+		const estate = { rulesets: [web], services: [ssh], groups: [] };
+		const { calls } = surface(estate);
+		const user = userEvent.setup();
+		renderApp("/policy/services");
+		await user.click(
+			await screen.findByRole("button", { name: "New service" }),
+		);
+		const dialog = await screen.findByRole("dialog", { name: "New service" });
+		await user.type(within(dialog).getByLabelText("Name"), "postgres");
+		const add = within(dialog).getByRole("textbox", { name: "Add an entry" });
+		expect(add).toHaveAttribute("placeholder", "tcp:5432 · udp/53 · icmp");
+		await user.type(add, "tcp:5432 udp/53 TCP:6000-6010,6012{Enter}");
+		expect(
+			within(dialog)
+				.getAllByTestId("chip")
+				.map((c) => c.textContent),
+		).toEqual(["TCP5432", "UDP53", "TCP6000-6010, 6012"]);
+		// A form neither separator makes is refused, naming both, and stays.
+		await user.type(add, "5432:tcp{Enter}");
+		expect(add).toHaveValue("5432:tcp");
+		expect(dialog).toHaveTextContent(
+			"An entry is a protocol with its ports after a slash or a colon: tcp/5432 or tcp:5432, udp/53, tcp/6000-6010, or icmp (5432:tcp). The text in the field was not added.",
+		);
+		await user.clear(add);
+		await user.type(add, "udp:5353");
+		await user.click(
+			within(dialog).getByRole("button", { name: "Create service" }),
+		);
+		await waitFor(() =>
+			expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+		);
+		const posts = calls.filter(
+			(c) => c.method === "POST" && c.path === "/api/v1/services",
+		);
+		expect(posts.at(-1)?.body).toEqual({
+			name: "postgres",
+			entries: [
+				{ protocol: "tcp", ports: ["5432"] },
+				{ protocol: "udp", ports: ["53"] },
+				{ protocol: "tcp", ports: ["6000-6010", "6012"] },
+				{ protocol: "udp", ports: ["5353"] },
+			],
+		});
 	});
 
 	it("edits a service conditioned on its version, and keeps the edit across a conflict", async () => {

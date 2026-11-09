@@ -21,6 +21,7 @@ import {
 	DialogHeader,
 } from "@/components/ui/dialog";
 import { labelPairs } from "@/lib/format";
+import { notAdded } from "@/lib/labels";
 import { useResource, useWrite } from "@/lib/resource";
 import { cn } from "@/lib/utils";
 import { labelRequirements } from "../fleet/WorkloadList";
@@ -123,7 +124,7 @@ function Editor({ w, onSaved }: { w: Workload; onSaved: () => void }) {
 		if (text.trim() === "") return draft;
 		const parsed = labelRequirements(text);
 		if (!parsed.ok) {
-			setTextError(parsed.error);
+			setTextError(notAdded(parsed.error));
 			return null;
 		}
 		const next = withLabels(draft, parsed.requirements);

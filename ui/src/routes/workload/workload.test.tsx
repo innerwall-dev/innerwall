@@ -1130,6 +1130,58 @@ describe("label editor", () => {
 		);
 	});
 
+	it("commits a label left pending on Review, and keeps text it cannot read as not added", async () => {
+		const stored: Record<string, string> = { env: "prod", role: "db" };
+		surface({
+			workload: () => ({ ...db, labels: stored }),
+			extra: [
+				{
+					method: "GET",
+					path: `/api/v1/workloads/${db.id}/labels`,
+					reply: () => labelsAt(stored, "sha256:aaa"),
+				},
+			],
+		});
+		const user = userEvent.setup();
+		renderApp(`/workloads/${db.id}`);
+		await user.click(
+			await screen.findByRole("button", { name: "Edit labels" }),
+		);
+		const dialog = await screen.findByRole("dialog", {
+			name: "Edit labels of db-1",
+		});
+		const input = await within(dialog).findByRole("textbox", {
+			name: "Add a label",
+		});
+		// Left pending and unreadable: Review stays on the form, the text
+		// stays in the field, and the refusal says it was not added.
+		await user.type(input, "tier=");
+		await user.click(
+			within(dialog).getByRole("button", { name: "Review change" }),
+		);
+		expect(input).toHaveValue("tier=");
+		expect(
+			within(dialog).getByText(
+				"tier has no value. The text in the field was not added.",
+			),
+		).toBeInTheDocument();
+		expect(
+			screen.queryByRole("dialog", { name: "Save these labels?" }),
+		).not.toBeInTheDocument();
+		// Left pending and readable: Review takes it.
+		await user.clear(input);
+		await user.type(input, "tier=gold");
+		await user.click(
+			within(dialog).getByRole("button", { name: "Review change" }),
+		);
+		const confirm = await screen.findByRole("dialog", {
+			name: "Save these labels?",
+		});
+		expect(
+			within(confirm).getByRole("list", { name: "Label changes" }),
+		).toHaveTextContent("addedtier=gold");
+	});
+
 	it("keeps the edit on a conflict and shows the labels as stored now", async () => {
 		let reads = 0;
 		const s = surface({

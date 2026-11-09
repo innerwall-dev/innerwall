@@ -3,6 +3,7 @@ import type { Finding } from "@/api/schema";
 import { LabelChip } from "@/components/fleet/status";
 import { Icon } from "@/components/Icon";
 import { SeverityNote } from "@/components/StatusGlyph";
+import { notAdded } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import type { Chip } from "./model";
 
@@ -130,7 +131,7 @@ export function FindingLines({
 // with commitOnBlur also when the field loses focus, so text typed and
 // left pending is committed before a button beside it submits. When
 // onAdd refuses the text with a reason, the text stays, marked, with the
-// reason under it, and nothing is added.
+// reason under it and the word that it was not added, and nothing is.
 export function AddInput({
 	label,
 	placeholder,
@@ -150,7 +151,7 @@ export function AddInput({
 		if (text.trim() === "") return;
 		const refused = onAdd(text);
 		if (refused) {
-			setRefusal(refused);
+			setRefusal(notAdded(refused));
 			return;
 		}
 		setText("");
