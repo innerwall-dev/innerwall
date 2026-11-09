@@ -11,7 +11,7 @@ One page: what to install, what the make targets do, how to regenerate code, and
 | buf | 1.72.0 | Proto lint, breaking-change detection, code generation |
 | sqlc | 1.31.1 | Compiles `internal/store/queries/*.sql` into Go |
 | goose | 3.28.0 | Applies `internal/store/migrations/` |
-| golangci-lint | 2.5.0 | Go lint; the config in `.golangci.yml` is the ruleset |
+| golangci-lint | 2.9.0 | Go lint; the config in `.golangci.yml` is the ruleset |
 | docker compose | any recent | `make dev` |
 
 `make tools` installs buf, sqlc, goose, and golangci-lint at the pinned versions into `$(go env GOPATH)/bin`. The protoc plugins (`protoc-gen-go`, `protoc-gen-go-grpc`, `protoc-gen-grpc-gateway`) are `tool` directives in `go.mod`; they need no separate install. Biome, Vitest, and the console's whole toolchain come with `npm ci` in `ui/`. Node is needed only to build or test the console: a Go build with `-tags noconsole` compiles a stub in place of the embedded console and never touches `ui/`.

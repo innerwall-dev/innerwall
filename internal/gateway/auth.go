@@ -172,6 +172,12 @@ func (a *authenticator) authenticate(ctx context.Context, fullMethod string) (co
 		}
 	}
 	if err := a.enroll.AdmitCredential(leaf.NotBefore, leaf.NotAfter, fullMethod == renewMethod); err != nil {
+		// Beyond the grace the agent retries forever; log it, as a
+		// retired refusal is (#221).
+		if errors.Is(err, enroll.ErrBeyondGrace) {
+			a.logger().Warn("refused a credential expired beyond the renewal grace",
+				"workload_id", id, "door", fullMethod, "expired_at", leaf.NotAfter, "grace", a.enroll.Grace())
+		}
 		return nil, status.Error(codes.Unauthenticated, err.Error())
 	}
 	// A retired identity is refused at every door, with nothing said to
