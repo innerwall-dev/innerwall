@@ -155,7 +155,7 @@ innerwall service list
 | Name | Description |
 |---|---|
 | `--name` | service name |
-| `--entry` | protocol and ports, e.g. `tcp:5432` or `tcp:6000-6010,7000` or `icmp`; a slash reads as the colon does (`tcp/5432`) (repeatable; replaces all entries on update) |
+| `--entry` | protocol and ports, e.g. `tcp:5432` or `tcp:6000-6010,7000` or `icmp`; a slash reads as the colon does (`tcp/5432`); a protocol alone (`tcp`) is every port, and a separator must be followed by ports (repeatable; replaces all entries on update) |
 
 `update` writes against the version it reads first, so a service changed meanwhile is refused. A `--name` renames it; with no `--entry` its entries stay as they are.
 

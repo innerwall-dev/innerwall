@@ -184,16 +184,16 @@ func FormatPortSpec(p PortRange) string {
 // the first ":" or "/", so the form every surface draws an entry in
 // ("tcp/5432") reads as its colon form does; neither character can
 // appear in a protocol name or a port spec, so no other input changes.
+// A protocol alone ("tcp") is every port. A separator says ports follow,
+// so the text after one is always port specs, even when it is empty:
+// "tcp:" is refused as an empty port spec rather than read as every
+// port, and an empty item ("tcp:5432,") is refused the same way.
 func EntrySpecDoc(s string) EntryDoc {
-	protoName, ports := s, ""
-	if i := strings.IndexAny(s, ":/"); i >= 0 {
-		protoName, ports = s[:i], s[i+1:]
+	i := strings.IndexAny(s, ":/")
+	if i < 0 {
+		return EntryDoc{Protocol: s}
 	}
-	d := EntryDoc{Protocol: protoName}
-	if strings.TrimSpace(ports) != "" {
-		d.Ports = strings.Split(ports, ",")
-	}
-	return d
+	return EntryDoc{Protocol: s[:i], Ports: strings.Split(s[i+1:], ",")}
 }
 
 // FormatEntrySpec is the inverse of EntrySpecDoc.
@@ -208,6 +208,10 @@ func FormatEntrySpec(e ServiceEntry) string {
 	return ProtocolName(e.Protocol) + ":" + strings.Join(specs, ",")
 }
 
+// emptyPortSpec is the detail of a port spec with nothing in it, such as
+// the text after a trailing separator ("tcp:") or between two commas.
+const emptyPortSpec = "empty; list the ports, or give the protocol alone for every port"
+
 // entryFromDoc converts one entry, adding a finding per field that does
 // not parse.
 func entryFromDoc(f *Findings, path string, d EntryDoc) ServiceEntry {
@@ -221,7 +225,13 @@ func entryFromDoc(f *Findings, path string, d EntryDoc) ServiceEntry {
 		if err != nil {
 			// The unreadable spec keeps its place, so every later port
 			// is admitted at its own index; the fault is at this one.
-			f.add(fmt.Sprintf("%s.ports[%d]", path, i), ErrBadPortSpec, spec)
+			detail := spec
+			if strings.TrimSpace(spec) == "" {
+				// An empty spec has no value to quote, so the finding
+				// says what to write instead.
+				detail = emptyPortSpec
+			}
+			f.add(fmt.Sprintf("%s.ports[%d]", path, i), ErrBadPortSpec, detail)
 		}
 		e.Ports = append(e.Ports, p)
 	}

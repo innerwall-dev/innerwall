@@ -100,7 +100,8 @@ export function pairSuggestion(q: URLSearchParams): Suggestion | null {
 	}
 	for (const text of q.getAll("service")) {
 		const svc = parseService(text);
-		if ("entry" in svc) s.entries.push(svc.entry);
+		if ("error" in svc) s.unread.push(`${text}: ${svc.error}`);
+		else if ("entry" in svc) s.entries.push(svc.entry);
 		else s.refs.push(svc.ref);
 	}
 	return s;

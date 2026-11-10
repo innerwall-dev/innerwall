@@ -429,6 +429,64 @@ describe("service definitions", () => {
 		});
 	});
 
+	it("refuses a separator with no ports and an empty port item, and creates nothing while one is in the field", async () => {
+		// #239: `tcp/` was read as every TCP port, and `tcp/5432,` dropped
+		// the empty item. A separator says ports follow; tcp alone is
+		// every port.
+		const estate = { rulesets: [web], services: [ssh], groups: [] };
+		const { calls } = surface(estate);
+		const posts = () =>
+			calls.filter((c) => c.method === "POST" && c.path === "/api/v1/services");
+		const user = userEvent.setup();
+		renderApp("/policy/services");
+		await user.click(
+			await screen.findByRole("button", { name: "New service" }),
+		);
+		const dialog = await screen.findByRole("dialog", { name: "New service" });
+		await user.type(within(dialog).getByLabelText("Name"), "postgres");
+		const add = within(dialog).getByRole("textbox", { name: "Add an entry" });
+		const create = within(dialog).getByRole("button", {
+			name: "Create service",
+		});
+		for (const [typed, reason] of [
+			[
+				"tcp/",
+				"A slash or a colon is followed by ports: list them, as in tcp/5432, or write tcp alone for every port (tcp/).",
+			],
+			[
+				"tcp:",
+				"A slash or a colon is followed by ports: list them, as in tcp/5432, or write tcp alone for every port (tcp:).",
+			],
+			[
+				"tcp/5432,",
+				"A port list has an empty item: remove the extra comma (tcp/5432,).",
+			],
+		] as const) {
+			await user.clear(add);
+			await user.type(add, `${typed}{Enter}`);
+			expect(add).toHaveValue(typed);
+			expect(dialog).toHaveTextContent(
+				`${reason} The text in the field was not added.`,
+			);
+			expect(within(dialog).queryAllByTestId("chip")).toHaveLength(0);
+			await user.click(create);
+			expect(add).toHaveValue(typed);
+			expect(posts()).toHaveLength(0);
+		}
+		// The protocol alone is every port, and is written as such.
+		await user.clear(add);
+		await user.type(add, "tcp");
+		await user.click(create);
+		await waitFor(() =>
+			expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+		);
+		expect(posts()).toHaveLength(1);
+		expect(posts()[0]?.body).toEqual({
+			name: "postgres",
+			entries: [{ protocol: "tcp" }],
+		});
+	});
+
 	it("saves no edit while the entry field holds text it refused, and saves once it is cleared", async () => {
 		const estate = { rulesets: [web], services: [ssh], groups: [vpn] };
 		const puts: unknown[] = [];
