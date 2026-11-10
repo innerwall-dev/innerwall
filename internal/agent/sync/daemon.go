@@ -68,6 +68,12 @@ type Config struct {
 	// RenewalError reports the reason the last automatic credential
 	// renewal failed, or empty, carried on every heartbeat. Empty when nil.
 	RenewalError func() string
+	// CheckRenewal is called when the stream is established and on each
+	// heartbeat tick, moments the daemon has demonstrably reached the
+	// control plane, so the renewer compares the wall clock with its
+	// schedule then and acts on a renewal point that passed while the host
+	// was suspended. It must not block. Nothing when nil.
+	CheckRenewal func()
 	// OwnedTable reads whether the owned firewall table is in the kernel,
 	// carried on every heartbeat, so a table removed behind the daemon's
 	// back (the local kill switch) is reported within one heartbeat.
@@ -269,6 +275,7 @@ func (d *Daemon) runSession(ctx context.Context, onEstablished func()) error {
 	if onEstablished != nil {
 		onEstablished()
 	}
+	d.checkRenewal()
 	if d.cfg.OnSyncConfig != nil {
 		d.cfg.OnSyncConfig(cfg)
 	}
@@ -290,6 +297,7 @@ func (d *Daemon) runSession(ctx context.Context, onEstablished func()) error {
 				return err
 			}
 		case <-heartbeat.C:
+			d.checkRenewal()
 			if err := out.send(&innerwallv1.SyncRequest{Msg: &innerwallv1.SyncRequest_Heartbeat{Heartbeat: &innerwallv1.Heartbeat{
 				UptimeSeconds:          uint64(d.uptime().Seconds()),
 				DroppedFlowRecords:     d.dropped(),
@@ -340,6 +348,12 @@ func (d *Daemon) renewalError() string {
 		return d.cfg.RenewalError()
 	}
 	return ""
+}
+
+func (d *Daemon) checkRenewal() {
+	if d.cfg.CheckRenewal != nil {
+		d.cfg.CheckRenewal()
+	}
 }
 
 func (d *Daemon) uptime() time.Duration {

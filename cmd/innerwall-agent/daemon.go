@@ -174,6 +174,7 @@ func daemon(ctx context.Context, o daemonOptions) error {
 		DroppedFlowRecords: buffer.Dropped,
 		SourceOverruns:     gaps.Overruns,
 		RenewalError:       renewer.LastError,
+		CheckRenewal:       renewer.Check,
 		OwnedTable:         presence.Check,
 		OnSyncConfig: func(cfg *innerwallv1.SyncConfig) {
 			collector.SetConfig(cfg)
