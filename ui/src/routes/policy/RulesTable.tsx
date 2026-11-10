@@ -535,6 +535,9 @@ function EditRow({
 							label="Add a service"
 							placeholder="tcp/443 · service name"
 							className="w-full"
+							// A service typed and left pending is committed
+							// before Save or Dry run reads the row, as a peer is.
+							commitOnBlur
 							onRefused={refused?.report(rowFields.services)}
 							onAdd={(text) => {
 								const s = parseService(text);

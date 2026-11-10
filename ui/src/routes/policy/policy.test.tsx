@@ -2069,6 +2069,41 @@ describe("policy editor", () => {
 		);
 	});
 
+	it("commits a service left pending when Save is clicked", async () => {
+		// INN-151: the services field commits on leaving it, as the peer
+		// field does, so the rule saved is the one on screen.
+		const s: ReturnType<typeof surface> = surface({
+			extra: [createsRule(() => s)],
+		});
+		const user = userEvent.setup();
+		renderApp("/policy?ruleset=checkout-inbound");
+		await rulesTable();
+		await user.click(screen.getByRole("button", { name: "Add rule" }));
+		const editing = await row("New rule");
+		const peer = within(editing).getByRole("textbox", { name: "Add a peer" });
+		const svc = within(editing).getByRole("textbox", { name: "Add a service" });
+		await user.type(peer, "app=web{Enter}");
+		// An entry left by clicking another field is taken as one.
+		await user.type(svc, "tcp:5432");
+		await user.click(peer);
+		expect(svc).toHaveValue("");
+		expect(within(editing).getAllByTestId("chip")).toHaveLength(2);
+		// A definition's name left pending, then Save: taken on the way.
+		await user.type(svc, "ssh");
+		await user.click(
+			screen.getByRole("button", { name: /Save — applies to 5 workloads now/ }),
+		);
+		expect(await screen.findByRole("status")).toHaveTextContent(/^Saved /);
+		expect(writes(s.calls, "POST", "/rules")[0]?.body).toEqual({
+			direction: "inbound",
+			enabled: true,
+			description: "",
+			peers: [{ workloads: { app: ["web"] } }],
+			services: ["ssh"],
+			entries: [{ protocol: "tcp", ports: ["5432"] }],
+		});
+	});
+
 	it("creates no ruleset while the scope's field holds text it refused", async () => {
 		const created = ruleset("ledger-inbound", { app: ["ledger"] });
 		const s = surface({
