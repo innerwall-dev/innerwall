@@ -47,10 +47,16 @@ type RetireTx interface {
 // implements it; a process that holds no streams, such as the command
 // line, has none, and the directive alone reaches the replica that does.
 type Streams interface {
-	// EndRetired ends the live stream of a retired workload, if this
-	// process holds it, with the refusal every door gives a retired
-	// identity, and reports whether it held one.
-	EndRetired(id identity.WorkloadID) bool
+	// WatchRetiring is called before a retirement of id begins and
+	// returns end, which the retirement calls once its transaction has
+	// finished, saying whether it committed. When it committed, end
+	// ends the workload's live stream, if this process holds it, with
+	// the refusal every door gives a retired identity. Either way end
+	// reports whether a stream of the workload that this process held
+	// ended in between, by whichever path ended it: this lever, the end
+	// directive this process also hears once the retirement commits, or
+	// a stream write that found the workload retired.
+	WatchRetiring(id identity.WorkloadID) (end func(committed bool) bool)
 }
 
 // Retirement acknowledges one retirement: the instant, the render it
@@ -71,14 +77,28 @@ type Retirement struct {
 // the retirement instant, renders so that the workload's addresses leave
 // every peer set and every workload whose output changed advances, and
 // publishes the directive that ends its live stream on whichever replica
-// holds it. Once committed, a stream this process holds is ended directly.
-// The row stays, so history keeps naming the identity. The caller is the
-// principal its context carries; one without is refused.
+// holds it. Once committed, a stream this process holds is ended directly,
+// and the log line says whether this process's stream of the workload
+// ended, whichever path ended it. The row stays, so history keeps naming
+// the identity. The caller is the principal its context carries; one
+// without is refused.
 func (s *Service) Retire(ctx context.Context, id identity.WorkloadID) (*Retirement, error) {
 	p, ok := authn.FromContext(ctx)
 	if !ok {
 		return nil, authn.ErrNoPrincipal
 	}
+	endHere := func(bool) bool { return false }
+	if s.Streams != nil {
+		endHere = s.Streams.WatchRetiring(id)
+	}
+	// The watch ends on every path out of here, a panic in the
+	// transaction included, so it never outlives the call.
+	watching := true
+	defer func() {
+		if watching {
+			endHere(false)
+		}
+	}()
 	res := &Retirement{ID: id}
 	err := s.Store.RetireTx(ctx, func(ctx context.Context, tx RetireTx) error {
 		subj, err := tx.LockWorkload(ctx, id)
@@ -110,10 +130,11 @@ func (s *Service) Retire(ctx context.Context, id identity.WorkloadID) (*Retireme
 		res.RetiredAt, res.Rendered = at, report
 		return nil
 	})
+	watching = false
+	held := endHere(err == nil)
 	if err != nil {
 		return nil, err
 	}
-	held := s.Streams != nil && s.Streams.EndRetired(id)
 	attrs := []any{
 		"workload_id", id, "retired_at", res.RetiredAt, "operator", operatorName(p),
 		"versions_advanced", len(res.Rendered.Changed), "stream_ended_here", held,

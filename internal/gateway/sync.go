@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"slices"
 	"sync"
 	"time"
 
@@ -129,10 +130,23 @@ type sessions struct {
 	// after that, so the mark can never land on top of the newer stream's
 	// own state and record a live workload offline.
 	marking map[identity.WorkloadID]chan struct{}
+	// watching holds, per workload whose retirement this process is
+	// making, one watch per retirement call in flight, each recording
+	// whether a stream of the workload has left the registry since the
+	// call began (Server.WatchRetiring).
+	watching map[identity.WorkloadID][]*watch
 }
 
+// watch is one retirement call's record of whether a stream of its
+// workload left the registry while the call ran.
+type watch struct{ left bool }
+
 func newSessions() *sessions {
-	return &sessions{live: map[identity.WorkloadID]*session{}, marking: map[identity.WorkloadID]chan struct{}{}}
+	return &sessions{
+		live:     map[identity.WorkloadID]*session{},
+		marking:  map[identity.WorkloadID]chan struct{}{},
+		watching: map[identity.WorkloadID][]*watch{},
+	}
 }
 
 // add registers sess, ending any earlier stream of the same workload. Two
@@ -174,6 +188,9 @@ func (r *sessions) remove(sess *session) (marked func(), ok bool) {
 		return nil, false
 	}
 	delete(r.live, sess.id)
+	for _, w := range r.watching[sess.id] {
+		w.left = true
+	}
 	done := make(chan struct{})
 	r.marking[sess.id] = done
 	return func() {
@@ -182,6 +199,29 @@ func (r *sessions) remove(sess *session) (marked func(), ok bool) {
 		delete(r.marking, sess.id)
 		close(done)
 	}, true
+}
+
+// watch begins recording whether a stream of id leaves the registry.
+func (r *sessions) watch(id identity.WorkloadID) *watch {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	w := &watch{}
+	r.watching[id] = append(r.watching[id], w)
+	return w
+}
+
+// unwatch ends w and reports whether a stream of id left the registry
+// while it was in place.
+func (r *sessions) unwatch(id identity.WorkloadID, w *watch) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	rest := slices.DeleteFunc(r.watching[id], func(x *watch) bool { return x == w })
+	if len(rest) == 0 {
+		delete(r.watching, id)
+	} else {
+		r.watching[id] = rest
+	}
+	return w.left
 }
 
 func (r *sessions) get(id identity.WorkloadID) *session {
