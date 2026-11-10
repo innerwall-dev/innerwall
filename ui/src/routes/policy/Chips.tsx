@@ -1,4 +1,11 @@
-import { type KeyboardEvent, type ReactNode, useState } from "react";
+import {
+	type KeyboardEvent,
+	type ReactNode,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import type { Finding } from "@/api/schema";
 import { LabelChip } from "@/components/fleet/status";
 import { Icon } from "@/components/Icon";
@@ -126,36 +133,84 @@ export function FindingLines({
 	);
 }
 
+// RefusedText is a form's record of which of its chip fields hold text
+// they refused and did not add. A save of the form asks it first and
+// writes nothing while any of the fields it writes holds such text, as
+// the token mint and the label editor stay on their form when their
+// field's text is refused: saving what the chips hold without the typed
+// requirement writes a broader scope or peer set than the operator
+// composed, and a policy write broader than intended is the costly
+// direction of error. The form is not complete until every field's text
+// has been taken or removed. This is the form's own completeness,
+// checked here; it is not a dry run, and the control plane still admits
+// or refuses the write. Valid pending text never blocks (the field takes
+// it as it loses focus), nor does an empty field.
+export interface RefusedText {
+	// report is the onRefused of the field named.
+	report: (field: string) => (holds: boolean) => void;
+	// holds says whether any of the fields named holds refused text.
+	holds: (...fields: string[]) => boolean;
+}
+
+export function useRefusedText(): RefusedText {
+	// A ref, not state: a save reads it in the same event that a field
+	// leaving focus updates it, and nothing draws from it.
+	const held = useRef(new Set<string>());
+	return useMemo(
+		() => ({
+			report: (field) => (holds) => {
+				if (holds) held.current.add(field);
+				else held.current.delete(field);
+			},
+			holds: (...fields) => fields.some((f) => held.current.has(f)),
+		}),
+		[],
+	);
+}
+
 // AddInput is the field at the end of a chip list: what is typed becomes
 // one or more elements on Enter, read as the placeholder describes, and
 // with commitOnBlur also when the field loses focus, so text typed and
 // left pending is committed before a button beside it submits. When
 // onAdd refuses the text with a reason, the text stays, marked, with the
 // reason under it and the word that it was not added, and nothing is.
+// onRefused hears whether the field holds text it refused: true as it
+// refuses, false once the text is edited, taken, or the field goes, so
+// the form's save can refuse to write without it (see RefusedText).
 export function AddInput({
 	label,
 	placeholder,
 	onAdd,
+	onRefused,
 	commitOnBlur = false,
 	className,
 }: {
 	label: string;
 	placeholder: string;
 	onAdd: (text: string) => string | undefined;
+	onRefused?: (holds: boolean) => void;
 	commitOnBlur?: boolean;
 	className?: string;
 }) {
 	const [text, setText] = useState("");
 	const [refusal, setRefusal] = useState<string | null>(null);
+	const reported = useRef(onRefused);
+	reported.current = onRefused;
+	// A field that goes holds nothing.
+	useEffect(() => () => reported.current?.(false), []);
+	const refuse = (reason: string | null) => {
+		setRefusal(reason);
+		reported.current?.(reason !== null);
+	};
 	const commit = () => {
 		if (text.trim() === "") return;
 		const refused = onAdd(text);
 		if (refused) {
-			setRefusal(notAdded(refused));
+			refuse(notAdded(refused));
 			return;
 		}
 		setText("");
-		setRefusal(null);
+		refuse(null);
 	};
 	const onKeyDown = (ev: KeyboardEvent<HTMLInputElement>) => {
 		if (ev.key !== "Enter") return;
@@ -171,7 +226,7 @@ export function AddInput({
 				value={text}
 				onChange={(ev) => {
 					setText(ev.target.value);
-					setRefusal(null);
+					refuse(null);
 				}}
 				onKeyDown={onKeyDown}
 				onBlur={commitOnBlur ? commit : undefined}

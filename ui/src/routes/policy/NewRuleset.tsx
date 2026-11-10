@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useWrite } from "@/lib/resource";
 import { cn } from "@/lib/utils";
-import { FindingLines } from "./Chips";
+import { FindingLines, useRefusedText } from "./Chips";
 import type { EditorData } from "./data";
 import { useScopeMatch } from "./hooks";
 import { editorPath, type Suggestion, viaText } from "./link";
@@ -49,6 +49,10 @@ export function NewRuleset({
 	const [findings, setFindings] = useState<Finding[]>([]);
 	const [failure, setFailure] = useState<string | null>(null);
 	const [saving, setSaving] = useState(false);
+	// Creating writes the scope, so it writes nothing while the scope's
+	// field holds text it refused (see RefusedText).
+	const refusedText = useRefusedText();
+	const onScopeRefused = refusedText.report("scope");
 	const empty = Object.keys(scope).length === 0;
 	const live = useScopeMatch(empty ? null : scope);
 	const count = live.match?.status === "ready" ? live.match.data.count : null;
@@ -67,6 +71,7 @@ export function NewRuleset({
 	);
 
 	async function create() {
+		if (refusedText.holds("scope")) return;
 		setSaving(true);
 		setFindings([]);
 		setFailure(null);
@@ -166,6 +171,7 @@ export function NewRuleset({
 					setFindings((f) => f.filter((x) => !x.path.startsWith("scope")));
 					setScope(s);
 				}}
+				onRefused={onScopeRefused}
 			/>
 			{rest.length > 0 ? <FindingLines findings={rest} /> : null}
 			{failure ? (

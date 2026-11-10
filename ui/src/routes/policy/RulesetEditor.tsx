@@ -22,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useResource, useWrite } from "@/lib/resource";
 import { cn } from "@/lib/utils";
-import { ChipView, FindingLines } from "./Chips";
+import { ChipView, FindingLines, useRefusedText } from "./Chips";
 import { DryRunCard, type DryRunState } from "./DryRunCard";
 import { type EditorData, loadTraffic } from "./data";
 import { useScopeMatch } from "./hooks";
@@ -54,7 +54,7 @@ import {
 	shortRuleId,
 	type Unknown,
 } from "./model";
-import { type RowState, RulesCard, saveKey } from "./RulesTable";
+import { type RowState, RulesCard, rowFields, saveKey } from "./RulesTable";
 import { ScopeCard } from "./ScopeCard";
 
 // A notice is the outcome of a write, said where the write was made: a
@@ -89,6 +89,9 @@ function suggestedRow(s: Suggestion): RowState {
 		refused: null,
 	};
 }
+
+// scopeField names the scope's requirement field to RefusedText.
+const scopeField = "scope";
 
 // RulesetEditor is one ruleset, edited live: its header with its name,
 // description, and enabled switch, the immediate-effect statement, the
@@ -132,6 +135,9 @@ export function RulesetEditor({
 	const [aboutRefused, setAboutRefused] = useState<Finding[]>([]);
 	const [scopeDraft, setScopeDraft] = useState<Selector | null>(null);
 	const [scopeRefused, setScopeRefused] = useState<Finding[]>([]);
+	// Which chip fields hold text they refused: a save that writes one of
+	// them writes nothing until its text is taken or removed.
+	const refusedText = useRefusedText();
 	// The rule a pair's traffic was attributed to, when this ruleset holds
 	// it; otherwise the pair opens a new rule. Both are decided once, as
 	// the editor opens.
@@ -319,6 +325,7 @@ export function RulesetEditor({
 
 	async function saveScope() {
 		if (!scopeDraft) return;
+		if (refusedText.holds(scopeField)) return;
 		setBusy(true);
 		setHeadNotice(null);
 		setScopeRefused([]);
@@ -414,6 +421,7 @@ export function RulesetEditor({
 			await saveBoth(row, scopeDraft);
 			return;
 		}
+		if (refusedText.holds(rowFields.peers, rowFields.services)) return;
 		const d = row.draft;
 		const input = draftInput(d);
 		setSaving(true);
@@ -461,6 +469,11 @@ export function RulesetEditor({
 	// previews lands at once, or nothing does. Saving the rule first would
 	// apply it under the scope as saved, a state never previewed.
 	async function saveBoth(current: RowState, scope: Selector) {
+		// The write carries the scope and the row, so text refused in a
+		// field of either holds it.
+		if (refusedText.holds(scopeField, rowFields.peers, rowFields.services)) {
+			return;
+		}
 		const d = current.draft;
 		// The row is written as part of the ruleset as read now, so a rule
 		// that moved, or went, since the row opened is a conflict here
@@ -766,6 +779,7 @@ export function RulesetEditor({
 					setScopeRefused([]);
 					setScopeDraft(s);
 				}}
+				onRefused={refusedText.report(scopeField)}
 				footer={
 					edited ? (
 						<div className="flex items-center gap-2 border-t border-hairline pt-3">
@@ -814,6 +828,7 @@ export function RulesetEditor({
 					edited && scopeDraft ? { scope: scopeDraft, count: draftCount } : null
 				}
 				saving={saving}
+				refused={refusedText}
 				onToggle={(r, on) => void toggleRule(r, on)}
 				onEdit={(r) => editRule(r)}
 				onAdd={() => editRule(null)}

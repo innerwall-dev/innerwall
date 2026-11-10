@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { count } from "@/lib/format";
 import type { Resource } from "@/lib/resource";
 import { cn } from "@/lib/utils";
-import { AddInput, ChipView, FindingLines } from "./Chips";
+import { AddInput, ChipView, FindingLines, type RefusedText } from "./Chips";
 import { DefinitionDialog, kindText } from "./DefinitionDialog";
 import type { Traffic } from "./data";
 import {
@@ -51,6 +51,10 @@ export function rowBlocked(
 	return row.refused !== null && row.refused === saveKey(row.draft, scope);
 }
 
+// rowFields name the row's chip fields to the editor's RefusedText: the
+// row's save writes nothing while either holds text it refused.
+export const rowFields = { peers: "row.peers", services: "row.services" };
+
 // PendingScope is an unsaved scope edit beside the row: the row's save
 // then writes the two together, to the workloads the edited scope
 // matches.
@@ -78,6 +82,7 @@ export function RulesCard({
 	inScope,
 	pendingScope,
 	saving,
+	refused,
 	onToggle,
 	onEdit,
 	onAdd,
@@ -98,6 +103,8 @@ export function RulesCard({
 	inScope: number | null;
 	pendingScope: PendingScope | null;
 	saving: boolean;
+	// refused hears the row's chip fields (see rowFields).
+	refused?: RefusedText;
 	onToggle: (rule: Rule, on: boolean) => void;
 	onEdit: (rule: Rule) => void;
 	onAdd: () => void;
@@ -173,6 +180,7 @@ export function RulesCard({
 								key={r.id}
 								row={row}
 								names={names}
+								refused={refused}
 								onDraft={onDraft}
 								onDefined={onDefined}
 							/>
@@ -193,6 +201,7 @@ export function RulesCard({
 						<EditRow
 							row={row}
 							names={names}
+							refused={refused}
 							onDraft={onDraft}
 							onDefined={onDefined}
 						/>
@@ -387,11 +396,13 @@ function SimulationCell({
 function EditRow({
 	row,
 	names,
+	refused,
 	onDraft,
 	onDefined,
 }: {
 	row: RowState;
 	names: Names;
+	refused?: RefusedText;
 	onDraft: (d: RuleDraft) => void;
 	onDefined: (u: Unknown, createdAs: string) => void;
 }) {
@@ -472,6 +483,7 @@ function EditRow({
 							// A peer typed and left pending is committed before
 							// Save or Dry run reads the row.
 							commitOnBlur
+							onRefused={refused?.report(rowFields.peers)}
 							onAdd={(text) => {
 								const peer = parsePeer(text);
 								if ("error" in peer) return peer.error;
@@ -523,6 +535,10 @@ function EditRow({
 							label="Add a service"
 							placeholder="tcp/443 · service name"
 							className="w-full"
+							// A service typed and left pending is committed
+							// before Save or Dry run reads the row, as a peer is.
+							commitOnBlur
+							onRefused={refused?.report(rowFields.services)}
 							onAdd={(text) => {
 								const s = parseService(text);
 								onDraft(
@@ -587,7 +603,10 @@ function EditRow({
 // write, and the footer says why: the rule saved on its own would land
 // under the scope as saved, a state no dry run here previewed. Nothing
 // here gates a save on a dry run: the control plane admits or refuses
-// the write.
+// the write. What the save does check is the form's own completeness: it
+// writes nothing while a chip field of the row (or, saved with it, of
+// the scope) holds text it refused, which stays beside the field with
+// its reason (see RefusedText).
 function Footer({
 	row,
 	inScope,
