@@ -191,10 +191,23 @@ func TestEntrySpecDocReadsEitherSeparator(t *testing.T) {
 		{spec: "tcp/6000-6010,7000", same: "tcp:6000-6010,7000", doc: policy.EntryDoc{Protocol: "tcp", Ports: []string{"6000-6010", "7000"}}},
 		{spec: "TCP/5432", same: "TCP:5432", doc: policy.EntryDoc{Protocol: "TCP", Ports: []string{"5432"}}},
 		{spec: "icmp", doc: policy.EntryDoc{Protocol: "icmp"}},
-		// A separator with nothing after it is no ports, every port, as
-		// the colon form has always read.
-		{spec: "tcp/", same: "tcp:", doc: policy.EntryDoc{Protocol: "tcp"}},
-		{spec: "tcp:", doc: policy.EntryDoc{Protocol: "tcp"}},
+		// A protocol alone is every port.
+		{spec: "tcp", doc: policy.EntryDoc{Protocol: "tcp"}},
+		{spec: "udp", doc: policy.EntryDoc{Protocol: "udp"}},
+		// A separator says ports follow: one with nothing after it is an
+		// empty port spec, refused, not every port.
+		{spec: "tcp/", same: "tcp:", doc: policy.EntryDoc{Protocol: "tcp", Ports: []string{""}}, path: "entries[0].ports[0]", fault: policy.ErrBadPortSpec},
+		{spec: "tcp:", doc: policy.EntryDoc{Protocol: "tcp", Ports: []string{""}}, path: "entries[0].ports[0]", fault: policy.ErrBadPortSpec},
+		{spec: "udp/", same: "udp:", doc: policy.EntryDoc{Protocol: "udp", Ports: []string{""}}, path: "entries[0].ports[0]", fault: policy.ErrBadPortSpec},
+		{spec: "udp:", doc: policy.EntryDoc{Protocol: "udp", Ports: []string{""}}, path: "entries[0].ports[0]", fault: policy.ErrBadPortSpec},
+		{spec: "tcp: ", same: "tcp/ ", doc: policy.EntryDoc{Protocol: "tcp", Ports: []string{" "}}, path: "entries[0].ports[0]", fault: policy.ErrBadPortSpec},
+		// An empty item is refused at its own index, never skipped.
+		{spec: "tcp:5432,", same: "tcp/5432,", doc: policy.EntryDoc{Protocol: "tcp", Ports: []string{"5432", ""}}, path: "entries[0].ports[1]", fault: policy.ErrBadPortSpec},
+		{spec: "tcp:,5432", same: "tcp/,5432", doc: policy.EntryDoc{Protocol: "tcp", Ports: []string{"", "5432"}}, path: "entries[0].ports[0]", fault: policy.ErrBadPortSpec},
+		{spec: "tcp:5432,,6000", same: "tcp/5432,,6000", doc: policy.EntryDoc{Protocol: "tcp", Ports: []string{"5432", "", "6000"}}, path: "entries[0].ports[1]", fault: policy.ErrBadPortSpec},
+		// An empty protocol is refused.
+		{spec: "", doc: policy.EntryDoc{}, path: "entries[0].protocol", fault: policy.ErrBadProtocol},
+		{spec: ":5432", same: "/5432", doc: policy.EntryDoc{Protocol: "", Ports: []string{"5432"}}, path: "entries[0].protocol", fault: policy.ErrBadProtocol},
 		// Refusals stay refusals, at the layer that refused them before.
 		{spec: "http/80", same: "http:80", doc: policy.EntryDoc{Protocol: "http", Ports: []string{"80"}}, path: "entries[0].protocol", fault: policy.ErrBadProtocol},
 		{spec: "tcp:/53", doc: policy.EntryDoc{Protocol: "tcp", Ports: []string{"/53"}}, path: "entries[0].ports[0]", fault: policy.ErrBadPortSpec},
@@ -227,6 +240,27 @@ func TestEntrySpecDocReadsEitherSeparator(t *testing.T) {
 				t.Fatalf("%q: findings = %v, want one %v at %s", tc.spec, f, tc.fault, tc.path)
 			}
 		})
+	}
+}
+
+// An empty port spec has no value to quote, so its finding says both
+// ways to write what was meant.
+func TestEmptyPortSpecFindingSaysWhatToWrite(t *testing.T) {
+	for _, spec := range []string{"tcp:", "tcp/", "tcp: ", "tcp:5432,"} {
+		svc := policy.ServiceFromDoc(&policy.ServiceDoc{Name: "pg", Entries: []policy.EntryDoc{policy.EntrySpecDoc(spec)}})
+		f := policy.AsFindings(policy.ValidateService(svc))
+		if f == nil || len(f.Errors) != 1 {
+			t.Fatalf("%q: findings = %v, want one", spec, f)
+		}
+		const want = "port must be a number or a start-end range (empty; list the ports, or give the protocol alone for every port)"
+		if got := f.Errors[0].Message(); got != want {
+			t.Fatalf("%q: message = %q, want %q", spec, got, want)
+		}
+	}
+	// A spec with text in it still quotes that text.
+	svc := policy.ServiceFromDoc(&policy.ServiceDoc{Name: "pg", Entries: []policy.EntryDoc{policy.EntrySpecDoc("tcp:many")}})
+	if got := policy.AsFindings(policy.ValidateService(svc)).Errors[0].Message(); got != "port must be a number or a start-end range (many)" {
+		t.Fatalf("message = %q", got)
 	}
 }
 
