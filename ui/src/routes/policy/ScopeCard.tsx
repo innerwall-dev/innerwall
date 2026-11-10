@@ -30,6 +30,7 @@ export function ScopeCard({
 	match,
 	findings,
 	onChange,
+	onRefused,
 	footer,
 }: {
 	scope: Selector;
@@ -38,6 +39,9 @@ export function ScopeCard({
 	match: Resource<ScopeMatch> | null;
 	findings: { keys: Record<string, Finding[]>; whole: Finding[] };
 	onChange: (scope: Selector) => void;
+	// onRefused hears whether the requirement field holds text it
+	// refused, which the scope's save will not write without.
+	onRefused?: (holds: boolean) => void;
 	footer?: ReactNode;
 }) {
 	const keys = Object.keys(scope).sort();
@@ -77,6 +81,7 @@ export function ScopeCard({
 							// A requirement typed and left pending is committed
 							// before Create or Save reads the scope.
 							commitOnBlur
+							onRefused={onRefused}
 							onAdd={(text) => {
 								// A paste of several requirements adds each; text
 								// outside the label grammar adds nothing.

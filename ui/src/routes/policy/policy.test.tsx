@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type {
@@ -1806,6 +1806,314 @@ describe("policy editor", () => {
 			}),
 		);
 		expect(await screen.findByRole("status")).toHaveTextContent(/^Saved /);
+	});
+
+	// INN-153: a save that would leave out text a chip field refused
+	// writes nothing until that text is fixed, so taken, or cleared.
+	const writes = (
+		calls: { method: string; path: string; body: unknown }[],
+		method: string,
+		path: string,
+	) => calls.filter((c) => c.method === method && c.path.endsWith(path));
+
+	function savesRuleset(into: () => ReturnType<typeof surface>): Route {
+		return {
+			method: "PUT",
+			path: `/api/v1/rulesets/${checkout.id}`,
+			reply: (body) => {
+				const b = body as RulesetInput;
+				const saved = {
+					...checkout,
+					scope: b.scope,
+					rules: b.rules.map((r, i) =>
+						rule({
+							...(r as object),
+							id: r.id ?? `7a000000-0000-4000-8000-00000000009${i}`,
+							version: "1",
+						}),
+					),
+					version: "8",
+				};
+				into().setRulesets([saved, auth, billing]);
+				return { status: 200, json: saved };
+			},
+		};
+	}
+
+	function createsRule(into: () => ReturnType<typeof surface>): Route {
+		return {
+			method: "POST",
+			path: `/api/v1/rulesets/${checkout.id}/rules`,
+			reply: (body) => {
+				const created = rule({
+					...(body as object),
+					id: "7a000000-0000-4000-8000-000000000097",
+					version: "1",
+				});
+				into().setRulesets([
+					{ ...checkout, rules: [...checkout.rules, created] },
+					auth,
+					billing,
+				]);
+				return { status: 201, json: created };
+			},
+		};
+	}
+
+	it("writes no scope while its field holds text it refused, and writes the scope once the text is fixed", async () => {
+		const s: ReturnType<typeof surface> = surface({
+			extra: [savesRuleset(() => s)],
+		});
+		const user = userEvent.setup();
+		renderApp("/policy?ruleset=checkout-inbound");
+		await waitFor(() =>
+			expect(screen.getByTestId("match-count")).toHaveTextContent("5"),
+		);
+		await user.click(screen.getByRole("button", { name: "Remove env" }));
+		const add = screen.getByRole("textbox", {
+			name: "Add a scope requirement",
+		});
+		// tier= left in the field: Save scope would write app=checkout
+		// alone, a broader scope than the one composed. It writes nothing.
+		await user.type(add, "tier=");
+		await user.click(screen.getByRole("button", { name: /^Save scope/ }));
+		expect(add).toHaveValue("tier=");
+		expect(add).toHaveAttribute("aria-invalid", "true");
+		expect(
+			screen.getByText(
+				"tier has no value. The text in the field was not added.",
+			),
+		).toBeInTheDocument();
+		// Asked again, it still writes nothing: the form stays as it is.
+		await user.click(screen.getByRole("button", { name: /^Save scope/ }));
+		expect(writes(s.calls, "PUT", `/rulesets/${checkout.id}`)).toHaveLength(0);
+		expect(screen.queryByRole("status")).not.toBeInTheDocument();
+		// Fixed and left pending: taken as Save scope is clicked, and written.
+		await user.clear(add);
+		await user.type(add, "tier=api");
+		await user.click(screen.getByRole("button", { name: /^Save scope/ }));
+		expect(await screen.findByRole("status")).toHaveTextContent(
+			/^Saved the scope of checkout-inbound/,
+		);
+		const puts = writes(s.calls, "PUT", `/rulesets/${checkout.id}`);
+		expect(puts).toHaveLength(1);
+		expect((puts[0]?.body as RulesetInput | undefined)?.scope).toEqual({
+			app: ["checkout"],
+			tier: ["api"],
+		});
+	});
+
+	it("writes no scope from the keyboard either, and writes it once the refused text is cleared", async () => {
+		const s: ReturnType<typeof surface> = surface({
+			extra: [savesRuleset(() => s)],
+		});
+		const user = userEvent.setup();
+		renderApp("/policy?ruleset=checkout-inbound");
+		await waitFor(() =>
+			expect(screen.getByTestId("match-count")).toHaveTextContent("5"),
+		);
+		await user.click(screen.getByRole("button", { name: "Remove env" }));
+		const add = screen.getByRole("textbox", {
+			name: "Add a scope requirement",
+		});
+		// Refused on Enter, then Save scope pressed from the keyboard.
+		await user.type(add, "tier={Enter}");
+		const save = screen.getByRole("button", { name: /^Save scope/ });
+		act(() => save.focus());
+		await user.keyboard("{Enter}");
+		await user.keyboard(" ");
+		expect(add).toHaveValue("tier=");
+		expect(writes(s.calls, "PUT", `/rulesets/${checkout.id}`)).toHaveLength(0);
+		// Refused, edited, refused again on leaving the field for Save.
+		await user.clear(add);
+		await user.type(add, "zone=");
+		act(() => save.focus());
+		await user.keyboard("{Enter}");
+		expect(
+			screen.getByText(
+				"zone has no value. The text in the field was not added.",
+			),
+		).toBeInTheDocument();
+		expect(writes(s.calls, "PUT", `/rulesets/${checkout.id}`)).toHaveLength(0);
+		// An empty field holds nothing: cleared, the save goes ahead.
+		await user.clear(add);
+		act(() => save.focus());
+		await user.keyboard("{Enter}");
+		expect(await screen.findByRole("status")).toHaveTextContent(
+			/^Saved the scope of checkout-inbound/,
+		);
+		const puts = writes(s.calls, "PUT", `/rulesets/${checkout.id}`);
+		expect(puts).toHaveLength(1);
+		expect((puts[0]?.body as RulesetInput | undefined)?.scope).toEqual({
+			app: ["checkout"],
+		});
+	});
+
+	it("writes no rule while its peer field holds text it refused, by click or key, and writes it once the text is cleared", async () => {
+		const s: ReturnType<typeof surface> = surface({
+			extra: [createsRule(() => s)],
+		});
+		const user = userEvent.setup();
+		renderApp("/policy?ruleset=checkout-inbound");
+		await rulesTable();
+		await user.click(screen.getByRole("button", { name: "Add rule" }));
+		const editing = await row("New rule");
+		const peer = within(editing).getByRole("textbox", { name: "Add a peer" });
+		const svc = within(editing).getByRole("textbox", { name: "Add a service" });
+		await user.type(peer, "app=web{Enter}");
+		await user.type(svc, "tcp/443{Enter}");
+		// role= left in the field: the save would admit every app=web
+		// workload, not only those with the role typed.
+		await user.type(peer, "role=");
+		const save = screen.getByRole("button", {
+			name: /Save — applies to 5 workloads now/,
+		});
+		await user.click(save);
+		expect(peer).toHaveValue("role=");
+		expect(
+			within(editing).getByText(
+				"role has no value. The text in the field was not added.",
+			),
+		).toBeInTheDocument();
+		act(() => save.focus());
+		await user.keyboard("{Enter}");
+		expect(writes(s.calls, "POST", "/rules")).toHaveLength(0);
+		expect(await row("New rule")).toBeInTheDocument();
+		// Cleared: the row saves with what its chips hold.
+		await user.clear(peer);
+		await user.click(save);
+		expect(await screen.findByRole("status")).toHaveTextContent(/^Saved /);
+		const posts = writes(s.calls, "POST", "/rules");
+		expect(posts).toHaveLength(1);
+		expect(posts[0]?.body).toMatchObject({
+			peers: [{ workloads: { app: ["web"] } }],
+			entries: [{ protocol: "tcp", ports: ["443"] }],
+		});
+	});
+
+	it("holds no save with refused text in a row that was discarded", async () => {
+		const s: ReturnType<typeof surface> = surface({
+			extra: [createsRule(() => s)],
+		});
+		const user = userEvent.setup();
+		renderApp("/policy?ruleset=checkout-inbound");
+		await rulesTable();
+		await user.click(screen.getByRole("button", { name: "Add rule" }));
+		let editing = await row("New rule");
+		await user.type(
+			within(editing).getByRole("textbox", { name: "Add a peer" }),
+			"role={Enter}",
+		);
+		await user.click(screen.getByRole("button", { name: "Discard row" }));
+		await user.click(screen.getByRole("button", { name: "Add rule" }));
+		editing = await row("New rule");
+		// The new row's peer field is never touched; only what the old one
+		// held could hold this save.
+		await user.type(
+			within(editing).getByRole("textbox", { name: "Add a service" }),
+			"tcp/443{Enter}",
+		);
+		await user.click(
+			screen.getByRole("button", { name: /Save — applies to 5 workloads now/ }),
+		);
+		expect(await screen.findByRole("status")).toHaveTextContent(/^Saved /);
+		expect(writes(s.calls, "POST", "/rules")).toHaveLength(1);
+	});
+
+	it("writes no rule and scope together while a field of either holds text it refused", async () => {
+		const s: ReturnType<typeof surface> = surface({
+			extra: [savesRuleset(() => s)],
+		});
+		const user = userEvent.setup();
+		renderApp("/policy?ruleset=checkout-inbound");
+		await waitFor(() =>
+			expect(screen.getByTestId("match-count")).toHaveTextContent("5"),
+		);
+		await user.click(screen.getByRole("button", { name: "Remove env" }));
+		const scope = screen.getByRole("textbox", {
+			name: "Add a scope requirement",
+		});
+		await user.click(screen.getByRole("button", { name: "Add rule" }));
+		const editing = await row("New rule");
+		const peer = within(editing).getByRole("textbox", { name: "Add a peer" });
+		const svc = within(editing).getByRole("textbox", { name: "Add a service" });
+		await user.type(peer, "10.9.9.0/24{Enter}");
+		await user.type(svc, "tcp/9999{Enter}");
+		const save = screen.getByRole("button", { name: /^Save rule and scope/ });
+		// Refused text in the scope's field holds the one write.
+		await user.type(scope, "tier={Enter}");
+		await user.click(save);
+		expect(writes(s.calls, "PUT", `/rulesets/${checkout.id}`)).toHaveLength(0);
+		// And in the row's peer field.
+		await user.clear(scope);
+		await user.type(peer, "role=");
+		await user.click(save);
+		expect(peer).toHaveValue("role=");
+		expect(writes(s.calls, "PUT", `/rulesets/${checkout.id}`)).toHaveLength(0);
+		// Both clear: one write of the two.
+		await user.clear(peer);
+		await user.click(save);
+		expect(await screen.findByRole("status")).toHaveTextContent(
+			/^Saved the scope of checkout-inbound and .* in one write/,
+		);
+		const puts = writes(s.calls, "PUT", `/rulesets/${checkout.id}`);
+		expect(puts).toHaveLength(1);
+		expect((puts[0]?.body as RulesetInput | undefined)?.scope).toEqual({
+			app: ["checkout"],
+		});
+		expect((puts[0]?.body as RulesetInput | undefined)?.rules[4]).toMatchObject(
+			{
+				peers: [{ cidr: "10.9.9.0/24" }],
+				entries: [{ protocol: "tcp", ports: ["9999"] }],
+			},
+		);
+	});
+
+	it("creates no ruleset while the scope's field holds text it refused", async () => {
+		const created = ruleset("ledger-inbound", { app: ["ledger"] });
+		const s = surface({
+			rulesets: [],
+			extra: [
+				{
+					method: "POST",
+					path: "/api/v1/rulesets",
+					reply: () => {
+						s.setRulesets([created]);
+						return { status: 201, json: created };
+					},
+				},
+			],
+		});
+		const user = userEvent.setup();
+		renderApp("/policy?new=1");
+		await user.type(
+			await screen.findByRole("textbox", { name: "Ruleset name" }),
+			"ledger-inbound",
+		);
+		const add = screen.getByRole("textbox", {
+			name: "Add a scope requirement",
+		});
+		await user.type(add, "app=ledger{Enter}");
+		await user.type(add, "env=");
+		const create = screen.getByRole("button", { name: /^Create ruleset/ });
+		await user.click(create);
+		act(() => create.focus());
+		await user.keyboard("{Enter}");
+		expect(add).toHaveValue("env=");
+		expect(
+			screen.getByText(
+				"env has no value. The text in the field was not added.",
+			),
+		).toBeInTheDocument();
+		expect(writes(s.calls, "POST", "/api/v1/rulesets")).toHaveLength(0);
+		await user.clear(add);
+		await user.click(create);
+		await waitFor(() =>
+			expect(writes(s.calls, "POST", "/api/v1/rulesets")).toHaveLength(1),
+		);
+		expect(writes(s.calls, "POST", "/api/v1/rulesets")[0]?.body).toMatchObject({
+			scope: { app: ["ledger"] },
+		});
 	});
 
 	it("shows the fresh state, a failed read with a retry, and loading", async () => {
