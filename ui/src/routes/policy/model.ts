@@ -18,7 +18,11 @@ import type {
 	WorkloadRef,
 } from "@/api/schema";
 import { since } from "@/lib/format";
-import { parseRequirements, type Requirement } from "@/lib/labels";
+import {
+	labelFormHint,
+	parseRequirements,
+	type Requirement,
+} from "@/lib/labels";
 import { syncIssue } from "../review/model";
 
 type SyncIssue = NonNullable<ReturnType<typeof syncIssue>>;
@@ -569,6 +573,43 @@ export function unknownOf(
 		}
 	}
 	return null;
+}
+
+// labelMeant is the selector an address group's name reads as with ":"
+// typed for "=" (`role:db` for `role=db`), as text, or null when it reads
+// as none. A group name may be any text (admission requires only that it
+// is not empty), so `role:db` is kept as the group it names; but ":" is
+// in no label key or value (ADR-0022), so a name shaped that way is more
+// likely a label typed with the wrong separator. Several requirements
+// (`app:web env:prod`) and a key's values (`role:db|cache`) read too.
+export function labelMeant(name: string): string | null {
+	const tokens = name.split(/[\s,]+/).filter((t) => t !== "");
+	if (tokens.length === 0) return null;
+	if (!tokens.every((t) => /^[^:=]+:[^:=]+$/.test(t))) return null;
+	const text = tokens.map((t) => t.replace(":", "=")).join(" ");
+	return parseRequirements(text, { alternatives: true }).ok ? text : null;
+}
+
+// withLabelHint is a peer's findings as its row draws them: when a
+// refused write found no address group of the name the peer gave, and
+// the name reads as a label typed with ":" (labelMeant), the refusal
+// also says how a label is written, with the text that would require
+// it. A group that exists is never refused, so it is never hinted at.
+export function withLabelHint(
+	findings: readonly Finding[] | undefined,
+	u: Unknown | null,
+): readonly Finding[] | undefined {
+	const meant = u?.kind === "group" ? labelMeant(u.name) : null;
+	if (!findings || meant === null) return findings;
+	const hint = `${labelFormHint.replace(/\.$/, "")}: ${meant}.`;
+	return findings.map((f) =>
+		f.rule === "address-group-unknown"
+			? {
+					...f,
+					message: `${f.message}${/[.!?]$/.test(f.message) ? "" : "."} ${hint}`,
+				}
+			: f,
+	);
 }
 
 // DraftRow is the row being edited as the table holds it (RowState).

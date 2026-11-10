@@ -745,4 +745,78 @@ describe("the first ruleset, console only", () => {
 			screen.getByRole("navigation", { name: "Definitions" }),
 		).toHaveTextContent("Service definitions1Address groups1");
 	});
+
+	it("says how a label is written when a peer typed key:value names no group, and not when the group exists", async () => {
+		// #233: `role:db` is a group name admission takes (any non-empty
+		// text), so it stays a group reference; the refusal adds the hint.
+		const db = ruleset("db-inbound", { role: ["db"] });
+		const team = addressGroup(
+			"6f000000-0000-4000-8000-0000000000cc",
+			"team:a",
+			["10.50.0.0/16"],
+		);
+		const estate: Estate = { rulesets: [db], services: [], groups: [team] };
+		const s = surface(estate, [], db.id);
+		const user = userEvent.setup();
+		renderApp("/policy?ruleset=db-inbound");
+		await screen.findByRole("table", { name: "Rules" });
+		const save = () =>
+			screen.getByRole("button", { name: /^Save — applies to 2 workloads/ });
+
+		await user.click(screen.getByRole("button", { name: "Add rule" }));
+		let editing = await screen.findByRole("row", { name: "New rule" });
+		const peer = within(editing).getByRole("textbox", { name: "Add a peer" });
+		await user.type(peer, "role:db{Enter}");
+		// Addresses with colons are still read as addresses.
+		await user.type(peer, "fd00::1{Enter}");
+		await user.type(peer, "2001:db8::/32{Enter}");
+		expect(
+			within(editing)
+				.getAllByTestId("chip")
+				.map((c) => c.textContent),
+		).toEqual(["GROUProle:db", "CIDRfd00::1", "CIDR2001:db8::/32"]);
+		await user.type(
+			within(editing).getByRole("textbox", { name: "Add a service" }),
+			"tcp/5432{Enter}",
+		);
+		await waitFor(() => expect(save()).toBeEnabled());
+		await user.click(save());
+		expect(await within(editing).findByTestId("finding")).toHaveTextContent(
+			"rule references an address group that does not exist (role:db). A label is written key=value: role=db.",
+		);
+		// The way forward to a group of that name is still offered.
+		expect(
+			within(editing).getByRole("button", {
+				name: "Create address group role:db…",
+			}),
+		).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Discard row" }));
+
+		// A group of that shape that exists is a group, saved as one.
+		await user.click(screen.getByRole("button", { name: "Add rule" }));
+		editing = await screen.findByRole("row", { name: "New rule" });
+		await user.type(
+			within(editing).getByRole("textbox", { name: "Add a peer" }),
+			"team:a{Enter}",
+		);
+		await user.type(
+			within(editing).getByRole("textbox", { name: "Add a service" }),
+			"tcp/5432{Enter}",
+		);
+		await waitFor(() => expect(save()).toBeEnabled());
+		await user.click(save());
+		await waitFor(() =>
+			expect(
+				screen.queryByRole("row", { name: "New rule" }),
+			).not.toBeInTheDocument(),
+		);
+		expect(screen.queryByText(/A label is written/)).not.toBeInTheDocument();
+		const posts = s.calls.filter(
+			(c) =>
+				c.method === "POST" && c.path === `/api/v1/rulesets/${db.id}/rules`,
+		);
+		expect(posts.at(-1)?.body).toMatchObject({
+			peers: [{ address_group: "team:a" }],
+		});
+	});
 });

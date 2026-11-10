@@ -14,6 +14,7 @@ import {
 	draftOf,
 	entryText,
 	freshness,
+	labelMeant,
 	matchedHosts,
 	namesOf,
 	outstanding,
@@ -31,6 +32,7 @@ import {
 	splitList,
 	trafficByRule,
 	unknownOf,
+	withLabelHint,
 } from "./model";
 
 const ssh = {
@@ -272,6 +274,24 @@ describe("drafts and findings", () => {
 		for (const name of ["office", "db.prod", "vpn-10.40", "v6-edge", "cafe"]) {
 			expect(parsePeer(name)).toEqual({ address_group: name });
 		}
+		// A label typed with ":" is a group name, as admission reads it.
+		for (const name of ["role:db", "app:web env:prod", "team/owner:sre"]) {
+			expect(parsePeer(name)).toEqual({ address_group: name });
+		}
+		// Addresses and prefixes with colons are read as addresses (#233).
+		for (const addr of [
+			"fd00::1",
+			"::1",
+			"2001:db8::8a2e:370:7334",
+			"::ffff:10.0.0.1",
+			"fe80::/10",
+			"2001:db8::/32",
+			"fd00::/8",
+			"10.0.0.0/8",
+			"10.1.2.3",
+		]) {
+			expect(parsePeer(addr)).toEqual({ cidr: addr });
+		}
 		expect(parseService("TCP/389")).toEqual({
 			entry: { protocol: "tcp", ports: ["389"] },
 		});
@@ -364,6 +384,58 @@ describe("drafts and findings", () => {
 		]);
 		expect(Object.keys(b.elements)).toEqual(["p1"]);
 		expect(b.columns.services).toHaveLength(1);
+	});
+});
+
+describe("a label typed as a group name", () => {
+	it("reads key:value text as the label it would be with =", () => {
+		expect(labelMeant("role:db")).toBe("role=db");
+		expect(labelMeant("app:web env:prod")).toBe("app=web env=prod");
+		expect(labelMeant("app:web, env:prod")).toBe("app=web env=prod");
+		expect(labelMeant("role:db|cache")).toBe("role=db|cache");
+		expect(labelMeant("team/owner:sre")).toBe("team/owner=sre");
+		// Not a label with "=" either, or not shaped key:value.
+		for (const name of [
+			"corp-vpn",
+			"role:",
+			":db",
+			"a:b:c",
+			"role:-db",
+			"app:web corp",
+			"fd00::1",
+			"2001:db8::/32",
+			"",
+		]) {
+			expect(labelMeant(name)).toBeNull();
+		}
+	});
+
+	it("adds the hint to an unknown group's refusal only", () => {
+		const unknown = {
+			path: "peers[0]",
+			rule: "address-group-unknown",
+			message: "rule references an address group that does not exist (role:db)",
+		};
+		const other = { path: "peers[0]", rule: "cidr", message: "x" };
+		expect(
+			withLabelHint([unknown, other], { kind: "group", name: "role:db" }),
+		).toEqual([
+			{
+				...unknown,
+				message:
+					"rule references an address group that does not exist (role:db). A label is written key=value: role=db.",
+			},
+			other,
+		]);
+		const plain = [unknown];
+		expect(withLabelHint(plain, { kind: "group", name: "corp" })).toBe(plain);
+		expect(withLabelHint(plain, null)).toBe(plain);
+		expect(withLabelHint(plain, { kind: "service", name: "role:db" })).toBe(
+			plain,
+		);
+		expect(withLabelHint(undefined, { kind: "group", name: "role:db" })).toBe(
+			undefined,
+		);
 	});
 });
 
