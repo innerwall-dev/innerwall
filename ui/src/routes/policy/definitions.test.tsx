@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type {
@@ -374,6 +374,108 @@ describe("service definitions", () => {
 		});
 	});
 
+	it("creates no service while its entry field holds text it refused, by click or key, and creates it once the text is fixed", async () => {
+		// #237: a service saved without the entry typed admits less than
+		// the operator composed.
+		const estate = { rulesets: [web], services: [ssh], groups: [] };
+		const { calls } = surface(estate);
+		const posts = () =>
+			calls.filter((c) => c.method === "POST" && c.path === "/api/v1/services");
+		const user = userEvent.setup();
+		renderApp("/policy/services");
+		await user.click(
+			await screen.findByRole("button", { name: "New service" }),
+		);
+		const dialog = await screen.findByRole("dialog", { name: "New service" });
+		await user.type(within(dialog).getByLabelText("Name"), "postgres");
+		const add = within(dialog).getByRole("textbox", { name: "Add an entry" });
+		await user.type(add, "tcp/5432{Enter}");
+		// No protocol: refused on leaving the field for Create.
+		await user.type(add, "5433");
+		const create = within(dialog).getByRole("button", {
+			name: "Create service",
+		});
+		await user.click(create);
+		expect(add).toHaveValue("5433");
+		expect(dialog).toHaveTextContent(
+			"An entry is a protocol with its ports after a slash or a colon: tcp/5432 or tcp:5432, udp/53, tcp/6000-6010, or icmp (5433). The text in the field was not added.",
+		);
+		expect(posts()).toHaveLength(0);
+		// From the keyboard, too, with other refused text.
+		await user.clear(add);
+		await user.type(add, "http/80{Enter}");
+		act(() => create.focus());
+		await user.keyboard("{Enter}");
+		await user.keyboard(" ");
+		expect(add).toHaveValue("http/80");
+		expect(posts()).toHaveLength(0);
+		expect(
+			screen.getByRole("dialog", { name: "New service" }),
+		).toBeInTheDocument();
+		// Fixed and left pending: the field takes it, and the save writes it.
+		await user.clear(add);
+		await user.type(add, "tcp/5433");
+		await user.click(create);
+		await waitFor(() =>
+			expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+		);
+		expect(posts()).toHaveLength(1);
+		expect(posts()[0]?.body).toEqual({
+			name: "postgres",
+			entries: [
+				{ protocol: "tcp", ports: ["5432"] },
+				{ protocol: "tcp", ports: ["5433"] },
+			],
+		});
+	});
+
+	it("saves no edit while the entry field holds text it refused, and saves once it is cleared", async () => {
+		const estate = { rulesets: [web], services: [ssh], groups: [vpn] };
+		const puts: unknown[] = [];
+		surface(estate, [
+			{
+				method: "PUT",
+				path: `/api/v1/services/${ssh.id}`,
+				reply: (body) => {
+					puts.push(body);
+					const saved = { ...ssh, ...(body as object), version: "2" };
+					estate.services = [saved];
+					return { status: 200, json: saved };
+				},
+			},
+		]);
+		const user = userEvent.setup();
+		renderApp("/policy/services");
+		await user.click(await screen.findByRole("button", { name: "Edit ssh" }));
+		const dialog = await screen.findByRole("dialog", {
+			name: "Edit service ssh",
+		});
+		const add = within(dialog).getByRole("textbox", { name: "Add an entry" });
+		await user.type(add, "tcp/2222{Enter}");
+		await user.type(add, "2223");
+		const save = within(dialog).getByRole("button", { name: "Save service" });
+		await user.click(save);
+		act(() => save.focus());
+		await user.keyboard("{Enter}");
+		expect(add).toHaveValue("2223");
+		expect(puts).toHaveLength(0);
+		// An empty field holds nothing.
+		await user.clear(add);
+		await user.click(save);
+		await waitFor(() =>
+			expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+		);
+		expect(puts).toEqual([
+			{
+				name: "ssh",
+				entries: [
+					{ protocol: "tcp", ports: ["22"] },
+					{ protocol: "tcp", ports: ["2222"] },
+				],
+			},
+		]);
+	});
+
 	it("edits a service conditioned on its version, and keeps the edit across a conflict", async () => {
 		const estate = { rulesets: [web], services: [ssh], groups: [vpn] };
 		const puts: unknown[] = [];
@@ -642,5 +744,79 @@ describe("the first ruleset, console only", () => {
 		expect(
 			screen.getByRole("navigation", { name: "Definitions" }),
 		).toHaveTextContent("Service definitions1Address groups1");
+	});
+
+	it("says how a label is written when a peer typed key:value names no group, and not when the group exists", async () => {
+		// #233: `role:db` is a group name admission takes (any non-empty
+		// text), so it stays a group reference; the refusal adds the hint.
+		const db = ruleset("db-inbound", { role: ["db"] });
+		const team = addressGroup(
+			"6f000000-0000-4000-8000-0000000000cc",
+			"team:a",
+			["10.50.0.0/16"],
+		);
+		const estate: Estate = { rulesets: [db], services: [], groups: [team] };
+		const s = surface(estate, [], db.id);
+		const user = userEvent.setup();
+		renderApp("/policy?ruleset=db-inbound");
+		await screen.findByRole("table", { name: "Rules" });
+		const save = () =>
+			screen.getByRole("button", { name: /^Save — applies to 2 workloads/ });
+
+		await user.click(screen.getByRole("button", { name: "Add rule" }));
+		let editing = await screen.findByRole("row", { name: "New rule" });
+		const peer = within(editing).getByRole("textbox", { name: "Add a peer" });
+		await user.type(peer, "role:db{Enter}");
+		// Addresses with colons are still read as addresses.
+		await user.type(peer, "fd00::1{Enter}");
+		await user.type(peer, "2001:db8::/32{Enter}");
+		expect(
+			within(editing)
+				.getAllByTestId("chip")
+				.map((c) => c.textContent),
+		).toEqual(["GROUProle:db", "CIDRfd00::1", "CIDR2001:db8::/32"]);
+		await user.type(
+			within(editing).getByRole("textbox", { name: "Add a service" }),
+			"tcp/5432{Enter}",
+		);
+		await waitFor(() => expect(save()).toBeEnabled());
+		await user.click(save());
+		expect(await within(editing).findByTestId("finding")).toHaveTextContent(
+			"rule references an address group that does not exist (role:db). A label is written key=value: role=db.",
+		);
+		// The way forward to a group of that name is still offered.
+		expect(
+			within(editing).getByRole("button", {
+				name: "Create address group role:db…",
+			}),
+		).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Discard row" }));
+
+		// A group of that shape that exists is a group, saved as one.
+		await user.click(screen.getByRole("button", { name: "Add rule" }));
+		editing = await screen.findByRole("row", { name: "New rule" });
+		await user.type(
+			within(editing).getByRole("textbox", { name: "Add a peer" }),
+			"team:a{Enter}",
+		);
+		await user.type(
+			within(editing).getByRole("textbox", { name: "Add a service" }),
+			"tcp/5432{Enter}",
+		);
+		await waitFor(() => expect(save()).toBeEnabled());
+		await user.click(save());
+		await waitFor(() =>
+			expect(
+				screen.queryByRole("row", { name: "New rule" }),
+			).not.toBeInTheDocument(),
+		);
+		expect(screen.queryByText(/A label is written/)).not.toBeInTheDocument();
+		const posts = s.calls.filter(
+			(c) =>
+				c.method === "POST" && c.path === `/api/v1/rulesets/${db.id}/rules`,
+		);
+		expect(posts.at(-1)?.body).toMatchObject({
+			peers: [{ address_group: "team:a" }],
+		});
 	});
 });

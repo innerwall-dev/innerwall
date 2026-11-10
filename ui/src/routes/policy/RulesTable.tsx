@@ -28,6 +28,7 @@ import {
 	shortRuleId,
 	type Unknown,
 	unknownOf,
+	withLabelHint,
 } from "./model";
 
 // RowState is the one row being edited: its draft, the findings of the
@@ -413,7 +414,7 @@ function EditRow({
 	const lines = (key: string, u: Unknown | null) => (
 		<FindingLines
 			key={key}
-			findings={f.elements[key]}
+			findings={withLabelHint(f.elements[key], u)}
 			action={
 				u ? (
 					<button
