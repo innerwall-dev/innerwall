@@ -413,10 +413,8 @@ func TestRenewalCheckedWhenConnected(t *testing.T) {
 	}
 	c.send(t, helloAck(1, 0))
 	waitCheck("at stream establishment")
-	for {
-		if c.expect(t).GetHeartbeat() != nil {
-			break
-		}
+	for c.expect(t).GetHeartbeat() == nil {
+		// Inventory and acks may come first; the heartbeat is what counts.
 	}
 	waitCheck("on the heartbeat tick")
 }
