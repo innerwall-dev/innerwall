@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -26,10 +27,25 @@ const EnvDatabaseURL = "INNERWALL_TEST_DATABASE_URL"
 // never lands in the middle of another package's test.
 const testLockKey = 0x1_4e4e_4552_5445
 
+// resetStatement empties every table in one statement, so that foreign
+// keys between them never order the work. It stays one literal statement,
+// reviewable as written (ADR-0006), and ResetTables reads the list back
+// out of it for the test that holds it to the migrated schema.
+const resetStatement = "TRUNCATE mode_change_workloads, mode_changes, operator_tokens, operator_sessions, operators, flow_gaps, flow_totals, flow_windows, workload_listening_services, workload_addresses, workload_policies, rule_service_entries, rule_service_refs, rule_peer_matches, rule_peers, rules, ruleset_scope_matches, rulesets, address_group_cidrs, address_groups, service_entries, services, workload_labels, workloads, provisioning_token_labels, provisioning_tokens"
+
+// ResetTables returns the tables Reset empties, as its statement names
+// them. They must be every table the migrations create apart from goose's
+// own version table: TestResetTablesAreTheMigratedSchema in
+// internal/store holds the list there, so a migration that adds a table
+// adds it to the statement too.
+func ResetTables() []string {
+	return strings.Split(strings.TrimPrefix(resetStatement, "TRUNCATE "), ", ")
+}
+
 // Reset migrates the database at url and empties every table, so what
 // follows starts from nothing. It is a fixture, not a production query,
 // and the database must be disposable: the test loop and the development
-// seed command are its only callers.
+// seed and reset commands are its only callers.
 func Reset(ctx context.Context, url string) error {
 	if err := store.Migrate(ctx, url); err != nil {
 		return fmt.Errorf("migrating database: %w", err)
@@ -39,7 +55,7 @@ func Reset(ctx context.Context, url string) error {
 		return fmt.Errorf("connecting to database: %w", err)
 	}
 	defer func() { _ = conn.Close(ctx) }()
-	if _, err := conn.Exec(ctx, "TRUNCATE mode_change_workloads, mode_changes, operator_tokens, operator_sessions, operators, flow_gaps, flow_totals, flow_windows, workload_listening_services, workload_addresses, workload_policies, rule_service_entries, rule_service_refs, rule_peer_matches, rule_peers, rules, ruleset_scope_matches, rulesets, address_group_cidrs, address_groups, service_entries, services, workload_labels, workloads, provisioning_token_labels, provisioning_tokens"); err != nil {
+	if _, err := conn.Exec(ctx, resetStatement); err != nil {
 		return fmt.Errorf("resetting database: %w", err)
 	}
 	return nil
