@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { useWrite } from "@/lib/resource";
 import { cn } from "@/lib/utils";
-import { AddInput, ChipView, FindingLines } from "./Chips";
+import { AddInput, ChipView, FindingLines, useRefusedText } from "./Chips";
 import {
 	entryChip,
 	type Keyed,
@@ -113,6 +113,9 @@ function cidrsOf(d: Definition | null): Keyed<string>[] {
 		: [];
 }
 
+// membersField names the members' chip field to the form's RefusedText.
+const membersField = "members";
+
 function DefinitionForm({
 	kind,
 	editing,
@@ -141,6 +144,12 @@ function DefinitionForm({
 	const [failure, setFailure] = useState<string | null>(null);
 	const [conflict, setConflict] = useState<string | null>(null);
 	const [saving, setSaving] = useState(false);
+	// Whether the members' field holds text it refused: the save writes
+	// nothing while it does (see RefusedText). A service saved without an
+	// entry typed admits less than the operator composed, and a definition
+	// rules reference takes effect at once. The CIDR field refuses nothing
+	// today (admission checks each CIDR) and is held to the same check.
+	const refusedText = useRefusedText();
 
 	const listKey = kind === "service" ? "entries" : "cidrs";
 	const items: Keyed<unknown>[] = kind === "service" ? entries : cidrs;
@@ -165,6 +174,7 @@ function DefinitionForm({
 	);
 
 	async function save() {
+		if (refusedText.holds(membersField)) return;
 		setSaving(true);
 		setFindings([]);
 		setFailure(null);
@@ -291,6 +301,7 @@ function DefinitionForm({
 						label={kind === "service" ? "Add an entry" : "Add a CIDR"}
 						placeholder={words.placeholder}
 						commitOnBlur
+						onRefused={refusedText.report(membersField)}
 						onAdd={(text) => {
 							setFindings((f) => f.filter((x) => x.path !== listKey));
 							if (kind === "group") {
