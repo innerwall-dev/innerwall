@@ -185,6 +185,18 @@ const ExpiredRetryCap = 5 * time.Minute
 // the wall clock against the certificate's validity, and the monotonic
 // time elapsed since the credential was obtained. A host whose wall clock
 // runs behind would otherwise sleep through its renewal window.
+//
+// The opposite case is a host that is suspended or paused: its monotonic
+// clock, and every timer on it, stands still while the wall clock moves
+// on, so a timer set for the renewal point still believes hours remain
+// after the point has passed. Every wait therefore also has a wall-clock
+// deadline, and Check asks the renewer to compare the wall clock with it:
+// a wait whose deadline has passed ends at once, as if its timer had
+// fired. The daemon calls Check at moments it has just reached the
+// control plane (the sync stream's establishment and each heartbeat), so
+// the check costs no request and no timer of its own. A check never moves
+// the schedule: the renewal point is chosen once per credential, a check
+// before a deadline shortens nothing, and the backoff count carries on.
 type Renewer struct {
 	Holder *Holder
 	// Server is the control-plane address for RenewCredential.
@@ -211,6 +223,26 @@ type Renewer struct {
 	Renewed func(leaf *x509.Certificate)
 
 	lastError atomic.Value // string
+
+	wakeOnce sync.Once
+	wake     chan struct{} // capacity one; see Check
+}
+
+// Check asks the renewer to compare the wall clock with the deadline of
+// the wait it is in, and to end the wait now if the deadline has passed.
+// It never blocks and never queues more than one check: a check made
+// while another is pending is the same check. It is safe to call at any
+// time, before Run starts, while it runs, and after it returns.
+func (r *Renewer) Check() {
+	select {
+	case r.wakeChan() <- struct{}{}:
+	default:
+	}
+}
+
+func (r *Renewer) wakeChan() chan struct{} {
+	r.wakeOnce.Do(func() { r.wake = make(chan struct{}, 1) })
+	return r.wake
 }
 
 // LastError returns the reason the most recent renewal attempt failed, or
@@ -282,9 +314,14 @@ func (r *Renewer) Run(ctx context.Context) error {
 		start := time.Now()
 		elapsed = func() time.Duration { return time.Since(start) }
 	}
+	wake := r.wakeChan()
 	rng := rand.New(rand.NewPCG(uint64(r.now().UnixNano()), 0)) //nolint:gosec // jitter, not secrecy
 	attempt := 0
-	clock := newLifeClock(r.Holder.Leaf(), r.now(), elapsed())
+	first := r.Holder.Leaf()
+	clock := newLifeClock(first, r.now(), elapsed())
+	// The renewal point is chosen once per credential, so nothing that
+	// wakes the loop can re-roll its jitter.
+	renewAt := RenewAt(first.NotBefore, first.NotAfter, rng)
 	reportedExpiry := false
 	for {
 		leaf := r.Holder.Leaf()
@@ -292,7 +329,10 @@ func (r *Renewer) Run(ctx context.Context) error {
 		lifetime := leaf.NotAfter.Sub(leaf.NotBefore)
 		age := clock.age(elapsed())
 		expired := !now.Before(leaf.NotAfter) || age >= lifetime
+		// wait is the timer; deadline is when the same wait ends by the
+		// wall clock, which a check compares against (see await).
 		var wait time.Duration
+		var deadline time.Time
 		switch {
 		case expired:
 			if !reportedExpiry {
@@ -303,16 +343,22 @@ func (r *Renewer) Run(ctx context.Context) error {
 			if attempt > 0 {
 				wait = backoff(attempt, retryBase, min(retryCap, ExpiredRetryCap), rng)
 			}
+			deadline = now.Add(wait)
 		case attempt == 0:
-			at := RenewAt(leaf.NotBefore, leaf.NotAfter, rng)
-			byWall := at.Sub(now)
-			byMonotonic := at.Sub(leaf.NotBefore) - age
+			byWall := renewAt.Sub(now)
+			byMonotonic := renewAt.Sub(leaf.NotBefore) - age
 			clockName := "wall"
 			wait = byWall
 			if byMonotonic < byWall {
 				wait, clockName = byMonotonic, "monotonic"
 			}
 			wait = max(wait, 0)
+			// By the wall clock the wait ends at the renewal point itself,
+			// or now if that has passed.
+			deadline = renewAt
+			if deadline.Before(now) {
+				deadline = now
+			}
 			r.log().Info("credential renewal scheduled", "at", now.Add(wait), "expires", leaf.NotAfter, "by_clock", clockName)
 			if clockName == "monotonic" && byWall-byMonotonic > time.Minute {
 				r.log().Warn("the wall clock is behind the credential's age; renewing on elapsed time instead", "wall_says", byWall.Round(time.Second), "elapsed_says", byMonotonic.Round(time.Second))
@@ -322,11 +368,10 @@ func (r *Renewer) Run(ctx context.Context) error {
 			// Never wait past expiry: from there the expired cadence
 			// applies, which retries sooner.
 			wait = min(wait, leaf.NotAfter.Sub(now), lifetime-age)
+			deadline = now.Add(wait)
 		}
-		select {
-		case <-ctx.Done():
+		if !r.await(ctx, wait, deadline, leaf.NotAfter, after, elapsed, wake) {
 			return nil
-		case <-after(wait):
 		}
 		if err := r.Holder.checkStoredKey(); errors.Is(err, ErrReenrolled) {
 			return r.reenrolled(err)
@@ -356,6 +401,7 @@ func (r *Renewer) Run(ctx context.Context) error {
 		r.lastError.Store("")
 		newLeaf := r.Holder.Leaf()
 		clock = newLifeClock(newLeaf, r.now(), elapsed())
+		renewAt = RenewAt(newLeaf.NotBefore, newLeaf.NotAfter, rng)
 		if expired {
 			r.log().Warn("credential renewed after it had expired", "serial", newLeaf.SerialNumber.Text(16), "expired_at", leaf.NotAfter, "expires", newLeaf.NotAfter)
 		} else {
@@ -363,6 +409,48 @@ func (r *Renewer) Run(ctx context.Context) error {
 		}
 		if r.Renewed != nil {
 			r.Renewed(newLeaf)
+		}
+	}
+}
+
+// await waits out one scheduled wait of length wait, whose wall-clock
+// deadline is deadline, and reports whether it ended (false when ctx did).
+// It ends when the wait's timer fires, or when a check finds the wall
+// clock at or past the deadline. A check before the deadline ends
+// nothing; if the wall clock has gained on the timer, which happens when
+// the host is suspended or paused mid-wait, it arms one more timer for the
+// wall clock's remainder, so the wait ends at whichever comes first and is
+// never extended. A check that finds the clocks in step arms nothing.
+func (r *Renewer) await(ctx context.Context, wait time.Duration, deadline, expires time.Time,
+	after func(time.Duration) <-chan time.Time, elapsed func() time.Duration, wake <-chan struct{},
+) bool {
+	deadline = deadline.Round(0) // compared and logged as wall-clock time only
+	firesBy := elapsed() + wait  // when, on the monotonic clock, a timer here fires
+	timer := after(wait)
+	var wallTimer <-chan time.Time // nil, so never ready, until armed
+	for {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-timer:
+			return true
+		case <-wallTimer:
+			return true
+		case <-wake:
+		}
+		// The wall clock alone: time.Now's monotonic reading, which
+		// comparisons otherwise prefer, stands still with the timer.
+		now := r.now().Round(0)
+		if !now.Before(deadline) {
+			if now.Sub(deadline) > time.Minute {
+				r.log().Warn("the renewal point passed while the timer was not running (the host was suspended or paused); renewing now", "renew_at", deadline, "wall_clock", now, "expires", expires)
+			}
+			return true
+		}
+		e := elapsed()
+		if remaining := deadline.Sub(now); e+remaining < firesBy-time.Second {
+			firesBy = e + remaining
+			wallTimer = after(remaining)
 		}
 	}
 }

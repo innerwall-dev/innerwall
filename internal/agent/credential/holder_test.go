@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/x509"
 	"errors"
+	"log/slog"
 	"math/rand/v2"
 	"strings"
 	"sync"
@@ -450,5 +451,425 @@ func TestRenewerStopsWhenReenrolled(t *testing.T) {
 	}
 	if got, _ := identity.FromCertificate(onDisk.Leaf); got != newID {
 		t.Fatalf("disk holds %v, want the new enrollment %v", got, newID)
+	}
+}
+
+// pausableClocks drives a renewer across a host suspend: the wall clock
+// and the monotonic clock move only when the test moves them, each on its
+// own, and a timer fires only when the test fires it.
+type pausableClocks struct {
+	mu      sync.Mutex
+	wall    time.Time
+	elapsed time.Duration
+	timers  []chan time.Time
+	watch   bool
+	// scheduled receives every wait the renewer sets a timer for; reads
+	// receives one signal per wall-clock read while watch is on.
+	scheduled chan time.Duration
+	reads     chan struct{}
+}
+
+func newPausableClocks(wall time.Time) *pausableClocks {
+	return &pausableClocks{wall: wall, scheduled: make(chan time.Duration, 64), reads: make(chan struct{}, 256)}
+}
+
+func (c *pausableClocks) now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.watch {
+		c.reads <- struct{}{}
+	}
+	return c.wall
+}
+
+func (c *pausableClocks) sinceStart() time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.elapsed
+}
+
+func (c *pausableClocks) after(d time.Duration) <-chan time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	ch := make(chan time.Time, 1)
+	c.timers = append(c.timers, ch)
+	c.scheduled <- d
+	return ch
+}
+
+// run moves both clocks on by d, as a host that is running does.
+func (c *pausableClocks) run(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.wall = c.wall.Add(d)
+	c.elapsed += d
+}
+
+// stepWall moves the wall clock alone: forward by a suspend, during which
+// the monotonic clock and every timer stand still, or backward by a step.
+func (c *pausableClocks) stepWall(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.wall = c.wall.Add(d)
+}
+
+// fire fires the i-th timer the renewer set.
+func (c *pausableClocks) fire(i int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.timers[i] <- c.wall
+}
+
+func (c *pausableClocks) timerCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.timers)
+}
+
+func (c *pausableClocks) watching(on bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.watch = on
+}
+
+// lockedBuffer collects a renewer's log lines.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf strings.Builder
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func (b *lockedBuffer) count(s string) int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return strings.Count(b.buf.String(), s)
+}
+
+const suspendedLine = "the renewal point passed while the timer was not running"
+
+// suspendRig runs a renewer on pausable clocks over a 24-hour credential,
+// an hour into its life. Renewal attempts fail while fail says so and
+// otherwise return a 72-hour credential, long enough that its own renewal
+// point lies beyond anything the tests do to the clocks.
+type suspendRig struct {
+	t        *testing.T
+	leaf     *x509.Certificate
+	clocks   *pausableClocks
+	r        *credential.Renewer
+	logs     *lockedBuffer
+	attempts chan struct{}
+	cancel   context.CancelFunc
+	done     chan error
+
+	mu    sync.Mutex
+	calls int
+}
+
+func startSuspendRig(t *testing.T, retryBase time.Duration, fail func(call int) bool) *suspendRig {
+	t.Helper()
+	h, authority, id, _ := newHolder(t, 24*time.Hour)
+	g := &suspendRig{
+		t:        t,
+		leaf:     h.Leaf(),
+		clocks:   newPausableClocks(h.Leaf().NotBefore.Add(time.Hour)),
+		logs:     &lockedBuffer{},
+		attempts: make(chan struct{}, 64),
+		done:     make(chan error, 1),
+	}
+	g.r = &credential.Renewer{
+		Holder: h, Server: "unused",
+		Log:       slog.New(slog.NewTextHandler(g.logs, nil)),
+		RetryBase: retryBase, RetryCap: time.Hour,
+		Now: g.clocks.now, Elapsed: g.clocks.sinceStart, After: g.clocks.after,
+		Renew: func(_ context.Context, key *ecdsa.PrivateKey, _ credential.RenewOptions) (*credential.RenewResult, error) {
+			g.mu.Lock()
+			g.calls++
+			n := g.calls
+			g.mu.Unlock()
+			g.attempts <- struct{}{}
+			if fail(n) {
+				return nil, errors.New("control plane unreachable")
+			}
+			return &credential.RenewResult{WorkloadID: id, CertificatePEM: issue(t, authority, key, id, 72*time.Hour)}, nil
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	g.cancel = cancel
+	go func() { g.done <- g.r.Run(ctx) }()
+	t.Cleanup(cancel)
+	return g
+}
+
+// scheduled returns the next wait the renewer sets a timer for.
+func (g *suspendRig) scheduled() time.Duration {
+	g.t.Helper()
+	select {
+	case d := <-g.clocks.scheduled:
+		return d
+	case <-time.After(10 * time.Second):
+		g.t.Fatal("no wait scheduled")
+		return 0
+	}
+}
+
+// attempt waits for the next renewal attempt.
+func (g *suspendRig) attempt() {
+	g.t.Helper()
+	select {
+	case <-g.attempts:
+	case <-time.After(10 * time.Second):
+		g.t.Fatal("no renewal attempt")
+	}
+}
+
+// settle checks twice and returns once the renewer has taken the second
+// check, so the first has been handled to the end. A check is a single
+// pending wake, so the second is taken only after the first is done.
+func (g *suspendRig) settle() {
+	g.t.Helper()
+	g.clocks.watching(true)
+	defer g.clocks.watching(false)
+	for range 2 {
+		g.r.Check()
+		select {
+		case <-g.clocks.reads:
+		case <-time.After(10 * time.Second):
+			g.t.Fatal("the renewer did not take the check")
+		}
+	}
+}
+
+func (g *suspendRig) callCount() int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.calls
+}
+
+func (g *suspendRig) stop() {
+	g.t.Helper()
+	g.cancel()
+	if err := <-g.done; err != nil {
+		g.t.Fatalf("Run = %v, want nil when ctx ends", err)
+	}
+}
+
+func never(int) bool  { return false }
+func always(int) bool { return true }
+
+// TestRenewerActsOnRenewalPointPassedDuringSuspend is a host suspended
+// across its renewal point: the wall clock moves past it while elapsed
+// time and the timer stand still. A check renews at once, exactly once,
+// and says why in one warning.
+func TestRenewerActsOnRenewalPointPassedDuringSuspend(t *testing.T) {
+	g := startSuspendRig(t, time.Minute, never)
+	g.scheduled()
+	g.clocks.stepWall(19 * time.Hour) // twenty hours into a 24-hour credential
+	g.r.Check()
+	g.attempt()
+	g.scheduled() // the renewed credential's schedule: the loop is waiting again
+	g.settle()
+	if n := g.callCount(); n != 1 {
+		t.Fatalf("renew calls = %d, want exactly 1", n)
+	}
+	if n := g.logs.count(suspendedLine); n != 1 {
+		t.Fatalf("suspend warning logged %d times, want once", n)
+	}
+	for line := range strings.Lines(g.logs.String()) {
+		if strings.Contains(line, suspendedLine) && (!strings.Contains(line, "level=WARN") || !strings.Contains(line, "renew_at=") || !strings.Contains(line, "wall_clock=") || !strings.Contains(line, "expires=")) {
+			t.Fatalf("the warning does not name the renewal point, the wall clock, and the expiry: %s", line)
+		}
+	}
+	if g.clocks.timerCount() != 2 {
+		t.Fatalf("%d timers set, want 2 (the first credential's and the renewed one's)", g.clocks.timerCount())
+	}
+	g.stop()
+	// Checks after Run has returned neither block nor panic.
+	g.r.Check()
+	g.r.Check()
+}
+
+// TestRenewerCheckBeforeRenewalPointChangesNothing: a check before the
+// renewal point renews nothing, sets no timer, and leaves the renewal
+// point where it was scheduled, to the nanosecond.
+func TestRenewerCheckBeforeRenewalPointChangesNothing(t *testing.T) {
+	g := startSuspendRig(t, time.Minute, never)
+	d := g.scheduled()
+	g.clocks.run(d - time.Second)
+	g.settle()
+	if n := g.callCount(); n != 0 {
+		t.Fatalf("renew calls = %d before the renewal point", n)
+	}
+	if g.clocks.timerCount() != 1 {
+		t.Fatalf("%d timers set; a check with the clocks in step sets none", g.clocks.timerCount())
+	}
+	if n := g.logs.count("credential renewal scheduled"); n != 1 {
+		t.Fatalf("renewal scheduled %d times; a check must not reschedule", n)
+	}
+	// At the scheduled instant exactly, a check renews.
+	g.clocks.run(time.Second)
+	g.r.Check()
+	g.attempt()
+	g.scheduled()
+	if n := g.logs.count(suspendedLine); n != 0 {
+		t.Fatalf("suspend warning logged %d times for a renewal on time", n)
+	}
+	g.stop()
+}
+
+// TestRenewerManyChecksRenewOnce: checks before the renewal point cost
+// nothing, and the renewal happens once, when its timer fires.
+func TestRenewerManyChecksRenewOnce(t *testing.T) {
+	g := startSuspendRig(t, time.Minute, never)
+	d := g.scheduled()
+	for range 50 {
+		g.r.Check()
+	}
+	g.settle()
+	if n := g.callCount(); n != 0 {
+		t.Fatalf("renew calls = %d before the renewal point", n)
+	}
+	g.clocks.run(d)
+	g.clocks.fire(0)
+	g.attempt()
+	g.scheduled()
+	g.settle()
+	if n := g.callCount(); n != 1 {
+		t.Fatalf("renew calls = %d, want exactly 1", n)
+	}
+	if g.clocks.timerCount() != 2 {
+		t.Fatalf("%d timers set, want 2; checks set none", g.clocks.timerCount())
+	}
+	g.stop()
+}
+
+// TestRenewerSuspendDuringBackoff: a failed attempt's backoff wait passes
+// on the wall clock while the host is suspended; a check retries once,
+// and the attempt count carries on from where it was.
+func TestRenewerSuspendDuringBackoff(t *testing.T) {
+	g := startSuspendRig(t, time.Minute, always)
+	d := g.scheduled()
+	g.clocks.run(d)
+	g.clocks.fire(0)
+	g.attempt()
+	backoff := g.scheduled()
+	g.clocks.stepWall(backoff + 10*time.Minute)
+	g.r.Check()
+	g.attempt()
+	next := g.scheduled()
+	if n := g.callCount(); n != 2 {
+		t.Fatalf("renew calls = %d, want 2 (the timer's, then the check's)", n)
+	}
+	if g.logs.count("attempt=2") != 1 {
+		t.Fatalf("the check's attempt was not the second:\n%s", g.logs)
+	}
+	if next < 0 || next > 4*time.Minute {
+		t.Fatalf("backoff after the second failure %v, want within base << 2", next)
+	}
+	if n := g.logs.count(suspendedLine); n != 1 {
+		t.Fatalf("suspend warning logged %d times, want once", n)
+	}
+	g.stop()
+}
+
+// TestRenewerSuspendPastExpiry: the host sleeps through the renewal point
+// and the expiry. A check attempts at once; from there the expired path
+// takes over unchanged, its cadence within ExpiredRetryCap although the
+// configured backoff is longer, and the reason saying the credential
+// expired.
+func TestRenewerSuspendPastExpiry(t *testing.T) {
+	g := startSuspendRig(t, 10*time.Minute, always)
+	g.scheduled()
+	g.clocks.stepWall(g.leaf.NotAfter.Sub(g.clocks.now()) + time.Hour)
+	g.r.Check()
+	g.attempt()
+	first := g.scheduled()
+	g.clocks.fire(1)
+	g.attempt()
+	second := g.scheduled()
+	for _, w := range []time.Duration{first, second} {
+		if w < 0 || w > credential.ExpiredRetryCap {
+			t.Fatalf("retry wait %v beyond the expired cap %v", w, credential.ExpiredRetryCap)
+		}
+	}
+	if n := g.logs.count("workload credential has expired"); n != 1 {
+		t.Fatalf("expiry logged %d times, want once", n)
+	}
+	if reason := g.r.LastError(); !strings.Contains(reason, "credential expired at") {
+		t.Fatalf("reason while expired = %q", reason)
+	}
+	if n := g.logs.count(suspendedLine); n != 1 {
+		t.Fatalf("suspend warning logged %d times, want once", n)
+	}
+	g.stop()
+}
+
+// TestRenewerWallClockStepsBack: a wall clock stepped backwards mid-wait
+// says the renewal point is further off than the timer does. A check sets
+// no timer and renews nothing, and the timer still ends the wait.
+func TestRenewerWallClockStepsBack(t *testing.T) {
+	g := startSuspendRig(t, time.Minute, never)
+	d := g.scheduled()
+	g.clocks.stepWall(-2 * time.Hour)
+	g.settle()
+	if n := g.callCount(); n != 0 {
+		t.Fatalf("renew calls = %d after a backwards step", n)
+	}
+	if g.clocks.timerCount() != 1 {
+		t.Fatalf("%d timers set; a check must not replace or extend the wait", g.clocks.timerCount())
+	}
+	g.clocks.run(d)
+	g.clocks.fire(0)
+	g.attempt()
+	g.scheduled()
+	if n := g.logs.count(suspendedLine); n != 0 {
+		t.Fatalf("suspend warning logged %d times for a backwards step", n)
+	}
+	g.stop()
+}
+
+// TestRenewerWallGainsArmsRemainder: the wall clock gains on the timer
+// mid-wait without yet reaching the renewal point. A check sets one timer
+// for the wall clock's remainder, and whichever fires first ends the wait.
+func TestRenewerWallGainsArmsRemainder(t *testing.T) {
+	g := startSuspendRig(t, time.Minute, never)
+	d := g.scheduled()
+	g.clocks.stepWall(d - time.Hour) // suspended for all but the last hour
+	g.settle()
+	if g.clocks.timerCount() != 2 {
+		t.Fatalf("%d timers set, want the original and one for the wall clock's remainder", g.clocks.timerCount())
+	}
+	if remainder := g.scheduled(); remainder != time.Hour {
+		t.Fatalf("remainder timer %v, want 1h", remainder)
+	}
+	if n := g.callCount(); n != 0 {
+		t.Fatalf("renew calls = %d before the renewal point", n)
+	}
+	g.clocks.run(time.Hour)
+	g.clocks.fire(1)
+	g.attempt()
+	g.scheduled()
+	if n := g.callCount(); n != 1 {
+		t.Fatalf("renew calls = %d, want exactly 1", n)
+	}
+	g.stop()
+}
+
+// TestRenewerCheckOnZeroValue: Check is safe on a renewer that has never
+// run, and never blocks however often it is called.
+func TestRenewerCheckOnZeroValue(t *testing.T) {
+	r := &credential.Renewer{}
+	for range 3 {
+		r.Check()
 	}
 }

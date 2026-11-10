@@ -381,6 +381,44 @@ func TestHeartbeatAndInventoryFollowConfig(t *testing.T) {
 	}
 }
 
+// TestRenewalCheckedWhenConnected: the daemon asks the renewer to check
+// its schedule when the stream is established and on each heartbeat tick,
+// the moments it has demonstrably reached the control plane.
+func TestRenewalCheckedWhenConnected(t *testing.T) {
+	srv, dial := startServer(t)
+	checks := make(chan struct{}, 64)
+	startDaemon(t, agentsync.Config{
+		Dial: dial,
+		CheckRenewal: func() {
+			select {
+			case checks <- struct{}{}:
+			default:
+			}
+		},
+	})
+	waitCheck := func(what string) {
+		t.Helper()
+		select {
+		case <-checks:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("no renewal check %s", what)
+		}
+	}
+	c := <-srv.conns
+	c.expect(t) // Hello
+	select {
+	case <-checks:
+		t.Fatal("renewal checked before the stream was established")
+	default:
+	}
+	c.send(t, helloAck(1, 0))
+	waitCheck("at stream establishment")
+	for c.expect(t).GetHeartbeat() == nil {
+		// Inventory and acks may come first; the heartbeat is what counts.
+	}
+	waitCheck("on the heartbeat tick")
+}
+
 func TestReenrollDirectiveStopsTheDaemon(t *testing.T) {
 	srv, dial := startServer(t)
 	_, done := startDaemon(t, agentsync.Config{Dial: dial})
