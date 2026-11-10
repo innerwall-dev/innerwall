@@ -91,6 +91,14 @@ func (s *Service) Retire(ctx context.Context, id identity.WorkloadID) (*Retireme
 	if s.Streams != nil {
 		endHere = s.Streams.WatchRetiring(id)
 	}
+	// The watch ends on every path out of here, a panic in the
+	// transaction included, so it never outlives the call.
+	watching := true
+	defer func() {
+		if watching {
+			endHere(false)
+		}
+	}()
 	res := &Retirement{ID: id}
 	err := s.Store.RetireTx(ctx, func(ctx context.Context, tx RetireTx) error {
 		subj, err := tx.LockWorkload(ctx, id)
@@ -122,6 +130,7 @@ func (s *Service) Retire(ctx context.Context, id identity.WorkloadID) (*Retireme
 		res.RetiredAt, res.Rendered = at, report
 		return nil
 	})
+	watching = false
 	held := endHere(err == nil)
 	if err != nil {
 		return nil, err
