@@ -453,17 +453,22 @@ export function parsePeer(text: string): Peer | { error: string } {
 }
 
 // parseService reads one service as typed: text that parseEntry reads
-// as an entry (`tcp/389`, `tcp:389`, `tcp/6000-6010,6012`, `icmp`) is an
-// inline entry, so a rule admits the one entry grammar a definition
-// does. Text written as an entry, a protocol or nothing before a slash
-// or a colon (`tcp/`, `tcp:5432,`, `:5432`), that parseEntry refuses is
+// as an entry (`tcp/389`, `tcp:389`, `tcp :389`, `tcp/6000-6010,6012`,
+// `icmp`) is an inline entry, so a rule admits the one entry grammar a
+// definition does. Text written as an entry, a protocol or nothing
+// before a slash or a colon, with or without whitespace between them
+// (`tcp/`, `tcp :`, `tcp:5432,`, `:5432`), that parseEntry refuses is
 // refused with its reason, never read as a name; anything else names a
-// service definition.
+// service definition, spaces and all (`tcp proxy`).
 export function parseService(
 	text: string,
 ): { entry: Entry } | { ref: string } | { error: string } {
 	const e = parseEntry(text);
-	if ("entry" in e || /^(tcp|udp|icmp)?[/:]/i.test(text.trim())) return e;
+	if (
+		"entry" in e ||
+		/^(?:(?:tcp|udp|icmp)\p{White_Space}*)?[/:]/iu.test(trimSpace(text))
+	)
+		return e;
 	return { ref: text.trim() };
 }
 
@@ -664,20 +669,33 @@ export function defined(
 
 // --- definitions -------------------------------------------------------------
 
+// trimSpace removes leading and trailing whitespace as the control
+// plane's entry reader does (Go's strings.TrimSpace): the characters of
+// Unicode's White_Space property. String.prototype.trim differs at the
+// edges (it keeps U+0085 and removes U+FEFF), so the entry readers name
+// the property instead.
+function trimSpace(s: string): string {
+	return s.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, "");
+}
+
 // parseEntry reads one service entry as typed: a protocol, optionally
 // with its ports after a slash, the form the console draws, or a colon,
 // the form the command line and the deploy guide write (`tcp/5432`,
 // `tcp:6000-6010,6012`, `udp/53`, `icmp`). Either reads as the same
-// entry, so what is sent is the same whichever was typed. Ports are kept
-// as typed, so the control plane's admission names any fault in them;
-// text that is not a protocol at all is refused here, since an entry has
-// no other form. A protocol alone is every port. A separator says ports
-// follow, so one with nothing after it, or an empty item between commas,
-// is refused rather than dropped: nothing typed is read as broader than
-// it was written, as the command line reads it too.
+// entry, so what is sent is the same whichever was typed. Whitespace is
+// read as the control plane reads it: around the whole text, between the
+// protocol and the separator (`tcp :5432`), and around each port item
+// (`tcp: 5432, 6012`); inside a protocol or a port it is no entry or a
+// fault admission names. Ports are kept as typed, trimmed, so the
+// control plane's admission names any fault in them; text that is not a
+// protocol at all is refused here, since an entry has no other form. A
+// protocol alone is every port. A separator says ports follow, so one
+// with nothing after it, or an empty item between commas, is refused
+// rather than dropped: nothing typed is read as broader than it was
+// written, as the command line reads it too.
 export function parseEntry(text: string): { entry: Entry } | { error: string } {
-	const t = text.trim();
-	const m = /^(tcp|udp|icmp)(?:[/:](.*))?$/i.exec(t);
+	const t = trimSpace(text);
+	const m = /^(tcp|udp|icmp)\p{White_Space}*(?:[/:](.*))?$/isu.exec(t);
 	if (!m) {
 		return {
 			error: `An entry is a protocol with its ports after a slash or a colon: tcp/5432 or tcp:5432, udp/53, tcp/6000-6010, or icmp (${t}).`,
@@ -685,7 +703,7 @@ export function parseEntry(text: string): { entry: Entry } | { error: string } {
 	}
 	const protocol = (m[1] ?? "").toLowerCase() as Entry["protocol"];
 	if (m[2] === undefined) return { entry: { protocol } };
-	const ports = m[2].split(",").map((p) => p.trim());
+	const ports = m[2].split(",").map(trimSpace);
 	if (ports.length === 1 && ports[0] === "") {
 		return {
 			error:
@@ -700,6 +718,17 @@ export function parseEntry(text: string): { entry: Entry } | { error: string } {
 		};
 	}
 	return { entry: { protocol, ports } };
+}
+
+// splitEntries is a definition's entry field as its entries, separated
+// by whitespace. Whitespace beside a separator, a comma, or a range's
+// dash belongs to the entry it is in, as it does in one entry the
+// control plane reads (`tcp : 5432, 6000 - 6010 udp/53` is two entries),
+// so it is closed up before the text is split.
+export function splitEntries(text: string): string[] {
+	return trimSpace(text)
+		.replace(/\p{White_Space}*([/:,-])\p{White_Space}*/gu, "$1")
+		.split(/\p{White_Space}+/u);
 }
 
 // splitList is pasted text as its items, separated by commas or

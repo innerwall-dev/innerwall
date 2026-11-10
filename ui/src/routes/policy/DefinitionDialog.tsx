@@ -31,6 +31,7 @@ import {
 	type Keyed,
 	nextKey,
 	parseEntry,
+	splitEntries,
 	splitList,
 	type Unknown,
 } from "./model";
@@ -314,7 +315,7 @@ function DefinitionForm({
 								]);
 								return undefined;
 							}
-							const parsed = text.trim().split(/\s+/).map(parseEntry);
+							const parsed = splitEntries(text).map(parseEntry);
 							const refused = parsed.find((p) => "error" in p);
 							if (refused && "error" in refused) return refused.error;
 							setEntries([

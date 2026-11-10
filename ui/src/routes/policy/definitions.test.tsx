@@ -353,7 +353,9 @@ describe("service definitions", () => {
 			"An entry is a protocol with its ports after a slash or a colon: tcp/5432 or tcp:5432, udp/53, tcp/6000-6010, or icmp (5432:tcp). The text in the field was not added.",
 		);
 		await user.clear(add);
-		await user.type(add, "udp:5353");
+		// Whitespace before the separator reads as the command line reads
+		// it (#242), and the entry is sent as if typed without it.
+		await user.type(add, "udp :5353");
 		await user.click(
 			within(dialog).getByRole("button", { name: "Create service" }),
 		);

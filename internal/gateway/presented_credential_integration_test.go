@@ -51,6 +51,26 @@ func (l *logLines) all(t *testing.T, msg string) []map[string]any {
 	return out
 }
 
+// await polls for at least n lines with message msg and returns every
+// such line, decoded, for the caller to assert on. A handler logs after
+// the event a test can observe, so a test waits for the line rather than
+// reading the log once. Polling is a test device only; the system under
+// test never polls.
+func (l *logLines) await(t *testing.T, msg string, n int) []map[string]any {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		lines := l.all(t, msg)
+		if len(lines) >= n {
+			return lines
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %d %q lines; have %v", n, msg, lines)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 // leafOf returns the certificate the agent will present next.
 func leafOf(t *testing.T, a *testAgent) *x509.Certificate {
 	t.Helper()
@@ -102,7 +122,9 @@ func TestStreamOpenRecordsThePresentedCredential(t *testing.T) {
 	if p := w.PresentedCredential; p.Serial != firstSerial || !p.ExpiresAt.Equal(first.NotAfter) || w.CredentialSerial != firstSerial {
 		t.Fatalf("at open: presented = %+v, issued %q; want %q expiring %v", p, w.CredentialSerial, firstSerial, first.NotAfter)
 	}
-	lines := logs.all(t, "sync stream opened")
+	// The handler stamps the registry before it logs the open, so the
+	// line may follow the stamp.
+	lines := logs.await(t, "sync stream opened", 1)
 	if len(lines) != 1 || lines[0]["credential_serial"] != firstSerial || lines[0]["credential_expires_at"] != first.NotAfter.Format(time.RFC3339Nano) {
 		t.Fatalf("sync stream opened lines = %v, want serial %s expiring %v", lines, firstSerial, first.NotAfter)
 	}
@@ -144,7 +166,7 @@ func TestStreamOpenRecordsThePresentedCredential(t *testing.T) {
 	if w.CredentialSerial != renewedSerial || !w.PresentedCredential.ExpiresAt.Equal(w.CredentialExpiresAt) {
 		t.Fatalf("on the renewed stream: presented = %+v, issued %q expiring %v", w.PresentedCredential, w.CredentialSerial, w.CredentialExpiresAt)
 	}
-	if lines := logs.all(t, "sync stream opened"); len(lines) != 2 || lines[1]["credential_serial"] != renewedSerial {
+	if lines := logs.await(t, "sync stream opened", 2); len(lines) != 2 || lines[1]["credential_serial"] != renewedSerial {
 		t.Fatalf("sync stream opened lines = %v, want the second on %s", lines, renewedSerial)
 	}
 	agent.disconnect()

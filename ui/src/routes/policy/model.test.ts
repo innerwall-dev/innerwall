@@ -30,6 +30,7 @@ import {
 	scopeFindings,
 	scopeMix,
 	servicesCell,
+	splitEntries,
 	splitList,
 	trafficByRule,
 	unknownOf,
@@ -344,6 +345,28 @@ describe("drafts and findings", () => {
 		expect(s?.unread).toEqual([
 			"tcp/: A slash or a colon is followed by ports: list them, as in tcp/5432, or write tcp alone for every port (tcp/).",
 		]);
+	});
+
+	it("reads whitespace around a rule's inline entry as the control plane does (#242)", () => {
+		// Whitespace before the separator is an entry, as on the command
+		// line, never the name of a service definition.
+		for (const text of ["tcp :5432", "tcp / 5432", " TCP : 5432 "]) {
+			expect(parseService(text)).toEqual({
+				entry: { protocol: "tcp", ports: ["5432"] },
+			});
+		}
+		// Text written as an entry that the grammar refuses stays refused
+		// with whitespace present, and is not read as a name.
+		for (const text of ["tcp :", "tcp / ", "tcp :5432, ", " :5432", "icmp :"]) {
+			expect(parseService(text)).toEqual(parseEntry(text));
+			expect(parseService(text)).toHaveProperty("error");
+		}
+		expect(parseService(" tcp ")).toEqual({ entry: { protocol: "tcp" } });
+		// A service definition's name is free text: one with spaces that
+		// is not shaped as an entry is still a name.
+		for (const name of ["tcp proxy", "Postgres primary", "udp 53 legacy"]) {
+			expect(parseService(name)).toEqual({ ref: name });
+		}
 	});
 
 	it("writes a new rule without an id, and a persisted one under its own", () => {
@@ -693,6 +716,60 @@ describe("definitions", () => {
 			error:
 				"An entry is a protocol with its ports after a slash or a colon: tcp/5432 or tcp:5432, udp/53, tcp/6000-6010, or icmp (postgres).",
 		});
+		// Whitespace is read where the control plane reads it: around the
+		// text, between the protocol and the separator, and around each
+		// port item (#242). Ports are sent trimmed, as before.
+		for (const t of [
+			"tcp :5432",
+			"tcp/ 5432",
+			"tcp : 5432 ",
+			"\ttcp\u00a0:5432",
+		]) {
+			expect(parseEntry(t)).toEqual({
+				entry: { protocol: "tcp", ports: ["5432"] },
+			});
+		}
+		expect(parseEntry("udp : 53 , 5353")).toEqual({
+			entry: { protocol: "udp", ports: ["53", "5353"] },
+		});
+		expect(parseEntry(" tcp ")).toEqual({ entry: { protocol: "tcp" } });
+		// #239's refusals hold with whitespace present.
+		for (const t of ["tcp :", "tcp / ", " tcp : "]) {
+			expect(parseEntry(t)).toEqual({
+				error: `A slash or a colon is followed by ports: list them, as in tcp/5432, or write tcp alone for every port (${t.trim()}).`,
+			});
+		}
+		for (const t of ["tcp :5432, ", "tcp : , 5432"]) {
+			expect(parseEntry(t)).toEqual({
+				error: `A port list has an empty item: remove the extra comma (${t.trim()}).`,
+			});
+		}
+		expect(parseEntry("icmp :")).toEqual({
+			error: "icmp has no ports: write it alone (icmp :).",
+		});
+		for (const t of [" :5432", " / 5432"]) {
+			expect(parseEntry(t)).toHaveProperty("error");
+		}
+		// The control plane's whitespace, no more: Unicode's White_Space,
+		// not the byte order mark that String.prototype.trim also removes,
+		// and never inside a protocol.
+		expect(parseEntry("tcp\u0085:5432")).toEqual({
+			entry: { protocol: "tcp", ports: ["5432"] },
+		});
+		expect(parseEntry("\ufefftcp:5432")).toHaveProperty("error");
+		expect(parseEntry("t cp:5432")).toHaveProperty("error");
+		// A definition's field holds entries separated by whitespace; the
+		// whitespace inside one entry stays with it.
+		expect(splitEntries("tcp : 5432, 6000 - 6010 udp/53  icmp")).toEqual([
+			"tcp:5432,6000-6010",
+			"udp/53",
+			"icmp",
+		]);
+		expect(splitEntries("tcp :5432").map(parseEntry)).toEqual([
+			{ entry: { protocol: "tcp", ports: ["5432"] } },
+		]);
+		expect(splitEntries("tcp 5432")).toEqual(["tcp", "5432"]);
+		expect(splitEntries("tcp :")).toEqual(["tcp:"]);
 		expect(entryText({ protocol: "tcp", ports: ["5432", "6000-6010"] })).toBe(
 			"tcp/5432,6000-6010",
 		);
