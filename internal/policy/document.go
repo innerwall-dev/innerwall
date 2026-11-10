@@ -180,9 +180,15 @@ func FormatPortSpec(p PortRange) string {
 // EntrySpecDoc reads the command-line entry form "tcp:5432,6000-6010" or
 // "icmp" (no ports) into its document form, unparsed: the protocol and
 // each port spec are read by ServiceFromDoc, so a command-line entry's
-// faults reach admission the way a document's do.
+// faults reach admission the way a document's do. The protocol ends at
+// the first ":" or "/", so the form every surface draws an entry in
+// ("tcp/5432") reads as its colon form does; neither character can
+// appear in a protocol name or a port spec, so no other input changes.
 func EntrySpecDoc(s string) EntryDoc {
-	protoName, ports, _ := strings.Cut(s, ":")
+	protoName, ports := s, ""
+	if i := strings.IndexAny(s, ":/"); i >= 0 {
+		protoName, ports = s[:i], s[i+1:]
+	}
 	d := EntryDoc{Protocol: protoName}
 	if strings.TrimSpace(ports) != "" {
 		d.Ports = strings.Split(ports, ",")

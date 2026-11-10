@@ -2,6 +2,7 @@ package policy_test
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -169,6 +170,64 @@ func TestValidateReportsDocumentFaultsWithAdmission(t *testing.T) {
 			t.Fatalf("findings = %v", f)
 		}
 	})
+}
+
+// TestEntrySpecDocReadsEitherSeparator pins the command line's entry
+// grammar: a slash between protocol and ports reads exactly as a colon
+// does, so the form every surface draws an entry in can be typed back,
+// and what is refused is refused by the same layer either way.
+func TestEntrySpecDocReadsEitherSeparator(t *testing.T) {
+	for _, tc := range []struct {
+		spec  string
+		same  string // the colon form it reads as; "" when it has none
+		doc   policy.EntryDoc
+		path  string // the one finding admission reports; "" when admitted
+		fault error
+	}{
+		{spec: "tcp/5432", same: "tcp:5432", doc: policy.EntryDoc{Protocol: "tcp", Ports: []string{"5432"}}},
+		{spec: "udp/53", same: "udp:53", doc: policy.EntryDoc{Protocol: "udp", Ports: []string{"53"}}},
+		{spec: "tcp/6000-6010", same: "tcp:6000-6010", doc: policy.EntryDoc{Protocol: "tcp", Ports: []string{"6000-6010"}}},
+		{spec: "tcp/5432,7000", same: "tcp:5432,7000", doc: policy.EntryDoc{Protocol: "tcp", Ports: []string{"5432", "7000"}}},
+		{spec: "tcp/6000-6010,7000", same: "tcp:6000-6010,7000", doc: policy.EntryDoc{Protocol: "tcp", Ports: []string{"6000-6010", "7000"}}},
+		{spec: "TCP/5432", same: "TCP:5432", doc: policy.EntryDoc{Protocol: "TCP", Ports: []string{"5432"}}},
+		{spec: "icmp", doc: policy.EntryDoc{Protocol: "icmp"}},
+		// A separator with nothing after it is no ports, every port, as
+		// the colon form has always read.
+		{spec: "tcp/", same: "tcp:", doc: policy.EntryDoc{Protocol: "tcp"}},
+		{spec: "tcp:", doc: policy.EntryDoc{Protocol: "tcp"}},
+		// Refusals stay refusals, at the layer that refused them before.
+		{spec: "http/80", same: "http:80", doc: policy.EntryDoc{Protocol: "http", Ports: []string{"80"}}, path: "entries[0].protocol", fault: policy.ErrBadProtocol},
+		{spec: "tcp:/53", doc: policy.EntryDoc{Protocol: "tcp", Ports: []string{"/53"}}, path: "entries[0].ports[0]", fault: policy.ErrBadPortSpec},
+		{spec: "tcp/:53", doc: policy.EntryDoc{Protocol: "tcp", Ports: []string{":53"}}, path: "entries[0].ports[0]", fault: policy.ErrBadPortSpec},
+		{spec: "tcp/5432/6000", doc: policy.EntryDoc{Protocol: "tcp", Ports: []string{"5432/6000"}}, path: "entries[0].ports[0]", fault: policy.ErrBadPortSpec},
+		{spec: "tcp/many", same: "tcp:many", doc: policy.EntryDoc{Protocol: "tcp", Ports: []string{"many"}}, path: "entries[0].ports[0]", fault: policy.ErrBadPortSpec},
+		{spec: "tcp/99999", same: "tcp:99999", doc: policy.EntryDoc{Protocol: "tcp", Ports: []string{"99999"}}, path: "entries[0].ports[0]", fault: policy.ErrBadPortRange},
+		{spec: "icmp/8", same: "icmp:8", doc: policy.EntryDoc{Protocol: "icmp", Ports: []string{"8"}}, path: "entries[0].ports", fault: policy.ErrPortsOnPortless},
+	} {
+		t.Run(tc.spec, func(t *testing.T) {
+			got := policy.EntrySpecDoc(tc.spec)
+			if got.Protocol != tc.doc.Protocol || !slices.Equal(got.Ports, tc.doc.Ports) {
+				t.Fatalf("EntrySpecDoc(%q) = %+v, want %+v", tc.spec, got, tc.doc)
+			}
+			if tc.same != "" {
+				if colon := policy.EntrySpecDoc(tc.same); colon.Protocol != got.Protocol || !slices.Equal(colon.Ports, got.Ports) {
+					t.Fatalf("EntrySpecDoc(%q) = %+v, but %q reads as %+v", tc.spec, got, tc.same, colon)
+				}
+			}
+			svc := policy.ServiceFromDoc(&policy.ServiceDoc{Name: "pg", Entries: []policy.EntryDoc{got}})
+			err := policy.ValidateService(svc)
+			if tc.path == "" {
+				if err != nil {
+					t.Fatalf("%q refused: %v", tc.spec, err)
+				}
+				return
+			}
+			f := policy.AsFindings(err)
+			if f == nil || len(f.Errors) != 1 || f.Errors[0].Path != tc.path || !errors.Is(f.Errors[0], tc.fault) {
+				t.Fatalf("%q: findings = %v, want one %v at %s", tc.spec, f, tc.fault, tc.path)
+			}
+		})
+	}
 }
 
 func TestValidateServiceAndAddressGroup(t *testing.T) {

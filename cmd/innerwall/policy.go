@@ -131,7 +131,7 @@ func runServiceWrite(ctx context.Context, verb string, args []string) error {
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
 	name := fs.String("name", "", "service name")
 	var entries stringFlags
-	fs.Var(&entries, "entry", "protocol and ports, e.g. tcp:5432 or tcp:6000-6010,7000 or icmp (repeatable; replaces all entries on update)")
+	fs.Var(&entries, "entry", "protocol and ports, e.g. tcp:5432 or tcp:6000-6010,7000 or icmp; tcp/5432 reads the same (repeatable; replaces all entries on update)")
 	if err := cli.Parse(fs, args, writePositionals(verb)); err != nil {
 		return err
 	}
