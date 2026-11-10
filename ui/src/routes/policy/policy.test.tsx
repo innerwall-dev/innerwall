@@ -1991,6 +1991,68 @@ describe("policy editor", () => {
 		});
 	});
 
+	it("refuses a separator with no ports or an empty port item in a rule's services field, and writes no rule while one is in it", async () => {
+		// #239: `tcp/` was read as every TCP port, `:443` as the name of a
+		// service. A separator says ports follow; tcp alone is every port.
+		const s: ReturnType<typeof surface> = surface({
+			extra: [createsRule(() => s)],
+		});
+		const user = userEvent.setup();
+		renderApp("/policy?ruleset=checkout-inbound");
+		await rulesTable();
+		await user.click(screen.getByRole("button", { name: "Add rule" }));
+		const editing = await row("New rule");
+		const peer = within(editing).getByRole("textbox", { name: "Add a peer" });
+		const svc = within(editing).getByRole("textbox", { name: "Add a service" });
+		await user.type(peer, "app=web{Enter}");
+		const save = screen.getByRole("button", {
+			name: /Save — applies to 5 workloads now/,
+		});
+		for (const [typed, reason] of [
+			[
+				"tcp/",
+				"A slash or a colon is followed by ports: list them, as in tcp/5432, or write tcp alone for every port (tcp/).",
+			],
+			[
+				"udp:",
+				"A slash or a colon is followed by ports: list them, as in udp/5432, or write udp alone for every port (udp:).",
+			],
+			[
+				"tcp:443,",
+				"A port list has an empty item: remove the extra comma (tcp:443,).",
+			],
+			[
+				":443",
+				"An entry is a protocol with its ports after a slash or a colon: tcp/5432 or tcp:5432, udp/53, tcp/6000-6010, or icmp (:443).",
+			],
+		] as const) {
+			await user.clear(svc);
+			await user.type(svc, `${typed}{Enter}`);
+			expect(svc).toHaveValue(typed);
+			expect(
+				within(editing).getByText(
+					`${reason} The text in the field was not added.`,
+				),
+			).toBeInTheDocument();
+			// Only the peer's chip: nothing typed was added as a service.
+			expect(within(editing).getAllByTestId("chip")).toHaveLength(1);
+			await user.click(save);
+			expect(svc).toHaveValue(typed);
+			expect(writes(s.calls, "POST", "/rules")).toHaveLength(0);
+		}
+		// The protocol alone is every port, and is written as such.
+		await user.clear(svc);
+		await user.type(svc, "tcp");
+		await user.click(save);
+		expect(await screen.findByRole("status")).toHaveTextContent(/^Saved /);
+		const posts = writes(s.calls, "POST", "/rules");
+		expect(posts).toHaveLength(1);
+		expect(posts[0]?.body).toMatchObject({
+			peers: [{ workloads: { app: ["web"] } }],
+			entries: [{ protocol: "tcp" }],
+		});
+	});
+
 	it("holds no save with refused text in a row that was discarded", async () => {
 		const s: ReturnType<typeof surface> = surface({
 			extra: [createsRule(() => s)],

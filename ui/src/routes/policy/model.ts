@@ -455,10 +455,16 @@ export function parsePeer(text: string): Peer | { error: string } {
 // parseService reads one service as typed: text that parseEntry reads
 // as an entry (`tcp/389`, `tcp:389`, `tcp/6000-6010,6012`, `icmp`) is an
 // inline entry, so a rule admits the one entry grammar a definition
-// does; anything else names a service definition.
-export function parseService(text: string): { entry: Entry } | { ref: string } {
+// does. Text written as an entry, a protocol or nothing before a slash
+// or a colon (`tcp/`, `tcp:5432,`, `:5432`), that parseEntry refuses is
+// refused with its reason, never read as a name; anything else names a
+// service definition.
+export function parseService(
+	text: string,
+): { entry: Entry } | { ref: string } | { error: string } {
 	const e = parseEntry(text);
-	return "entry" in e ? e : { ref: text.trim() };
+	if ("entry" in e || /^(tcp|udp|icmp)?[/:]/i.test(text.trim())) return e;
+	return { ref: text.trim() };
 }
 
 // --- findings ----------------------------------------------------------------
@@ -665,7 +671,10 @@ export function defined(
 // entry, so what is sent is the same whichever was typed. Ports are kept
 // as typed, so the control plane's admission names any fault in them;
 // text that is not a protocol at all is refused here, since an entry has
-// no other form.
+// no other form. A protocol alone is every port. A separator says ports
+// follow, so one with nothing after it, or an empty item between commas,
+// is refused rather than dropped: nothing typed is read as broader than
+// it was written, as the command line reads it too.
 export function parseEntry(text: string): { entry: Entry } | { error: string } {
 	const t = text.trim();
 	const m = /^(tcp|udp|icmp)(?:[/:](.*))?$/i.exec(t);
@@ -675,11 +684,22 @@ export function parseEntry(text: string): { entry: Entry } | { error: string } {
 		};
 	}
 	const protocol = (m[1] ?? "").toLowerCase() as Entry["protocol"];
-	const ports = (m[2] ?? "")
-		.split(",")
-		.map((p) => p.trim())
-		.filter((p) => p !== "");
-	return { entry: ports.length > 0 ? { protocol, ports } : { protocol } };
+	if (m[2] === undefined) return { entry: { protocol } };
+	const ports = m[2].split(",").map((p) => p.trim());
+	if (ports.length === 1 && ports[0] === "") {
+		return {
+			error:
+				protocol === "icmp"
+					? `icmp has no ports: write it alone (${t}).`
+					: `A slash or a colon is followed by ports: list them, as in ${protocol}/5432, or write ${protocol} alone for every port (${t}).`,
+		};
+	}
+	if (ports.includes("")) {
+		return {
+			error: `A port list has an empty item: remove the extra comma (${t}).`,
+		};
+	}
+	return { entry: { protocol, ports } };
 }
 
 // splitList is pasted text as its items, separated by commas or

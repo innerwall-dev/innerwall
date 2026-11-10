@@ -542,6 +542,7 @@ function EditRow({
 							onRefused={refused?.report(rowFields.services)}
 							onAdd={(text) => {
 								const s = parseService(text);
+								if ("error" in s) return s.error;
 								onDraft(
 									"ref" in s
 										? {

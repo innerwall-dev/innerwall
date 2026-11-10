@@ -3,6 +3,7 @@ import type { DryRunResult, Rollup } from "@/api/schema";
 import { minutesAgo, workload } from "@/test/fixtures";
 import { rollupOf, wref } from "@/test/map";
 import { rule, ruleset } from "@/test/review";
+import { pairSuggestion } from "./link";
 import {
 	attachFindings,
 	bannerText,
@@ -309,14 +310,40 @@ describe("drafts and findings", () => {
 			["tcp:5432", "tcp/5432"],
 			["UDP:53", "udp/53"],
 			["tcp:6000-6010,6012", "tcp/6000-6010,6012"],
-			["tcp:", "tcp"],
 		] as const) {
 			expect(parseService(colon)).toEqual(parseService(slash));
 			expect(parseService(colon)).toEqual(parseEntry(slash));
 			expect("entry" in parseService(colon)).toBe(true);
 		}
+		// A protocol alone is every port.
+		expect(parseService("tcp")).toEqual({ entry: { protocol: "tcp" } });
+		// Text written as an entry that the entry grammar refuses is
+		// refused with its reason, never read as the name of a service.
+		for (const text of [
+			"tcp:",
+			"tcp/",
+			"udp:",
+			"tcp:5432,",
+			":5432",
+			"/5432",
+		]) {
+			expect(parseService(text)).toEqual(parseEntry(text));
+			expect(parseService(text)).toHaveProperty("error");
+		}
 		// A protocol the surface does not take is a name, as before.
 		expect(parseService("sctp:5432")).toEqual({ ref: "sctp:5432" });
+		// A link's service is read the same way: a refused entry is
+		// unread, with its reason, not a name and not every port.
+		const q = new URLSearchParams();
+		q.set("via", "map");
+		q.append("service", "tcp/");
+		q.append("service", "tcp/443");
+		const s = pairSuggestion(q);
+		expect(s?.entries).toEqual([{ protocol: "tcp", ports: ["443"] }]);
+		expect(s?.refs).toEqual([]);
+		expect(s?.unread).toEqual([
+			"tcp/: A slash or a colon is followed by ports: list them, as in tcp/5432, or write tcp alone for every port (tcp/).",
+		]);
 	});
 
 	it("writes a new rule without an id, and a persisted one under its own", () => {
@@ -628,6 +655,37 @@ describe("definitions", () => {
 		});
 		const colon = parseEntry("tcp:5432");
 		expect("entry" in colon && entryText(colon.entry)).toBe("tcp/5432");
+		// A protocol alone is every port; a separator says ports follow,
+		// so one with nothing after it is refused, naming both fixes.
+		expect(parseEntry("tcp")).toEqual({ entry: { protocol: "tcp" } });
+		for (const t of ["tcp:", "tcp/", " tcp: ", "tcp/ "]) {
+			expect(parseEntry(t)).toEqual({
+				error: `A slash or a colon is followed by ports: list them, as in tcp/5432, or write tcp alone for every port (${t.trim()}).`,
+			});
+		}
+		for (const t of ["udp:", "udp/"]) {
+			expect(parseEntry(t)).toEqual({
+				error: `A slash or a colon is followed by ports: list them, as in udp/5432, or write udp alone for every port (${t}).`,
+			});
+		}
+		expect(parseEntry("icmp:")).toEqual({
+			error: "icmp has no ports: write it alone (icmp:).",
+		});
+		// An empty item is refused, never dropped.
+		for (const t of [
+			"tcp:5432,",
+			"tcp:,5432",
+			"tcp:5432,,6000",
+			"tcp/5432, ,6000",
+		]) {
+			expect(parseEntry(t)).toEqual({
+				error: `A port list has an empty item: remove the extra comma (${t}).`,
+			});
+		}
+		// An empty protocol is no entry.
+		for (const t of [":5432", "/5432", "", "  "]) {
+			expect(parseEntry(t)).toHaveProperty("error");
+		}
 		// What is no entry in either form is refused, naming both forms.
 		expect(parseEntry("sctp:5432")).toHaveProperty("error");
 		expect(parseEntry("5432/tcp")).toHaveProperty("error");
