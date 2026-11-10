@@ -25,7 +25,8 @@
 //	               over a label scope, a workload's totals since first seen
 //	dev            development-only commands, compiled in with the dev build
 //	               tag: seed loads the recognizable review fleet into a
-//	               disposable database so the console can be reviewed
+//	               disposable database so the console can be reviewed;
+//	               reset empties it and loads nothing
 //
 // Authoring commands write Postgres directly and render there; the running
 // control plane learns of changed policy through the database and pushes
@@ -105,7 +106,7 @@ commands:
   workload       list | counts | status | set-labels | set-mode | resend-snapshot | retire
   policy         render | show
   flows          list | rollup | totals | gaps
-  dev            seed: load the recognizable review fleet (builds with -tags dev only)
+  dev            seed | reset: load the review fleet, or empty the database (builds with -tags dev only)
   version        print the version
 
 Run "innerwall <command> -h" for the flags of a command.

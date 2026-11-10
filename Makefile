@@ -1,7 +1,7 @@
 # Thin dispatcher. Every target is a 1–3-line wrapper over a real tool;
 # anything with logic lives in scripts/.
 
-.PHONY: build build-noconsole test test-netns test-console lint vulncheck openapi proto sqlc console-api console ui dev seed drift tools migrate
+.PHONY: build build-noconsole test test-netns test-console lint vulncheck openapi proto sqlc console-api console ui dev seed reset drift tools migrate
 
 build:
 	CGO_ENABLED=0 go build -trimpath -o bin/ ./cmd/...
@@ -50,6 +50,9 @@ dev:
 
 seed:
 	go run -tags dev ./cmd/innerwall dev seed
+
+reset:
+	go run -tags dev ./cmd/innerwall dev reset
 
 migrate:
 	go run ./cmd/innerwall migrate
