@@ -1006,10 +1006,27 @@ describe("resend snapshot", () => {
 	});
 });
 
+const noAddressGroups: Route = {
+	method: "GET",
+	path: "/api/v1/address-groups",
+	reply: { status: 200, json: { address_groups: [] } },
+};
+
 describe("mode change from the detail", () => {
 	it("changes this one workload by id", async () => {
 		const { calls } = surface({
+			workload: () => ({
+				...db,
+				sync: {
+					...db.sync,
+					state: "synced",
+					applied_version: 42,
+					latest_version: 42,
+					error: "",
+				},
+			}),
 			extra: [
+				noAddressGroups,
 				{
 					method: "POST",
 					path: "/api/v1/mode-changes",
@@ -1030,6 +1047,11 @@ describe("mode change from the detail", () => {
 		const dialog = await screen.findByRole("dialog", { name: "Change mode" });
 		expect(dialog).toHaveTextContent("this workload");
 		await user.click(within(dialog).getByRole("radio", { name: /Enforced/ }));
+		// Simulating on its latest policy with nothing the review would
+		// drop: the review's verdict is safe and the change is one step.
+		expect(await within(dialog).findByTestId("evidence")).toHaveTextContent(
+			"Safe to enforce",
+		);
 		await user.click(
 			within(dialog).getByRole("button", { name: "Change to enforced" }),
 		);
@@ -1037,6 +1059,89 @@ describe("mode change from the detail", () => {
 			expect(calls.find((c) => c.method === "POST")?.body).toEqual({
 				workload_ids: [db.id],
 				target_mode: "enforced",
+				expected_match_count: 1,
+			}),
+		);
+	});
+
+	it("holds a change to enforced of a workload that never simulated for the acknowledgment", async () => {
+		const { calls } = surface({
+			workload: () => ({ ...db, mode: "visibility" }),
+			extra: [
+				noAddressGroups,
+				{
+					method: "POST",
+					path: "/api/v1/mode-changes",
+					reply: {
+						status: 200,
+						json: {
+							mode_change_id: "5e0c1c7e-0000-4000-8000-000000000004",
+							matched: 1,
+							desired_updated: 1,
+						},
+					},
+				},
+			],
+		});
+		const user = userEvent.setup();
+		renderApp(`/workloads/${db.id}`);
+		await user.click(await screen.findByRole("button", { name: "change…" }));
+		const dialog = await screen.findByRole("dialog", { name: "Change mode" });
+		await user.click(within(dialog).getByRole("radio", { name: /Enforced/ }));
+		expect(await within(dialog).findByTestId("evidence")).toHaveTextContent(
+			"No simulation evidence for 1 of 1 selected.",
+		);
+		const confirm = within(dialog).getByRole("button", {
+			name: "Enforce anyway on 1 workload",
+		});
+		await user.click(confirm);
+		expect(calls.some((c) => c.method === "POST")).toBe(false);
+		await user.click(
+			within(dialog).getByLabelText(
+				"I understand this workload is not safe to enforce yet",
+			),
+		);
+		await user.click(confirm);
+		await waitFor(() =>
+			expect(calls.find((c) => c.method === "POST")?.body).toEqual({
+				workload_ids: [db.id],
+				target_mode: "enforced",
+				expected_match_count: 1,
+			}),
+		);
+	});
+
+	it("keeps a change to simulation one step", async () => {
+		const { calls } = surface({
+			workload: () => ({ ...db, mode: "visibility" }),
+			extra: [
+				{
+					method: "POST",
+					path: "/api/v1/mode-changes",
+					reply: {
+						status: 200,
+						json: {
+							mode_change_id: "5e0c1c7e-0000-4000-8000-000000000005",
+							matched: 1,
+							desired_updated: 1,
+						},
+					},
+				},
+			],
+		});
+		const user = userEvent.setup();
+		renderApp(`/workloads/${db.id}`);
+		await user.click(await screen.findByRole("button", { name: "change…" }));
+		const dialog = await screen.findByRole("dialog", { name: "Change mode" });
+		await user.click(within(dialog).getByRole("radio", { name: /Simulation/ }));
+		expect(within(dialog).queryByTestId("evidence")).not.toBeInTheDocument();
+		await user.click(
+			within(dialog).getByRole("button", { name: "Change to simulation" }),
+		);
+		await waitFor(() =>
+			expect(calls.find((c) => c.method === "POST")?.body).toEqual({
+				workload_ids: [db.id],
+				target_mode: "simulation",
 				expected_match_count: 1,
 			}),
 		);

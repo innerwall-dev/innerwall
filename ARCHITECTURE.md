@@ -153,7 +153,7 @@ Surfaces, in product order:
 1. **Flow map** — the live dependency graph (ReactFlow), aggregated by label group rather than per-host, because a thousand-node hairball is not visibility. Drill-down expands groups to workloads to flows.
 2. **Policy editor** — live edits with conditional writes and every admission finding shown in place, and a dry run that shows each workload's rendered change before anything is written.
 3. **Simulation review** — a ruleset's would-block traffic from the workloads simulating it: "these seventeen real connections from the last week would have been denied," with the verdict, the evidence gaps, and the promotion to enforcement, which asks for an explicit acknowledgment when the verdict is not safe.
-4. **Workload inventory** — registry, labels, agent health, desired-vs-actual ruleset version.
+4. **Workload inventory** — registry, labels, agent health, desired-vs-actual ruleset version, and mode changes; a change to enforced from here carries the review's verdict for each workload it would move and asks for the same explicit acknowledgment when any is not safe or never simulated.
 5. **Enrollment** — generate scoped, expiring, pre-labeled provisioning tokens with the copy-paste enroll command. Deliberately polished: it is the first thirty seconds of every evaluation.
 
 ## 10. Scale-out roadmap (designed, not built)

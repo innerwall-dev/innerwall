@@ -1,16 +1,20 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterAll, describe, expect, it, vi } from "vitest";
-import type { Workload } from "@/api/schema";
+import type { EvidenceGap, RollupGroup, Workload } from "@/api/schema";
 import { hoursFromNow, minutesAgo, workload } from "@/test/fixtures";
 import {
 	chip,
+	emptyRollup,
+	gapsOf,
 	mockSurface,
 	problem,
 	type Route,
 	renderApp,
 	signedIn,
 } from "@/test/harness";
+import { peer } from "@/test/map";
+import { gap, peerService, ps } from "@/test/review";
 
 // The clock is fixed for this file: the fixtures below are instants
 // relative to now, built when the module loads, and the assertions read
@@ -474,6 +478,7 @@ describe("mode change for selected", () => {
 		let changed = false;
 		const { calls } = mockSurface([
 			...frame,
+			...evidence({}),
 			fleet(() => ({
 				workloads: changed
 					? [
@@ -524,8 +529,22 @@ describe("mode change for selected", () => {
 		expect(
 			within(dialog).getByText("1 already in enforced; the other 1 change."),
 		).toBeInTheDocument();
+		// checkout-prod-07 is degraded: the review would not call it safe,
+		// so the change waits on the acknowledgment.
+		expect(
+			await within(dialog).findByText(
+				"Not safe to enforce for 1 of 2 selected.",
+			),
+		).toBeInTheDocument();
 		await user.click(
-			within(dialog).getByRole("button", { name: "Change to enforced" }),
+			within(dialog).getByLabelText(
+				"I understand 1 of these 2 workloads is not safe to enforce yet",
+			),
+		);
+		await user.click(
+			within(dialog).getByRole("button", {
+				name: "Enforce anyway on 1 workload",
+			}),
 		);
 
 		await waitFor(() =>
@@ -599,6 +618,374 @@ describe("mode change for selected", () => {
 			).toBeGreaterThan(reads),
 		);
 	});
+});
+
+// evidence answers the reads a change to enforced makes for each workload
+// it would move: the peer-and-service groups under each decision and the
+// evidence gaps, by the workload the read names.
+function evidence(
+	groups: Record<
+		string,
+		Partial<Record<"would_block" | "allowed", RollupGroup[]>>
+	>,
+	gaps: Record<string, EvidenceGap[]> = {},
+): Route[] {
+	return [
+		{
+			method: "GET",
+			path: "/api/v1/address-groups",
+			reply: { status: 200, json: { address_groups: [] } },
+		},
+		{
+			method: "GET",
+			path: "/api/v1/flows/rollup",
+			reply: (_b, q) => {
+				const v = q.get("verdict") as "would_block" | "allowed";
+				const g = groups[q.get("workload") ?? ""]?.[v] ?? [];
+				return {
+					status: 200,
+					json:
+						g.length > 0 && q.get("group_by") === "peer,service"
+							? peerService(g)
+							: emptyRollup(q),
+				};
+			},
+		},
+		{
+			method: "GET",
+			path: "/api/v1/flows/gaps",
+			reply: (_b, q) => ({
+				status: 200,
+				json: gapsOf(gaps[q.get("workload") ?? ""] ?? [], q),
+			}),
+		},
+	];
+}
+
+function evidenceReads(
+	calls: { method: string; path: string }[],
+	what: "rollup" | "gaps",
+) {
+	return calls
+		.filter((c) => c.path.startsWith(`/api/v1/flows/${what}`))
+		.map((c) => new URL(c.path, "http://console.test").searchParams);
+}
+
+const okPost: Route = {
+	method: "POST",
+	path: "/api/v1/mode-changes",
+	reply: {
+		status: 200,
+		json: {
+			mode_change_id: "5e0c1c7e-0000-4000-8000-000000000003",
+			matched: 1,
+			desired_updated: 1,
+		},
+	},
+};
+
+// A workload enrolled minutes ago: visibility, no flows, never simulated.
+const fresh = workload({
+	hostname: "web-new-01",
+	labels: { app: "web", env: "prod" },
+	mode: "visibility",
+	enrolled_at: minutesAgo(4),
+});
+// Simulating on its latest policy, every observed connection admitted.
+const earned = workload({
+	hostname: "web-prod-02",
+	labels: { app: "web", env: "prod" },
+	mode: "simulation",
+});
+// Simulating on its latest policy, with traffic enforcing would drop.
+const dropping = workload({
+	hostname: "web-prod-03",
+	labels: { app: "web", env: "prod" },
+	mode: "simulation",
+});
+const office = peer.address("192.0.2.40");
+
+async function openEnforce(user: ReturnType<typeof userEvent.setup>) {
+	await user.click(
+		screen.getByRole("button", { name: "Change mode for selected…" }),
+	);
+	const dialog = await screen.findByRole("dialog", {
+		name: "Change mode for selected",
+	});
+	await user.click(within(dialog).getByRole("radio", { name: /Enforced/ }));
+	return dialog;
+}
+
+describe("a change to enforced from the fleet", () => {
+	it("holds a workload with no simulation evidence for the acknowledgment and writes nothing without it", async () => {
+		const { calls } = mockSurface([
+			...frame,
+			fleet(() => ({ workloads: [fresh], next_cursor: null })),
+			...evidence({}),
+			okPost,
+		]);
+		const user = userEvent.setup();
+		renderApp("/workloads");
+		await screen.findByRole("link", { name: "web-new-01" });
+		await user.click(screen.getByLabelText("Select web-new-01"));
+		const dialog = await openEnforce(user);
+
+		const block = await within(dialog).findByTestId("evidence");
+		expect(block).toHaveTextContent("Not safe to enforce yet");
+		expect(block).toHaveTextContent(
+			"No simulation evidence for 1 of 1 selected.",
+		);
+		expect(block).toHaveTextContent("Never simulated");
+		expect(
+			within(block).getByRole("link", { name: "web-new-01" }),
+		).toHaveAttribute("href", `/workloads/${fresh.id}`);
+		expect(block).toHaveTextContent(
+			"This enforces the selection as chosen; the review promotes only the workloads that earned it.",
+		);
+
+		const confirm = within(dialog).getByRole("button", {
+			name: "Enforce anyway on 1 workload",
+		});
+		expect(confirm).toHaveAttribute("aria-disabled", "true");
+		await user.click(confirm);
+		expect(
+			within(dialog).getByText(
+				"Nothing was enforced. Check the acknowledgment above to enforce anyway.",
+			),
+		).toBeInTheDocument();
+		const ack = within(dialog).getByLabelText(
+			"I understand this workload is not safe to enforce yet",
+		);
+		expect(ack).toHaveFocus();
+		expect(calls.some((c) => c.method === "POST")).toBe(false);
+		expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+		await user.click(ack);
+		expect(confirm).not.toHaveAttribute("aria-disabled");
+		await user.click(confirm);
+		await waitFor(() =>
+			expect(calls.find((c) => c.method === "POST")?.body).toEqual({
+				workload_ids: [fresh.id],
+				target_mode: "enforced",
+				expected_match_count: 1,
+			}),
+		);
+	});
+
+	it("reads each workload's evidence over the review's default range and enforces safe evidence in one step, as a promotion does", async () => {
+		const { calls } = mockSurface([
+			...frame,
+			fleet(() => ({ workloads: [earned], next_cursor: null })),
+			...evidence({
+				[earned.id]: { allowed: [ps(office, "tcp/443", 120, 1)] },
+			}),
+			okPost,
+		]);
+		const user = userEvent.setup();
+		renderApp("/workloads");
+		await screen.findByRole("link", { name: "web-prod-02" });
+		await user.click(screen.getByLabelText("Select web-prod-02"));
+		const dialog = await openEnforce(user);
+
+		const block = await within(dialog).findByTestId("evidence");
+		expect(block).toHaveTextContent("Safe to enforce");
+		expect(block).toHaveTextContent("No observed traffic would be dropped.");
+		expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
+
+		// The same four rollups and the gaps the review reads, for this
+		// one workload, over the last 24 hours.
+		const rollups = evidenceReads(calls, "rollup");
+		expect(
+			rollups.map((q) => `${q.get("group_by")} ${q.get("verdict")}`).sort(),
+		).toEqual([
+			"peer,service allowed",
+			"peer,service would_block",
+			"src,dst allowed",
+			"src,dst would_block",
+		]);
+		const gaps = evidenceReads(calls, "gaps");
+		expect(gaps).toHaveLength(1);
+		for (const q of [...rollups, ...gaps]) {
+			expect(q.get("workload")).toBe(earned.id);
+			expect(
+				Date.parse(q.get("to") ?? "") - Date.parse(q.get("from") ?? ""),
+			).toBe(24 * 3_600_000);
+		}
+
+		await user.click(
+			within(dialog).getByRole("button", { name: "Change to enforced" }),
+		);
+		await waitFor(() =>
+			expect(calls.find((c) => c.method === "POST")?.body).toEqual({
+				workload_ids: [earned.id],
+				target_mode: "enforced",
+				expected_match_count: 1,
+			}),
+		);
+	});
+
+	it("counts a mixed selection by what stands behind each workload and asks once for the batch", async () => {
+		const enforcedAlready = workload({
+			hostname: "web-prod-04",
+			labels: { app: "web", env: "prod" },
+			mode: "enforced",
+		});
+		const gapped = workload({
+			hostname: "web-prod-05",
+			labels: { app: "web", env: "prod" },
+			mode: "simulation",
+		});
+		const { calls } = mockSurface([
+			...frame,
+			fleet(() => ({
+				workloads: [fresh, earned, dropping, gapped, enforcedAlready],
+				next_cursor: null,
+			})),
+			...evidence(
+				{
+					[earned.id]: { allowed: [ps(office, "tcp/443", 120, 1)] },
+					[dropping.id]: {
+						would_block: [ps(office, "tcp/22", 4, 1)],
+						allowed: [ps(office, "tcp/443", 80, 1)],
+					},
+					[gapped.id]: { allowed: [ps(office, "tcp/443", 60, 1)] },
+				},
+				{ [gapped.id]: [gap(gapped, 90, 80)] },
+			),
+			okPost,
+		]);
+		const user = userEvent.setup();
+		renderApp("/workloads");
+		await screen.findByRole("link", { name: "web-new-01" });
+		await user.click(screen.getByLabelText("Select all shown"));
+		const dialog = await openEnforce(user);
+
+		const block = await within(dialog).findByTestId("evidence");
+		expect(block).toHaveTextContent(
+			"No simulation evidence for 1 of 5 selected; Not safe to enforce for 2 of 5 selected.",
+		);
+		expect(
+			within(block).getByRole("link", { name: "web-new-01" }),
+		).toBeInTheDocument();
+		const droppingRow = within(block)
+			.getByRole("link", { name: "web-prod-03" })
+			.closest("div");
+		expect(droppingRow).toHaveTextContent(
+			"1 peer/service pair would be dropped",
+		);
+		const gappedRow = within(block)
+			.getByRole("link", { name: "web-prod-05" })
+			.closest("div");
+		expect(gappedRow).toHaveTextContent("Evidence incomplete for web-prod-05");
+		expect(block).toHaveTextContent("Safe to enforce1 workload");
+		expect(block).toHaveTextContent("Already enforced1 workload");
+		expect(
+			within(block).queryByRole("link", { name: "web-prod-02" }),
+		).not.toBeInTheDocument();
+		// The enforced workload is not moved, so its evidence is not read.
+		expect(
+			evidenceReads(calls, "rollup").some(
+				(q) => q.get("workload") === enforcedAlready.id,
+			),
+		).toBe(false);
+
+		const confirm = within(dialog).getByRole("button", {
+			name: "Enforce anyway on 4 workloads",
+		});
+		await user.click(confirm);
+		expect(calls.some((c) => c.method === "POST")).toBe(false);
+		await user.click(
+			within(dialog).getByLabelText(
+				"I understand 3 of these 5 workloads are not safe to enforce yet",
+			),
+		);
+		expect(within(dialog).getAllByRole("checkbox")).toHaveLength(1);
+		await user.click(confirm);
+		await waitFor(() =>
+			expect(calls.find((c) => c.method === "POST")?.body).toEqual({
+				workload_ids: [
+					fresh.id,
+					earned.id,
+					dropping.id,
+					gapped.id,
+					enforcedAlready.id,
+				],
+				target_mode: "enforced",
+				expected_match_count: 5,
+			}),
+		);
+	});
+
+	it("writes nothing while the evidence cannot be read", async () => {
+		const { calls } = mockSurface([
+			...frame,
+			fleet(() => ({ workloads: [earned], next_cursor: null })),
+			{
+				method: "GET",
+				path: "/api/v1/flows/rollup",
+				reply: { status: 500, problem: problem("internal", 500) },
+			},
+			...evidence({}),
+			okPost,
+		]);
+		const user = userEvent.setup();
+		renderApp("/workloads");
+		await screen.findByRole("link", { name: "web-prod-02" });
+		await user.click(screen.getByLabelText("Select web-prod-02"));
+		const dialog = await openEnforce(user);
+		expect(
+			await within(dialog).findByText(/each workload's evidence/),
+		).toBeInTheDocument();
+		const confirm = within(dialog).getByRole("button", {
+			name: "Change to enforced",
+		});
+		expect(confirm).toHaveAttribute("aria-disabled", "true");
+		await user.click(confirm);
+		expect(calls.some((c) => c.method === "POST")).toBe(false);
+	});
+
+	it.each([
+		["simulation", "Simulation"],
+		["visibility", "Visibility"],
+	] as const)(
+		"keeps a change to %s one step, with no evidence read",
+		async (mode, label) => {
+			const { calls } = mockSurface([
+				...frame,
+				fleet(() => ({
+					workloads: [{ ...dropping, mode: "enforced" }, fresh],
+					next_cursor: null,
+				})),
+				...evidence({}),
+				okPost,
+			]);
+			const user = userEvent.setup();
+			renderApp("/workloads");
+			await screen.findByRole("link", { name: "web-new-01" });
+			await user.click(screen.getByLabelText("Select all shown"));
+			await user.click(
+				screen.getByRole("button", { name: "Change mode for selected…" }),
+			);
+			const dialog = await screen.findByRole("dialog");
+			await user.click(
+				within(dialog).getByRole("radio", { name: new RegExp(label) }),
+			);
+			expect(within(dialog).queryByTestId("evidence")).not.toBeInTheDocument();
+			expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
+			await user.click(
+				within(dialog).getByRole("button", { name: `Change to ${mode}` }),
+			);
+			await waitFor(() =>
+				expect(calls.find((c) => c.method === "POST")?.body).toEqual({
+					workload_ids: [dropping.id, fresh.id],
+					target_mode: mode,
+					expected_match_count: 2,
+				}),
+			);
+			expect(evidenceReads(calls, "rollup")).toHaveLength(0);
+			expect(evidenceReads(calls, "gaps")).toHaveLength(0);
+		},
+	);
 });
 
 const decommissioned = workload({
