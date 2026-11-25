@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net"
@@ -127,6 +128,12 @@ func gatewayCredentials(ctx context.Context, backend authorityBackend, cfg gatew
 }
 
 func runServe(ctx context.Context, args []string) error {
+	return serve(ctx, args, os.Stderr)
+}
+
+// serve is runServe with the log written to logOut, so a test can read
+// what the control plane logged.
+func serve(ctx context.Context, args []string, logOut io.Writer) error {
 	fs := flag.NewFlagSet("innerwall serve", flag.ContinueOnError)
 	listen := fs.String("listen", defaultListen, "address for the agent gateway (gRPC over TLS)")
 	operatorListen := fs.String("operator-listen", defaultOperatorListen, "address for the operator surface (REST/JSON façade and console, TLS only)")
@@ -155,7 +162,7 @@ func runServe(ctx context.Context, args []string) error {
 		return fmt.Errorf("--gateway-advertise-address: %w", err)
 	}
 
-	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	log := slog.New(slog.NewTextHandler(logOut, nil))
 	slog.SetDefault(log)
 
 	url, err := databaseURL(*dbURL)
