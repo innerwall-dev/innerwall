@@ -40,6 +40,16 @@ const (
 	serverKeyFile  = "server.key"
 )
 
+// shutdownGrace is how long shutdown gives open agent calls and operator
+// requests to end on their own once the listeners stop accepting.
+const shutdownGrace = 10 * time.Second
+
+// handlerExitGrace is how long shutdown then waits, once it has ended the
+// agent calls still open, for their handlers to return before the store
+// closes. A sync stream's handler writes its workload's offline mark on
+// the way out, a write the gateway bounds at five seconds of its own.
+const handlerExitGrace = 5 * time.Second
+
 // renderer narrows the engine to the authoring service's interface.
 type renderer struct{ eng *compiler.Engine }
 
@@ -294,8 +304,12 @@ func serve(ctx context.Context, args []string, logOut io.Writer) error {
 	select {
 	case <-ctx.Done():
 		log.Info("shutting down")
-		stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		stopCtx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 		defer cancel()
+		// GracefulStop returns only once every agent call's handler has
+		// returned, its exit path included, and serve returns, closing the
+		// store, only after that: what a handler writes on its way out, a
+		// sync stream's offline mark, finds the store open (#113).
 		done := make(chan struct{})
 		go func() { grpcServer.GracefulStop(); close(done) }()
 		if err := httpServer.Shutdown(stopCtx); err != nil {
@@ -304,7 +318,21 @@ func serve(ctx context.Context, args []string, logOut io.Writer) error {
 		select {
 		case <-done:
 		case <-stopCtx.Done():
-			grpcServer.Stop()
+			// Sync streams do not end on their own. Stop ends every call
+			// still open but does not wait for the handlers; GracefulStop,
+			// still running, does, so done is waited on again, for at most
+			// handlerExitGrace. Stop runs on its own goroutine: once every
+			// connection is gone, GracefulStop waits for the handlers
+			// holding the lock Stop takes, and a stuck handler must not
+			// hold shutdown past the bound.
+			go grpcServer.Stop()
+			exit := time.NewTimer(handlerExitGrace)
+			defer exit.Stop()
+			select {
+			case <-done:
+			case <-exit.C:
+				log.Warn("agent calls still running at the end of shutdown; closing the store, so what they still write fails", "waited", handlerExitGrace.String())
+			}
 		}
 		return nil
 	case err := <-errc:
