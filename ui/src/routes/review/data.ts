@@ -13,15 +13,19 @@ import type {
 	Ruleset,
 	Workload,
 } from "@/api/schema";
-import { type RangeKey, ranges } from "@/components/RangeControl";
+import { defaultRange, type RangeKey, ranges } from "@/components/RangeControl";
 import {
 	type ByVerdict,
+	buildRows,
+	composeVerdict,
 	peerGroupOf,
 	type ReviewRollups,
 	type ReviewVerdict,
+	type ReviewVerdictResult,
 	reviewVerdicts,
 	scopeRequirements,
 	serviceName,
+	type WorkloadEvidence,
 } from "./model";
 
 // The most groups one rollup returns, and the page size of the walk of
@@ -74,6 +78,69 @@ function rollup(
 		to,
 		limit: rowLimit,
 	});
+}
+
+// How many workloads' evidence is read at once when a selection's is.
+const evidenceConcurrency = 4;
+
+// loadWorkloadEvidence composes, for each workload a change to enforced
+// would move, the verdict the simulation review would give a scope of
+// that workload alone, over the review's default range: the same four
+// rollups and the same evidence gaps the review reads for a ruleset's
+// scope, read for the one workload, and the same composition. There is
+// no second evidence rule here; what the review calls safe is safe, and
+// a workload that never simulated fails as the review fails it.
+export async function loadWorkloadEvidence(
+	workloads: Workload[],
+	range: RangeKey = defaultRange,
+	now = Date.now(),
+): Promise<WorkloadEvidence[]> {
+	const to = new Date(now).toISOString();
+	const from = new Date(now - ranges[range]).toISOString();
+	if (workloads.length === 0) return [];
+	const { address_groups: addressGroups } = await listAddressGroups();
+	const one = async (w: Workload): Promise<ReviewVerdictResult> => {
+		const read = (group_by: RollupGrouping, verdict: ReviewVerdict) =>
+			getRollup({
+				group_by,
+				verdict,
+				workload: w.id,
+				from,
+				to,
+				limit: rowLimit,
+			});
+		const [wouldBlock, allowed, sdWouldBlock, sdAllowed, gaps] =
+			await Promise.all([
+				read("peer,service", "would_block"),
+				read("peer,service", "allowed"),
+				read("src,dst", "would_block"),
+				read("src,dst", "allowed"),
+				getGaps({ workload: w.id, from, to, limit: gapLimit }),
+			]);
+		const rollups: ReviewRollups = {
+			peerService: { would_block: wouldBlock, allowed },
+			srcDst: { would_block: sdWouldBlock, allowed: sdAllowed },
+		};
+		return composeVerdict({
+			rows: buildRows(rollups, addressGroups, 1),
+			workloads: [w],
+			rollups,
+			gaps: gaps.gaps,
+			gapsTruncated: gaps.truncated,
+			range: { from, to },
+			now,
+			rowLimit,
+		});
+	};
+	const out: WorkloadEvidence[] = [];
+	for (let i = 0; i < workloads.length; i += evidenceConcurrency) {
+		const batch = workloads.slice(i, i + evidenceConcurrency);
+		const verdicts = await Promise.all(batch.map(one));
+		batch.forEach((workload, j) => {
+			out.push({ workload, verdict: verdicts[j] });
+		});
+	}
+	return out;
 }
 
 // pairCount is how many rows a would-block rollup folds into, the count

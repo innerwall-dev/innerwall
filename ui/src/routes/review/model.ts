@@ -786,3 +786,57 @@ export function promotionIds(
 			.map((u) => u.workload.id),
 	];
 }
+
+// --- enforcing outside the review ---------------------------------------------
+
+// WorkloadEvidence is one workload's verdict as the review composes it
+// for a scope of that workload alone.
+export interface WorkloadEvidence {
+	workload: Workload;
+	verdict: ReviewVerdictResult;
+}
+
+// EnforceEvidence divides the workloads a change to enforced would move
+// by what their verdicts say. Unsimulated is the workloads that never
+// simulated, so no verdict stands behind them (the review fails them on
+// the visibility condition); notSafe is the rest the review would not
+// call safe, each with its verdict; safe is what the review would
+// enforce without an acknowledgment. Already enforced workloads are not
+// moved and are not judged.
+export interface EnforceEvidence {
+	safe: Workload[];
+	unsimulated: Workload[];
+	notSafe: WorkloadEvidence[];
+	enforced: Workload[];
+}
+
+export function enforceEvidence(
+	selected: Workload[],
+	evidence: WorkloadEvidence[],
+): EnforceEvidence {
+	const byId = new Map(evidence.map((e) => [e.workload.id, e]));
+	const out: EnforceEvidence = {
+		safe: [],
+		unsimulated: [],
+		notSafe: [],
+		enforced: [],
+	};
+	for (const w of selected) {
+		if (w.mode === "enforced") {
+			out.enforced.push(w);
+			continue;
+		}
+		const e = byId.get(w.id);
+		if (!e) {
+			// No verdict was composed for it: nothing stands behind it.
+			out.unsimulated.push(w);
+		} else if (e.verdict.safe) {
+			out.safe.push(w);
+		} else if (e.verdict.failing.some((c) => c.id === "visibility")) {
+			out.unsimulated.push(w);
+		} else {
+			out.notSafe.push(e);
+		}
+	}
+	return out;
+}
