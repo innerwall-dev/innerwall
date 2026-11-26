@@ -48,6 +48,8 @@ Runs the agent gateway (enrollment, renewal, the sync stream, flow reports) and 
 
 `--tls-hosts` takes effect only when a certificate is generated: the server certificate when `--init-ca` creates the authority, and the operator certificate when none is persisted or the persisted one has expired. A certificate that already exists is kept as it is, whatever the flag says now ([multi-host evaluation](../deploy/multi-host-evaluation.md#name-the-control-plane-before-the-first-start)). To change the hosts the server certificate names afterwards, issue a new one with [`ca issue-server`](#ca-issue-server) and restart.
 
+On `SIGINT` or `SIGTERM`, `serve` stops accepting connections and gives open agent calls and operator requests ten seconds to end. Sync streams do not end on their own, so it then ends them and waits up to five seconds more for their handlers to record each workload offline, and only then closes its database connections: allow the process at least fifteen seconds to stop before it is killed. A second signal changes nothing.
+
 ## migrate
 
 ```sh

@@ -41,9 +41,16 @@ func reservePort(t *testing.T) string {
 // connections. The returned function stops it and waits for it to return.
 func startServe(t *testing.T, gateway string, args ...string) (stop func()) {
 	t.Helper()
+	return startServeLogging(t, gateway, os.Stderr, args...)
+}
+
+// startServeLogging is startServe with the control plane's log written to
+// logOut.
+func startServeLogging(t *testing.T, gateway string, logOut io.Writer, args ...string) (stop func()) {
+	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- runServe(ctx, append([]string{"--listen", gateway}, args...)) }()
+	go func() { done <- serve(ctx, append([]string{"--listen", gateway}, args...), logOut) }()
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		c, err := net.Dial("tcp", gateway)
