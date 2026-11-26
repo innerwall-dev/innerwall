@@ -33,7 +33,7 @@ The conditions, each of which fails the verdict on its own:
 | Condition | What it reads like | What to do |
 |---|---|---|
 | Would-block traffic | `N peer/service pairs would be dropped` | Decide each pair: admit it, or accept that enforcement drops it (below). |
-| Evidence gaps | `Evidence incomplete for db-1 between 13:02 and 13:04 UTC — the agent was not reporting` | Find out why the evidence is missing ([evidence gaps](#evidence-gaps)). |
+| Evidence gaps | `Evidence incomplete for db-1 between 13:02 and 13:04 UTC — the agent was not reporting`, or for several gaps `Evidence incomplete for db-1: 6 gaps totalling 16m between 18:44 and 19:42 UTC — the agent was not reporting` | Find out why the evidence is missing ([evidence gaps](#evidence-gaps)). |
 | A workload offline | `db-1 is offline (last seen 2h ago) — nothing it saw since reaches this review` | Bring the agent back, or exclude it from the decision deliberately. A workload whose control channel is reconnecting while its flow reports still arrive is counted as offline here. |
 | A workload degraded or pending | `… has not applied its latest policy (applied v3, rendered v4)` | Its flows were evaluated against a policy other than the one you are judging; wait for it to apply, or find why it failed ([states](../reference/states.md#sync-states)). |
 | A workload still in visibility | `N workloads in scope are still in visibility mode and produced no verdict` | Move them to simulation, or accept that the review says nothing about them. |
@@ -63,6 +63,8 @@ Once admitted, the two kinds of link-local ICMPv6 read differently. Echo (ping) 
 ## Evidence gaps
 
 An evidence gap is an interval in which a workload's observation is known to be incomplete: the kernel dropped events, a flow source was down, a window was full or refused, the owned table was removed, or the agent was not reporting at all. A gap that intersects the review's range fails the verdict by itself, because traffic in it may have gone unseen: the verdict reads "No observed traffic would be dropped, but evidence is missing from part of this range". Every kind and what to do about it is in [states](../reference/states.md#evidence-gaps).
+
+The condition states the gaps in the range as they are stored. Gaps that overlap or touch, of any kind or workload, count as one, and each is cut at the range's ends. One gap is named by its interval; two or three are each named (`Evidence incomplete for db-1: 2 gaps, between 13:02 and 13:04 UTC and between 14:10 and 14:12 UTC — a flow source was down`); four or more are counted, with their total length and the range they fall in, so six two-minute gaps across an hour read as 12 minutes of missing evidence, not an hour. The reasons are the kinds present, in the order they occur, separated by semicolons; none is given as the reason for every gap. The workload's Overview lists each gap on its own.
 
 ![A review whose only would-block traffic is small, failed by an evidence gap of a few seconds and a degraded workload](../img/console/simulation-review-evidence-gaps-dark.png "An evidence gap in the range fails the verdict on its own, beside every other failing condition.")
 

@@ -27,26 +27,56 @@ export function gapsIn(
 	return gaps.filter((g) => intersects(g, from, to));
 }
 
-// span is the earliest start and latest end of gaps, clamped to the range
-// they were read for: what a verdict over that range is missing.
-export function span(
+// Stretch is a run of time in which evidence was incomplete: one gap, or
+// several that overlap or touch.
+export interface Stretch {
+	from: string;
+	to: string;
+}
+
+// stretches is gaps clamped to the range they were read for and merged
+// where they overlap or touch, earliest first: what a verdict over that
+// range is missing, each instant once whichever workload or kind lost
+// it, so their total never exceeds the range. Gaps of different kinds,
+// sources, or workloads can cover the same time (an agent silence over
+// a removed table, two sources down at once, two hosts restarted
+// together), and each is stored as its own interval.
+export function stretches(
 	gaps: readonly EvidenceGap[],
 	from: string,
 	to: string,
-): { from: string; to: string } | null {
-	if (gaps.length === 0) return null;
+): Stretch[] {
 	const f = Date.parse(from);
 	const t = Date.parse(to);
-	let a = Number.POSITIVE_INFINITY;
-	let b = Number.NEGATIVE_INFINITY;
-	for (const g of gaps) {
-		a = Math.min(a, Math.max(Date.parse(g.from), f));
-		b = Math.max(b, Math.min(Date.parse(g.to), t));
+	const clamped = gaps
+		.map((g) => {
+			const a = Math.max(Date.parse(g.from), f);
+			return [a, Math.max(a, Math.min(Date.parse(g.to), t))];
+		})
+		.sort((x, y) => x[0] - y[0] || x[1] - y[1]);
+	const out: number[][] = [];
+	for (const [a, b] of clamped) {
+		const last = out[out.length - 1];
+		if (last && a <= last[1]) last[1] = Math.max(last[1], b);
+		else out.push([a, b]);
 	}
-	return {
+	return out.map(([a, b]) => ({
 		from: new Date(a).toISOString(),
-		to: new Date(Math.max(a, b)).toISOString(),
-	};
+		to: new Date(b).toISOString(),
+	}));
+}
+
+// lost is the length of stretches together, in milliseconds.
+export function lost(runs: readonly Stretch[]): number {
+	return runs.reduce((n, r) => n + Date.parse(r.to) - Date.parse(r.from), 0);
+}
+
+// kindsOf is the distinct kinds of gaps, in the order they first occur.
+export function kindsOf(gaps: readonly EvidenceGap[]): EvidenceGap["kind"][] {
+	const sorted = [...gaps].sort(
+		(a, b) => Date.parse(a.from) - Date.parse(b.from),
+	);
+	return [...new Set(sorted.map((g) => g.kind))];
 }
 
 const utc = new Intl.DateTimeFormat("en-GB", {

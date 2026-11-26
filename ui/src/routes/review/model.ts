@@ -9,8 +9,16 @@ import type {
 	WorkloadRef,
 } from "@/api/schema";
 import { extent } from "@/components/RangeControl";
-import { since } from "@/lib/format";
-import { between, gapsIn, kindText, span, workloadsWith } from "@/lib/gaps";
+import { offset, since } from "@/lib/format";
+import {
+	between,
+	gapsIn,
+	kindsOf,
+	kindText,
+	lost,
+	stretches,
+	workloadsWith,
+} from "@/lib/gaps";
 import { labelText } from "@/lib/labels";
 import { peerKey } from "../map/model";
 
@@ -519,6 +527,45 @@ export function syncIssue(w: Workload): SyncIssue | null {
 	return null;
 }
 
+// listedGaps is the most gaps the evidence condition names one by one.
+// A condition is one line, in the verdict and in the mode-change dialog;
+// three intervals still read as a list there and can be summed at a
+// glance. Past three, the count, their total, and the range they fall in
+// carry the same claim in one clause.
+export const listedGaps = 3;
+
+// gapsText states the evidence gaps in range as stored: one stretch as
+// its interval; a few as each interval; more as their count, their total
+// length, and the range they fall in. Overlapping or touching gaps are
+// one stretch, and every stretch is clamped to the range judged, so the
+// total is the time the evidence was incomplete and never longer than
+// the range shown. The reasons are the kinds present, in the order they
+// occur, none standing for the whole.
+export function gapsText(
+	gapped: readonly EvidenceGap[],
+	from: string,
+	to: string,
+): string {
+	const ws = workloadsWith(gapped);
+	const who =
+		ws.length === 1 ? ws[0].hostname : `${ws.length} workloads in scope`;
+	const runs = stretches(gapped, from, to);
+	const why = ` — ${kindsOf(gapped).map(kindText).join("; ")}`;
+	const each = runs.map((r) => `between ${between(r.from, r.to)}`);
+	if (runs.length === 1) {
+		return `Evidence incomplete for ${who} ${each[0]}${why}`;
+	}
+	if (runs.length <= listedGaps) {
+		const list =
+			each.length === 2
+				? each.join(" and ")
+				: `${each.slice(0, -1).join(", ")}, and ${each[each.length - 1]}`;
+		return `Evidence incomplete for ${who}: ${runs.length} gaps, ${list}${why}`;
+	}
+	const outer = between(runs[0].from, runs[runs.length - 1].to);
+	return `Evidence incomplete for ${who}: ${runs.length} gaps totalling ${offset(lost(runs))} between ${outer}${why}`;
+}
+
 // composeVerdict decides whether the scope is safe to enforce. It is
 // composed, never fetched: safe means no traffic in the range would be
 // dropped, every workload in scope simulates on the policy it was last
@@ -567,19 +614,9 @@ export function composeVerdict(input: VerdictInput): ReviewVerdictResult {
 	);
 	const gappedIds = new Set(gapped.map((g) => g.workload.id));
 	if (gapped.length > 0) {
-		const ws = workloadsWith(gapped);
-		const s = span(gapped, judged.from, judged.to) as {
-			from: string;
-			to: string;
-		};
-		const kinds = new Set(gapped.map((g) => g.kind));
-		const why = kinds.size === 1 ? ` — ${kindText(gapped[0].kind)}` : "";
 		failing.push({
 			id: "evidence-gaps",
-			text:
-				ws.length === 1
-					? `Evidence incomplete for ${ws[0].hostname} between ${between(s.from, s.to)}${why}`
-					: `Evidence incomplete for ${ws.length} workloads in scope between ${between(s.from, s.to)}${why}`,
+			text: gapsText(gapped, judged.from, judged.to),
 		});
 	} else if (input.gapsTruncated) {
 		failing.push({

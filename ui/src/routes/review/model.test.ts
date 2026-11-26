@@ -3,7 +3,7 @@ import type { EvidenceGap, Workload } from "@/api/schema";
 import { between } from "@/lib/gaps";
 import { minutesAgo, workload } from "@/test/fixtures";
 import { addressGroup, peer, row as srcDst, wref } from "@/test/map";
-import { gap, ps, rollups } from "@/test/review";
+import { gap, peerService, ps, rollups } from "@/test/review";
 import {
 	barWidth,
 	bucketOf,
@@ -498,7 +498,8 @@ describe("the verdict", () => {
 			// A kill-switched host whose agent then also stopped carries a
 			// table_removed gap from the agent and an agent_silent gap from
 			// the control plane over overlapping intervals: one failing
-			// condition, spanning both, with no single reason claimed.
+			// condition, one stretch spanning both, each reason named and
+			// neither standing for the whole.
 			const w = ready();
 			const v = verdictOf(w, allowedOnly, [
 				gap(w[0], 100, 70, { kind: "table_removed", source: null }),
@@ -507,7 +508,7 @@ describe("the verdict", () => {
 			expect(v.failing.map((c) => c.id)).toEqual(["evidence-gaps"]);
 			expect(v.caveats).toHaveLength(1);
 			expect(v.caveats[0]).toMatch(
-				/^Evidence incomplete for checkout-01 between (?:\d\d-\d\d )?\d\d:\d\d and (?:\d\d-\d\d )?\d\d:\d\d UTC$/,
+				/^Evidence incomplete for checkout-01 between (?:\d\d-\d\d )?\d\d:\d\d and (?:\d\d-\d\d )?\d\d:\d\d UTC — enforcement was removed on the host, so nothing was observed; the agent was not reporting$/,
 			);
 		});
 
@@ -562,14 +563,14 @@ describe("the verdict", () => {
 			);
 		});
 
-		it("name the count of workloads, and no single reason, when several are missing evidence", () => {
+		it("name the count of workloads, each gap, and each reason, when several are missing evidence", () => {
 			const w = ready();
 			const v = verdictOf(w, allowedOnly, [
 				gap(w[0], 100, 99),
 				gap(w[2], 70, 60, { kind: "source_restart", source: "conntrack" }),
 			]);
 			expect(v.caveats[0]).toMatch(
-				/^Evidence incomplete for 2 workloads in scope between (?:\d\d-\d\d )?\d\d:\d\d and (?:\d\d-\d\d )?\d\d:\d\d UTC$/,
+				/^Evidence incomplete for 2 workloads in scope: 2 gaps, between (?:\d\d-\d\d )?\d\d:\d\d(?::\d\d)? and (?:\d\d-\d\d )?\d\d:\d\d(?::\d\d)? UTC and between (?:\d\d-\d\d )?\d\d:\d\d and (?:\d\d-\d\d )?\d\d:\d\d UTC — the kernel dropped events; a flow source was down$/,
 			);
 			expect(v.caveats[0]).toMatch(hhmm);
 		});
@@ -614,6 +615,142 @@ describe("the verdict", () => {
 			);
 			expect(v.caveats.some((c) => c.startsWith("checkout-01 dropped"))).toBe(
 				false,
+			);
+		});
+	});
+
+	describe("evidence gaps stated as stored", () => {
+		// The covered range is fixed here, 18:00 to 20:00 UTC, so each
+		// message can be read exactly as the review renders it.
+		const covered = rollups({});
+		covered.peerService.allowed = peerService(
+			[ps(peer.workload(api), "tcp/8443", 400, 3)],
+			{ effective: ["2026-10-04T18:00:00Z", "2026-10-04T20:00:00Z"] },
+		);
+		const at = (
+			w: { id: string; hostname: string },
+			from: string,
+			to: string,
+			kind: EvidenceGap["kind"] = "agent_silent",
+		) =>
+			gap(w, 0, 0, {
+				kind,
+				source: kind === "source_restart" ? "conntrack" : null,
+				from: `2026-10-04T${from}Z`,
+				to: `2026-10-04T${to}Z`,
+			});
+		const text = (w: Workload[], gaps: EvidenceGap[]) => {
+			const v = verdictOf(w, covered, gaps);
+			expect(v.safe).toBe(false);
+			expect(v.failing.map((c) => c.id)).toEqual(["evidence-gaps"]);
+			return v.failing[0].text;
+		};
+
+		it("keep one gap's sentence", () => {
+			const w = ready();
+			expect(text(w, [at(w[0], "18:44:00", "18:47:00")])).toBe(
+				"Evidence incomplete for checkout-01 between 18:44 and 18:47 UTC — the agent was not reporting",
+			);
+		});
+
+		it("list two disjoint gaps an hour apart, not the hour between them", () => {
+			const w = ready();
+			expect(
+				text(w, [
+					at(w[0], "19:00:00", "19:02:00", "source_restart"),
+					at(w[0], "18:00:00", "18:02:00", "source_restart"),
+				]),
+			).toBe(
+				"Evidence incomplete for checkout-01: 2 gaps, between 18:00 and 18:02 UTC and between 19:00 and 19:02 UTC — a flow source was down",
+			);
+		});
+
+		it("count six short silences across an hour, with their sum and the range they fall in", () => {
+			// Six gaps of two to four minutes, 16 minutes in all, between
+			// 18:44 and 19:42: never an hour of lost evidence.
+			const w = ready();
+			const msg = text(w, [
+				at(w[0], "19:39:00", "19:42:00"),
+				at(w[0], "19:30:00", "19:32:00"),
+				at(w[0], "19:15:00", "19:19:00"),
+				at(w[0], "19:05:00", "19:07:00"),
+				at(w[0], "18:55:00", "18:57:00"),
+				at(w[0], "18:44:00", "18:47:00"),
+			]);
+			expect(msg).toBe(
+				"Evidence incomplete for checkout-01: 6 gaps totalling 16m between 18:44 and 19:42 UTC — the agent was not reporting",
+			);
+			expect(msg).not.toMatch(/^Evidence incomplete for checkout-01 between/);
+		});
+
+		it("merge overlapping and touching gaps before counting and summing", () => {
+			// 18:10–18:20 and 18:15–18:25 overlap, 18:25–18:30 touches them:
+			// one stretch of 20 minutes, not three gaps of 25.
+			const w = ready();
+			expect(
+				text(w, [
+					at(w[0], "18:10:00", "18:20:00"),
+					at(w[0], "18:15:00", "18:25:00", "table_removed"),
+					at(w[0], "18:25:00", "18:30:00"),
+				]),
+			).toBe(
+				"Evidence incomplete for checkout-01 between 18:10 and 18:30 UTC — the agent was not reporting; enforcement was removed on the host, so nothing was observed",
+			);
+			// Overlaps across workloads count once too: the total is the
+			// time the scope's evidence was incomplete, never longer than it.
+			const four = [
+				at(w[0], "18:10:00", "18:20:00"),
+				at(w[1], "18:15:00", "18:25:00"),
+				at(w[0], "18:40:00", "18:45:00"),
+				at(w[1], "18:40:00", "18:45:00"),
+				at(w[2], "19:00:00", "19:03:00"),
+				at(w[2], "19:30:00", "19:31:00"),
+			];
+			expect(text(w, four)).toBe(
+				"Evidence incomplete for 3 workloads in scope: 4 gaps totalling 24m between 18:10 and 19:31 UTC — the agent was not reporting",
+			);
+		});
+
+		it("name the reasons present, in the order they occur, when kinds differ", () => {
+			const w = ready();
+			expect(
+				text(w, [
+					at(w[0], "19:20:00", "19:21:00", "buffer_overflow"),
+					at(w[0], "19:00:00", "19:02:00", "source_restart"),
+					at(w[0], "18:30:00", "18:33:00"),
+					at(w[0], "18:10:00", "18:12:00", "source_restart"),
+				]),
+			).toBe(
+				"Evidence incomplete for checkout-01: 4 gaps totalling 8m between 18:10 and 19:21 UTC — a flow source was down; the agent was not reporting; the agent dropped buffered windows",
+			);
+		});
+
+		it("clip gaps to the covered range in both the range shown and the total", () => {
+			// 17:00–18:05 is in range from 18:00 only, 19:58–21:00 to 20:00.
+			const w = ready();
+			const gaps = [
+				at(w[0], "17:00:00", "18:05:00"),
+				at(w[0], "18:30:00", "18:31:00"),
+				at(w[0], "19:00:00", "19:01:00"),
+				at(w[0], "19:58:00", "21:00:00"),
+			];
+			expect(text(w, gaps)).toBe(
+				"Evidence incomplete for checkout-01: 4 gaps totalling 9m between 18:00 and 20:00 UTC — the agent was not reporting",
+			);
+		});
+
+		it("list up to three gaps and count from four", () => {
+			const w = ready();
+			const three = [
+				at(w[0], "18:10:00", "18:12:00"),
+				at(w[0], "18:30:00", "18:33:00"),
+				at(w[0], "19:00:00", "19:04:00"),
+			];
+			expect(text(w, three)).toBe(
+				"Evidence incomplete for checkout-01: 3 gaps, between 18:10 and 18:12 UTC, between 18:30 and 18:33 UTC, and between 19:00 and 19:04 UTC — the agent was not reporting",
+			);
+			expect(text(w, [...three, at(w[0], "19:30:00", "19:35:00")])).toBe(
+				"Evidence incomplete for checkout-01: 4 gaps totalling 14m between 18:10 and 19:35 UTC — the agent was not reporting",
 			);
 		});
 	});
