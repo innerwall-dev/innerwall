@@ -252,6 +252,7 @@ type Workload struct {
 	RetiredAt                    *time.Time
 	PresentedCredentialSerial    *string
 	PresentedCredentialExpiresAt *time.Time
+	SyncStreamID                 *uuid.UUID
 }
 
 type WorkloadAddress struct {

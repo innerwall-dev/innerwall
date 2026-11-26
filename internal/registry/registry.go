@@ -10,6 +10,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/google/uuid"
+
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
 	"github.com/innerwall-dev/innerwall/internal/identity"
 )
@@ -275,6 +277,19 @@ type Store interface {
 	RecordHeartbeat(ctx context.Context, id identity.WorkloadID, hb Heartbeat, now time.Time) error
 	// SetSyncState records the convergence state with an optional detail.
 	SetSyncState(ctx context.Context, id identity.WorkloadID, state innerwallv1.SyncState, detail string, now time.Time) error
+	// RecordStreamOpen records a sync stream open, once the serving
+	// replica has registered it: the workload is PENDING, and the record
+	// names stream, the random id the replica gave the stream, in the same
+	// write, so a stream registering replaces the name atomically.
+	RecordStreamOpen(ctx context.Context, id identity.WorkloadID, stream uuid.UUID, now time.Time) error
+	// MarkStreamOffline records the workload OFFLINE as stream ends, only
+	// while the record names stream or names no stream at all. It reports
+	// false, with no error, when the record names another: a newer stream
+	// has registered since, on this replica or another, and the mark,
+	// which would describe a stream the record no longer does, is not
+	// written. The name says which stream registered last, never whether
+	// one is alive (ADR-0018 as amended).
+	MarkStreamOffline(ctx context.Context, id identity.WorkloadID, stream uuid.UUID, now time.Time) (marked bool, err error)
 	// RecordApplied stores an acknowledged version and the resulting
 	// state, and stamps now as the last acknowledgement.
 	RecordApplied(ctx context.Context, id identity.WorkloadID, version uint64, state innerwallv1.SyncState, now time.Time) error

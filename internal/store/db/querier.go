@@ -184,6 +184,14 @@ type Querier interface {
 	// was retired (NULL while active), and what the silence derivation reads,
 	// the last report's receipt and the latest heartbeat's pair.
 	LockWorkload(ctx context.Context, id uuid.UUID) (LockWorkloadRow, error)
+	// The offline mark of an ending sync stream, written only while the
+	// record still names that stream (migration 00019): a different id means
+	// a newer stream has registered since, on this replica or another, and
+	// the mark would describe a stream the record no longer does. A NULL id
+	// names no stream, so nothing newer is known and the mark is written.
+	// No row means the mark was not written: the workload is unknown, or a
+	// newer stream holds the record.
+	MarkWorkloadStreamOffline(ctx context.Context, arg MarkWorkloadStreamOfflineParams) (int64, error)
 	// A directive for the stream of one workload rides the same channel as
 	// render announcements, keyed by the workload; the replica holding that
 	// stream, if any, sends it (ADR-0018 as amended). It is sent outside any
@@ -250,6 +258,11 @@ type Querier interface {
 	// Stamped by the sync path whenever it sends the workload a snapshot,
 	// whatever caused it; nothing else writes it (ADR-0018 as amended).
 	RecordWorkloadSnapshotSent(ctx context.Context, arg RecordWorkloadSnapshotSentParams) (int64, error)
+	// The open of a sync stream, once the serving replica has registered it:
+	// the stream's state and the random id the replica gave it (migration
+	// 00019), in one statement, so a stream registering replaces the id
+	// atomically. Nothing else writes sync_stream_id.
+	RecordWorkloadStreamOpen(ctx context.Context, arg RecordWorkloadStreamOpenParams) (int64, error)
 	// Retirement stamps the instant once; nothing clears it.
 	RetireWorkload(ctx context.Context, arg RetireWorkloadParams) (int64, error)
 	RevokeOperatorToken(ctx context.Context, arg RevokeOperatorTokenParams) (int64, error)

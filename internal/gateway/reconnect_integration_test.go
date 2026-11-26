@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"google.golang.org/grpc/codes"
 
@@ -473,15 +474,13 @@ type slowOffline struct {
 	entered chan struct{}
 }
 
-func (s *slowOffline) SetSyncState(ctx context.Context, id identity.WorkloadID, state innerwallv1.SyncState, detail string, now time.Time) error {
-	if state == innerwallv1.SyncState_SYNC_STATE_OFFLINE {
-		select {
-		case s.entered <- struct{}{}:
-		default:
-		}
-		time.Sleep(s.delay)
+func (s *slowOffline) MarkStreamOffline(ctx context.Context, id identity.WorkloadID, stream uuid.UUID, now time.Time) (bool, error) {
+	select {
+	case s.entered <- struct{}{}:
+	default:
 	}
-	return s.Store.SetSyncState(ctx, id, state, detail, now)
+	time.Sleep(s.delay)
+	return s.Store.MarkStreamOffline(ctx, id, stream, now)
 }
 
 // TestOfflineMarkNeverOverwritesNewerStream ends a stream and opens the
