@@ -97,9 +97,11 @@ func mustID(t *testing.T) identity.WorkloadID {
 
 func register(t *testing.T, s *Server, sess *session) {
 	t.Helper()
-	if err := s.sessions.add(sess); err != nil {
+	recorded, err := s.sessions.add(sess)
+	if err != nil {
 		t.Fatal(err)
 	}
+	recorded()
 }
 
 func expectDirective(t *testing.T, sess *session) {
@@ -238,13 +240,19 @@ func TestNewerStreamWaitsForOfflineMark(t *testing.T) {
 
 	gone := newSession(t, id, sendQueueDepth)
 	gone.cancel(context.Canceled)
-	if err := s.sessions.add(gone); !errors.Is(err, context.Canceled) {
+	if _, err := s.sessions.add(gone); !errors.Is(err, context.Canceled) {
 		t.Fatalf("add of an ended stream while the mark is written = %v", err)
 	}
 
 	newer := newSession(t, id, sendQueueDepth)
 	added := make(chan error, 1)
-	go func() { added <- s.sessions.add(newer) }()
+	go func() {
+		recorded, err := s.sessions.add(newer)
+		if err == nil {
+			recorded()
+		}
+		added <- err
+	}()
 	select {
 	case err := <-added:
 		t.Fatalf("newer stream registered before the offline mark was written (err %v)", err)
@@ -262,6 +270,48 @@ func TestNewerStreamWaitsForOfflineMark(t *testing.T) {
 	}
 	if err := context.Cause(newer.ctx); err != nil {
 		t.Fatalf("newer stream ended: %v", err)
+	}
+}
+
+// A stream that has just registered holds its workload until its open is
+// recorded: another stream of the workload registers only after that, so
+// on one replica the record names the streams in the order they
+// registered, and the one registered last is the one it names.
+func TestNewerStreamWaitsForStreamOpenRecord(t *testing.T) {
+	s, _ := newDispatchServer()
+	id := mustID(t)
+	older := newSession(t, id, sendQueueDepth)
+	recorded, err := s.sessions.add(older)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newer := newSession(t, id, sendQueueDepth)
+	added := make(chan error, 1)
+	go func() {
+		recorded, err := s.sessions.add(newer)
+		if err == nil {
+			recorded()
+		}
+		added <- err
+	}()
+	select {
+	case err := <-added:
+		t.Fatalf("newer stream registered before the older stream's open was recorded (err %v)", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	if s.sessions.get(id) != older {
+		t.Fatal("the registry does not hold the older stream while its open is recorded")
+	}
+	recorded()
+	if err := <-added; err != nil {
+		t.Fatal(err)
+	}
+	if s.sessions.get(id) != newer {
+		t.Fatal("registry does not hold the newer stream")
+	}
+	if !errors.Is(context.Cause(older.ctx), errSuperseded) {
+		t.Fatalf("older stream ended with %v, want superseded", context.Cause(older.ctx))
 	}
 }
 

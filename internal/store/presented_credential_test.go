@@ -42,6 +42,17 @@ func migrateTo(ctx context.Context, t *testing.T, version int64) {
 	}
 }
 
+// migrateLatest moves the test database to the latest migration, as the
+// control plane's own migration on start does. The store's queries are
+// compiled against the latest schema, so a test reads through them only
+// from there.
+func migrateLatest(ctx context.Context, t *testing.T) {
+	t.Helper()
+	if err := store.Migrate(ctx, os.Getenv(storetest.EnvDatabaseURL)); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestPresentedCredential covers the stamp of the credential a sync
 // stream opened on (issue #112): a workload written before the migration
 // reads none, through the registry and both read-model paths; a Hello
@@ -54,10 +65,11 @@ func TestPresentedCredential(t *testing.T) {
 	defer cancel()
 	at := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
 
-	// A workload enrolled before the migration, which then applies.
+	// A workload enrolled before the migration, which then applies with
+	// every later one.
 	migrateTo(ctx, t, presentedCredentialMigration-1)
 	id := enrollWorkload(t, s)
-	migrateTo(ctx, t, presentedCredentialMigration)
+	migrateLatest(ctx, t)
 
 	read := func() (*registry.Workload, *readmodel.WorkloadRecord, readmodel.WorkloadRecord) {
 		t.Helper()

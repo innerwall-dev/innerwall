@@ -166,6 +166,29 @@ UPDATE workloads
 SET sync_state = $2, sync_error = $3, last_seen_at = $4
 WHERE id = $1;
 
+-- The open of a sync stream, once the serving replica has registered it:
+-- the stream's state and the random id the replica gave it (migration
+-- 00019), in one statement, so a stream registering replaces the id
+-- atomically. Nothing else writes sync_stream_id.
+-- name: RecordWorkloadStreamOpen :execrows
+UPDATE workloads
+SET sync_state = sqlc.arg(sync_state), sync_error = '', last_seen_at = sqlc.arg(last_seen_at),
+    sync_stream_id = sqlc.arg(sync_stream_id)::uuid
+WHERE id = sqlc.arg(id);
+
+-- The offline mark of an ending sync stream, written only while the
+-- record still names that stream (migration 00019): a different id means
+-- a newer stream has registered since, on this replica or another, and
+-- the mark would describe a stream the record no longer does. A NULL id
+-- names no stream, so nothing newer is known and the mark is written.
+-- No row means the mark was not written: the workload is unknown, or a
+-- newer stream holds the record.
+-- name: MarkWorkloadStreamOffline :execrows
+UPDATE workloads
+SET sync_state = sqlc.arg(sync_state), sync_error = '', last_seen_at = sqlc.arg(last_seen_at)
+WHERE id = sqlc.arg(id)
+  AND (sync_stream_id IS NULL OR sync_stream_id = sqlc.arg(sync_stream_id)::uuid);
+
 -- An APPLIED acknowledgement: the version, the resulting state, and the
 -- instant. Nothing else writes last_acked_at (migration 00007). An apply
 -- that succeeded installed the owned table, so a table recorded absent is

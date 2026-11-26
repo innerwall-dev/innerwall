@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -66,7 +67,12 @@ const offlineWriteTimeout = 5 * time.Second
 // state: what was last sent on this stream. Everything durable is in the
 // registry (ADR-0017).
 type session struct {
-	id     identity.WorkloadID
+	id identity.WorkloadID
+	// stream is the random id this replica gave the stream when it
+	// registered it, the name the workload's record carries while this
+	// is the stream it describes (ADR-0018 as amended). A replica
+	// remembers only the ids of the streams it serves.
+	stream uuid.UUID
 	ctx    context.Context
 	cancel context.CancelCauseFunc
 	send   chan *innerwallv1.SyncResponse
@@ -124,12 +130,14 @@ var errSuperseded = errors.New("superseded by a newer stream from the same workl
 type sessions struct {
 	mu   sync.Mutex
 	live map[identity.WorkloadID]*session
-	// marking holds, per workload, a stream that has left the registry
-	// and whose offline mark is still being written; the channel closes
-	// when it is written. A newer stream of the workload registers only
-	// after that, so the mark can never land on top of the newer stream's
-	// own state and record a live workload offline.
-	marking map[identity.WorkloadID]chan struct{}
+	// held holds, per workload, a stream whose sync-state write is in
+	// flight: the open of a stream that has just registered, or the
+	// offline mark of one that has just left the registry. The channel
+	// closes when the write returns. Another stream of the workload
+	// registers only after that, so on one replica the writes that name a
+	// workload's stream land in the order its streams registered, and the
+	// mark can never land on top of a newer stream's own state.
+	held map[identity.WorkloadID]chan struct{}
 	// watching holds, per workload whose retirement this process is
 	// making, one watch per retirement call in flight, each recording
 	// whether a stream of the workload has left the registry since the
@@ -144,7 +152,7 @@ type watch struct{ left bool }
 func newSessions() *sessions {
 	return &sessions{
 		live:     map[identity.WorkloadID]*session{},
-		marking:  map[identity.WorkloadID]chan struct{}{},
+		held:     map[identity.WorkloadID]chan struct{}{},
 		watching: map[identity.WorkloadID][]*watch{},
 	}
 }
@@ -152,26 +160,29 @@ func newSessions() *sessions {
 // add registers sess, ending any earlier stream of the same workload. Two
 // live streams for one identity would each believe they hold the tip; the
 // newer wins because it is the one whose Hello the control plane just
-// answered. It first waits out the offline mark of a stream of the
-// workload that has just left the registry, and returns the context's
-// error, registering nothing, if sess ends before that.
-func (r *sessions) add(sess *session) error {
+// answered. It first waits out the sync-state write of another stream of
+// the workload (held), and returns the context's error, registering
+// nothing, if sess ends before that. Once registered, the workload is
+// held for the open of sess: the caller writes it and then calls
+// recorded, and no other stream registers in between.
+func (r *sessions) add(sess *session) (recorded func(), err error) {
 	for {
 		r.mu.Lock()
-		marked, ok := r.marking[sess.id]
+		busy, ok := r.held[sess.id]
 		if !ok {
 			if old, ok := r.live[sess.id]; ok {
 				old.cancel(errSuperseded)
 			}
 			r.live[sess.id] = sess
+			release := r.hold(sess.id)
 			r.mu.Unlock()
-			return nil
+			return release, nil
 		}
 		r.mu.Unlock()
 		select {
-		case <-marked:
+		case <-busy:
 		case <-sess.ctx.Done():
-			return context.Cause(sess.ctx)
+			return nil, context.Cause(sess.ctx)
 		}
 	}
 }
@@ -191,14 +202,20 @@ func (r *sessions) remove(sess *session) (marked func(), ok bool) {
 	for _, w := range r.watching[sess.id] {
 		w.left = true
 	}
+	return r.hold(sess.id), true
+}
+
+// hold holds workload for one sync-state write and returns the release.
+// The caller holds r.mu, and nothing holds the workload already.
+func (r *sessions) hold(workload identity.WorkloadID) func() {
 	done := make(chan struct{})
-	r.marking[sess.id] = done
+	r.held[workload] = done
 	return func() {
 		r.mu.Lock()
 		defer r.mu.Unlock()
-		delete(r.marking, sess.id)
+		delete(r.held, workload)
 		close(done)
-	}, true
+	}
 }
 
 // watch begins recording whether a stream of id leaves the registry.
@@ -294,19 +311,35 @@ func (s *Server) Sync(stream innerwallv1.AgentService_SyncServer) error {
 	}
 
 	sctx, cancel := context.WithCancelCause(ctx)
-	sess := &session{id: id, ctx: sctx, cancel: cancel, send: make(chan *innerwallv1.SyncResponse, sendQueueDepth)}
-	if err := s.sessions.add(sess); err != nil {
+	sess := &session{id: id, stream: uuid.New(), ctx: sctx, cancel: cancel, send: make(chan *innerwallv1.SyncResponse, sendQueueDepth)}
+	log = log.With("stream_id", sess.stream)
+	recorded, err := s.sessions.add(sess)
+	if err != nil {
 		cancel(nil)
 		return status.FromContextError(err).Err()
 	}
+	// The stream open is recorded while the workload is held, so on this
+	// replica no other stream of it registers until the record names this
+	// one; across replicas the name alone orders what is written last.
+	if err := s.registry.RecordStreamOpen(ctx, id, sess.stream, now); err != nil {
+		log.Error("recording stream open", "error", err)
+	}
+	recorded()
 	defer func() {
 		cancel(nil)
 		if marked, ok := s.sessions.remove(sess); ok {
 			defer marked()
 			octx, ocancel := context.WithTimeout(context.Background(), offlineWriteTimeout)
 			defer ocancel()
-			if err := s.registry.SetSyncState(octx, id, innerwallv1.SyncState_SYNC_STATE_OFFLINE, "", s.now()); err != nil {
+			// The mark is written only while the record still names this
+			// stream: a stream opened since, here or on another replica,
+			// holds the record, and its state stands (ADR-0018 as amended).
+			written, err := s.registry.MarkStreamOffline(octx, id, sess.stream, s.now())
+			switch {
+			case err != nil:
 				log.Error("marking workload offline", "error", err)
+			case !written:
+				log.Info("offline mark not written: a newer sync stream of the workload has opened since this one")
 			}
 		}
 	}()
@@ -353,9 +386,6 @@ func (s *Server) Sync(stream innerwallv1.AgentService_SyncServer) error {
 	sess.lastSent = policy
 	sess.mu.Unlock()
 	sess.enqueue(&innerwallv1.SyncResponse{Msg: &innerwallv1.SyncResponse_PolicyUpdate{PolicyUpdate: &innerwallv1.PolicyUpdate{Update: &innerwallv1.PolicyUpdate_Snapshot{Snapshot: &innerwallv1.PolicySnapshot{Policy: policy}}}}})
-	if err := s.registry.SetSyncState(ctx, id, innerwallv1.SyncState_SYNC_STATE_PENDING, "", now); err != nil {
-		log.Error("recording sync state", "error", err)
-	}
 	opened := []any{"agent_version", agent.Version, "claimed_version", hello.GetAppliedPolicyVersion(), "snapshot_version", policy.GetVersion()}
 	if presented != nil {
 		opened = append(opened, "credential_serial", presented.Serial, "credential_expires_at", presented.ExpiresAt)

@@ -394,6 +394,42 @@ func (s *Store) SetSyncState(ctx context.Context, id identity.WorkloadID, state 
 	return nil
 }
 
+// RecordStreamOpen implements registry.Store.
+func (s *Store) RecordStreamOpen(ctx context.Context, id identity.WorkloadID, stream uuid.UUID, now time.Time) error {
+	n, err := s.q.RecordWorkloadStreamOpen(ctx, db.RecordWorkloadStreamOpenParams{
+		ID: id.UUID(), SyncState: int32(innerwallv1.SyncState_SYNC_STATE_PENDING), SyncStreamID: stream, LastSeenAt: &now,
+	})
+	if err != nil {
+		return fmt.Errorf("store: recording stream open: %w", err)
+	}
+	if n == 0 {
+		return registry.ErrWorkloadUnknown
+	}
+	return nil
+}
+
+// MarkStreamOffline implements registry.Store. A mark that wrote no row
+// found the workload unknown, or found the record naming a newer stream,
+// and the two are told apart by whether the workload exists.
+func (s *Store) MarkStreamOffline(ctx context.Context, id identity.WorkloadID, stream uuid.UUID, now time.Time) (bool, error) {
+	n, err := s.q.MarkWorkloadStreamOffline(ctx, db.MarkWorkloadStreamOfflineParams{
+		ID: id.UUID(), SyncState: int32(innerwallv1.SyncState_SYNC_STATE_OFFLINE), SyncStreamID: stream, LastSeenAt: &now,
+	})
+	if err != nil {
+		return false, fmt.Errorf("store: marking stream offline: %w", err)
+	}
+	if n > 0 {
+		return true, nil
+	}
+	if _, err := s.q.GetWorkloadRetiredAt(ctx, id.UUID()); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, registry.ErrWorkloadUnknown
+		}
+		return false, fmt.Errorf("store: looking up workload: %w", err)
+	}
+	return false, nil
+}
+
 // RecordApplied implements registry.Store.
 func (s *Store) RecordApplied(ctx context.Context, id identity.WorkloadID, version uint64, state innerwallv1.SyncState, now time.Time) error {
 	n, err := s.q.RecordWorkloadApplied(ctx, db.RecordWorkloadAppliedParams{ID: id.UUID(), AppliedPolicyVersion: int64(version), SyncState: int32(state), LastSeenAt: &now}) //nolint:gosec // versions are small

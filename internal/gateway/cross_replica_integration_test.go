@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/innerwall-dev/innerwall/internal/fleet"
 	"github.com/innerwall-dev/innerwall/internal/gateway"
 	innerwallv1 "github.com/innerwall-dev/innerwall/internal/gen/innerwall/v1"
@@ -22,27 +24,33 @@ type heldOffline struct {
 	registry.Store
 	entered chan struct{}
 	release chan struct{}
-	written chan error
+	written chan markOutcome
+}
+
+// markOutcome is what one offline mark returned.
+type markOutcome struct {
+	written bool
+	err     error
 }
 
 func newHeldOffline(st registry.Store) *heldOffline {
-	return &heldOffline{Store: st, entered: make(chan struct{}, 1), release: make(chan struct{}), written: make(chan error, 1)}
+	return &heldOffline{Store: st, entered: make(chan struct{}, 1), release: make(chan struct{}), written: make(chan markOutcome, 1)}
 }
 
-func (g *heldOffline) SetSyncState(ctx context.Context, id identity.WorkloadID, state innerwallv1.SyncState, detail string, now time.Time) error {
-	if state != innerwallv1.SyncState_SYNC_STATE_OFFLINE {
-		return g.Store.SetSyncState(ctx, id, state, detail, now)
+func (g *heldOffline) MarkStreamOffline(ctx context.Context, id identity.WorkloadID, stream uuid.UUID, now time.Time) (bool, error) {
+	select {
+	case g.entered <- struct{}{}:
+	default:
 	}
-	g.entered <- struct{}{}
 	select {
 	case <-g.release:
 	case <-ctx.Done():
-		g.written <- ctx.Err()
-		return ctx.Err()
+		g.written <- markOutcome{err: ctx.Err()}
+		return false, ctx.Err()
 	}
-	err := g.Store.SetSyncState(ctx, id, state, detail, now)
-	g.written <- err
-	return err
+	written, err := g.Store.MarkStreamOffline(ctx, id, stream, now)
+	g.written <- markOutcome{written: written, err: err}
+	return written, err
 }
 
 // awaitEntered waits until the replica has begun its offline mark.
@@ -55,17 +63,19 @@ func (g *heldOffline) awaitEntered(t *testing.T) {
 	}
 }
 
-// awaitWritten waits until the held offline mark has returned and
-// fails the test if it returned an error.
-func (g *heldOffline) awaitWritten(t *testing.T) {
+// awaitWritten waits until the held offline mark has returned, fails
+// the test if it returned an error, and reports whether it was written.
+func (g *heldOffline) awaitWritten(t *testing.T) bool {
 	t.Helper()
 	select {
-	case err := <-g.written:
-		if err != nil {
-			t.Fatalf("offline mark: %v", err)
+	case out := <-g.written:
+		if out.err != nil {
+			t.Fatalf("offline mark: %v", out.err)
 		}
+		return out.written
 	case <-time.After(10 * time.Second):
 		t.Fatal("the offline mark did not return")
+		return false
 	}
 }
 
@@ -114,7 +124,9 @@ func TestOfflineMarkFromAnotherReplicaNeverOverwritesNewerStream(t *testing.T) {
 	})
 
 	close(gate.release)
-	gate.awaitWritten(t)
+	if gate.awaitWritten(t) {
+		t.Fatal("replica A's offline mark was written over the newer stream on replica B")
+	}
 	if w, err := st.LookupWorkload(ctx, newer.id); err != nil || w.SyncState != innerwallv1.SyncState_SYNC_STATE_SYNCED {
 		t.Fatalf("workload with a live stream on replica B recorded %v after replica A's offline mark (err %v)", w.SyncState, err)
 	}
@@ -153,7 +165,9 @@ func TestOfflineMarkWithNoNewerStream(t *testing.T) {
 
 	ag.disconnect()
 	gate.awaitEntered(t)
-	gate.awaitWritten(t)
+	if !gate.awaitWritten(t) {
+		t.Fatal("the offline mark of a stream with no newer one was not written")
+	}
 	waitFor(t, st, ag.id, "offline", func(w *registry.Workload) bool {
 		return w.SyncState == innerwallv1.SyncState_SYNC_STATE_OFFLINE
 	})
