@@ -28,7 +28,7 @@ The Makefile is a thin dispatcher. Every target wraps a tool in one to three lin
 | `make build-noconsole` | The same build with the `noconsole` tag: the console stub, no Node needed |
 | `make test` | `go test -race ./...`, plus the `noconsole` stub's own test |
 | `make test-console` | Vitest over the console (`npm --prefix ui run test`) |
-| `make lint` | golangci-lint, `buf lint`, and Biome (`biome ci`) over `ui/` |
+| `make lint` | golangci-lint twice (`scripts/lint-go.sh`: the default build, then every opt-in build tag, `dev`, `noconsole`, and `netns`, so no tagged file goes unlinted), `buf lint`, and Biome (`biome ci`) over `ui/` |
 | `make vulncheck` | govulncheck over the shipped code: fails on a known vulnerability it can reach |
 | `make openapi` | Lints the operator surface contract, `api/openapi.yaml` (spec lint only) |
 | `make proto` | `buf generate` from `proto/` into `internal/gen/` |
@@ -97,7 +97,7 @@ For iterating on the console itself, `npm --prefix ui run dev` serves it with ho
 
 `.github/workflows/ci.yml` runs on every push to `main` and every PR:
 
-- `console` (Biome, Vitest, production build on the pinned Node) runs first and hands its `ui/dist/` to `build`, which embeds it, then proves the `noconsole` stub and the `dev` command compile; `test`, `lint` (Go). The `test` job runs a Postgres service container and sets `INNERWALL_TEST_DATABASE_URL`; tests that need a database skip when it is unset, so `make test` works offline and runs the integration tests when you point that variable at a disposable database. Database tests hold a session-level advisory lock for their duration, so the packages `go test` runs in parallel take turns on the one database rather than truncating each other's tables.
+- `console` (Biome, Vitest, production build on the pinned Node) runs first and hands its `ui/dist/` to `build`, which embeds it, then proves the `noconsole` stub and the `dev` command compile; `test`, `lint` (Go: the two golangci-lint runs `scripts/lint-go.sh` makes, as two steps of the action). The `test` job runs a Postgres service container and sets `INNERWALL_TEST_DATABASE_URL`; tests that need a database skip when it is unset, so `make test` works offline and runs the integration tests when you point that variable at a disposable database. Database tests hold a session-level advisory lock for their duration, so the packages `go test` runs in parallel take turns on the one database rather than truncating each other's tables.
 - `vulncheck`: `make vulncheck`, on the toolchain `go.mod` pins; a known vulnerability reachable from code built without the `dev` tag fails it.
 - `openapi`: `scripts/check-openapi.sh`, which lints `api/openapi.yaml` as OpenAPI 3.1 against the rules in `api/vacuum-ruleset.yaml`. That is a check on the document alone; a Go test in `internal/api` checks the document against the routes the surface mounts and the closed sets it names. Nothing conforms responses to the document at runtime.
 - `proto`: `buf lint`, `buf build`, and `scripts/check-proto-breaking.sh`, which runs `buf breaking` against `main` and fails unless the PR title or body references an ADR (`ADR-NNNN`)
