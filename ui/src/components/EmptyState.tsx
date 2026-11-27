@@ -1,22 +1,21 @@
 import type { ReactNode } from "react";
-import { Icon, type IconName } from "@/components/Icon";
+import type { IconName } from "@/components/Icon";
 import { cn } from "@/lib/utils";
 
-// EmptyState is the fresh-install layout the routes share: the
-// section's chrome icon in a 40px hairline disc on the overlay surface,
-// a heading, the explanation in text-secondary, optional numbered steps,
-// and the actions, stacked on the design's measure and gap. The heading
-// is the dialog-title style, or the page title on a non-dense page (the
-// 404). Centred in the screen unless the caller places it.
+// EmptyState is the fresh-install layout the routes share: a heading
+// (the page title), the explanation in text 2, optional numbered steps
+// as rows of a bordered card on the surface, and the actions, stacked on
+// the design's measure at a 20px gap. icon names the section the state
+// belongs to; v4 draws no icon disc above the heading, so it is kept
+// for the caller's record only. Centred in the screen unless the caller
+// places it.
 export function EmptyState({
 	title,
-	icon,
 	page = false,
 	children,
 	steps,
 	actions,
 	width,
-	gap = 12,
 	className,
 }: {
 	title: string;
@@ -31,36 +30,23 @@ export function EmptyState({
 }) {
 	return (
 		<section
-			className={cn(
-				"flex flex-col",
-				gap === 14 ? "gap-3.5" : "gap-3",
-				className,
-			)}
-			style={{ maxWidth: width }}
+			className={cn("flex w-full flex-col gap-5 px-6", className)}
+			style={{ maxWidth: width + 48 }}
+			data-page={page || undefined}
 		>
-			{icon ? (
-				<span
-					className="flex size-10 items-center justify-center rounded-full border border-hairline bg-overlay"
-					aria-hidden="true"
-				>
-					<Icon name={icon} />
-				</span>
-			) : null}
-			<h1 className={page ? "type-page-title" : "type-dialog-title"}>
-				{title}
-			</h1>
-			<p className="type-dense text-secondary">{children}</p>
+			<div className="flex flex-col gap-2">
+				<h1 className="type-page-title">{title}</h1>
+				<p className="type-dense text-secondary">{children}</p>
+			</div>
 			{steps ? (
-				<ol className="mt-1.5 grid grid-cols-[24px_1fr] gap-2.5 type-dense">
+				<ol className="m-0 flex list-none flex-col rounded-panel border border-overlay bg-card p-0 type-dense">
 					{steps.map((s, i) => (
-						<li key={s.lead} className="contents">
+						<li
+							key={s.lead}
+							className="flex gap-3.5 border-t border-hairline px-4 py-[13px] first:border-t-0"
+						>
 							<span
-								className={cn(
-									"flex size-[22px] items-center justify-center rounded-full border type-mono-xs",
-									i === 0
-										? "border-overlay bg-overlay text-primary"
-										: "border-hairline text-tertiary",
-								)}
+								className="pt-px type-mono-sm text-tertiary"
 								aria-hidden="true"
 							>
 								{i + 1}

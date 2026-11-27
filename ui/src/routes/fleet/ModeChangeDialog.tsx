@@ -212,10 +212,10 @@ export function ModeChangeDialog({
 						<div className="flex flex-col gap-1.5">
 							<label
 								className={cn(
-									"flex cursor-pointer items-start gap-2.5 rounded-panel border bg-card px-3 py-2.5 type-dense text-primary",
+									"flex cursor-pointer items-start gap-2.5 rounded-panel border px-3 py-2.5 type-dense text-primary",
 									nudged && !acknowledged
-										? "border-status-warn-border"
-										: "border-hairline",
+										? "border-status-warn-mark"
+										: "border-overlay",
 								)}
 							>
 								<input
@@ -248,7 +248,7 @@ export function ModeChangeDialog({
 					{mismatch ? (
 						<div
 							role="alert"
-							className="flex flex-col gap-1 rounded-panel border border-status-warn-border bg-status-warn-bg px-4 py-3"
+							className="flex flex-col gap-1 rounded-panel border border-status-warn-mark bg-wash-selected px-3.5 py-3"
 						>
 							<span className="flex items-center gap-2 type-dense-strong text-status-warn-fg">
 								<StatusGlyph status="alert" size="lg" />
@@ -341,24 +341,17 @@ function Evidence({
 		<div className="flex flex-col gap-3" data-testid="evidence">
 			<div
 				className={cn(
-					"flex items-start gap-2.5 rounded-panel border px-4 py-3",
-					safe
-						? "border-status-ok-border bg-status-ok-bg"
-						: "border-status-critical-border bg-status-critical-bg",
+					"flex items-start gap-2.5 rounded-panel border bg-wash-selected px-3.5 py-3",
+					safe ? "border-status-ok-mark" : "border-status-critical-mark",
 				)}
 			>
 				<StatusGlyph
 					status={safe ? "allowed" : "error"}
-					size="lg"
-					className="mt-0.5"
+					size="md"
+					className="mt-[3px]"
 				/>
 				<div className="flex min-w-0 flex-col gap-0.5">
-					<div
-						className={cn(
-							"type-dense-strong",
-							safe ? "text-status-ok-fg" : "text-status-critical-fg",
-						)}
-					>
+					<div className="type-dense-strong text-primary">
 						{safe ? "Safe to enforce" : "Not safe to enforce yet"}
 					</div>
 					<div className="type-dense text-secondary">
@@ -369,7 +362,7 @@ function Evidence({
 				</div>
 			</div>
 			{!safe ? (
-				<div className="overflow-hidden rounded-panel border border-overlay bg-canvas type-dense">
+				<div className="overflow-hidden rounded-panel border border-overlay type-dense">
 					{u > 0 ? (
 						<div className={row}>
 							<span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">

@@ -88,7 +88,7 @@ async function listRemoved(filter: WorkloadFilter): Promise<WorkloadsPage> {
 // th is the table's header cell: the mono meta label on the canvas,
 // held at the top while the rows scroll under it.
 const th =
-	"h-row-header whitespace-nowrap border-b border-hairline bg-canvas px-3 text-left type-meta-label text-tertiary";
+	"h-row-header whitespace-nowrap border-b border-hairline bg-card px-3 text-left font-normal type-meta-label text-tertiary";
 
 // labelRequirements reads typed or pasted filter text as `key=value`
 // requirements, one per label, through the console's one label parser
@@ -216,7 +216,7 @@ export function WorkloadList({
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
-			<div className="flex shrink-0 items-center gap-2 border-b border-hairline px-5 py-3">
+			<div className="flex shrink-0 items-center gap-2 px-8 pt-5">
 				<fieldset className="m-0 flex min-w-0 gap-1 border-0 p-0">
 					<legend className="sr-only">Sync state</legend>
 					<FilterChip
@@ -240,7 +240,7 @@ export function WorkloadList({
 						onClick={() => setChip(removed ? null : "removed")}
 					/>
 				</fieldset>
-				<fieldset className="m-0 flex min-w-0 gap-1 border-0 border-l border-hairline p-0 pl-2">
+				<fieldset className="m-0 flex min-w-0 gap-1 border-0 border-l border-hairline p-0 pl-2.5">
 					<legend className="sr-only">Lifecycle</legend>
 					<FilterChip
 						on={showRetired}
@@ -270,9 +270,9 @@ export function WorkloadList({
 					</Button>
 				</div>
 			</div>
-			<div className="min-h-0 flex-1 overflow-auto pb-6">
+			<div className="min-h-0 flex-1 overflow-auto px-8 pt-4 pb-6">
 				{resource.status === "error" ? (
-					<div className="px-5">
+					<div>
 						<ProblemNotice
 							what="workloads"
 							error={resource.error}
@@ -280,11 +280,11 @@ export function WorkloadList({
 						/>
 					</div>
 				) : (
-					<table className="w-full border-separate border-spacing-0">
+					<table className="w-full border-separate border-spacing-0 overflow-clip rounded-panel border border-overlay bg-card">
 						<thead className="sticky top-0 z-10">
 							<tr>
 								{showRetired ? null : (
-									<th className={cn(th, "w-px pr-1 pl-5")}>
+									<th className={cn(th, "w-px pr-1 pl-4")}>
 										<Checkbox
 											label="Select all shown"
 											checked={allSelected}
@@ -299,14 +299,14 @@ export function WorkloadList({
 										/>
 									</th>
 								)}
-								<th className={cn(th, showRetired && "pl-5")}>Hostname</th>
+								<th className={cn(th, showRetired && "pl-4")}>Hostname</th>
 								<th className={th}>Labels</th>
 								<th className={th}>Mode</th>
 								<th className={th}>{showRetired ? "Lifecycle" : "Sync"}</th>
 								<th className={cn(th, "text-right")}>Applied</th>
 								<th className={th}>Credential</th>
 								<th className={th}>Agent</th>
-								<th className={cn(th, "pr-5 text-right")}>Last seen</th>
+								<th className={cn(th, "pr-4 text-right")}>Last seen</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -323,14 +323,14 @@ export function WorkloadList({
 					</table>
 				)}
 				{resource.status === "loading" ? (
-					<div className="px-5">
+					<div>
 						<LoadingRow what="workloads" />
 					</div>
 				) : null}
 				{resource.status === "ready" && rows.length === 0 && !filtered ? (
 					// Only retired workloads remain: the active fleet is empty,
 					// and the retired ones are a chip away.
-					<div className="flex flex-col items-start gap-2 px-5 py-6 type-dense text-tertiary">
+					<div className="flex flex-col items-start gap-2 py-6 type-dense text-tertiary">
 						<span>
 							No active workloads; {count(retiredCount)}{" "}
 							{retiredCount === 1 ? "workload is" : "workloads are"} retired.
@@ -345,7 +345,7 @@ export function WorkloadList({
 					</div>
 				) : null}
 				{resource.status === "ready" && rows.length === 0 && filtered ? (
-					<div className="flex flex-col items-start gap-2 px-5 py-6 type-dense text-tertiary">
+					<div className="flex flex-col items-start gap-2 py-6 type-dense text-tertiary">
 						<span>No workloads match these filters.</span>
 						<button
 							type="button"
@@ -360,7 +360,7 @@ export function WorkloadList({
 					</div>
 				) : null}
 				{resource.status === "ready" && rows.length > 0 ? (
-					<div className="flex items-center gap-3 px-5 py-3 type-caption text-tertiary">
+					<div className="flex items-center gap-3 py-3 type-caption text-tertiary">
 						<span>
 							Showing {rows.length} ·{" "}
 							{showRetired
@@ -449,12 +449,14 @@ function Row({
 				onOpen();
 			}}
 			className={cn(
-				"cursor-pointer",
-				selected ? "bg-wash-selected" : "hover:bg-wash-hover",
+				"cursor-pointer [&:last-child>td]:border-b-0",
+				selected
+					? "bg-wash-selected [&>td:first-child]:shadow-[inset_2px_0_0_var(--text-primary)]"
+					: "hover:bg-wash-hover",
 			)}
 		>
 			{gone ? null : (
-				<td className={cn(cell, "pr-1 pl-5")}>
+				<td className={cn(cell, "pr-1 pl-4")}>
 					<Checkbox
 						label={`Select ${w.hostname}`}
 						checked={selected}
@@ -462,11 +464,11 @@ function Row({
 					/>
 				</td>
 			)}
-			<td className={cn(cell, "whitespace-nowrap", gone && "pl-5")}>
+			<td className={cn(cell, "whitespace-nowrap", gone && "pl-4")}>
 				<Link
 					to={`/workloads/${w.id}`}
 					className={cn(
-						"type-mono-data font-medium hover:underline",
+						"type-dense hover:underline",
 						gone ? "text-secondary" : "text-primary",
 					)}
 				>
@@ -487,7 +489,7 @@ function Row({
 			<td className={cell}>
 				<ModePill mode={w.mode} />
 			</td>
-			<td className={cn(cell, "whitespace-nowrap")}>
+			<td className={cn(cell, "min-w-[180px]")}>
 				{gone ? (
 					// Retired is the operator's decision, not health: the
 					// chrome icon and the word, never a status glyph, so the
@@ -538,7 +540,7 @@ function Row({
 			<td
 				className={cn(
 					cell,
-					"whitespace-nowrap pr-5 text-right type-mono-data text-secondary",
+					"whitespace-nowrap pr-4 text-right type-caption text-tertiary",
 				)}
 			>
 				{lastSeen(w)}

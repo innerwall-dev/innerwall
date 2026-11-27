@@ -236,10 +236,10 @@ export function PromoteDialog({
 						<div className="flex flex-col gap-1.5">
 							<label
 								className={cn(
-									"flex cursor-pointer items-start gap-2.5 rounded-panel border bg-card px-3 py-2.5 type-dense text-primary",
+									"flex cursor-pointer items-start gap-2.5 rounded-panel border px-3 py-2.5 type-dense text-primary",
 									nudged && !acknowledged
-										? "border-status-warn-border"
-										: "border-hairline",
+										? "border-status-warn-mark"
+										: "border-overlay",
 								)}
 							>
 								<input
