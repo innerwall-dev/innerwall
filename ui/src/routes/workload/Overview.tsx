@@ -38,10 +38,13 @@ export function Overview({
 }) {
 	return (
 		<div className="min-h-0 flex-1 overflow-auto">
-			<div className="flex max-w-content flex-col gap-4 px-8 pt-5 pb-8">
-				{retired(w) ? <RetiredCard w={w} /> : null}
-				<AlertCards states={states} />
-				<div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] items-start gap-4">
+			{/* The design's layout: the notices and the status cards in the
+			    main column, the labels and the host's facts as one 320px card
+			    beside it. Below 1024px the side card drops under the column. */}
+			<div className="flex gap-7 px-8 pt-5 pb-8 max-lg:flex-col">
+				<div className="flex min-w-0 flex-1 flex-col gap-4">
+					{retired(w) ? <RetiredCard w={w} /> : null}
+					<AlertCards states={states} />
 					<StatusCard
 						w={w}
 						gaps={gaps}
@@ -49,10 +52,15 @@ export function Overview({
 						alerts={states.map((s) => s.key)}
 						onReread={onReread}
 					/>
+					<GapHistory gaps={gaps} range={range} />
+				</div>
+				<aside
+					aria-label="Workload facts"
+					className="flex w-[320px] shrink-0 flex-col self-start rounded-panel border border-overlay bg-card max-lg:w-full"
+				>
 					<LabelsCard w={w} onEdit={onEditLabels} />
 					<HostFacts w={w} onRetire={onRetire} />
-				</div>
-				<GapHistory gaps={gaps} range={range} />
+				</aside>
 			</div>
 		</div>
 	);
@@ -103,15 +111,24 @@ function RetiredCard({ w }: { w: Workload }) {
 	);
 }
 const title = "type-card-title text-primary";
+// A section of the side card: 18/20px padding, its title the mono
+// eyebrow, the sections apart by the subtle rule.
+const section =
+	"flex flex-col gap-3 px-5 py-[18px] [&+&]:border-t [&+&]:border-hairline";
+const eyebrow = "type-meta-label font-normal text-tertiary";
+const rows =
+	"grid grid-cols-[96px_minmax(0,1fr)] items-baseline gap-x-0 gap-y-2.5";
 const field = "type-dense text-tertiary first-letter:uppercase";
-const value = "min-w-0 type-mono-sm break-words text-primary";
+// Values in the sans with tabular figures, as the design sets them;
+// addresses, identities and serials stay mono.
+const value = "min-w-0 type-dense break-words text-primary tabular-nums";
 
 function LabelsCard({ w, onEdit }: { w: Workload; onEdit: () => void }) {
 	const labels = labelPairs(w.labels);
 	return (
-		<section aria-labelledby="labels-card-title" className={card}>
+		<section aria-labelledby="labels-card-title" className={section}>
 			<div className="flex items-center">
-				<h2 id="labels-card-title" className={title}>
+				<h2 id="labels-card-title" className={eyebrow}>
 					Labels
 				</h2>
 				{retired(w) ? (
@@ -147,13 +164,25 @@ function LabelsCard({ w, onEdit }: { w: Workload; onEdit: () => void }) {
 function HostFacts({ w, onRetire }: { w: Workload; onRetire: () => void }) {
 	const os = w.os;
 	return (
-		<section aria-labelledby="host-facts-title" className={card}>
-			<h2 id="host-facts-title" className={title}>
+		<section aria-labelledby="host-facts-title" className={section}>
+			<h2 id="host-facts-title" className={eyebrow}>
 				Host facts
 			</h2>
-			<dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-4 gap-y-2">
+			<dl className={rows}>
 				<dt className={field}>hostname</dt>
 				<dd className={value}>{w.hostname}</dd>
+				<dt className={field}>addresses</dt>
+				<dd className={value}>
+					{w.addresses.length === 0
+						? "none reported"
+						: w.addresses.map((a) => (
+								<div key={a} className="type-mono-sm">
+									{a}
+								</div>
+							))}
+				</dd>
+				<dt className={field}>agent</dt>
+				<dd className={value}>{w.agent.version || "not reported"}</dd>
 				<dt className={cn(field, "uppercase")}>os</dt>
 				<dd className={value}>
 					{os
@@ -166,17 +195,11 @@ function HostFacts({ w, onRetire }: { w: Workload; onRetire: () => void }) {
 								.join(" · ")
 						: "not reported"}
 				</dd>
-				<dt className={field}>agent</dt>
-				<dd className={value}>{w.agent.version || "not reported"}</dd>
-				<dt className={field}>addresses</dt>
-				<dd className={value}>
-					{w.addresses.length === 0
-						? "none reported"
-						: w.addresses.map((a) => <div key={a}>{a}</div>)}
-				</dd>
+				<dt className={field}>enrolled</dt>
+				<dd className={value}>{ago(w.enrolled_at)}</dd>
 				<dt className={cn(field, "uppercase")}>id</dt>
 				<dd className={value}>
-					<div className="break-all">{w.id}</div>
+					<div className="break-all type-mono-sm">{w.id}</div>
 					<div className="mt-0.5 type-caption text-tertiary">
 						Identity is assigned at enrollment and cannot be edited.
 					</div>

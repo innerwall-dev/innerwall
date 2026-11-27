@@ -429,7 +429,7 @@ export function StateChips({ states }: { states: ExceptionalState[] }) {
 // AlertCards are the active states inline at the top of the Overview,
 // one card per state in severity order: a bordered card on the surface,
 // the toned glyph beside the lead word in text 1, the sentence in text 2,
-// and the action on the right.
+// and the action under it, as the design places it.
 export function AlertCards({ states }: { states: ExceptionalState[] }) {
 	if (states.length === 0) return null;
 	return (
@@ -440,14 +440,16 @@ export function AlertCards({ states }: { states: ExceptionalState[] }) {
 					aria-label={s.word}
 					data-testid={`alert-${s.key}`}
 					className={cn(
-						"flex items-start gap-3 rounded-panel border border-overlay bg-card px-5 py-4 type-dense",
+						"flex items-start gap-3 rounded-panel border border-overlay bg-card px-5 py-[18px] type-dense",
 					)}
 				>
-					<div className="flex min-w-0 flex-1 flex-col gap-1.5">
+					<div className="flex min-w-0 flex-1 flex-col gap-2">
 						<Lead s={s} plain />
 						<div className="text-secondary">{s.body}</div>
+						{s.action ? (
+							<div className="mt-0.5 self-start">{s.action}</div>
+						) : null}
 					</div>
-					{s.action ? <div className="shrink-0">{s.action}</div> : null}
 				</section>
 			))}
 		</div>
