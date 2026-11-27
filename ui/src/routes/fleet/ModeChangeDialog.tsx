@@ -369,7 +369,7 @@ function Evidence({
 				</div>
 			</div>
 			{!safe ? (
-				<div className="overflow-hidden rounded-panel border border-hairline bg-canvas type-dense">
+				<div className="overflow-hidden rounded-panel border border-overlay bg-canvas type-dense">
 					{u > 0 ? (
 						<div className={row}>
 							<span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">

@@ -757,7 +757,7 @@ export function RulesetEditor({
 			{headNotice ? <NoticeLine notice={headNotice} /> : null}
 			<div
 				role="note"
-				className="flex gap-2.5 rounded-panel border border-hairline bg-card px-4 py-3 type-dense text-secondary"
+				className="flex gap-2.5 rounded-panel border border-overlay bg-card px-4 py-3 type-dense text-secondary"
 				data-testid="banner"
 			>
 				<Icon name="info" className="mt-0.5" />
@@ -876,7 +876,7 @@ function PairNote({
 		<div
 			role="note"
 			data-testid="pair-context"
-			className="flex gap-2.5 rounded-panel border border-hairline bg-card px-4 py-3 type-dense text-secondary"
+			className="flex gap-2.5 rounded-panel border border-overlay bg-card px-4 py-3 type-dense text-secondary"
 		>
 			<Icon name="info" className="mt-0.5 shrink-0" />
 			<div className="flex min-w-0 flex-col gap-1.5">

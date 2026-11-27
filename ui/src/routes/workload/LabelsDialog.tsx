@@ -199,7 +199,7 @@ function Editor({ w, onSaved }: { w: Workload; onSaved: () => void }) {
 					<div
 						role="note"
 						data-testid="label-effect"
-						className="flex gap-2.5 rounded-panel border border-hairline bg-card px-4 py-3 type-dense text-secondary"
+						className="flex gap-2.5 rounded-panel border border-overlay bg-card px-4 py-3 type-dense text-secondary"
 					>
 						<Icon name="info" className="mt-0.5 shrink-0" />
 						<span>

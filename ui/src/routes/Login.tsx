@@ -85,7 +85,7 @@ export function Login() {
 
 	return (
 		<div className="flex min-h-dvh items-center justify-center bg-canvas px-5 py-12 text-primary">
-			<div className="w-full max-w-[380px] rounded-panel border border-hairline bg-popover p-6">
+			<div className="w-full max-w-[380px] rounded-panel border border-overlay bg-popover p-6">
 				<div className="flex items-center gap-2.5">
 					<Lockup />
 					<span className="ml-auto type-mono-xs text-tertiary">
@@ -162,7 +162,7 @@ export function describe(
 function FreshInstall({ onRetry }: { onRetry: () => void }) {
 	return (
 		<div className="mt-6" data-testid="fresh-install">
-			<div className="flex gap-2.5 rounded-panel border border-hairline bg-card px-4 py-3">
+			<div className="flex gap-2.5 rounded-panel border border-overlay bg-card px-4 py-3">
 				<Icon name="info" className="mt-0.5" />
 				<div className="min-w-0 flex-1">
 					<h1 className="type-dense-strong text-primary">

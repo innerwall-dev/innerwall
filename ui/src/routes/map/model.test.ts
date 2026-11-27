@@ -250,7 +250,7 @@ describe("edge stroke", () => {
 
 	it("draws every edge at the one edge width, whatever its volume or decision", () => {
 		expect(edgeWidth).toBe("var(--edge-width)");
-		expect(token("edge-width")).toBe("2px");
+		expect(token("edge-width")).toBe("1.5px");
 		for (const d of [
 			"observed",
 			"allowed",

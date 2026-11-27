@@ -11,8 +11,8 @@ import type { EvidenceGaps, Workload } from "@/api/schema";
 import {
 	type GlyphStatus,
 	StatusGlyph,
+	textTone,
 	tint,
-	tone,
 } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
 import {
@@ -267,7 +267,7 @@ function Lead({ s, className }: { s: ExceptionalState; className?: string }) {
 		<span
 			className={cn(
 				"inline-flex items-center gap-1.5 font-medium",
-				tone[s.glyph],
+				textTone[s.glyph],
 				className,
 			)}
 		>
@@ -344,9 +344,9 @@ export function StateChips({ states }: { states: ExceptionalState[] }) {
 	const hidden = states.slice(fit);
 	const chip = (s: { glyph: GlyphStatus }) =>
 		cn(
-			"inline-flex h-chip shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-inner border px-2 type-control hover:shadow-[inset_0_0_0_1px_var(--border-control-hover)] aria-expanded:focus-ring",
+			"inline-flex h-chip shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border px-2 type-control hover:shadow-[inset_0_0_0_1px_var(--border-control-hover)] aria-expanded:focus-ring",
 			tint[s.glyph],
-			tone[s.glyph],
+			textTone[s.glyph],
 		);
 	return (
 		<div

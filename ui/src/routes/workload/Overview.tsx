@@ -58,7 +58,7 @@ export function Overview({
 }
 
 const card =
-	"flex flex-col gap-3 rounded-panel border border-hairline bg-card p-4";
+	"flex flex-col gap-3 rounded-panel border border-overlay bg-card p-4";
 
 // RetiredCard says the workload was retired, when, and what that means
 // for reading the page: a state the operator decided, drawn as chrome on
@@ -69,7 +69,7 @@ function RetiredCard({ w }: { w: Workload }) {
 		<section
 			aria-label="Retired"
 			data-testid="retired"
-			className="flex items-start gap-3 rounded-panel border border-hairline bg-card px-3.5 py-2.5 type-dense"
+			className="flex items-start gap-3 rounded-panel border border-overlay bg-card px-3.5 py-2.5 type-dense"
 		>
 			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
 				<span className="inline-flex items-center gap-1.5 font-medium text-status-neutral-fg">

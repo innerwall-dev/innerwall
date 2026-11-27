@@ -374,7 +374,7 @@ function EdgeDrawer({
 			</Header>
 			<div className="flex flex-col gap-2 border-b border-hairline px-4 py-4">
 				<Eyebrow>Draw a rule from this</Eyebrow>
-				<dl className="flex flex-col gap-1.5 rounded-panel border border-hairline bg-canvas px-3 py-2.5 type-dense">
+				<dl className="flex flex-col gap-1.5 rounded-panel border border-overlay bg-canvas px-3 py-2.5 type-dense">
 					<div className="flex gap-2">
 						<dt className="w-[60px] shrink-0 type-control text-tertiary">
 							ruleset
@@ -584,7 +584,7 @@ function PairFlows({
 	}
 	return (
 		<div className="flex flex-col gap-2 pt-1 pb-3" data-testid="pair-flows">
-			<div className="overflow-hidden rounded-panel border border-hairline">
+			<div className="overflow-hidden rounded-panel border border-overlay">
 				<table className="w-full border-collapse">
 					<caption className="sr-only">Stored windows of this pair</caption>
 					<thead>

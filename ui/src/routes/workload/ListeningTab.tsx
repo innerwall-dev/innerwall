@@ -2,7 +2,11 @@ import { useState } from "react";
 import { getRollup } from "@/api/fleet";
 import type { RenderedPolicy, Rollup, Workload } from "@/api/schema";
 import { ProblemNotice } from "@/components/Problem";
-import { type FlowStatus, StatusGlyph, tone } from "@/components/StatusGlyph";
+import {
+	type FlowStatus,
+	StatusGlyph,
+	textTone,
+} from "@/components/StatusGlyph";
 import { compact, count } from "@/lib/format";
 import { useResource } from "@/lib/resource";
 import { cn } from "@/lib/utils";
@@ -256,7 +260,7 @@ function Row({
 					<span
 						className={cn(
 							"inline-flex items-center gap-1.5",
-							tone[usage.status],
+							textTone[usage.status],
 						)}
 					>
 						<StatusGlyph status={usage.status} size="md" />

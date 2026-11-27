@@ -82,7 +82,7 @@ export function FilterPanel({
 			className="flex w-filter-panel shrink-0 flex-col gap-2.5 overflow-auto border-r border-hairline bg-canvas p-3"
 		>
 			<div className="flex items-center justify-between">
-				<span className="text-[13px] leading-5 font-semibold text-primary">
+				<span className="text-[13px] leading-5 font-medium text-primary">
 					Filters
 				</span>
 				<Button
@@ -161,7 +161,7 @@ function Group({
 	const [open, setOpen] = useState(true);
 	const listId = useId();
 	return (
-		<fieldset className="m-0 min-w-0 rounded-panel border border-hairline p-1">
+		<fieldset className="m-0 min-w-0 rounded-panel border border-overlay p-1">
 			<legend className="sr-only">{group.title}</legend>
 			<button
 				type="button"

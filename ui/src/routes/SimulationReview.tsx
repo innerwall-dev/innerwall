@@ -547,7 +547,7 @@ function Tile({
 	of?: string;
 }) {
 	return (
-		<div className="flex flex-col-reverse gap-1 rounded-panel border border-hairline bg-card px-4 py-3">
+		<div className="flex flex-col-reverse gap-1 rounded-panel border border-overlay bg-card px-4 py-3">
 			<dt className="flex items-center gap-1.5 type-meta-label text-tertiary">
 				{label}
 			</dt>

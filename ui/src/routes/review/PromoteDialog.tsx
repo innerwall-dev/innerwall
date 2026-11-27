@@ -376,7 +376,7 @@ function PartitionTable({
 	const skipped = "text-tertiary";
 	return (
 		<div
-			className="overflow-hidden rounded-panel border border-hairline bg-canvas type-dense"
+			className="overflow-hidden rounded-panel border border-overlay bg-canvas type-dense"
 			data-testid="partition"
 		>
 			<div className={row}>

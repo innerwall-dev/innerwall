@@ -239,7 +239,7 @@ function Outcomes({
 }) {
 	return (
 		<ul
-			className="flex flex-col overflow-hidden rounded-panel border border-hairline bg-canvas type-dense"
+			className="flex flex-col overflow-hidden rounded-panel border border-overlay bg-canvas type-dense"
 			data-testid="retire-outcomes"
 		>
 			{workloads.map((w) => {

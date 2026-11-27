@@ -1,5 +1,5 @@
 /* The console's stylesheet. tokens.css is the palette, its token names
-   and values adopted verbatim from the design package (v3) and never
+   and values adopted verbatim from the design package (v4) and never
    restyled here; this file maps its custom properties onto utility names
    and sets the base typography. Every color mapping is a plain var()
    reference: the theme block below is inline so that the utilities read
@@ -28,16 +28,21 @@
 	   each as a reference to itself, and the token in the base layer
 	   wins the cascade. */
 	--font-sans: var(--font-sans);
+	--font-display: var(--font-display);
 	--font-mono: var(--font-mono);
 	--radius-inner: var(--radius-inner);
 	--radius-control: var(--radius-control);
 	--radius-panel: var(--radius-panel);
+	--radius-dialog: var(--radius-dialog);
+	--shadow-overlay: var(--shadow-overlay);
+	--shadow-sheet: var(--shadow-sheet);
 	--radius-full: var(--radius-full);
 	--opacity-dimmed: var(--opacity-dimmed);
 
-	/* Grounds, by elevation (higher is lighter in both themes): bg-canvas,
-	   bg-card, bg-popover, bg-overlay, bg-top. Washes carry hover and
-	   selection on borderless items; fields are sunk, choosers raised. */
+	/* Grounds: bg-canvas is the ground (page, header, sidebar); bg-card
+	   and bg-popover the surface (cards, dialogs, sheets); bg-overlay the
+	   selected fill as a plate. The washes are the selected / hover fill;
+	   fields and neutral buttons take the control fill. */
 	--background-color-canvas: var(--surface-canvas);
 	--background-color-card: var(--surface-card);
 	--background-color-popover: var(--surface-popover);
@@ -56,16 +61,19 @@
 	--background-color-destructive-hover: var(--destructive-hover);
 	--background-color-checkbox-on: var(--checkbox-on);
 
-	/* Border tiers, the foreground at fixed alphas: border-hairline (rows,
-	   cards), border-overlay (popovers, dialogs, pills, raised controls),
-	   border-strong (inputs), border-stronger (unchecked boxes, the secret
-	   well), border-control-hover (hover on a bordered control). */
+	/* Two border roles: border-hairline is the subtle rule (rows and
+	   sections inside a card, the header's and the sidebar's edge); the
+	   border is border-overlay (cards, popovers, dialogs, sheets, pills),
+	   border-strong (inputs, buttons) and border-stronger (unchecked
+	   boxes, the secret well), all one value in v4. border-control-hover
+	   is hover on a bordered control. */
 	--border-color-hairline: var(--border-hairline);
 	--border-color-overlay: var(--border-overlay);
 	--border-color-strong: var(--border-strong);
 	--border-color-stronger: var(--border-stronger);
 	--border-color-control-hover: var(--border-control-hover);
 	--border-color-accent-edge: var(--accent-edge);
+	--border-color-plate: var(--plate-border);
 	--border-color-checkbox-on: var(--checkbox-on);
 	--divide-color-hairline: var(--border-hairline);
 
@@ -87,6 +95,9 @@
 	--color-logo-outline: var(--logo-outline);
 	--color-logo-fill: var(--logo-fill);
 	--color-status-ok-fg: var(--status-ok-fg);
+	--color-status-ok-mark: var(--status-ok-mark);
+	--color-status-warn-mark: var(--status-warn-mark);
+	--color-status-critical-mark: var(--status-critical-mark);
 	--color-status-ok-bg: var(--status-ok-bg);
 	--color-status-ok-border: var(--status-ok-border);
 	--color-status-warn-fg: var(--status-warn-fg);
@@ -110,8 +121,8 @@
 	--color-severity-error: var(--severity-error);
 
 	/* The sidebar component's color names, each a package token: the
-	   rail flat with the canvas behind a hairline, entries in
-	   text-secondary, hover on the hover wash. */
+	   rail on the ground behind the subtle rule, entries in
+	   text-secondary, hover and the active entry on the selected fill. */
 	--color-sidebar: var(--surface-canvas);
 	--color-sidebar-foreground: var(--text-secondary);
 	--color-sidebar-accent: var(--wash-hover);
@@ -142,14 +153,15 @@
 }
 
 /* The type roles are tokens.css's .type-* classes. The review's totals
-   figures (Pages-and-Patterns: "mono 24/28") have no package style; this
-   one is kept on the record (design package v3 errata). */
+   figures have no package style; v4 sets them in the sans at 20/28 with
+   tabular figures, which Inter carries (design package v4 errata). The
+   name is kept from v3 so its call sites do not move. */
 @utility type-mono-figure {
-	font-family: var(--font-mono);
-	font-size: 24px;
+	font-family: var(--font-sans);
+	font-size: 20px;
 	line-height: 28px;
-	font-weight: 500;
-	letter-spacing: -0.02em;
+	font-weight: 400;
+	font-variant-numeric: tabular-nums;
 }
 
 /* Keyboard focus: the accent ring, 2px at a 1px offset; inset where the
@@ -180,8 +192,13 @@
 	body {
 		@apply bg-canvas text-primary antialiased;
 		font-family: var(--font-sans);
-		font-size: 14px;
+		font-size: 13px;
 		line-height: 20px;
+	}
+	h1,
+	h2,
+	h3 {
+		font-weight: 500;
 	}
 	* {
 		scrollbar-color: var(--border-stronger) transparent;

@@ -94,7 +94,7 @@ const cellFill = {
 
 // The table pattern every take shares: a bordered panel, a subtle
 // header band, dense rows on subtle hairlines.
-const panel = "overflow-x-auto rounded-panel border border-hairline";
+const panel = "overflow-x-auto rounded-panel border border-overlay";
 const th =
 	"h-row-header whitespace-nowrap border-b border-hairline px-2.5 text-left type-meta-label text-tertiary first:pl-3 last:pr-3";
 const td =

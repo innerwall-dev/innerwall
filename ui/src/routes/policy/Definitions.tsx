@@ -90,7 +90,7 @@ export function Definitions({
 			{notice ? <NoticeLine notice={notice} /> : null}
 			<section
 				aria-label={view.title}
-				className="flex shrink-0 flex-col overflow-hidden rounded-panel border border-hairline bg-card"
+				className="flex shrink-0 flex-col overflow-hidden rounded-panel border border-overlay bg-card"
 			>
 				<table
 					aria-label={view.title}

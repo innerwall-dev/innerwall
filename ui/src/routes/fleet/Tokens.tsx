@@ -78,13 +78,13 @@ export function Tokens({
 				<ProblemNotice what="tokens" error={tokens.error} onRetry={reload} />
 			) : null}
 			{tokens.status === "ready" && tokens.data.tokens.length === 0 ? (
-				<p className="rounded-panel border border-hairline bg-card px-4 py-5 type-dense text-secondary">
+				<p className="rounded-panel border border-overlay bg-card px-4 py-5 type-dense text-secondary">
 					No tokens yet. Mint one to enroll your first workload.
 				</p>
 			) : null}
 			{tokens.status === "ready" && tokens.data.tokens.length > 0 ? (
 				<>
-					<div className="overflow-hidden rounded-panel border border-hairline">
+					<div className="overflow-hidden rounded-panel border border-overlay">
 						<table className="w-full border-separate border-spacing-0">
 							<thead>
 								<tr>

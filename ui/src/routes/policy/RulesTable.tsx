@@ -122,7 +122,7 @@ export function RulesCard({
 	return (
 		<section
 			aria-label="Inbound rules"
-			className="flex shrink-0 flex-col overflow-hidden rounded-panel border border-hairline bg-card"
+			className="flex shrink-0 flex-col overflow-hidden rounded-panel border border-overlay bg-card"
 		>
 			<div className="flex items-center gap-3 px-4 py-2.5">
 				<div className="flex min-w-0 flex-col gap-0.5">

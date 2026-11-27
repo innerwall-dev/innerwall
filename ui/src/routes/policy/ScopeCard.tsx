@@ -48,7 +48,7 @@ export function ScopeCard({
 	return (
 		<section
 			aria-label="Scope"
-			className="flex flex-col gap-3 rounded-panel border border-hairline bg-card p-4"
+			className="flex flex-col gap-3 rounded-panel border border-overlay bg-card p-4"
 		>
 			<div className="flex flex-col gap-0.5">
 				<Eyebrow>Scope</Eyebrow>

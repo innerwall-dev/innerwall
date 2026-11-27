@@ -37,7 +37,25 @@ export const tone: Record<GlyphStatus, string> = {
 	error: "text-severity-error",
 };
 
-// tint is the tinted badge's fill and hairline for each glyph's tone.
+// textTone is the color of a status word beside its glyph: the status
+// text tokens, which in the light theme are a step deeper than the
+// glyph's mark tone. Synced is the healthy default and reads in text 2,
+// so only what needs attention takes a color in a list.
+export const textTone: Record<GlyphStatus, string> = {
+	observed: "text-status-neutral-fg",
+	allowed: "text-status-ok-fg",
+	"would-block": "text-status-warn-fg",
+	blocked: "text-status-critical-fg",
+	synced: "text-secondary",
+	pending: "text-status-neutral-fg",
+	degraded: "text-status-warn-fg",
+	offline: "text-status-critical-fg",
+	alert: "text-status-warn-fg",
+	error: "text-status-critical-fg",
+};
+
+// tint is the badge's fill and border for each glyph's tone: in v4 no
+// status takes a fill, so every tone is the neutral border.
 export const tint: Record<GlyphStatus, string> = {
 	observed: "bg-status-neutral-bg border-status-neutral-border",
 	allowed: "bg-status-ok-bg border-status-ok-border",
@@ -162,8 +180,8 @@ export function StatusGlyph({
 
 // StatusBadge is glyph and status word, the one way a flow decision or
 // a workload's health is shown in text: plain (the word at the status
-// color, for table cells) or tinted (the tone's fill and hairline, for
-// banners, drawers, and dialogs). children carry the word.
+// text color, for table cells) or tinted (a pill on the neutral border,
+// for banners, drawers, and dialogs). children carry the word.
 export function StatusBadge({
 	status,
 	variant = "plain",
@@ -179,9 +197,9 @@ export function StatusBadge({
 		<span
 			className={cn(
 				"inline-flex items-center gap-1.5 whitespace-nowrap type-control",
-				tone[status],
+				textTone[status],
 				variant === "tinted" && [
-					"h-chip rounded-inner border px-2",
+					"h-chip rounded-full border px-2",
 					tint[status],
 				],
 				className,
@@ -226,7 +244,7 @@ export function SeverityNote({
 			title={title}
 			className={cn(
 				"inline-flex items-start gap-1.5",
-				prose ? "text-primary" : tone[level],
+				prose ? "text-primary" : textTone[level],
 				className,
 			)}
 			{...rest}
@@ -235,7 +253,7 @@ export function SeverityNote({
 				status={level}
 				size={size}
 				className={cn(
-					prose && tone[level],
+					tone[level],
 					size === "sm"
 						? "mt-[calc((1lh-var(--glyph-sm))/2)]"
 						: "mt-[calc((1lh-var(--glyph-md))/2)]",

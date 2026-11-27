@@ -67,7 +67,7 @@ export function StatusCard({
 	return (
 		<section
 			aria-labelledby="status-card-title"
-			className="flex flex-col gap-3 rounded-panel border border-hairline bg-card p-4"
+			className="flex flex-col gap-3 rounded-panel border border-overlay bg-card p-4"
 		>
 			<h2 id="status-card-title" className="type-card-title text-primary">
 				Status

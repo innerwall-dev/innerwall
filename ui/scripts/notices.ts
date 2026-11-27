@@ -113,15 +113,22 @@ export type VendoredFont = {
 };
 
 // vendoredFonts are the font families the console carries in src/fonts,
-// from the design package (v3); each family has its own license file.
-// Source Code Pro's is Adobe's upstream license (design package v3
-// errata).
+// from the design package (v4); each family has its own license file.
+// Inter and Manrope are the variable files of the @fontsource-variable
+// packages (5.3.0), copied in with each package's license; Source Code
+// Pro's is Adobe's upstream license (design package v3 errata E2).
 export const vendoredFonts: VendoredFont[] = [
 	{
-		name: "DM Sans",
-		version: "4.004",
+		name: "Inter",
+		version: "4.001",
 		license: "OFL-1.1",
-		licenseFile: "src/fonts/OFL-DMSans.txt",
+		licenseFile: "src/fonts/OFL-Inter.txt",
+	},
+	{
+		name: "Manrope",
+		version: "4.504",
+		license: "OFL-1.1",
+		licenseFile: "src/fonts/OFL-Manrope.txt",
 	},
 	{
 		name: "Source Code Pro",

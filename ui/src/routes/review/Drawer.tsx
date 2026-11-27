@@ -527,7 +527,7 @@ function Candidates({
 						{disabled.map((r) => (
 							<li
 								key={r.id}
-								className="flex items-start gap-2 rounded-panel border border-hairline bg-canvas px-3 py-2"
+								className="flex items-start gap-2 rounded-panel border border-overlay bg-canvas px-3 py-2"
 							>
 								<div className="flex min-w-0 flex-1 flex-col gap-0.5">
 									<span className="type-mono-data font-medium text-primary">
@@ -588,7 +588,7 @@ function Pairs({
 		return <p className="type-dense text-secondary">No pairs in this range.</p>;
 	}
 	return (
-		<div className="overflow-x-auto rounded-panel border border-hairline">
+		<div className="overflow-x-auto rounded-panel border border-overlay">
 			<table className="w-full border-collapse">
 				<caption className="sr-only">Workload pairs behind this row</caption>
 				<thead>

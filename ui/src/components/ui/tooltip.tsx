@@ -3,8 +3,8 @@ import type * as React from "react";
 import { cn } from "@/lib/utils";
 
 // From shadcn/ui (shadcn@3.5.0, new-york-v4, MIT), restyled to the
-// design tokens: the popover surface on the overlay border, caption
-// type, flat and without an arrow.
+// design tokens: the surface on the border, caption type, the sheet
+// shadow, and no arrow.
 function TooltipProvider({
 	delayDuration = 0,
 	...props
@@ -46,7 +46,7 @@ function TooltipContent({
 				data-slot="tooltip-content"
 				sideOffset={sideOffset}
 				className={cn(
-					"z-50 w-fit rounded-control border border-overlay bg-popover px-2 py-1 type-caption text-primary",
+					"z-50 w-fit max-w-[360px] rounded-control border border-overlay bg-popover px-2 py-1 type-caption text-primary shadow-sheet",
 					className,
 				)}
 				{...props}
