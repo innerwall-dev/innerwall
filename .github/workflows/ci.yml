@@ -136,10 +136,23 @@ jobs:
           path: ~/.cache/golangci-lint
           key: golangci-lint-${{ runner.os }}-go${{ steps.go.outputs.go-version }}-${{ env.GOLANGCI_LINT_VERSION }}-${{ hashFiles('go.mod', 'go.sum') }}
           restore-keys: golangci-lint-${{ runner.os }}-go${{ steps.go.outputs.go-version }}-${{ env.GOLANGCI_LINT_VERSION }}-
-      - uses: golangci/golangci-lint-action@v8
+      # Two runs, as scripts/lint-go.sh makes them (keep the lists equal): a
+      # linter sees only the files the build tags select, so the default
+      # build, which is what ships, is one run and every opt-in tag is the
+      # other. The second reports even when the first fails.
+      - name: golangci-lint (default build)
+        uses: golangci/golangci-lint-action@v8
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
           skip-cache: true
+          args: ./...
+      - name: golangci-lint (dev, noconsole, netns)
+        if: ${{ !cancelled() }}
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          skip-cache: true
+          args: --build-tags dev,noconsole,netns ./...
 
   vulncheck:
     name: known vulnerabilities

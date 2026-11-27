@@ -20,7 +20,7 @@ test-netns:
 	scripts/test-netns.sh
 
 lint:
-	golangci-lint run ./...
+	scripts/lint-go.sh
 	buf lint
 	npm --prefix ui run lint
 
