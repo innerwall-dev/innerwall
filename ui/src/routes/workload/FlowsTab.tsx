@@ -157,7 +157,7 @@ export function FlowsTab({
 	const process = loaded.some((f) => f.process_name);
 
 	return (
-		<div className="flex min-h-0 flex-1 gap-6 px-8 pt-5">
+		<div className="flex min-h-0 flex-1">
 			<FilterPanel
 				label="Filter inbound flows"
 				search={search}
@@ -186,7 +186,7 @@ export function FlowsTab({
 					},
 				]}
 			/>
-			<div className="flex min-w-0 flex-1 flex-col gap-3 overflow-auto pb-6">
+			<div className="flex min-w-0 flex-1 flex-col gap-3 overflow-auto px-8 pt-5 pb-6">
 				<div
 					className="flex h-7 shrink-0 items-center gap-2 type-dense text-secondary"
 					data-testid="flows-result"

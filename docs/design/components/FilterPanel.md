@@ -4,8 +4,8 @@
 
 What v4 changes; the anatomy below stands where this says nothing.
 
-- **Panel.** A 232px card beside the table (not a full-height rail): the surface on the border at an 8px radius, 24px from the table, starting 20px below the tab row. It scrolls inside itself when the page is short.
-- **Head.** "Filters" in `dense-strong` with Reset at its right; the search field and the range picker below it, both 28px on the control fill behind the border; 14/16/16px padding.
+- **Panel.** *Ruled in review, 2026-11-27; not in the designs.* A full-height 232px secondary rail directly right of the sidebar, as the policy editor's ruleset rail is: the ground, the subtle rule on its right, no card border or radius, its own vertical scroll. The table area takes the rest of the width at the 32px gutter. At narrow widths it behaves as it did before (it stays beside the table).
+- **Head.** "Filters" in `dense-strong` with Reset at its right; the search field and the range picker below it, both 28px on the control fill behind the border; 16px padding.
 - **Groups.** Each group sits under the subtle rule rather than in its own box. Its title is the mono eyebrow (`meta-label`, text 3) on a 28px row with the active count and the chevron; its rows are 28px with the checkbox, the glyph where there is one, the value, and the count as a caption.
 - **Result line.** Above the table, not in a band: the repo's words ("*K* match ·", "*N* of *M* loaded", "filter counts cover loaded rows"), unchanged.
 

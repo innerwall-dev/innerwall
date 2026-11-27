@@ -124,6 +124,15 @@ Dark: text 3 on the selected fill is 5.65:1; error on the surface 5.71:1; white 
 | V16 | The review's pair detail at 340px. | 360px, so the pair table's four columns fit. The map's sheet is 344px as drawn. |
 | V17 | Promote dialog title "Enforce inbound on this scope". | The repo's title ("Switch scope to enforced") and copy stand. |
 
+### Changes ruled in review (2026-11-27)
+
+These depart from the designs by the maintainer's ruling on the first build's captures.
+
+- **Simulation review figures** are four equal cards (erratum V5).
+- **Filter panels are a secondary rail.** On a workload's Inbound flows and Listening services (the only screens with the filter panel), the panel is a full-height 232px rail directly right of the sidebar, in the pattern of the policy editor's ruleset rail: the ground, the subtle rule on its right, no card border or radius, its own vertical scroll, its section headers as before. The table area takes the remaining width at the 32px gutter. Filters and behaviour are unchanged. The designs draw the panel as a card beside the table.
+- **The account control is in the header** and the **Overview takes the design's grid** (structural change 1, errata V1 and V8).
+- **Light-theme contrast**: see Accessibility.
+
 ### Build decisions (style, not content)
 
 - **Sidebar ground.** The token table lists the sidebar with the surface; every design draws it on the ground behind the subtle rule, continuous with the header. Built as the designs draw it.

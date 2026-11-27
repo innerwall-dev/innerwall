@@ -49,11 +49,13 @@ export function active(filters: Filters): number {
 	return Object.values(filters).reduce((n, s) => n + s.size, 0);
 }
 
-// FilterPanel is the list pages' filter column: 280px on the canvas
-// behind a right hairline, scrolling on its own. Its header resets every
-// choice; the search narrows the rows by their text; the time range
-// resets the screen's one range; and each group is a collapsible titled
-// box of checkbox rows with right-aligned mono counts.
+// FilterPanel is the list pages' filter rail: 232px, full height on the
+// ground beside the sidebar behind the subtle rule, scrolling on its
+// own, as the policy editor's ruleset rail is (ruled in review). Its
+// header resets every choice; the search narrows the rows by their
+// text; the time range resets the screen's one range; and each group is
+// a collapsible section under the subtle rule, its checkbox rows with
+// right-aligned counts.
 export function FilterPanel({
 	label,
 	search,
@@ -79,9 +81,9 @@ export function FilterPanel({
 	return (
 		<aside
 			aria-label={label}
-			className="mb-6 flex max-h-[calc(100%-24px)] w-[232px] shrink-0 flex-col self-start overflow-auto rounded-panel border border-overlay bg-card"
+			className="flex w-[232px] shrink-0 flex-col overflow-auto border-r border-hairline bg-canvas"
 		>
-			<div className="flex flex-col gap-2.5 px-4 pt-3.5 pb-4">
+			<div className="flex flex-col gap-2.5 px-4 pt-4 pb-4">
 				<div className="flex items-center justify-between">
 					<span className="type-dense-strong text-primary">Filters</span>
 					<Button
