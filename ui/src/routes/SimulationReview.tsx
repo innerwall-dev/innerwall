@@ -483,15 +483,16 @@ function VerdictBanner({ verdict }: { verdict: ReviewVerdictResult }) {
 	);
 }
 
-// Totals are the verdict's four figures in one row under it: each a
-// 20/28 figure with tabular digits, then its short label in text 3 (with
-// its glyph where the figure is a decision). A decision's figure takes
-// its status text tone.
+// Totals are the verdict's four figures as four equal cards in one row
+// under it (ruled in review): each card on the surface behind the
+// border, the 20/28 figure with tabular digits on top (a decision's
+// figure in its status text tone), its short label below in the mono
+// uppercase label style, with its glyph where the figure is a decision.
 function Totals({ verdict }: { verdict: ReviewVerdictResult }) {
 	const k = verdict.kpis;
 	return (
 		<dl
-			className="m-0 flex flex-wrap items-baseline gap-x-11 gap-y-2"
+			className="m-0 grid grid-cols-2 gap-3 xl:grid-cols-4"
 			aria-label="Totals"
 		>
 			<Tile
@@ -536,8 +537,8 @@ function Tile({
 	tone?: string;
 }) {
 	return (
-		<div className="flex flex-row-reverse items-baseline justify-end gap-2">
-			<dt className="flex items-center gap-1.5 self-center type-caption text-tertiary">
+		<div className="flex min-w-0 flex-col-reverse gap-1 rounded-panel border border-overlay bg-card px-4 py-3">
+			<dt className="flex min-w-0 items-center gap-1.5 type-meta-label text-tertiary">
 				{label}
 			</dt>
 			<dd className="m-0 flex items-baseline gap-1.5">

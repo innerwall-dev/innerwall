@@ -10,7 +10,7 @@ What v4 changes; the patterns below stand where this says nothing.
 - **Flow map** (structural change 2). The graph runs edge to edge on a 20px dot grid under one 44px toolbar strip with the existing controls on one row (`white-space: nowrap`): the Graph / Matrix switch as a segmented control, the grouping, the scope's requirements and filter field, the totals and evidence warnings, and the range. The legend is a 36px strip along the canvas's foot. Nodes are the control fill on the border at a 7px radius; unmanaged peers a dashed text-4 border on the ground; selection a text-1 border. Edges are bezier at one width, `edge-width` 1.5px. The matrix runs edge to edge too.
 - **Dialogs.** The surface on the border at a 10px radius with `shadow-overlay`; a 24px gutter; the header 22px above the title. Partition and outcome wells are bordered cards on the dialog's surface.
 - **Empty states.** The page title, the explanation in text 2, the steps as rows of a bordered card, then the actions; no icon disc.
-- **Verdict.** No box: the verdict glyph (18px) beside a text-1 `dialog-title` headline, the reason in text 2 and the caveats as captions in text 3; the figures as one row of 20px tabular figures, each followed by its label.
+- **Verdict.** No box: the verdict glyph (18px) beside a text-1 `dialog-title` headline, the reason in text 2 and the caveats as captions in text 3; the four figures as four equal cards in one row (ruled in review): the surface behind the border at 8px, the 20px tabular figure on top, its label below in `meta-label`.
 
 ## Page width (R4.2)
 
