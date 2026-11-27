@@ -173,7 +173,7 @@ function Search({ onDone }: { onDone: () => void }) {
 												}
 												className="text-tertiary"
 											/>
-											<span className="min-w-0 truncate type-mono-data text-primary">
+											<span className="min-w-0 truncate type-dense text-primary">
 												{hit.title}
 											</span>
 											{hit.detail ? (
