@@ -1,5 +1,17 @@
 # Controls, badges and chips
 
+## v4 (proposed, INN-174)
+
+What v4 changes; the tables below stand where this says nothing.
+
+- **Buttons.** `control` is **28px**, 12/16, a 6px radius. **Primary:** `plate` fill on `plate-border` with `plate-ink` at 500. **Neutral (secondary):** `control-raised` (the control fill) on `border-strong`, text 1, hover `border-control-hover`. **Disabled** (and `aria-disabled`, kept focusable): the selected fill (`surface-overlay`) on the border, text 4, at 400. **Destructive:** `destructive` with white ink at 500. Ghost is unchanged.
+- **The promote button** (Simulation review) is neutral while the verdict is unsafe and primary otherwise (structural change 3); its enabled state is unchanged.
+- **Status badges.** Plain: the glyph in the mark color and the word in the text color. In drawers and dialogs: a 22px **pill** on the neutral border, no fill.
+- **Chips.** Label chips, rule chips, scope requirements, filter chips and choice chips are **pills**. Label chips are 20px on the border with no fill, Inter 12px, the key in text 3 and the value in text 2; in an editable field they take the selected fill. Filter and choice chips are 26px on the control fill; pressed, the selected fill with text 1.
+- **Status takes no fill.** `status-*-bg` are transparent and `status-*-border` are the neutral border. A notice with a severity sits on the selected fill behind the status mark's border; a nudged acknowledgment takes the warning mark as its border.
+- **Checkboxes.** Unchecked on the control fill behind a text-4 border (`border-stronger`); checked is unchanged (inverted monochrome).
+- **Light plate B** (v3) is superseded by the v4 primary values in `PACKAGE.md`.
+
 ## Buttons
 
 Default size is `control` 26px, with 12/16 text at 500, 10px side padding and `radius-control` 6. The small (34px) and medium (38px) sizes are for standalone forms.

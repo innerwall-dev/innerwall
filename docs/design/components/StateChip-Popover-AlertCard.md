@@ -1,5 +1,14 @@
 # State chip, popover and alert card (R4.1)
 
+## v4 (proposed, INN-174)
+
+What v4 changes; the spec below stands where this says nothing.
+
+- **State chips** are 22px **pills** on the neutral border with no tint: the glyph in its mark color and the word in its text color.
+- **Popovers** take the surface on the border with the overlay shadow; the lead (glyph and word) keeps its tone and the sentence stays text 1.
+- **Alert cards** are bordered cards on the surface (18/20px padding): the toned glyph beside the lead word in **text 1 at 500**, the sentence in text 2, the action at the right. No status tint.
+- The repo's copy, order and the offline popover's held-back Resend (amendment 3) are unchanged.
+
 These present a workload's **exceptional states**:
 
 | State | Glyph | Tone |
