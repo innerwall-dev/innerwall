@@ -67,7 +67,7 @@ These are derived, not drawn, and are recorded so they are not mistaken for desi
 - **Added:** `plate-border`; `status-ok-mark`, `status-warn-mark`, `status-critical-mark`; `shadow-overlay` (dialogs, the account popover); `shadow-sheet` (floating sheets, tooltips); `radius-dialog` (10px); `--font-display` (Manrope).
 - **Kept with a new value or role:** every v3 color name survives. `surface-top` and `highlight` have no role in v4 and are kept so nothing that names them breaks; `border-strong` and `border-overlay` are one value.
 - **Retired:** none.
-- **Sizes changed:** `control` 28px; `row-header` 34px; `tab-row` 34px; `tab-underline` 1.5px; `sidebar-width-collapsed` 48px; `sidebar-item` 30px; `radius-panel` 8px; `edge-width` 1.5px; `avatar` 26px; `icon-stroke` 1.75.
+- **Sizes changed:** `sidebar-width` 208px (ruled in review); `control` 28px; `row-header` 34px; `tab-row` 34px; `tab-underline` 1.5px; `sidebar-width-collapsed` 48px; `sidebar-item` 30px; `radius-panel` 8px; `edge-width` 1.5px; `avatar` 26px; `icon-stroke` 1.75.
 
 ## The three structural changes
 
@@ -133,7 +133,7 @@ These depart from the designs by the maintainer's ruling on the first build's ca
 - **The account control is in the header** and the **Overview takes the design's grid** (structural change 1, errata V1 and V8).
 - **Light-theme contrast**: see Accessibility.
 - **Dark neutrals one step darker.** The whole dark neutral ramp moves one step down, keeping its spacing: ground `#0f100f`, surface `#151716`, selected / hover fill `#1c1e1d`, control fill `#191b1a`, border `#282a29`, subtle rule `#1f2120` (each was 4 levels lighter: `#131413`, `#181a19`, `#202221`, `#1d1f1e`, `#2c2e2d`, `#232524`). The derived control-hover border follows (`#363837`) and the checkbox ink takes the new ground. Text, status and primary colours are unchanged; the designs draw the earlier ramp.
-- **The sidebar is 208px wide** when expanded (`sidebar-width`; the designs draw 232px). The collapsed rail stays 48px; the secondary rails (the policy editor's ruleset rail and the filter rail) keep 232px.
+- **The sidebar is 208px wide** when expanded (`sidebar-width`; the designs draw 232px). The collapsed rail stays 48px; the secondary rails keep their widths (the policy editor's ruleset rail 216px, the filter rail 232px).
 - **The collapse toggle is icon-only** in the expanded state too: the same icon at the same place, its accessible name and a tooltip saying the action ("Collapse sidebar" / "Expand sidebar").
 
 ### Build decisions (style, not content)
