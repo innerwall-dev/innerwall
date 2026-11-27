@@ -164,9 +164,13 @@ function MapView({
 				keys={keys}
 				scope={scope}
 				update={update}
+				range={model.edges.length === 0 ? null : rangeControl}
 			/>
-			<div className="flex min-h-0 flex-1 overflow-hidden">
-				<div className="relative flex min-w-0 flex-1 flex-col overflow-auto">
+			{/* The graph runs edge to edge under the toolbar; a selection's
+			    details float over its right side in a sheet, and the graph
+			    stays interactive beside it. */}
+			<div className="relative min-h-0 flex-1 overflow-hidden">
+				<div className="absolute inset-0 flex flex-col overflow-auto">
 					{model.edges.length === 0 ? (
 						<NoFlows scope={scope} range={range} control={rangeControl} />
 					) : take === "graph" ? (
@@ -175,7 +179,6 @@ function MapView({
 							layout={layout}
 							selection={selection}
 							onSelect={select}
-							range={rangeControl}
 						/>
 					) : (
 						<Matrix
@@ -183,7 +186,6 @@ function MapView({
 							layout={layout}
 							selection={selection}
 							onSelect={select}
-							range={rangeControl}
 						/>
 					)}
 				</div>
@@ -204,13 +206,13 @@ function MapView({
 	);
 }
 
-// The toolbar's controls, control-sm tall: the grouping picker and the
-// scope's requirements on the default hairline, the draft requirement
-// on an input's stronger one.
+// The toolbar's controls, 26px on one row: the grouping picker and the
+// scope's requirements on the control fill behind the border, the draft
+// requirement on an input's.
 const control =
-	"relative flex h-control items-center gap-1.5 rounded-control border border-overlay bg-control-raised px-2 type-control text-secondary hover:border-control-hover has-[:focus-visible]:focus-ring";
+	"relative flex h-[26px] shrink-0 items-center gap-1.5 rounded-control border border-strong bg-control-raised pr-2 pl-2.5 type-control text-tertiary hover:border-control-hover has-[:focus-visible]:focus-ring";
 const requirement =
-	"flex h-control items-center gap-1 rounded-control border border-hairline bg-overlay pr-1 pl-2 type-mono-sm text-primary";
+	"flex h-[26px] shrink-0 items-center gap-1 rounded-control border border-strong bg-control-raised pr-1 pl-2.5 type-mono-sm text-primary";
 
 function Toolbar({
 	model,
@@ -219,6 +221,7 @@ function Toolbar({
 	keys,
 	scope,
 	update,
+	range,
 }: {
 	model: MapModel;
 	take: Take;
@@ -226,6 +229,7 @@ function Toolbar({
 	keys: string[];
 	scope: string[];
 	update: (change: (p: URLSearchParams) => void) => void;
+	range: ReactNode;
 }) {
 	const [adding, setAdding] = useState(false);
 	const [draft, setDraft] = useState("");
@@ -257,8 +261,35 @@ function Toolbar({
 	}
 
 	return (
-		<div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-hairline px-5 py-3">
-			<div className="flex flex-wrap items-center gap-2">
+		<div
+			className="flex h-11 shrink-0 items-center gap-1.5 overflow-x-auto border-b border-hairline pr-4 pl-5 whitespace-nowrap"
+			data-testid="map-toolbar"
+		>
+			<fieldset className="m-0 mr-1.5 flex shrink-0 rounded-[7px] border-0 bg-overlay p-0.5">
+				<legend className="sr-only">Take</legend>
+				{(["graph", "matrix"] as const).map((t) => (
+					<button
+						key={t}
+						type="button"
+						aria-pressed={take === t}
+						onClick={() =>
+							update((p) => {
+								if (t === "graph") p.delete("take");
+								else p.set("take", t);
+							})
+						}
+						className={cn(
+							"flex h-[22px] cursor-pointer items-center rounded-[5px] border px-2.5 type-control focus-visible:focus-ring",
+							take === t
+								? "border-overlay bg-control-raised text-primary"
+								: "border-transparent text-tertiary hover:text-primary",
+						)}
+					>
+						{t === "graph" ? "Graph" : "Matrix"}
+					</button>
+				))}
+			</fieldset>
+			<div className="flex shrink-0 items-center gap-1.5">
 				<label className={control}>
 					<span>group by:</span>
 					<select
@@ -314,7 +345,7 @@ function Toolbar({
 							ev.preventDefault();
 							addRequirement();
 						}}
-						className="flex items-center gap-2"
+						className="flex shrink-0 items-center gap-2"
 					>
 						<input
 							aria-label="Label requirement"
@@ -340,7 +371,7 @@ function Toolbar({
 								if (!escaped.current && draft.trim() !== "") addRequirement();
 							}}
 							className={cn(
-								"h-control w-[160px] rounded-control border bg-field-sunk px-2 type-mono-sm text-primary placeholder:text-disabled",
+								"h-[26px] w-[160px] rounded-control border bg-field-sunk px-2 type-mono-sm text-primary placeholder:text-disabled",
 								invalid ? "border-status-critical-fg" : "border-strong",
 							)}
 						/>
@@ -357,31 +388,8 @@ function Toolbar({
 					</Button>
 				)}
 			</div>
-			<fieldset className="m-0 ml-3 flex h-control-sm items-stretch gap-5 border-0 p-0">
-				<legend className="sr-only">Take</legend>
-				{(["graph", "matrix"] as const).map((t) => (
-					<button
-						key={t}
-						type="button"
-						aria-pressed={take === t}
-						onClick={() =>
-							update((p) => {
-								if (t === "graph") p.delete("take");
-								else p.set("take", t);
-							})
-						}
-						className={cn(
-							"flex cursor-pointer items-center border-b-2 px-0.5 type-header-register focus-visible:rounded-inner focus-visible:focus-ring-inset",
-							take === t
-								? "border-(--text-primary) text-primary"
-								: "border-transparent text-secondary hover:text-primary",
-						)}
-					>
-						{t === "graph" ? "Graph" : "Matrix"}
-					</button>
-				))}
-			</fieldset>
 			<Totals model={model} />
+			{range ? <div className="shrink-0">{range}</div> : null}
 		</div>
 	);
 }
@@ -417,7 +425,7 @@ function Totals({ model }: { model: MapModel }) {
 	const dropped = model.dropped.length;
 	const gapped = model.gapped.length;
 	return (
-		<div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 type-caption text-secondary">
+		<div className="ml-auto flex shrink-0 items-center gap-x-4 pl-3 type-caption text-secondary">
 			<span>
 				<span className="type-mono-sm text-primary">
 					{headline(model.connections)}

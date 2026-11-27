@@ -13,7 +13,7 @@ import {
 	useReactFlow,
 	useStore,
 } from "@xyflow/react";
-import { memo, type ReactNode, useEffect, useMemo } from "react";
+import { memo, useEffect, useMemo } from "react";
 import { modes, verdicts } from "@/components/fleet/status";
 import { Icon } from "@/components/Icon";
 import { SeverityNote, StatusGlyph } from "@/components/StatusGlyph";
@@ -78,14 +78,11 @@ export function Graph({
 	layout,
 	selection,
 	onSelect,
-	range,
 }: {
 	model: MapModel;
 	layout: Layout;
 	selection: Selection;
 	onSelect: (s: Selection) => void;
-	// range is the time-range control, floated over the canvas.
-	range: ReactNode;
 }) {
 	const nodes = useMemo<GroupNode[]>(
 		() =>
@@ -156,7 +153,10 @@ export function Graph({
 	}, [model, layout, selection, onSelect]);
 
 	return (
-		<div className="absolute inset-0" data-testid="flow-graph">
+		<div
+			className="absolute inset-0 bg-[radial-gradient(var(--border-overlay)_1px,transparent_1.2px)] bg-size-[20px_20px]"
+			data-testid="flow-graph"
+		>
 			<Markers />
 			<ReactFlow
 				nodes={nodes}
@@ -176,21 +176,17 @@ export function Graph({
 			>
 				<Refit layout={layout} />
 			</ReactFlow>
-			<div className="absolute top-3 left-4 rounded-panel border border-overlay bg-popover p-1.5 pr-2.5">
-				{range}
-			</div>
 			<Legend />
 		</div>
 	);
 }
 
-// The view fits the whole map, clear of the range panel above it and the
-// legend below it.
+// The view fits the whole map, clear of the legend strip below it.
 const minZoom = 0.1;
 const labelZoom = 0.5;
 const loopRise = 40;
 const fitOptions = {
-	padding: { top: "60px", bottom: "96px", left: "24px", right: "24px" },
+	padding: { top: "32px", bottom: "68px", left: "24px", right: "24px" },
 	maxZoom: 1.25,
 } as const;
 
@@ -256,15 +252,24 @@ function Markers() {
 
 const unmanagedKinds = new Set(["address-group", "unknown"]);
 
-// frame is a node's fill and outline: a managed group on the raised
-// surface, an unmanaged peer on the canvas behind the strong hairline,
-// the unlabeled workloads outlined in the warning tone; selection is
-// blue in every kind.
+// frame is a node's fill and outline: a managed group on the control
+// fill behind the border, an unmanaged peer on the ground behind a
+// dashed text-4 border, the unlabeled workloads outlined in the warning
+// mark; selection is a text-1 border in every kind (neutral, never the
+// accent).
 function frame(n: MapNode, selected: boolean): string {
-	if (selected) return "bg-overlay border-control-hover";
-	if (unmanagedKinds.has(n.kind)) return "bg-canvas border-strong";
-	if (n.kind === "unlabeled") return "bg-card border-status-warn-border";
-	return "bg-card border-overlay";
+	const dashed = unmanagedKinds.has(n.kind) ? "border-dashed" : "";
+	if (selected)
+		return cn(
+			dashed,
+			unmanagedKinds.has(n.kind) ? "bg-canvas" : "bg-control-raised",
+			"border-(--text-primary)",
+		);
+	if (unmanagedKinds.has(n.kind))
+		return "border-dashed bg-canvas border-stronger";
+	if (n.kind === "unlabeled")
+		return "bg-control-raised border-status-warn-mark";
+	return "bg-control-raised border-strong";
 }
 
 // subtitle is a node's second line: how many workloads, or what the
@@ -366,7 +371,7 @@ function GroupNodeView({ data }: NodeProps<GroupNode>) {
 				onSelect(selected ? null : { kind: "node", id: n.id });
 			}}
 			className={cn(
-				"nodrag nopan relative flex cursor-pointer flex-col justify-center rounded-control border px-2 text-left",
+				"nodrag nopan relative flex cursor-pointer flex-col justify-center rounded-[7px] border px-2 text-left focus-visible:focus-ring",
 				frame(n, selected),
 			)}
 			style={{
@@ -380,7 +385,7 @@ function GroupNodeView({ data }: NodeProps<GroupNode>) {
 					name={unmanagedKinds.has(n.kind) ? "globe" : "boxes"}
 					className="size-3.5"
 				/>
-				<span className="truncate type-mono-sm text-primary">{n.title}</span>
+				<span className="truncate type-dense text-primary">{n.title}</span>
 			</span>
 			<span className="truncate type-mono-xs text-tertiary">{subtitle(n)}</span>
 			<span className="flex min-w-0 truncate type-mono-xs">
@@ -509,16 +514,16 @@ function Legend() {
 	);
 	return (
 		<div
-			className="pointer-events-none absolute bottom-3.5 left-4 flex flex-col gap-2 rounded-panel border border-overlay bg-popover px-3 py-2.5 type-caption"
+			className="pointer-events-none absolute inset-x-0 bottom-0 flex h-9 items-center justify-center gap-[22px] overflow-hidden border-t border-hairline bg-canvas px-5 type-caption whitespace-nowrap"
 			data-testid="map-legend"
 		>
-			<div className="flex flex-wrap gap-x-4 gap-y-1.5 text-secondary">
+			<div className="flex items-center gap-x-[22px] text-secondary">
 				{entry("observed", "observed · no policy evaluated")}
 				{entry("allowed", "allowed")}
 				{entry("would_block", "would block · simulation")}
 				{entry("blocked", "blocked · dropped")}
 			</div>
-			<div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-tertiary">
+			<div className="flex items-center gap-x-[22px] text-tertiary">
 				<span className="flex items-center gap-1.5">
 					<Icon name="boxes" className="size-3.5" />
 					managed label group

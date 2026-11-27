@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { verdicts } from "@/components/fleet/status";
 import { StatusGlyph } from "@/components/StatusGlyph";
 import { short } from "@/lib/format";
@@ -26,7 +26,7 @@ function rowEdge(n: MapNode): string {
 	if (unmanaged.has(n.kind))
 		return "border-l-2 border-dashed border-l-(--border-strong)";
 	if (n.kind === "unlabeled")
-		return "border-l-2 border-dotted border-l-(--status-warn-border)";
+		return "border-l-2 border-dotted border-l-(--status-warn-mark)";
 	return "border-l-2 border-solid border-l-(--border-overlay)";
 }
 
@@ -35,13 +35,11 @@ export function Matrix({
 	layout,
 	selection,
 	onSelect,
-	range,
 }: {
 	model: MapModel;
 	layout: Layout;
 	selection: Selection;
 	onSelect: (s: Selection) => void;
-	range: ReactNode;
 }) {
 	const byId = new Map(model.nodes.map((n) => [n.id, n]));
 	const ordered = layout.order
@@ -68,14 +66,19 @@ export function Matrix({
 	}, [selected]);
 
 	return (
-		<div className="flex min-h-0 flex-col px-5 py-5" data-testid="flow-matrix">
-			<div className="mb-3">{range}</div>
+		<div
+			className={cn(
+				"flex min-h-0 flex-col",
+				selection ? "pr-[368px]" : undefined,
+			)}
+			data-testid="flow-matrix"
+		>
 			<div ref={box} className="min-h-0 overflow-auto">
 				{/* The grid is the table's own spacing over the grid color, so
 			    each 1px gap is a grid line; a filled cell's tint sits on that
 			    color, as the design draws it, and an empty cell is opaque. */}
 				<table
-					className="w-full border-separate border-spacing-px rounded-panel border border-hairline bg-(--border-hairline)"
+					className="w-full border-separate border-spacing-px bg-(--border-hairline)"
 					style={{ minWidth: 150 + cols.length * 84 }}
 				>
 					<caption className="sr-only">
@@ -91,7 +94,7 @@ export function Matrix({
 						<tr>
 							<th
 								scope="col"
-								className="sticky left-0 bg-card px-3 py-2 text-left align-top type-control text-tertiary"
+								className="sticky left-0 bg-canvas px-3 py-2 text-left align-top type-control text-tertiary"
 							>
 								Source ↓ · destination →
 							</th>
@@ -101,7 +104,7 @@ export function Matrix({
 									scope="col"
 									className={cn(
 										"p-0 align-top font-normal",
-										nodeSelected(c.id) ? "bg-wash-selected" : "bg-card",
+										nodeSelected(c.id) ? "bg-wash-selected" : "bg-canvas",
 									)}
 								>
 									<button
@@ -129,7 +132,7 @@ export function Matrix({
 									className={cn(
 										"sticky left-0 p-0 text-left font-normal",
 										rowEdge(r),
-										nodeSelected(r.id) ? "bg-wash-selected" : "bg-card",
+										nodeSelected(r.id) ? "bg-wash-selected" : "bg-canvas",
 									)}
 								>
 									<button
@@ -184,7 +187,7 @@ export function Matrix({
 					</tbody>
 				</table>
 			</div>
-			<p className="mt-3 type-caption text-tertiary">
+			<p className="mt-3 px-5 type-caption text-tertiary">
 				Glyph encodes decision (
 				<Key status="observed" word="observed" /> ·{" "}
 				<Key status="allowed" word="allowed" /> ·{" "}
