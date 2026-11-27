@@ -26,6 +26,6 @@ The Exploration 6 canvas (Claude Design) holds:
 
 Every ruling is recorded on the canvas notes.
 
-## Console v4 (proposed, INN-174)
+## Console v4 (locked 2026-11-27, INN-174)
 
 The v4 designs (23 screens, each in a dark and a light theme) and their rulings are kept in the **Innerwall** project, as the v3 records are. What the build took from them, and where the screens' content departs from them, is in [`../PACKAGE.md`](../PACKAGE.md).

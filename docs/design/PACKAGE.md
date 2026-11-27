@@ -2,9 +2,9 @@
 
 **Dated:** 2026-11-27.
 
-**Status:** **proposed, not locked.** v4 locks on the maintainer's review of the build that carries it (INN-174). Until then v3 below is the design of record, and v4 is what the build proposes in its place.
+**Status:** the **design of record: v4, locked 2026-11-27** (Avi), after three review rounds on the build's captures (INN-174).
 
-**Supersedes (on lock):** package v3, locked 2026-10-15, which stays below and in history (`git log -- docs/design`). Everything in v3 that v4 does not change carries over: the status glyph shapes and their three families, the 40px row pitch, the label grammar's quoted drawing, the Workload detail IA (A′), the state chips and their popovers' copy, and every v3 erratum and amendment that is about content rather than style.
+**Supersedes:** package v3, locked 2026-10-15, which stays below and in history (`git log -- docs/design`). Everything in v3 that v4 does not change carries over: the status glyph shapes and their three families, the 40px row pitch, the label grammar's quoted drawing, the Workload detail IA (A′), the state chips and their popovers' copy, and every v3 erratum and amendment that is about content rather than style.
 
 **Provenance:** the maintainer approved the v4 designs: 23 screens, each in a dark and a light theme. The designs are reference material kept with the project's records, not in this repository; their sample data is not product copy. Outbound enforcement is drawn on one screen of them and is out of scope: it is not in the product (ADR-0010), and nothing is built for it.
 
@@ -91,7 +91,7 @@ AA holds on the text pairs of the normative table except the one waiver below (W
 | **AA fallback** | `#8f6400` (5.26:1 on white) is the seam for a possible strict-contrast toggle, which is not built. |
 | **Build instruction** | Do not "fix" it, and do not extend it. |
 
-W1 (v3's light warning, `#dc7b18`) is superseded by W2 on lock.
+W1 (v3's light warning, `#dc7b18`) is superseded by W2.
 
 ### Resolved findings (ruled 2026-11-27, fixes #271)
 
@@ -146,7 +146,7 @@ These depart from the designs by the maintainer's ruling on the first build's ca
 
 ---
 
-# Design package v3 (superseded by v4 when v4 locks)
+# Design package v3 (superseded by v4, locked 2026-11-27)
 
 **Dated:** 2026-10-14 / 2026-10-15.
 

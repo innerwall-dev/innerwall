@@ -1,6 +1,6 @@
 # State chip, popover and alert card (R4.1)
 
-## v4 (proposed, INN-174)
+## v4 (locked 2026-11-27, INN-174)
 
 What v4 changes; the spec below stands where this says nothing.
 

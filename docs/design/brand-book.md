@@ -1,6 +1,6 @@
-# Console v4 — proposed (2026-11-27)
+# Console v4 — locked (2026-11-27)
 
-> **Status: v4, PROPOSED, not locked.** It locks on the maintainer's review of the build that carries it (INN-174). The full package, its normative token table, the three structural changes, the light-warning waiver (W2) and the errata are in [`PACKAGE.md`](PACKAGE.md). This record says what v4 changes in the v3 record that follows; every section of v3 that is not named here stands.
+> **Status: v4, LOCKED — 2026-11-27 (Avi),** after three review rounds on the build's captures (INN-174). The full package, its normative token table, the three structural changes, the light-warning waiver (W2) and the errata are in [`PACKAGE.md`](PACKAGE.md). This record says what v4 changes in the v3 record that follows; every section of v3 that is not named here stands.
 
 ## v4 changes to the v3 record
 
@@ -14,11 +14,11 @@
 - **§9 Navigation.** The header runs the full width above the sidebar (structural change 1); the brand row moves from the sidebar into the header. The sidebar sits on the ground behind the subtle rule, entries 30px with 16px icons, the current one on the selected fill; the collapsed rail is 48px; the footer holds only the fleet sync block (fresh install) and the collapse toggle at the foot. The account control is the header's avatar at the far right.
 - **§10 Patterns.** The flow map runs edge to edge with its details in a floating sheet (structural change 2). Promote to enforced… is neutral while the verdict is unsafe (structural change 3). Filter panels are full-height rails beside the sidebar, as the ruleset rail is (ruled in review); drawers are cards beside their tables or floating sheets over the map.
 - **§12 Iconography.** Unchanged: the Lucide subset and the custom status glyphs. The logo is unchanged and neutral (its frame in text 3, its bar in text 1).
-- **§15 Tokens.** v4 tokens replace v3's on lock; see `PACKAGE.md` for the names added (`plate-border`, `status-*-mark`, `shadow-overlay`, `shadow-sheet`, `radius-dialog`, `--font-display`).
+- **§15 Tokens.** v4 tokens replace v3's; see `PACKAGE.md` for the names added (`plate-border`, `status-*-mark`, `shadow-overlay`, `shadow-sheet`, `radius-dialog`, `--font-display`).
 
 ---
 
-# Console v3 — locked (2026-10-14 / 2026-10-15), superseded by v4 when v4 locks
+# Console v3 — locked (2026-10-14 / 2026-10-15), superseded by v4 (locked 2026-11-27)
 
 > **Status: v3, LOCKED — 2026-10-15 (Avi),** after three lab-preview polish rounds; W5's wide-screen containment was withdrawn in the third, recorded in package v3's amendment 6. This is the design of record for the console. It locked on the lab-estate live preview against real data (brief §8): the CC build deployed a branch with `lab-deploy.sh`, Avi ruled the polish rounds and the lock there, and the PR (#118) merged and ships in v0.2.0. At lock:
 > - the README's v2 console foundations are superseded for the shipped console;
