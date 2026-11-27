@@ -128,7 +128,7 @@
   --surface-top: #f5f6f5;
   --text-primary: #1a1c1b;
   --text-secondary: #4d504f;
-  --text-tertiary: #707372;
+  --text-tertiary: #686b6a;
   --text-disabled: #a4a7a6;
   --border-hairline: #eef0ef;
   --border-overlay: #e3e5e4;
@@ -150,15 +150,15 @@
   --plate-border: #006b2c;
   --plate-hover: #00722f;
   --plate-pressed: #006b2c;
-  --destructive: #e5484d;
-  --destructive-hover: #d63f44;
+  --destructive: #ce2c31;
+  --destructive-hover: #b8252a;
   --status-ok-fg: #007f35;
   --status-ok-mark: #00993f;
   --status-ok-border: #e3e5e4;
   --status-warn-fg: #dba400;
   --status-warn-mark: #edb900;
   --status-warn-border: #e3e5e4;
-  --status-critical-fg: #e5484d;
+  --status-critical-fg: #ce2c31;
   --status-critical-mark: #e5484d;
   --status-critical-border: #e3e5e4;
   --status-neutral-fg: var(--text-tertiary);

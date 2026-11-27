@@ -42,12 +42,12 @@ From first principles: an operator reads this console for long stretches and act
 | control fill | `field-sunk`, `control-raised` | `#1d1f1e` | `#ffffff` |
 | border | `border-overlay`, `border-strong` | `#2c2e2d` | `#e3e5e4` |
 | border, subtle | `border-hairline` | `#232524` | `#eef0ef` |
-| text 1 / 2 / 3 / 4 | `text-primary` / `text-secondary` / `text-tertiary` / `text-disabled` | `#edefee` / `#bcbdbc` / `#989a99` / `#6b6d6c` | `#1a1c1b` / `#4d504f` / `#707372` / `#a4a7a6` |
+| text 1 / 2 / 3 / 4 | `text-primary` / `text-secondary` / `text-tertiary` / `text-disabled` | `#edefee` / `#bcbdbc` / `#989a99` / `#6b6d6c` | `#1a1c1b` / `#4d504f` / `#686b6a` / `#a4a7a6` |
 | primary button | `plate` / `plate-border` / `plate-ink` | `#236b1c` / `#3f9a33` / white | `#007f35` / `#006b2c` / white |
 | allowed (mark / text) | `status-ok-mark` / `status-ok-fg` | `#80ee64` | `#00993f` / `#007f35` |
 | warning (mark / text) | `status-warn-mark` / `status-warn-fg` | `#f5d547` | `#edb900` / `#dba400` |
-| error | `status-critical-mark`, `status-critical-fg` | `#ff5b4f` | `#e5484d` |
-| destructive button | `destructive` | `#c93a30` | `#e5484d` |
+| error (mark / text) | `status-critical-mark` / `status-critical-fg` | `#ff5b4f` | `#e5484d` / `#ce2c31` |
+| destructive button | `destructive` | `#c93a30` | `#ce2c31` |
 | accent (focus, allowed) | `accent`, `accent-ring` | `#80ee64`, 55% | `#007f35`, 80% |
 
 Glyph aliases (`flow-*`, `health-*`, `severity-*`) now point at the `status-*-mark` tokens, so the glyphs take the mark color and the words beside them take the text color.
@@ -58,7 +58,7 @@ These are derived, not drawn, and are recorded so they are not mistaken for desi
 
 - `border-stronger` (unchecked boxes, the secret well) is text 4 as a border, as the designs draw the empty checkbox.
 - `border-control-hover` (`#3a3c3b` / `#d0d3d1`): one step past the border.
-- `plate-hover` / `plate-pressed` (`#2a7a22` / `#1e5d18`; light `#00722f` / `#006b2c`) and `destructive-hover` (`#b5342b` / `#d63f44`): one step toward the border or darker.
+- `plate-hover` / `plate-pressed` (`#2a7a22` / `#1e5d18`; light `#00722f` / `#006b2c`) and `destructive-hover` (`#b5342b` / `#b8252a`): one step toward the border or darker.
 - `status-*-bg` are `transparent` and `status-*-border` are the border: status takes no fill.
 - `scrim` (60% black / 28% black) and the two shadows are read from the dialog and sheet designs.
 
@@ -79,7 +79,7 @@ Ruled with the designs; they are the only places v4 changes structure rather tha
 
 ## Accessibility
 
-AA holds on the text pairs of the normative table except the waiver below and the two open findings after it.
+AA holds on the text pairs of the normative table except the one waiver below (W2).
 
 ### W2: light warning text (waiver, scoped)
 
@@ -93,12 +93,12 @@ AA holds on the text pairs of the normative table except the waiver below and th
 
 W1 (v3's light warning, `#dc7b18`) is superseded by W2 on lock.
 
-### Open findings, not waived (for the maintainer's ruling)
+### Resolved findings (ruled 2026-11-27, fixes #271)
 
-These are normative values the build applies as given; they are recorded rather than adjusted, because the token table is the maintainer's.
+The first build recorded two light-theme pairs below AA for a ruling; the maintainer ruled new values, now in the token table:
 
-- **Light error text** `#e5484d` is **3.91:1** on white, below 4.5:1 for 12–13px status words; and white ink on the light destructive fill (`#e5484d`) is also **3.91:1**. A darker light error text, or a darker destructive fill, would clear AA.
-- **Light text 3 on the selected fill** (`#707372` on `#f5f6f5`) is **4.42:1**: captions in a selected row or on a notice. Text 3 on the ground is 4.67:1.
+- **Light text 3** is `#686b6a` (was `#707372`): **5.25:1** on the ground, **5.38:1** on the surface, **4.97:1** on the selected fill (was 4.42:1).
+- **Light error text and the light destructive fill** are `#ce2c31` (was `#e5484d`): error text **5.21:1** on white, **5.08:1** on the ground, **4.81:1** on the selected fill; white ink on the destructive fill **5.21:1** (was 3.91:1). The light error mark (dot and glyph) stays `#e5484d`, so `status-critical-mark` and `status-critical-fg` now differ in the light theme. `destructive-hover` follows at `#b8252a` (derived, 6.29:1 with white ink).
 
 Dark: text 3 on the selected fill is 5.65:1; error on the surface 5.71:1; white on the dark plate 6.58:1 and on the dark destructive fill 5.08:1.
 
