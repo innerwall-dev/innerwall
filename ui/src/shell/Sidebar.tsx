@@ -14,12 +14,14 @@ import {
 	SidebarMenuItem,
 	Sidebar as SidebarRail,
 	SidebarTrigger,
+	useSidebar,
 } from "@/components/ui/sidebar";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { AccountPopover } from "./AccountPopover";
 import { LogoMark, Wordmark } from "./Logo";
 import type { OpenWorkload } from "./Shell";
@@ -87,11 +89,12 @@ export const sections: {
 	{ to: "/policy", label: "Policy", icon: "scroll-text", counted: true },
 ];
 
-// Sidebar is the console's only global navigation: the brand mark and
-// name, the sections, the workload a detail screen last showed, and in
-// the footer the collapse control and the operator's account. It
-// collapses to an icon rail, where every entry keeps its accessible name
-// and shows its name as a tooltip.
+// Sidebar is the console's only global navigation, under the header:
+// the sections, the workload a detail screen last showed, and in the
+// footer the operator's account and, at the foot, the collapse control.
+// It collapses to an icon rail, where every entry keeps its accessible
+// name and shows its name as a tooltip. The brand mark and name are the
+// header's; the mobile sheet, which covers the header, repeats them.
 export function Sidebar({
 	counts = {},
 	fleetEmpty = null,
@@ -108,14 +111,17 @@ export function Sidebar({
 	const current = (to: string) =>
 		matchPath({ path: to, end: false }, pathname) !== null &&
 		!(to === "/workloads" && onDetail);
+	const { isMobile } = useSidebar();
 	return (
 		<SidebarRail collapsible="icon">
-			<SidebarHeader>
-				<div className="flex items-center gap-2 px-[9px]">
-					<LogoMark />
-					<Wordmark className="truncate group-data-[collapsible=icon]:hidden" />
-				</div>
-			</SidebarHeader>
+			{isMobile ? (
+				<SidebarHeader className="border-b border-hairline">
+					<div className="flex items-center gap-2.5 px-[5px]">
+						<LogoMark />
+						<Wordmark className="truncate" />
+					</div>
+				</SidebarHeader>
+			) : null}
 			<SidebarContent>
 				<SidebarGroup>
 					<nav aria-label="Sections">
@@ -143,7 +149,10 @@ export function Sidebar({
 												<TooltipTrigger asChild>
 													<SidebarMenuBadge
 														data-testid={`count-${s.label}`}
-														className="pointer-events-auto cursor-default"
+														className={cn(
+															"pointer-events-auto cursor-default",
+															badge.n > 0 && "text-status-warn-fg",
+														)}
 														tabIndex={0}
 														aria-label={badge.hint}
 													>
@@ -198,10 +207,10 @@ export function Sidebar({
 			<SidebarFooter>
 				<SidebarMenu>
 					<SidebarMenuItem>
-						<SidebarTrigger />
+						<AccountPopover />
 					</SidebarMenuItem>
 					<SidebarMenuItem>
-						<AccountPopover />
+						<SidebarTrigger />
 					</SidebarMenuItem>
 				</SidebarMenu>
 			</SidebarFooter>

@@ -97,7 +97,8 @@ function identityRoute(pathname: string): boolean {
 	return detail !== null && detail.params.id !== "tokens";
 }
 
-// Shell is the authenticated frame: sidebar, page header, and the screen.
+// Shell is the authenticated frame: the header across the top, and
+// under it the sidebar at the left and the screen at the right.
 // An anonymous session is sent to the login screen, remembering where
 // it was headed.
 export function Shell() {
@@ -165,14 +166,14 @@ function Frame() {
 	if (rulesets.status === "ready") badges["/policy"] = { n: rulesets.data };
 
 	return (
-		<SidebarProvider className="h-dvh overflow-hidden bg-canvas text-primary">
-			<Sidebar counts={badges} fleetEmpty={fleetEmpty} open={open} />
-			<div className="flex min-w-0 flex-1 flex-col">
-				<PageHeader
-					crumbs={crumbsFor(location.pathname, location.search)}
-					identity={identityRoute(location.pathname) ? setStrip : undefined}
-				/>
-				<main className="relative flex min-h-0 flex-1 flex-col overflow-auto">
+		<SidebarProvider className="h-dvh flex-col overflow-hidden bg-canvas text-primary">
+			<PageHeader
+				crumbs={crumbsFor(location.pathname, location.search)}
+				identity={identityRoute(location.pathname) ? setStrip : undefined}
+			/>
+			<div className="flex min-h-0 flex-1">
+				<Sidebar counts={badges} fleetEmpty={fleetEmpty} open={open} />
+				<main className="relative flex min-w-0 min-h-0 flex-1 flex-col overflow-auto">
 					<Outlet context={context} />
 				</main>
 			</div>

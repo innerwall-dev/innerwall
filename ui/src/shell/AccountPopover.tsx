@@ -16,7 +16,7 @@ import { type Theme, useTheme } from "@/theme/ThemeProvider";
 function Avatar() {
 	return (
 		<span
-			className="flex size-avatar shrink-0 items-center justify-center rounded-full border border-overlay bg-overlay"
+			className="flex size-avatar shrink-0 items-center justify-center rounded-full border border-overlay bg-overlay text-secondary"
 			aria-hidden="true"
 		>
 			<Icon name="user" />
@@ -63,8 +63,8 @@ export function AccountPopover() {
 					type="button"
 					aria-label="Account"
 					className={cn(
-						"flex h-11 w-full cursor-pointer items-center gap-2 rounded-control px-[6px] text-left hover:bg-wash-hover aria-expanded:bg-wash-hover",
-						"group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:px-[5px]",
+						"flex h-11 w-full cursor-pointer items-center gap-2.5 rounded-control px-[3px] text-left hover:bg-wash-hover focus-visible:focus-ring aria-expanded:bg-wash-hover",
+						"group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:px-[3px]",
 					)}
 				>
 					<Avatar />
@@ -88,18 +88,16 @@ export function AccountPopover() {
 				</button>
 			</PopoverTrigger>
 			<PopoverContent
-				className="flex w-popover-account flex-col p-1"
+				className="flex w-popover-account flex-col rounded-dialog p-0"
 				side={collapsed ? "right" : "top"}
 				align={collapsed ? "end" : "start"}
 				sideOffset={collapsed ? 12 : 4}
 				aria-label="Account"
 			>
-				<div className="mb-1 flex flex-col border-b border-hairline p-2">
-					<div className="truncate type-header-register text-primary">
-						{name}
-					</div>
+				<div className="flex flex-col gap-0.5 border-b border-hairline px-4 py-3.5">
+					<div className="truncate type-dense-strong text-primary">{name}</div>
 					<div
-						className="truncate type-caption text-tertiary"
+						className="truncate type-caption text-secondary"
 						data-testid="identity-line"
 					>
 						{identity}
@@ -114,13 +112,13 @@ export function AccountPopover() {
 						</div>
 					) : null}
 				</div>
-				<div className="flex min-h-control-sm items-center justify-between gap-2 px-2 type-dense text-secondary">
+				<div className="flex items-center justify-between gap-2 border-b border-hairline px-4 py-2.5 type-dense text-secondary">
 					<span>Theme</span>
 					<ThemeToggle theme={theme} onChange={setTheme} />
 				</div>
 				<button
 					type="button"
-					className="mt-1 flex h-control-sm cursor-pointer items-center gap-2 rounded-control border-t border-hairline px-2 text-left type-dense text-primary hover:bg-wash-hover disabled:cursor-default disabled:text-disabled"
+					className="flex h-[38px] cursor-pointer items-center gap-2 rounded-b-dialog px-4 text-left type-dense text-primary hover:bg-wash-hover focus-visible:focus-ring-inset disabled:cursor-default disabled:text-disabled"
 					onClick={signOut}
 					disabled={signingOut}
 				>
@@ -129,7 +127,7 @@ export function AccountPopover() {
 				</button>
 				{failure ? (
 					<p
-						className="px-2 pb-1 type-caption text-status-critical-fg"
+						className="px-4 pb-2 type-caption text-status-critical-fg"
 						role="alert"
 					>
 						{failure}
@@ -155,16 +153,16 @@ function ThemeToggle({
 		{ value: "dark", label: "Dark", icon: "moon" },
 	];
 	return (
-		<fieldset className="flex gap-0.5 rounded-control border border-overlay bg-field-sunk p-0.5">
+		<fieldset className="flex gap-0.5 rounded-[7px] border-0 bg-overlay p-0.5">
 			<legend className="sr-only">Theme</legend>
 			{options.map((o) => (
 				<label
 					key={o.value}
 					className={cn(
-						"inline-flex h-5.5 cursor-pointer items-center gap-1 rounded-inner border px-2 type-control has-[:focus-visible]:focus-ring",
+						"inline-flex h-5.5 cursor-pointer items-center gap-1 rounded-[5px] border px-2.5 type-control has-[:focus-visible]:focus-ring",
 						theme === o.value
 							? "border-overlay bg-control-raised text-primary [&_[data-slot=icon]]:text-icon-active"
-							: "border-transparent text-secondary hover:text-primary",
+							: "border-transparent text-tertiary hover:text-primary",
 					)}
 				>
 					<input

@@ -24,10 +24,11 @@ import { cn } from "@/lib/utils";
 // the console uses. Every color and dimension is a design token: the
 // widths are the package's sidebar-width (inherited from tokens.css, so
 // it is never set here), sidebar-width-collapsed, and sidebar-sheet for
-// the mobile sheet; the rail is flat with the canvas behind a hairline,
-// and entries are sidebar-item tall at radius-control, on the hover wash
-// on hover and in the accent pill when current. Collapse is the
-// operator's alone: nothing here collapses the rail on its own.
+// the mobile sheet; the rail sits below the console's header on the
+// ground behind the subtle rule, and entries are sidebar-item tall at
+// radius-control, on the selected fill on hover and when current.
+// Collapse is the operator's alone: nothing here collapses the rail on
+// its own.
 
 export const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
@@ -207,31 +208,22 @@ function Sidebar({
 		);
 	}
 
+	// On the desktop the rail is in the frame's flow under the header: it
+	// takes the height the header leaves, and its width animates between
+	// the sidebar width and the collapsed rail.
 	return (
 		<div
-			className="group peer hidden text-sidebar-foreground md:block"
+			className="group peer hidden h-full shrink-0 text-sidebar-foreground md:block"
 			data-state={state}
 			data-collapsible={state === "collapsed" ? collapsible : ""}
 			data-side={side}
 			data-slot="sidebar"
 		>
-			{/* This is what handles the sidebar gap on desktop */}
-			<div
-				data-slot="sidebar-gap"
-				className={cn(
-					"relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear",
-					"group-data-[collapsible=offcanvas]:w-0",
-					"group-data-[side=right]:rotate-180",
-					"group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
-				)}
-			/>
 			<div
 				data-slot="sidebar-container"
 				className={cn(
-					"fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) border-sidebar-border transition-[left,right,width] duration-200 ease-linear md:flex",
-					side === "left"
-						? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
-						: "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
+					"relative hidden h-full w-(--sidebar-width) overflow-hidden border-sidebar-border transition-[width] duration-200 ease-linear md:flex",
+					"group-data-[collapsible=offcanvas]:w-0",
 					"group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
 					className,
 				)}
@@ -249,10 +241,10 @@ function Sidebar({
 	);
 }
 
-// SidebarTrigger is the collapse control. In the rail's footer it is an
-// entry like the others, Collapse with panel-left-close or the icon
-// alone with panel-left-open when collapsed; `compact` is the icon-only
-// form the page header shows where the sidebar is a sheet.
+// SidebarTrigger is the collapse control at the rail's foot: Collapse
+// with panel-left-close in text 3, or the icon alone with
+// panel-left-open when collapsed; `compact` is the icon-only form the
+// page header shows where the sidebar is a sheet.
 function SidebarTrigger({
 	className,
 	onClick,
@@ -301,7 +293,7 @@ function SidebarTrigger({
 			data-slot="sidebar-trigger"
 			aria-label={label}
 			tooltip={label}
-			className={className}
+			className={cn("text-tertiary", className)}
 			onClick={(event) => {
 				onClick?.(event);
 				toggleSidebar();
@@ -333,10 +325,7 @@ function SidebarFooter({ className, ...props }: React.ComponentProps<"div">) {
 		<div
 			data-slot="sidebar-footer"
 			data-sidebar="footer"
-			className={cn(
-				"flex flex-col gap-0.5 border-t border-hairline p-2",
-				className,
-			)}
+			className={cn("flex flex-col gap-0.5 px-2 pt-2 pb-2", className)}
 			{...props}
 		/>
 	);
@@ -362,7 +351,7 @@ function SidebarGroup({ className, ...props }: React.ComponentProps<"div">) {
 			data-slot="sidebar-group"
 			data-sidebar="group"
 			className={cn(
-				"relative flex w-full min-w-0 flex-col px-2 py-1",
+				"relative flex w-full min-w-0 flex-col px-2 py-2.5",
 				className,
 			)}
 			{...props}
@@ -392,15 +381,13 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
 	);
 }
 
-// An entry: the 14px icon 10px from its dense label, 10px in from the
-// pill's edge, the label in text-secondary; hover is the wash. The
-// current entry is the accent pill (the accent edge on the accent tint),
-// its label in text-primary at 500 and its icon at icon-active: the pill
-// marks primary navigation only, and tabs are underlined. Collapsed, the
-// entry is a 40px hit area with the icon centered and the label clipped;
-// the pill stays.
+// An entry: the 16px icon 10px from its label, 8px in from the item's
+// edge, label and icon in text 2; hover is the selected fill. The
+// current entry is the selected fill with its label and icon in text 1:
+// selection is neutral, never the accent. Collapsed, the entry is a
+// 32px square with the icon centered and the label clipped.
 const sidebarMenuButtonClass =
-	"peer/menu-button flex h-sidebar-item w-full cursor-pointer items-center gap-2.5 overflow-hidden rounded-control border border-transparent px-[9px] text-left type-dense text-secondary outline-hidden transition-[width,height,padding] hover:bg-wash-hover hover:text-primary focus-visible:focus-ring disabled:pointer-events-none disabled:text-disabled aria-disabled:pointer-events-none aria-disabled:text-disabled data-[active=true]:border-accent-edge data-[active=true]:bg-accent-tint data-[active=true]:font-medium data-[active=true]:text-primary data-[active=true]:[&_[data-slot=icon]]:text-icon-active data-[state=open]:bg-wash-hover group-has-data-[sidebar=menu-badge]/menu-item:pr-9 group-data-[collapsible=icon]:w-10! group-data-[collapsible=icon]:px-[12px]! [&>span:last-child]:truncate";
+	"peer/menu-button flex h-sidebar-item w-full cursor-pointer items-center gap-2.5 overflow-hidden rounded-control px-2 text-left type-dense text-secondary outline-hidden transition-[width,height,padding] hover:bg-wash-hover hover:text-primary focus-visible:focus-ring disabled:pointer-events-none disabled:text-disabled aria-disabled:pointer-events-none aria-disabled:text-disabled data-[active=true]:bg-wash-selected data-[active=true]:text-primary data-[active=true]:[&_[data-slot=icon]]:text-icon-active data-[state=open]:bg-wash-hover group-has-data-[sidebar=menu-badge]/menu-item:pr-9 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:px-2! [&_[data-slot=icon]]:size-4 [&>span:last-child]:truncate";
 
 function SidebarMenuButton({
 	asChild = false,
@@ -458,7 +445,7 @@ function SidebarMenuBadge({
 			data-slot="sidebar-menu-badge"
 			data-sidebar="menu-badge"
 			className={cn(
-				"pointer-events-none absolute top-1.5 right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border border-overlay px-1.5 type-mono-sm text-secondary select-none",
+				"pointer-events-none absolute top-[5px] right-2 flex h-5 min-w-5 items-center justify-end type-caption text-tertiary tabular-nums select-none",
 				"group-data-[collapsible=icon]:hidden",
 				className,
 			)}
