@@ -217,7 +217,7 @@ function MintForm({ onMinted }: { onMinted: (m: MintedToken) => void }) {
 							}}
 							onKeyDown={onKey}
 							onBlur={() => commitDraft()}
-							className="h-5 min-w-[120px] flex-1 bg-transparent px-1 type-mono-sm text-primary outline-none placeholder:text-tertiary focus-visible:shadow-none"
+							className="h-5 min-w-[120px] flex-1 bg-transparent px-1 type-mono-sm text-primary outline-none placeholder:text-disabled focus-visible:shadow-none"
 						/>
 					</div>
 					{draftInvalid ? (

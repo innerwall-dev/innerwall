@@ -656,7 +656,7 @@ function LabelFilter({
 						}}
 						onKeyDown={key}
 						onBlur={() => add()}
-						className="h-control w-[150px] rounded-control border border-strong bg-field-sunk px-2.5 type-mono-sm text-primary outline-none placeholder:text-tertiary focus-visible:focus-ring aria-invalid:border-status-critical-fg"
+						className="h-control w-[150px] rounded-control border border-strong bg-field-sunk px-2.5 type-mono-sm text-primary outline-none placeholder:text-disabled focus-visible:focus-ring aria-invalid:border-status-critical-fg"
 					/>
 				</form>
 			) : (

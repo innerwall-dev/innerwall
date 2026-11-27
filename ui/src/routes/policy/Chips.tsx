@@ -50,7 +50,7 @@ export function ChipView({
 		return (
 			<span
 				className={cn(
-					"inline-flex max-w-full flex-wrap items-center gap-1 rounded-inner border",
+					"inline-flex max-w-full flex-wrap items-center gap-1 rounded-full border",
 					chip.reference || failed ? "border-dashed" : "border-solid",
 					failed
 						? "border-status-critical-fg px-1 py-0.5"
@@ -77,13 +77,13 @@ export function ChipView({
 	return (
 		<span
 			className={cn(
-				"inline-flex min-h-5 max-w-full items-center gap-1.5 rounded-inner border bg-card px-1.5 type-mono-sm",
+				"inline-flex min-h-5 max-w-full items-center gap-1.5 rounded-full border px-2 type-mono-sm",
 				chip.reference || failed ? "border-dashed" : "border-solid",
 				failed
 					? "border-status-critical-fg"
 					: input
-						? "border-strong"
-						: "border-hairline",
+						? "border-strong bg-overlay"
+						: "border-overlay",
 			)}
 			data-testid="chip"
 			data-failed={failed || undefined}
@@ -230,7 +230,7 @@ export function AddInput({
 				}}
 				onKeyDown={onKeyDown}
 				onBlur={commitOnBlur ? commit : undefined}
-				className="h-control min-w-[150px] rounded-control border border-strong bg-field-sunk px-2.5 type-mono-sm text-primary placeholder:text-tertiary aria-invalid:border-status-critical-fg"
+				className="h-control min-w-[150px] rounded-control border border-strong bg-field-sunk px-2.5 type-mono-sm text-primary placeholder:text-disabled aria-invalid:border-status-critical-fg"
 			/>
 			{refusal ? (
 				<SeverityNote level="error" size="sm" className="type-caption">

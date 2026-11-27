@@ -67,7 +67,7 @@ export interface PendingScope {
 // A cell's padding: the table's outer columns carry the card's inset.
 const cell = "px-3 py-2 align-top type-dense first:pl-4 last:pr-4";
 const head =
-	"h-row-header whitespace-nowrap border-b border-hairline px-3 text-left type-meta-label text-tertiary first:pl-4 last:pr-4";
+	"h-row-header whitespace-nowrap border-b border-hairline px-3 text-left font-normal type-meta-label text-tertiary first:pl-4 last:pr-4";
 
 // RulesCard is the ruleset's inbound rules: who may connect to the
 // scoped workloads, on what, whether each rule is enabled, and what each
@@ -569,7 +569,7 @@ function EditRow({
 							placeholder="What this rule is for"
 							value={d.description}
 							onChange={(ev) => onDraft({ ...d, description: ev.target.value })}
-							className="h-control rounded-control border border-strong bg-field-sunk px-2.5 type-dense text-primary placeholder:text-tertiary"
+							className="h-control rounded-control border border-strong bg-field-sunk px-2.5 type-dense text-primary placeholder:text-disabled"
 						/>
 						<FindingLines findings={f.columns.description} />
 						<span className="type-mono-sm text-tertiary">

@@ -6,7 +6,7 @@ import { definitionViews } from "./Definitions";
 import { editorPath } from "./link";
 import type { Unknown } from "./model";
 
-const railHeading = "type-control text-tertiary";
+const railHeading = "type-meta-label text-tertiary";
 
 // Rail lists the rulesets, each with whether it is enabled and how many
 // rules it holds, and below them the definitions rules reference, each
@@ -29,10 +29,10 @@ export function Rail({
 }) {
 	return (
 		<aside
-			className="flex w-[220px] shrink-0 flex-col gap-0.5 overflow-auto border-r border-hairline bg-card px-2 py-3"
+			className="flex w-[216px] shrink-0 flex-col gap-0.5 overflow-auto border-r border-hairline bg-canvas px-2 py-4"
 			aria-label="Rulesets"
 		>
-			<div className="flex items-center pb-1.5 pl-2">
+			<div className="flex items-center pr-0.5 pb-2 pl-2">
 				<span className={railHeading}>Rulesets</span>
 				<Link
 					to="/policy?new=1"
@@ -60,9 +60,9 @@ export function Rail({
 								to={editorPath(rs.name)}
 								aria-current={selected ? "page" : undefined}
 								className={cn(
-									"flex h-8 items-center gap-2 rounded-control px-2 type-mono-data",
+									"flex h-[30px] items-center gap-2 rounded-control px-2 type-dense focus-visible:focus-ring",
 									selected
-										? "bg-wash-selected font-medium text-primary"
+										? "bg-wash-selected text-primary"
 										: "text-secondary hover:bg-wash-hover hover:text-primary",
 								)}
 							>
@@ -78,7 +78,7 @@ export function Rail({
 									{on ? "enabled" : "disabled"}, {rs.rules.length}{" "}
 									{rs.rules.length === 1 ? "rule" : "rules"}
 								</span>
-								<span aria-hidden="true" className="type-mono-xs text-tertiary">
+								<span aria-hidden="true" className="type-caption text-tertiary">
 									{rs.rules.length}
 								</span>
 							</Link>
@@ -87,7 +87,7 @@ export function Rail({
 					{creating ? (
 						<span
 							aria-current="page"
-							className="flex h-8 items-center gap-2 rounded-control bg-wash-selected px-2 type-header-register text-primary"
+							className="flex h-[30px] items-center gap-2 rounded-control bg-wash-selected px-2 type-dense text-primary"
 						>
 							<span
 								aria-hidden="true"
@@ -98,7 +98,11 @@ export function Rail({
 					) : null}
 				</nav>
 			)}
-			<div className={`${railHeading} px-2 pt-4 pb-1.5`}>Definitions</div>
+			<div
+				className={`${railHeading} mt-3.5 -mx-2 border-t border-hairline px-4 pt-4 pb-2`}
+			>
+				Definitions
+			</div>
 			<nav aria-label="Definitions" className="flex flex-col gap-0.5">
 				<Definition
 					kind="service"
@@ -126,14 +130,14 @@ function Definition({
 			to={view.path}
 			aria-current={selected ? "page" : undefined}
 			className={cn(
-				"flex h-8 items-center gap-2 rounded-control px-2 type-dense",
+				"flex h-[30px] items-center gap-2 rounded-control px-2 type-dense focus-visible:focus-ring",
 				selected
-					? "bg-wash-selected font-medium text-primary"
+					? "bg-wash-selected text-primary"
 					: "text-secondary hover:bg-wash-hover hover:text-primary",
 			)}
 		>
 			<span className="flex-1">{view.title}</span>
-			<span className="type-mono-xs text-tertiary">{n ?? "…"}</span>
+			<span className="type-caption text-tertiary">{n ?? "…"}</span>
 		</Link>
 	);
 }

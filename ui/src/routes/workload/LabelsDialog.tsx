@@ -248,7 +248,7 @@ function Editor({ w, onSaved }: { w: Workload; onSaved: () => void }) {
 				{conflict ? (
 					<div
 						role="alert"
-						className="flex flex-col gap-1.5 rounded-panel border border-status-warn-border bg-status-warn-bg px-3 py-2.5 type-dense"
+						className="flex flex-col gap-1.5 rounded-panel border border-status-warn-mark bg-wash-selected px-3.5 py-3 type-dense"
 					>
 						<SeverityNote level="alert" prose className="font-medium">
 							The labels changed since this editor read them; nothing was saved
@@ -304,7 +304,7 @@ function Editor({ w, onSaved }: { w: Workload; onSaved: () => void }) {
 							}}
 							onKeyDown={onKey}
 							onBlur={() => commit()}
-							className="h-5 min-w-[120px] flex-1 bg-transparent px-1 type-mono-sm text-primary outline-none placeholder:text-tertiary focus-visible:shadow-none"
+							className="h-5 min-w-[120px] flex-1 bg-transparent px-1 type-mono-sm text-primary outline-none placeholder:text-disabled focus-visible:shadow-none"
 						/>
 					</div>
 					{textError ? (

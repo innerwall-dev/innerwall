@@ -340,7 +340,7 @@ function Toolbar({
 								if (!escaped.current && draft.trim() !== "") addRequirement();
 							}}
 							className={cn(
-								"h-control w-[160px] rounded-control border bg-field-sunk px-2 type-mono-sm text-primary placeholder:text-tertiary",
+								"h-control w-[160px] rounded-control border bg-field-sunk px-2 type-mono-sm text-primary placeholder:text-disabled",
 								invalid ? "border-status-critical-fg" : "border-strong",
 							)}
 						/>

@@ -106,7 +106,7 @@ function Search({ onDone }: { onDone: () => void }) {
 					value={query}
 					onChange={(e) => setQuery(e.target.value)}
 					onKeyDown={onKey}
-					className="min-w-0 flex-1 bg-transparent p-0 type-dense text-primary placeholder:text-tertiary focus:outline-none"
+					className="min-w-0 flex-1 bg-transparent p-0 type-dense text-primary placeholder:text-disabled focus:outline-none"
 				/>
 			</div>
 			<div className="min-h-0 overflow-auto px-2 py-2">
