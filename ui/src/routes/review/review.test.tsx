@@ -373,11 +373,14 @@ describe("simulation review", () => {
 			"checkout-prod-07 is degraded (applied v41, rendered v42) — its flows were evaluated against stale policy",
 			"1 workload in scope is still in visibility mode and produced no verdict",
 		]);
-		// Promotion is the view's primary action whatever the verdict: the
-		// verdict's severity is the banner's, not the button's.
-		expect(
-			screen.getByRole("button", { name: "Promote to enforced…" }),
-		).toHaveClass("bg-plate");
+		// While the verdict is unsafe the promote button is neutral (design
+		// package v4, structural change 3); it can still be pressed.
+		const promote = screen.getByRole("button", {
+			name: "Promote to enforced…",
+		});
+		expect(promote).not.toHaveClass("bg-plate");
+		expect(promote).toHaveClass("bg-control-raised");
+		expect(promote).toBeEnabled();
 	});
 
 	it("switches rulesets by tab, to a safe verdict", async () => {

@@ -173,26 +173,19 @@ export function PromoteDialog({
 				<DialogBody className="gap-4">
 					<div
 						className={cn(
-							"flex items-start gap-2.5 rounded-panel border px-4 py-3",
+							"flex items-start gap-2.5 rounded-panel border bg-wash-selected px-3.5 py-3",
 							verdict.safe
-								? "border-status-ok-border bg-status-ok-bg"
-								: "border-status-critical-border bg-status-critical-bg",
+								? "border-status-ok-mark"
+								: "border-status-critical-mark",
 						)}
 					>
 						<StatusGlyph
 							status={verdict.safe ? "allowed" : "error"}
-							size="lg"
-							className="mt-0.5"
+							size="md"
+							className="mt-[3px]"
 						/>
 						<div className="flex min-w-0 flex-col gap-0.5">
-							<div
-								className={cn(
-									"type-dense-strong",
-									verdict.safe
-										? "text-status-ok-fg"
-										: "text-status-critical-fg",
-								)}
-							>
+							<div className="type-dense-strong text-primary">
 								{verdict.headline}
 							</div>
 							<div className="type-dense text-secondary">
@@ -369,14 +362,14 @@ function PartitionTable({
 	onPreview: () => void;
 }) {
 	const row =
-		"grid min-h-row-pitch grid-cols-[1fr_auto_auto] items-center gap-x-4 border-t border-hairline px-3 py-2 first:border-t-0";
+		"grid min-h-row-pitch grid-cols-[1fr_auto_auto] items-center gap-x-4 border-t border-hairline px-3.5 py-2 first:border-t-0";
 	const n = (x: number) => `${count(x)} ${x === 1 ? "workload" : "workloads"}`;
-	const num = "type-mono-sm text-secondary";
-	const included = "type-header-register text-primary";
-	const skipped = "text-tertiary";
+	const num = "type-caption text-tertiary tabular-nums";
+	const included = "type-caption text-primary";
+	const skipped = "type-caption text-tertiary";
 	return (
 		<div
-			className="overflow-hidden rounded-panel border border-overlay bg-canvas type-dense"
+			className="overflow-hidden rounded-panel border border-overlay type-dense"
 			data-testid="partition"
 		>
 			<div className={row}>
@@ -465,7 +458,7 @@ function StaleSet({
 	return (
 		<div
 			role="alert"
-			className="flex flex-col gap-1.5 rounded-panel border border-status-warn-border bg-status-warn-bg px-3 py-2.5 type-dense"
+			className="flex flex-col gap-1.5 rounded-panel border border-overlay bg-wash-selected px-3.5 py-3 type-dense"
 		>
 			<SeverityNote level="alert" prose className="font-medium">
 				{title}

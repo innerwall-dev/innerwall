@@ -99,9 +99,9 @@ export function ReviewDrawer({
 	return (
 		<aside
 			aria-label="Pair detail"
-			className="flex w-[400px] shrink-0 flex-col overflow-hidden border-l border-hairline bg-popover"
+			className="mb-6 flex max-h-full w-[360px] shrink-0 flex-col self-start overflow-hidden rounded-panel border border-overlay bg-card"
 		>
-			<div className="flex flex-col gap-3 border-b border-hairline p-4">
+			<div className="flex flex-col gap-2 border-b border-hairline px-5 pt-5 pb-[18px]">
 				<div className="flex items-center gap-2">
 					<VerdictPill verdict={row.verdict} variant="tinted" />
 					<Button
@@ -109,22 +109,22 @@ export function ReviewDrawer({
 						size="sm"
 						aria-label="Close"
 						onClick={onClose}
-						className="ml-auto size-control-sm px-0"
+						className="ml-auto size-6 px-0 text-tertiary"
 					>
 						<Icon name="x" />
 					</Button>
 				</div>
-				<div className="type-dialog-title break-words font-mono">
+				<h2 className="type-dialog-title break-words">
 					{row.peer.full ?? row.peer.title}{" "}
 					<span className="text-tertiary" aria-hidden="true">
 						→
 					</span>
 					<span className="sr-only">on</span> {row.service}
-				</div>
+				</h2>
 				<p className="type-dense text-secondary" data-testid="explain">
 					{explain(row, exact)}
 				</p>
-				<div className="flex flex-wrap gap-2">
+				<div className="mt-1 flex flex-wrap gap-2">
 					{row.peer.kind === "address" ? (
 						<InertAction label="Add to an address group" />
 					) : null}
@@ -146,7 +146,7 @@ export function ReviewDrawer({
 					onChanged={onChanged}
 					onFound={setAdmitting}
 				/>
-				<div className="px-4 pt-4 pb-2">
+				<div className="px-5 pt-[18px] pb-2">
 					<Eyebrow>
 						Flows ·{" "}
 						<span className="font-mono">
@@ -157,7 +157,7 @@ export function ReviewDrawer({
 							: "pairs"}
 					</Eyebrow>
 				</div>
-				<div className="px-4 pb-4">
+				<div className="px-5 pb-5">
 					{pairs.status === "loading" ? (
 						<LoadingRow what="the pairs" />
 					) : pairs.status === "error" ? (
@@ -260,7 +260,7 @@ function RuleSection({
 	onFound: (found: Found[]) => void;
 }) {
 	return (
-		<div className="flex flex-col gap-2 border-b border-hairline p-4">
+		<div className="flex flex-col gap-2.5 border-b border-hairline px-5 py-[18px]">
 			<Eyebrow>Rule</Eyebrow>
 			{row.verdict === "allowed" ? (
 				<MatchedRules
@@ -480,7 +480,7 @@ function Candidates({
 			) : outcome?.kind === "stale" ? (
 				<div
 					role="alert"
-					className="flex flex-col gap-1.5 rounded-panel border border-status-warn-border bg-status-warn-bg px-3 py-2.5 type-dense"
+					className="flex flex-col gap-1.5 rounded-control bg-wash-selected px-3 py-2.5 type-dense"
 				>
 					<SeverityNote level="alert" prose className="font-medium">
 						{outcome.rule} changed since this review read it
@@ -527,7 +527,7 @@ function Candidates({
 						{disabled.map((r) => (
 							<li
 								key={r.id}
-								className="flex items-start gap-2 rounded-panel border border-overlay bg-canvas px-3 py-2"
+								className="flex items-start gap-2.5 rounded-control bg-wash-selected px-3 py-2.5"
 							>
 								<div className="flex min-w-0 flex-1 flex-col gap-0.5">
 									<span className="type-mono-data font-medium text-primary">

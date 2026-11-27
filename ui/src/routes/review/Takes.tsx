@@ -94,11 +94,15 @@ const cellFill = {
 
 // The table pattern every take shares: a bordered panel, a subtle
 // header band, dense rows on subtle hairlines.
-const panel = "overflow-x-auto rounded-panel border border-overlay";
+const panel = "overflow-x-auto rounded-panel border border-overlay bg-card";
 const th =
-	"h-row-header whitespace-nowrap border-b border-hairline px-2.5 text-left type-meta-label text-tertiary first:pl-3 last:pr-3";
+	"h-row-header whitespace-nowrap border-b border-hairline px-2.5 text-left font-normal type-meta-label text-tertiary first:pl-4 last:pr-4";
 const td =
-	"h-row-pitch border-b border-hairline px-2.5 py-2 type-dense first:pl-3 last:pr-3";
+	"h-row-pitch border-b border-hairline px-2.5 py-2 type-dense first:pl-4 last:pr-4";
+// The selected row: the selected fill, and a 2px text-1 mark at its
+// left edge.
+const selectedRow =
+	"bg-wash-selected [&>td:first-child]:shadow-[inset_2px_0_0_var(--text-primary)]";
 
 export function Grouped({
 	rows,
@@ -124,7 +128,7 @@ export function Grouped({
 				<thead>
 					<tr>
 						<th className={th}>Decision</th>
-						<th className={cn(th, "min-w-[200px]")}>Peer</th>
+						<th className={cn(th, "min-w-[160px]")}>Peer</th>
 						<th className={th}>Service</th>
 						<th className={th}>Rule</th>
 						<th className={cn(th, "text-right")}>Workloads</th>
@@ -143,7 +147,7 @@ export function Grouped({
 								onClick={() => onSelect(on ? null : r.id)}
 								className={cn(
 									"h-row-pitch cursor-pointer [&:last-child>td]:border-b-0",
-									on ? "bg-wash-selected" : "hover:bg-wash-hover",
+									on ? selectedRow : "hover:bg-wash-hover",
 								)}
 							>
 								<td className={td}>
@@ -164,7 +168,7 @@ export function Grouped({
 												onSelect(on ? null : r.id);
 											}}
 											title={r.peer.full ?? r.peer.title}
-											className="min-w-0 cursor-pointer truncate text-left type-mono-data font-medium text-primary"
+											className="min-w-0 cursor-pointer truncate text-left type-dense text-primary"
 										>
 											{r.peer.title}
 										</button>
@@ -451,7 +455,7 @@ export function Recency({ rows, range, selected, onSelect }: TakeProps) {
 												onClick={() => onSelect(on ? null : r.id)}
 												className={cn(
 													"flex min-h-row-pitch w-full cursor-pointer flex-wrap items-center gap-x-2.5 gap-y-0.5 px-3 py-2 text-left type-dense",
-													on ? "bg-wash-selected" : "hover:bg-wash-hover",
+													on ? selectedRow : "hover:bg-wash-hover",
 												)}
 											>
 												<span className="w-[104px] shrink-0">
