@@ -119,7 +119,7 @@ export function ListeningTab({
 	});
 
 	return (
-		<div className="flex min-h-0 flex-1">
+		<div className="flex min-h-0 flex-1 gap-6 px-8 pt-5">
 			<FilterPanel
 				label="Filter listening services"
 				search={search}
@@ -149,8 +149,8 @@ export function ListeningTab({
 					{ key: "rule", title: "Covered by rule", values: covering },
 				]}
 			/>
-			<div className="flex min-w-0 flex-1 flex-col overflow-auto">
-				<div className="flex h-row-pitch shrink-0 items-center border-b border-hairline px-5 type-dense text-secondary">
+			<div className="flex min-w-0 flex-1 flex-col gap-3 overflow-auto pb-6">
+				<div className="flex h-7 shrink-0 items-center type-dense text-secondary">
 					<span>
 						<span className="type-mono-data text-primary">
 							{count(rows.length)}
@@ -158,13 +158,13 @@ export function ListeningTab({
 						of {count(services.length)} services
 					</span>
 				</div>
-				<p className="max-w-[720px] px-5 pt-4 pb-3 type-dense text-secondary">
+				<p className="max-w-[720px] type-dense text-secondary">
 					What is listening on this host, paired with whether anything actually
 					connects to it. Exposed-but-unused ports are candidates to leave out
 					of policy.
 				</p>
 				{use.status === "error" ? (
-					<div className="px-5">
+					<div>
 						<ProblemNotice
 							what="flow totals"
 							error={use.error}
@@ -173,18 +173,18 @@ export function ListeningTab({
 					</div>
 				) : null}
 				{services.length === 0 ? (
-					<p className="px-5 py-6 type-dense text-tertiary">
+					<p className="py-6 type-dense text-tertiary">
 						The agent has reported no listening services.
 					</p>
 				) : (
-					<table className="w-full min-w-[724px] border-separate border-spacing-0 border-t border-hairline">
+					<table className="w-full min-w-[724px] border-separate border-spacing-0 overflow-clip rounded-panel border border-overlay bg-card">
 						<thead>
 							<tr>
-								<th className={cn(th, "pl-5")}>Service</th>
+								<th className={cn(th, "pl-4")}>Service</th>
 								{process ? <th className={th}>Process</th> : null}
 								{path ? <th className={th}>Path</th> : null}
 								<th className={th}>Inbound flows</th>
-								<th className={cn(th, "pr-5")}>Covered by rule</th>
+								<th className={cn(th, "pr-4")}>Covered by rule</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -243,8 +243,8 @@ function Row({
 			text: `no inbound flows in ${rangeShort}`,
 		};
 	return (
-		<tr className="hover:bg-wash-hover">
-			<td className={cn(td, "pl-5 type-mono-data text-primary")}>{key}</td>
+		<tr className="hover:bg-wash-hover [&:last-child>td]:border-b-0">
+			<td className={cn(td, "pl-4 type-mono-data text-primary")}>{key}</td>
 			{process ? (
 				<td className={cn(td, "type-mono-data text-primary")}>
 					{s.process_name || "—"}
@@ -270,7 +270,7 @@ function Row({
 					<span className="text-tertiary">{usage.text}</span>
 				)}
 			</td>
-			<td className={cn(td, "pr-5 type-dense text-secondary")}>
+			<td className={cn(td, "pr-4 type-dense text-secondary")}>
 				{rules.length === 0
 					? "—"
 					: rules.map((r, i) => (
@@ -288,5 +288,5 @@ function Row({
 
 // The table's header and body cells.
 const th =
-	"h-row-header border-b border-hairline px-3 text-left type-meta-label whitespace-nowrap text-tertiary";
+	"h-row-header border-b border-hairline px-3 text-left font-normal type-meta-label whitespace-nowrap text-tertiary";
 const td = "h-row-pitch border-b border-hairline px-3 py-2";

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ago, count, exact, labelPairs } from "@/lib/format";
 import { between, kindText } from "@/lib/gaps";
 import type { Resource } from "@/lib/resource";
+import { cn } from "@/lib/utils";
 import { retired } from "../fleet/describe";
 import type { ScreenRange } from "./range";
 import { StatusCard } from "./StatusCard";
@@ -37,7 +38,7 @@ export function Overview({
 }) {
 	return (
 		<div className="min-h-0 flex-1 overflow-auto">
-			<div className="mx-auto flex max-w-content flex-col gap-4 px-5 pt-5 pb-8">
+			<div className="flex max-w-content flex-col gap-4 px-8 pt-5 pb-8">
 				{retired(w) ? <RetiredCard w={w} /> : null}
 				<AlertCards states={states} />
 				<div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] items-start gap-4">
@@ -58,7 +59,7 @@ export function Overview({
 }
 
 const card =
-	"flex flex-col gap-3 rounded-panel border border-overlay bg-card p-4";
+	"flex flex-col gap-3 rounded-panel border border-overlay bg-card px-5 pt-[18px] pb-5";
 
 // RetiredCard says the workload was retired, when, and what that means
 // for reading the page: a state the operator decided, drawn as chrome on
@@ -69,7 +70,7 @@ function RetiredCard({ w }: { w: Workload }) {
 		<section
 			aria-label="Retired"
 			data-testid="retired"
-			className="flex items-start gap-3 rounded-panel border border-overlay bg-card px-3.5 py-2.5 type-dense"
+			className="flex items-start gap-3 rounded-panel border border-overlay bg-card px-5 py-4 type-dense"
 		>
 			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
 				<span className="inline-flex items-center gap-1.5 font-medium text-status-neutral-fg">
@@ -102,7 +103,7 @@ function RetiredCard({ w }: { w: Workload }) {
 	);
 }
 const title = "type-card-title text-primary";
-const field = "type-meta-label text-tertiary";
+const field = "type-dense text-tertiary first-letter:uppercase";
 const value = "min-w-0 type-mono-sm break-words text-primary";
 
 function LabelsCard({ w, onEdit }: { w: Workload; onEdit: () => void }) {
@@ -153,7 +154,7 @@ function HostFacts({ w, onRetire }: { w: Workload; onRetire: () => void }) {
 			<dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-4 gap-y-2">
 				<dt className={field}>hostname</dt>
 				<dd className={value}>{w.hostname}</dd>
-				<dt className={field}>os</dt>
+				<dt className={cn(field, "uppercase")}>os</dt>
 				<dd className={value}>
 					{os
 						? [
@@ -173,7 +174,7 @@ function HostFacts({ w, onRetire }: { w: Workload; onRetire: () => void }) {
 						? "none reported"
 						: w.addresses.map((a) => <div key={a}>{a}</div>)}
 				</dd>
-				<dt className={field}>id</dt>
+				<dt className={cn(field, "uppercase")}>id</dt>
 				<dd className={value}>
 					<div className="break-all">{w.id}</div>
 					<div className="mt-0.5 type-caption text-tertiary">

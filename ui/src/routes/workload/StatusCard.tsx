@@ -67,7 +67,7 @@ export function StatusCard({
 	return (
 		<section
 			aria-labelledby="status-card-title"
-			className="flex flex-col gap-3 rounded-panel border border-overlay bg-card p-4"
+			className="flex flex-col gap-3 rounded-panel border border-overlay bg-card px-5 pt-[18px] pb-5"
 		>
 			<h2 id="status-card-title" className="type-card-title text-primary">
 				Status
@@ -348,7 +348,7 @@ function LastAck({ s }: { s: Workload["sync"] }) {
 
 // The card's field rows: the meta label beside a mono value, and the
 // caption that explains a value under it.
-const field = "type-meta-label text-tertiary";
+const field = "type-dense text-tertiary first-letter:uppercase";
 const value = "min-w-0 type-mono-sm break-words text-primary";
 const note = "mt-0.5 type-caption text-tertiary";
 // A severity note in the card's 16px lines centres its glyph on them.

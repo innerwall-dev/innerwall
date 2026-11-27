@@ -43,7 +43,7 @@ export function PolicyTab({
 				<span className="type-dense text-secondary">
 					{behind ? "Rendered policy" : "Rendered policy applied on host"}
 				</span>
-				<span className="inline-flex h-[22px] items-center rounded-inner border border-strong bg-canvas px-2 type-mono-sm text-primary">
+				<span className="inline-flex h-[22px] items-center rounded-full border border-overlay px-2 type-mono-sm text-primary">
 					v{p.version}
 				</span>
 				{behind ? (
