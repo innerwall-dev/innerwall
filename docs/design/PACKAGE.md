@@ -36,12 +36,12 @@ From first principles: an operator reads this console for long stretches and act
 
 | Role | Token(s) | Dark | Light |
 | --- | --- | --- | --- |
-| ground | `surface-canvas` | `#131413` | `#fcfcfc` |
-| surface | `surface-card`, `surface-popover` | `#181a19` | `#ffffff` |
-| selected / hover fill | `wash-hover`, `wash-selected`, `surface-overlay`, `surface-top` | `#202221` | `#f5f6f5` |
-| control fill | `field-sunk`, `control-raised` | `#1d1f1e` | `#ffffff` |
-| border | `border-overlay`, `border-strong` | `#2c2e2d` | `#e3e5e4` |
-| border, subtle | `border-hairline` | `#232524` | `#eef0ef` |
+| ground | `surface-canvas` | `#0f100f` | `#fcfcfc` |
+| surface | `surface-card`, `surface-popover` | `#151716` | `#ffffff` |
+| selected / hover fill | `wash-hover`, `wash-selected`, `surface-overlay`, `surface-top` | `#1c1e1d` | `#f5f6f5` |
+| control fill | `field-sunk`, `control-raised` | `#191b1a` | `#ffffff` |
+| border | `border-overlay`, `border-strong` | `#282a29` | `#e3e5e4` |
+| border, subtle | `border-hairline` | `#1f2120` | `#eef0ef` |
 | text 1 / 2 / 3 / 4 | `text-primary` / `text-secondary` / `text-tertiary` / `text-disabled` | `#edefee` / `#bcbdbc` / `#989a99` / `#6b6d6c` | `#1a1c1b` / `#4d504f` / `#686b6a` / `#a4a7a6` |
 | primary button | `plate` / `plate-border` / `plate-ink` | `#236b1c` / `#3f9a33` / white | `#007f35` / `#006b2c` / white |
 | allowed (mark / text) | `status-ok-mark` / `status-ok-fg` | `#80ee64` | `#00993f` / `#007f35` |
@@ -57,7 +57,7 @@ Glyph aliases (`flow-*`, `health-*`, `severity-*`) now point at the `status-*-ma
 These are derived, not drawn, and are recorded so they are not mistaken for design values:
 
 - `border-stronger` (unchecked boxes, the secret well) is text 4 as a border, as the designs draw the empty checkbox.
-- `border-control-hover` (`#3a3c3b` / `#d0d3d1`): one step past the border.
+- `border-control-hover` (`#363837` / `#d0d3d1`): one step past the border.
 - `plate-hover` / `plate-pressed` (`#2a7a22` / `#1e5d18`; light `#00722f` / `#006b2c`) and `destructive-hover` (`#b5342b` / `#b8252a`): one step toward the border or darker.
 - `status-*-bg` are `transparent` and `status-*-border` are the border: status takes no fill.
 - `scrim` (60% black / 28% black) and the two shadows are read from the dialog and sheet designs.
@@ -100,7 +100,7 @@ The first build recorded two light-theme pairs below AA for a ruling; the mainta
 - **Light text 3** is `#686b6a` (was `#707372`): **5.25:1** on the ground, **5.38:1** on the surface, **4.97:1** on the selected fill (was 4.42:1).
 - **Light error text and the light destructive fill** are `#ce2c31` (was `#e5484d`): error text **5.21:1** on white, **5.08:1** on the ground, **4.81:1** on the selected fill; white ink on the destructive fill **5.21:1** (was 3.91:1). The light error mark (dot and glyph) stays `#e5484d`, so `status-critical-mark` and `status-critical-fg` now differ in the light theme. `destructive-hover` follows at `#b8252a` (derived, 6.29:1 with white ink).
 
-Dark: text 3 on the selected fill is 5.65:1; error on the surface 5.71:1; white on the dark plate 6.58:1 and on the dark destructive fill 5.08:1.
+Dark: text 3 on the selected fill is 5.92:1 and on the ground 6.73:1; error on the surface 5.88:1; white on the dark plate 6.58:1 and on the dark destructive fill 5.08:1.
 
 ## Errata (where the screens' real content departs from the designs)
 
@@ -132,6 +132,9 @@ These depart from the designs by the maintainer's ruling on the first build's ca
 - **Filter panels are a secondary rail.** On a workload's Inbound flows and Listening services (the only screens with the filter panel), the panel is a full-height 232px rail directly right of the sidebar, in the pattern of the policy editor's ruleset rail: the ground, the subtle rule on its right, no card border or radius, its own vertical scroll, its section headers as before. The table area takes the remaining width at the 32px gutter. Filters and behaviour are unchanged. The designs draw the panel as a card beside the table.
 - **The account control is in the header** and the **Overview takes the design's grid** (structural change 1, errata V1 and V8).
 - **Light-theme contrast**: see Accessibility.
+- **Dark neutrals one step darker.** The whole dark neutral ramp moves one step down, keeping its spacing: ground `#0f100f`, surface `#151716`, selected / hover fill `#1c1e1d`, control fill `#191b1a`, border `#282a29`, subtle rule `#1f2120` (each was 4 levels lighter: `#131413`, `#181a19`, `#202221`, `#1d1f1e`, `#2c2e2d`, `#232524`). The derived control-hover border follows (`#363837`) and the checkbox ink takes the new ground. Text, status and primary colours are unchanged; the designs draw the earlier ramp.
+- **The sidebar is 208px wide** when expanded (`sidebar-width`; the designs draw 232px). The collapsed rail stays 48px; the secondary rails (the policy editor's ruleset rail and the filter rail) keep 232px.
+- **The collapse toggle is icon-only** in the expanded state too: the same icon at the same place, its accessible name and a tooltip saying the action ("Collapse sidebar" / "Expand sidebar").
 
 ### Build decisions (style, not content)
 
