@@ -241,10 +241,11 @@ function Sidebar({
 	);
 }
 
-// SidebarTrigger is the collapse control at the rail's foot: Collapse
-// with panel-left-close in text 3, or the icon alone with
-// panel-left-open when collapsed; `compact` is the icon-only form the
-// page header shows where the sidebar is a sheet.
+// SidebarTrigger is the collapse control at the rail's foot: the icon
+// alone in text 3 (panel-left-close, or panel-left-open when collapsed),
+// a 32px square at the rail's left, named for its action and with that
+// name as its tooltip in every state; `compact` is the form the page
+// header shows where the sidebar is a sheet.
 function SidebarTrigger({
 	className,
 	onClick,
@@ -293,7 +294,8 @@ function SidebarTrigger({
 			data-slot="sidebar-trigger"
 			aria-label={label}
 			tooltip={label}
-			className={cn("text-tertiary", className)}
+			tooltipAlways
+			className={cn("size-8 px-2 text-tertiary", className)}
 			onClick={(event) => {
 				onClick?.(event);
 				toggleSidebar();
@@ -301,7 +303,6 @@ function SidebarTrigger({
 			{...props}
 		>
 			<Icon name={icon} />
-			<span>{isMobile ? "Close" : collapsed ? "Expand" : "Collapse"}</span>
 		</SidebarMenuButton>
 	);
 }
@@ -393,12 +394,16 @@ function SidebarMenuButton({
 	asChild = false,
 	isActive = false,
 	tooltip,
+	tooltipAlways = false,
 	className,
 	...props
 }: React.ComponentProps<"button"> & {
 	asChild?: boolean;
 	isActive?: boolean;
 	tooltip?: string | React.ComponentProps<typeof TooltipContent>;
+	// tooltipAlways shows the tooltip in every state, not only on the
+	// collapsed rail: for an entry with no visible label.
+	tooltipAlways?: boolean;
 }) {
 	const Comp = asChild ? Slot : "button";
 	const { isMobile, state } = useSidebar();
@@ -429,7 +434,7 @@ function SidebarMenuButton({
 			<TooltipContent
 				side="right"
 				align="center"
-				hidden={state !== "collapsed" || isMobile}
+				hidden={!tooltipAlways && (state !== "collapsed" || isMobile)}
 				{...tooltip}
 			/>
 		</Tooltip>
