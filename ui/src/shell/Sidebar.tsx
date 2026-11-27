@@ -22,7 +22,6 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { AccountPopover } from "./AccountPopover";
 import { LogoMark, Wordmark } from "./Logo";
 import type { OpenWorkload } from "./Shell";
 
@@ -91,7 +90,8 @@ export const sections: {
 
 // Sidebar is the console's only global navigation, under the header:
 // the sections, the workload a detail screen last showed, and in the
-// footer the operator's account and, at the foot, the collapse control.
+// footer only the fleet sync block (on a fresh install) and, at the
+// foot, the collapse control. The operator's account is the header's.
 // It collapses to an icon rail, where every entry keeps its accessible
 // name and shows its name as a tooltip. The brand mark and name are the
 // header's; the mobile sheet, which covers the header, repeats them.
@@ -203,12 +203,9 @@ export function Sidebar({
 					</nav>
 				</SidebarGroup>
 			</SidebarContent>
-			{fleetEmpty ? <FleetSync /> : null}
 			<SidebarFooter>
+				{fleetEmpty ? <FleetSync /> : null}
 				<SidebarMenu>
-					<SidebarMenuItem>
-						<AccountPopover />
-					</SidebarMenuItem>
 					<SidebarMenuItem>
 						<SidebarTrigger />
 					</SidebarMenuItem>
@@ -224,7 +221,7 @@ export function Sidebar({
 // no room for it.
 function FleetSync() {
 	return (
-		<div className="flex flex-col gap-1.5 border-t border-hairline px-4 py-3 group-data-[collapsible=icon]:hidden">
+		<div className="-mx-2 mb-1 flex flex-col gap-1.5 border-t border-hairline px-4 pt-3 pb-2 group-data-[collapsible=icon]:hidden">
 			<div className="type-control text-tertiary">Fleet sync</div>
 			<div
 				className="flex h-1.5 overflow-hidden rounded-full bg-wash-selected"

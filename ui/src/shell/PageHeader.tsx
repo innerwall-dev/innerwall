@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { Kbd } from "@/components/ui/kbd";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { AccountPopover } from "./AccountPopover";
 import { LogoMark, Wordmark } from "./Logo";
 import { Palette } from "./Palette";
 
@@ -14,8 +15,9 @@ export interface Crumb {
 // left, then the screen's path in the header register (13/20), with the
 // hierarchy carried by color alone: the section in text 3 and the
 // current screen in text 1, behind text-4 separators. The search field
-// is at the far right, a pill which opens the search palette, as ⌘K
-// (Ctrl+K) does from anywhere. A screen that draws its own identity in
+// is at the right, a pill which opens the search palette, as ⌘K
+// (Ctrl+K) does from anywhere, and the operator's account avatar is at
+// the far right. A screen that draws its own identity in
 // the header (a workload's detail) gets a slot in place of the path:
 // identity receives it. Where the sidebar is a sheet, the header leads
 // with the control that opens it.
@@ -84,6 +86,9 @@ export function PageHeader({
 				</span>
 				<Kbd className="border-0 px-0">⌘K</Kbd>
 			</button>
+			<span className="flex shrink-0 max-md:ml-auto">
+				<AccountPopover />
+			</span>
 			<Palette open={searching} onOpenChange={setSearching} />
 		</header>
 	);

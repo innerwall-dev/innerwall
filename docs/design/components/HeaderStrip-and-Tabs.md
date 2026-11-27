@@ -6,7 +6,8 @@ What v4 changes; the spec below stands where this says nothing.
 
 - **Header.** 48px across the whole width, above the sidebar and the screen, on the subtle rule, padded 13px left and 16px right. It leads with the logo and the wordmark (Manrope 14/20 at 600), then a text-4 separator and the screen's path, or a workload's identity.
 - **Type.** The path is `header-register` at **400**: the section in text 3, the current screen in text 1, separators in text 4. Hierarchy stays color only.
-- **Search.** The existing trigger moves to the far right as a 28px pill on the control fill behind the border, its ⌘K hint in mono without a box.
+- **Search.** The existing trigger moves to the right as a 28px pill on the control fill behind the border, its ⌘K hint in mono without a box.
+- **Account.** At the far right, 10px after the search pill: a 26px circle on the selected fill behind the border, the operator's initials at 10.5px / 500 in text 2, the name as its title. Its popover (identity, control plane version, theme, sign out) opens below it, anchored to its right edge, on the surface with `shadow-overlay` and a 10px radius, kept 8px clear of the viewport's edge. It stays in the header on a phone.
 - **Tabs.** Text 3 at rest and text 1 when active, 24px apart, on a 34px row (`tab-row`) with the subtle rule; the active tab's underline is a 1.5px text-1 inset (`tab-underline`). The row keeps the page's 32px gutter. Counts are captions in text 3.
 
 ## Header strip (W3)

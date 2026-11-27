@@ -7,33 +7,28 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
-import { useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { type Theme, useTheme } from "@/theme/ThemeProvider";
 
-// Avatar is the operator's disc: the user icon in an avatar-sized
-// circle on the overlay surface behind the overlay border.
-function Avatar() {
-	return (
-		<span
-			className="flex size-avatar shrink-0 items-center justify-center rounded-full border border-overlay bg-overlay text-secondary"
-			aria-hidden="true"
-		>
-			<Icon name="user" />
-		</span>
-	);
+// initials are the operator's display name as the avatar draws it: the
+// first letter of its first and last words, or of its one word.
+export function initials(name: string): string {
+	const words = name.split(/[\s.]+/).filter((w) => w.length > 0);
+	if (words.length === 0) return "?";
+	const first = words[0].charAt(0);
+	const last = words.length > 1 ? words[words.length - 1].charAt(0) : "";
+	return `${first}${last}`.toUpperCase();
 }
 
-// AccountPopover is the sidebar footer's operator entry: the avatar,
-// the display name and site label, and the popover with the identity,
-// the control plane's version, the theme toggle, and sign out. It opens
-// upward from the expanded rail and to the right of the collapsed one.
+// AccountPopover is the operator's entry at the header's far right: a
+// 26px avatar (initials on the selected fill behind the border) whose
+// popover holds the identity, the control plane's version, the theme
+// toggle, and sign out. It opens below the avatar, anchored to its
+// right edge.
 export function AccountPopover() {
 	const me = useMe();
 	const { logout } = useSession();
 	const { theme, setTheme } = useTheme();
-	const { state, isMobile } = useSidebar();
-	const collapsed = state === "collapsed" && !isMobile;
 	const navigate = useNavigate();
 	const [open, setOpen] = useState(false);
 	const [signingOut, setSigningOut] = useState(false);
@@ -62,36 +57,18 @@ export function AccountPopover() {
 				<button
 					type="button"
 					aria-label="Account"
-					className={cn(
-						"flex h-11 w-full cursor-pointer items-center gap-2.5 rounded-control px-[3px] text-left hover:bg-wash-hover focus-visible:focus-ring aria-expanded:bg-wash-hover",
-						"group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:px-[3px]",
-					)}
+					title={name}
+					className="flex size-avatar shrink-0 cursor-pointer items-center justify-center rounded-full border border-overlay bg-overlay text-[10.5px] leading-none font-medium text-secondary hover:border-control-hover hover:text-primary focus-visible:focus-ring aria-expanded:border-control-hover"
 				>
-					<Avatar />
-					<span className="flex min-w-0 flex-1 flex-col group-data-[collapsible=icon]:hidden">
-						<span className="truncate type-header-register text-primary">
-							{name}
-						</span>
-						{me.site ? (
-							<span
-								className="truncate type-caption text-tertiary"
-								data-testid="site-label"
-							>
-								{me.site}
-							</span>
-						) : null}
-					</span>
-					<Icon
-						name="chevrons-up-down"
-						className="group-data-[collapsible=icon]:hidden"
-					/>
+					<span aria-hidden="true">{initials(name)}</span>
 				</button>
 			</PopoverTrigger>
 			<PopoverContent
 				className="flex w-popover-account flex-col rounded-dialog p-0"
-				side={collapsed ? "right" : "top"}
-				align={collapsed ? "end" : "start"}
-				sideOffset={collapsed ? 12 : 4}
+				side="bottom"
+				align="end"
+				sideOffset={8}
+				collisionPadding={8}
 				aria-label="Account"
 			>
 				<div className="flex flex-col gap-0.5 border-b border-hairline px-4 py-3.5">
