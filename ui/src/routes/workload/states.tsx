@@ -237,7 +237,7 @@ function clockSkew(w: Workload, range: ScreenRange): ReactNode | null {
 function OfflineResend() {
 	const reason = useId();
 	return (
-		<span className="flex flex-col items-end gap-1">
+		<span className="flex flex-col items-end gap-1" data-slot="offline-resend">
 			<Button
 				variant="secondary"
 				size="sm"
@@ -447,7 +447,9 @@ export function AlertCards({ states }: { states: ExceptionalState[] }) {
 						<Lead s={s} plain />
 						<div className="text-secondary">{s.body}</div>
 						{s.action ? (
-							<div className="mt-0.5 self-start">{s.action}</div>
+							<div className="mt-0.5 self-start [&_[data-slot=offline-resend]]:items-start [&_[data-slot=offline-resend]>span]:text-left">
+								{s.action}
+							</div>
 						) : null}
 					</div>
 				</section>
