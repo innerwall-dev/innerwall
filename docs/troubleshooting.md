@@ -166,6 +166,14 @@ Connections opened after that carry byte counts; ones already open stay at zero.
 
 **Remedy.** Retirement is one way. If the host should come back, enroll it again with a provisioning token, which makes it a new workload ([credential lifecycle](guides/credential-lifecycle.md#retiring-a-workload)). Its old credential is still valid on the host until it expires, and enrollment refuses to overwrite a valid credential (`the state directory already holds a valid credential; remove it to enroll again`), so stop the daemon and remove the agent's state directory first ([a host returning before its previous credential expires](guides/credential-lifecycle.md#beyond-the-grace-re-enrollment)); if it should not, stop and remove the agent, since the host keeps enforcing its last policy until you do.
 
+### The agent's sync stream ends with "recording stream open"
+
+**Symptom.** The daemon logs `sync stream ended; reconnecting` with `code = Unavailable desc = recording stream open`, before its stream was established, and the control plane logs `recording stream open; ending the stream so its agent redials` at error level with the workload's id and the database's error. The host keeps enforcing the policy it last applied.
+
+**Cause.** The control plane could not write the stream's open to its database. A stream whose open is not recorded is not served: the workload's record would go on describing an earlier stream, and this stream's end would never be recorded, so the workload would read as connected after its agent had gone. The stream is ended instead, and the workload's record keeps what the previous stream's end wrote.
+
+**Remedy.** Usually none: the agent redials with its backoff, and its next stream is served once the write succeeds. If it repeats, the database is unreachable or failing from the control plane; the control plane's log names the error.
+
 ### The agent's sync stream ends with "a sync stream ends with the credential it opened on"
 
 **Symptom.** The daemon logs `sync stream ended; reconnecting` with `workload credential has expired: it expired at …, and a sync stream ends with the credential it opened on; reconnect with a renewed credential`, then refusals of its new streams naming the expiry. The host keeps enforcing the policy it last applied.
