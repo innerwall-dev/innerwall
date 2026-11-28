@@ -266,14 +266,25 @@ func runWorkloadSetLabels(ctx context.Context, args []string) error {
 	return nil
 }
 
+// setModeUsage is set-mode's usage line and what it does not do. The
+// command line stays the operator's unguarded tool by decision, and says
+// so where it is used (ADR-0001 as amended).
+const setModeUsage = "usage: innerwall workload set-mode <workload-id> visibility|simulation|enforced\n" +
+	"A change to enforced is not checked against any evidence and asks for no acknowledgment;\n" +
+	"the simulation review in the console is where the evidence is weighed."
+
 func runWorkloadSetMode(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall workload set-mode", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
+	fs.Usage = func() {
+		_, _ = fmt.Fprintln(fs.Output(), setModeUsage)
+		fs.PrintDefaults()
+	}
 	if err := cli.Parse(fs, args, 2); err != nil {
 		return err
 	}
 	if fs.NArg() != 2 {
-		return usageError("usage: innerwall workload set-mode <workload-id> visibility|simulation|enforced")
+		return usageError(setModeUsage)
 	}
 	id, err := identity.ParseWorkloadID(fs.Arg(0))
 	if err != nil {

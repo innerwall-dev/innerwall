@@ -267,7 +267,9 @@ function NoRows({
 	simulating: number;
 	range: RangeKey;
 }) {
-	if (filter === "would_block") {
+	// The clean state is for observed traffic none of which would be
+	// dropped; with nothing observed at all, it says that instead.
+	if (filter === "would_block" && all.length > 0) {
 		return (
 			<div className="flex flex-col items-center gap-2 py-10 text-secondary">
 				<StatusGlyph status="allowed" size="lg" className="size-6" />

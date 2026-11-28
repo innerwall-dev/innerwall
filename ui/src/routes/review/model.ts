@@ -444,6 +444,7 @@ export function resolveSelection(
 export type ConditionId =
 	| "would-block"
 	| "evidence-gaps"
+	| "no-traffic"
 	| "no-workloads"
 	| "degraded"
 	| "offline"
@@ -566,14 +567,24 @@ export function gapsText(
 	return `Evidence incomplete for ${who}: ${runs.length} gaps totalling ${offset(lost(runs))} between ${outer}${why}`;
 }
 
+// noTrafficText is the condition of a scope whose simulating workloads
+// recorded nothing in the range. It states that nothing was observed,
+// not why: a workload that entered simulation a moment ago and one that
+// is simply quiet read the same, and neither has shown what enforcing
+// would drop.
+export const noTrafficText =
+	"No traffic was recorded in simulation in this range — no observed traffic stands behind this verdict";
+
 // composeVerdict decides whether the scope is safe to enforce. It is
 // composed, never fetched: safe means no traffic in the range would be
 // dropped, every workload in scope simulates on the policy it was last
 // rendered, so the verdict speaks for all of them, and the evidence it
-// rests on is whole: a workload whose agent lost evidence in the range
-// may have seen traffic the review cannot show, so known loss fails the
-// verdict on its own (ADR-0001). Each condition the scope fails is
-// stated on its own.
+// rests on is whole and not empty: a workload whose agent lost evidence
+// in the range may have seen traffic the review cannot show, so known
+// loss fails the verdict on its own, and an absence of drops proves
+// nothing when nothing was observed, so a scope with no traffic recorded
+// in simulation fails it too (ADR-0001). Each condition the scope fails
+// is stated on its own.
 export function composeVerdict(input: VerdictInput): ReviewVerdictResult {
 	const { rows, workloads, rollups, now } = input;
 	const wb = rows.filter((r) => r.verdict === "would_block");
@@ -623,6 +634,18 @@ export function composeVerdict(input: VerdictInput): ReviewVerdictResult {
 			id: "evidence-gaps",
 			text: "Evidence incomplete in this range: more evidence gaps were reported than one read returns",
 		});
+	}
+	// No traffic recorded in simulation: neither decision's rollup covered
+	// a window in the range. A rollup carries its covered bounds whenever
+	// it matched anything, truncated or not, so a truncated read is never
+	// taken for an empty one. The scope is judged as a whole, as every
+	// other condition is. It is not asked of a scope with nothing
+	// simulating: there the visibility and already-enforced conditions say
+	// no verdict exists, and a visibility workload's traffic is recorded,
+	// only not as a simulated decision.
+	const observed = effFrom !== null && effTo !== null;
+	if (simulating > 0 && !observed) {
+		failing.push({ id: "no-traffic", text: noTrafficText });
 	}
 	if (workloads.length === 0) {
 		failing.push({
@@ -700,13 +723,11 @@ export function composeVerdict(input: VerdictInput): ReviewVerdictResult {
 			`Only the busiest ${input.rowLimit.toLocaleString("en-US")} peer/service pairs per decision are listed; the totals count every pair`,
 		);
 	}
-	if (safe) {
-		const from = earliestEffective(rollups);
-		const to = latestEffective(rollups);
+	// A safe verdict always rests on covered windows: a scope with none
+	// fails on the no-traffic condition.
+	if (safe && effFrom && effTo) {
 		notes.push(
-			from && to
-				? `Observed for ${duration(Date.parse(to) - Date.parse(from))} (${extent(from, to)}); a peer that connects less often than that has not been seen`
-				: "No flows were stored in this range; no observed traffic stands behind this verdict",
+			`Observed for ${duration(Date.parse(effTo) - Date.parse(effFrom))} (${extent(effFrom, effTo)}); a peer that connects less often than that has not been seen`,
 		);
 	}
 
@@ -735,14 +756,30 @@ export function composeVerdict(input: VerdictInput): ReviewVerdictResult {
 		headline = "Not safe to enforce yet";
 		const incomplete = failing.some((c) => c.id === "evidence-gaps");
 		const unsynced = failing.some(
-			(c) => c.id !== "evidence-gaps" && c.id !== "would-block",
+			(c) =>
+				c.id !== "evidence-gaps" &&
+				c.id !== "would-block" &&
+				c.id !== "no-traffic",
 		);
-		sub =
-			incomplete && unsynced
-				? "No observed traffic would be dropped, but evidence is missing from part of this range and not every workload in scope is simulating on its latest policy."
-				: incomplete
-					? "No observed traffic would be dropped, but evidence is missing from part of this range: traffic in it may have gone unseen."
-					: "No observed traffic would be dropped, but not every workload in scope is simulating on its latest policy.";
+		if (failing.some((c) => c.id === "no-traffic")) {
+			// Nothing was observed, so "no observed traffic would be
+			// dropped" would be true of nothing.
+			sub =
+				incomplete && unsynced
+					? "Nothing was observed in simulation in this range, evidence is missing from part of it, and not every workload in scope is simulating on its latest policy."
+					: incomplete
+						? "Nothing was observed in simulation in this range, and evidence is missing from part of it: traffic in it may have gone unseen."
+						: unsynced
+							? "Nothing was observed in simulation in this range, and not every workload in scope is simulating on its latest policy."
+							: "Nothing was observed in simulation in this range, so the review cannot show what enforcing would drop.";
+		} else {
+			sub =
+				incomplete && unsynced
+					? "No observed traffic would be dropped, but evidence is missing from part of this range and not every workload in scope is simulating on its latest policy."
+					: incomplete
+						? "No observed traffic would be dropped, but evidence is missing from part of this range: traffic in it may have gone unseen."
+						: "No observed traffic would be dropped, but not every workload in scope is simulating on its latest policy.";
+		}
 	}
 	return { safe, headline, sub, failing, caveats, kpis };
 }

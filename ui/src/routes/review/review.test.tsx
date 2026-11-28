@@ -80,6 +80,9 @@ const checkout = ruleset(
 const ledgerRs = ruleset("ledger-inbound", { app: ["ledger"] });
 const retired = ruleset("retired", { app: ["old"] }, [], { enabled: false });
 
+const noTraffic =
+	"No traffic was recorded in simulation in this range — no observed traffic stands behind this verdict";
+
 // Each rollup the review reads, by scope, grouping, decision, and
 // service.
 function groupsFor(q: URLSearchParams): RollupGroup[] {
@@ -872,6 +875,35 @@ describe("promotion", () => {
 		).toBeInTheDocument();
 	});
 
+	it("gates the promotion of a scope with no observed traffic on the acknowledgment", async () => {
+		const { calls } = surface({
+			rollup: (_b, q) => ({ status: 200, json: emptyRollup(q) }),
+		});
+		const dialog = await openDialog("/simulation?ruleset=ledger-inbound");
+		expect(dialog).toHaveTextContent(`Not safe to enforce yet${noTraffic}`);
+		const submit = within(dialog).getByRole("button", {
+			name: "Enforce anyway on 2 workloads",
+		});
+		expect(submit).toHaveAttribute("aria-disabled", "true");
+		await userEvent.click(submit);
+		expect(calls.some((x) => x.path === "/api/v1/mode-changes")).toBe(false);
+		await userEvent.click(
+			within(dialog).getByRole("checkbox", {
+				name: "I understand this scope is not safe to enforce yet",
+			}),
+		);
+		await userEvent.click(submit);
+		await waitFor(() =>
+			expect(
+				calls.find((x) => x.path === "/api/v1/mode-changes")?.body,
+			).toEqual({
+				workload_ids: ["w-l1", "w-l2"],
+				target_mode: "enforced",
+				expected_match_count: 2,
+			}),
+		);
+	});
+
 	it("leaves a safe promotion unobstructed", async () => {
 		const { calls } = surface();
 		const dialog = await openDialog("/simulation?ruleset=ledger-inbound");
@@ -931,6 +963,38 @@ describe("simulation review states", () => {
 		expect(screen.getByTestId("review-extent")).toHaveTextContent(
 			"no windows in range",
 		);
+	});
+
+	it("does not call a scope with no observed traffic safe", async () => {
+		surface({ rollup: (_b, q) => ({ status: 200, json: emptyRollup(q) }) });
+		renderApp("/simulation?ruleset=ledger-inbound");
+		const b = await banner();
+		expect(
+			await within(b).findByRole("heading", {
+				name: "Not safe to enforce yet",
+			}),
+		).toBeInTheDocument();
+		expect(b).toHaveTextContent(
+			"Nothing was observed in simulation in this range, so the review cannot show what enforcing would drop.",
+		);
+		const caveats = within(b).getByRole("list", { name: "Caveats" });
+		expect(within(caveats).getAllByRole("listitem")).toHaveLength(1);
+		expect(caveats).toHaveTextContent(noTraffic);
+		expect(caveats).not.toHaveTextContent(/No flows were stored/);
+		expect(
+			screen.getByRole("button", { name: "Promote to enforced…" }),
+		).not.toHaveClass("bg-plate");
+		// The would-block take has nothing to show as clean: nothing was
+		// observed, so it states that instead.
+		await userEvent.click(
+			screen.getByRole("button", { name: /would block 0/ }),
+		);
+		expect(screen.queryByText("No would-block flows")).not.toBeInTheDocument();
+		expect(
+			screen.getByText(
+				/No inbound flows into this scope's simulating workloads were stored in the last 24h/,
+			),
+		).toBeInTheDocument();
 	});
 
 	it("shows a failed read with a retry", async () => {
