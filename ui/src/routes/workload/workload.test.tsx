@@ -527,8 +527,9 @@ describe("workload detail", () => {
 		};
 		surface({ workload: () => synced });
 		const { unmount } = renderApp(`/workloads/${db.id}`);
+		// The status line leads the first status card, under its title.
 		expect(await screen.findByTestId("status-card")).toHaveTextContent(
-			/^Synced — v42 applied/,
+			/^PolicySynced — v42 applied/,
 		);
 		unmount();
 
@@ -1572,7 +1573,7 @@ describe("retirement on the workload detail", () => {
 		}
 		const status = screen.getByTestId("status-card");
 		expect(status).toHaveTextContent(
-			/^As last recorded before the retirement; nothing here is live\./,
+			/^PolicyAs last recorded before the retirement; nothing here is live\./,
 		);
 		expect(within(status).getByTestId("credential-standing")).toHaveTextContent(
 			/^refused · workload retired/,

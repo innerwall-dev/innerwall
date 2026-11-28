@@ -64,15 +64,19 @@ export function StatusCard({
 	);
 	const credStated = alerts.includes("credential");
 
+	// Three cards in one row, as the design lays the Overview out: the
+	// policy the workload runs (with the apply error and Resend), the
+	// evidence its flows rest on, and its credential. The wrapper keeps
+	// the status-card hook across the three.
 	return (
-		<section
-			aria-labelledby="status-card-title"
-			className="flex flex-col gap-3 rounded-panel border border-hairline bg-card p-4"
+		<div
+			className="grid grid-cols-[repeat(auto-fit,minmax(230px,1fr))] items-start gap-4"
+			data-testid="status-card"
 		>
-			<h2 id="status-card-title" className="type-card-title text-primary">
-				Status
-			</h2>
-			<div className="flex flex-col gap-3" data-testid="status-card">
+			<section aria-labelledby="policy-card-title" className={card}>
+				<h2 id="policy-card-title" className={title}>
+					Policy
+				</h2>
 				{gone ? (
 					// The retirement is said once, above the cards; here only
 					// how to read what follows.
@@ -93,7 +97,7 @@ export function StatusCard({
 						<span>{headline(w)}</span>
 					</div>
 				)}
-				<dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-4 gap-y-2">
+				<dl className={rows}>
 					<dt className={field}>applied</dt>
 					<dd className={value}>{version(s.applied_version)}</dd>
 					<dt className={field}>rendered</dt>
@@ -125,14 +129,56 @@ export function StatusCard({
 							<span className="text-tertiary">none recorded</span>
 						)}
 					</dd>
+				</dl>
+				{s.error ? (
+					<div className="rounded-control border border-hairline bg-field-sunk px-2.5 py-2 type-mono-xs break-words whitespace-pre-wrap text-primary">
+						{s.error}
+					</div>
+				) : null}
+				{gone ? null : <Resend w={w} onReread={onReread} />}
+			</section>
+			<section aria-labelledby="evidence-card-title" className={card}>
+				<h2 id="evidence-card-title" className={title}>
+					Evidence
+				</h2>
+				<dl className={rows}>
 					<dt className={field}>flow report</dt>
 					<dd className={value} data-testid="last-flow-report">
 						{w.health.last_flow_report_at
 							? ago(w.health.last_flow_report_at)
 							: "none received"}
 					</dd>
-					<dt className={field}>enrolled</dt>
-					<dd className={value}>{ago(w.enrolled_at)}</dd>
+					<dt className={field}>dropped flows</dt>
+					<dd className={value}>
+						<Counted n={w.health.dropped_flow_records} quiet={gone} />
+						{w.health.dropped_flow_records > 0 ? (
+							<div className={note}>
+								Records the agent could not deliver; the flows shown are
+								incomplete.
+							</div>
+						) : null}
+					</dd>
+					<dt className={field}>overruns</dt>
+					<dd className={value}>
+						<Counted n={w.health.source_overruns} quiet={gone} />
+						{w.health.source_overruns > 0 ? (
+							<div className={note}>
+								Times the kernel dropped events because a flow source fell
+								behind, since the agent started.
+							</div>
+						) : null}
+					</dd>
+					<dt className={field}>evidence gaps</dt>
+					<dd className={value}>
+						<GapSummary gaps={gaps} range={range} />
+					</dd>
+				</dl>
+			</section>
+			<section aria-labelledby="credential-card-title" className={card}>
+				<h2 id="credential-card-title" className={title}>
+					Credential
+				</h2>
+				<dl className={cn(rows, "grid-cols-[72px_minmax(0,1fr)]")}>
 					<dt className={field}>credential</dt>
 					<dd className={value} data-testid="credential-standing">
 						{cred.tone === "ok" || cred.tone === "quiet" || credStated ? (
@@ -171,39 +217,9 @@ export function StatusCard({
 						) : null}
 					</dd>
 					<Issued w={w} />
-					<dt className={field}>dropped flows</dt>
-					<dd className={value}>
-						<Counted n={w.health.dropped_flow_records} quiet={gone} />
-						{w.health.dropped_flow_records > 0 ? (
-							<div className={note}>
-								Records the agent could not deliver; the flows shown are
-								incomplete.
-							</div>
-						) : null}
-					</dd>
-					<dt className={field}>overruns</dt>
-					<dd className={value}>
-						<Counted n={w.health.source_overruns} quiet={gone} />
-						{w.health.source_overruns > 0 ? (
-							<div className={note}>
-								Times the kernel dropped events because a flow source fell
-								behind, since the agent started.
-							</div>
-						) : null}
-					</dd>
-					<dt className={field}>evidence gaps</dt>
-					<dd className={value}>
-						<GapSummary gaps={gaps} range={range} />
-					</dd>
 				</dl>
-				{s.error ? (
-					<div className="rounded-control border border-hairline bg-field-sunk px-2.5 py-2 type-mono-xs break-words whitespace-pre-wrap text-primary">
-						{s.error}
-					</div>
-				) : null}
-				{gone ? null : <Resend w={w} onReread={onReread} />}
-			</div>
-		</section>
+			</section>
+		</div>
 	);
 }
 
@@ -228,7 +244,7 @@ function Issued({ w }: { w: Workload }) {
 				<>
 					<dt className={field}>issued</dt>
 					<dd className={value} data-testid="credential-issued">
-						<span className="break-all">{c.serial}</span>
+						<span className="break-all type-mono-sm">{c.serial}</span>
 						<div className={note}>
 							Last issued; expires{" "}
 							<time dateTime={c.expires_at} title={stamp(c.expires_at)}>
@@ -245,11 +261,11 @@ function Issued({ w }: { w: Workload }) {
 					<dd className={value} data-testid="credential-presented">
 						{p.diverged && p.inUse ? (
 							<SeverityNote level="alert" size="sm" className={dense}>
-								<span className="break-all">{p.serial}</span> · not the one
-								issued
+								<span className="break-all type-mono-sm">{p.serial}</span> · not
+								the one issued
 							</SeverityNote>
 						) : (
-							<span className="break-all">{p.serial}</span>
+							<span className="break-all type-mono-sm">{p.serial}</span>
 						)}
 						<div className={note}>
 							{p.inUse
@@ -348,11 +364,18 @@ function LastAck({ s }: { s: Workload["sync"] }) {
 
 // The card's field rows: the meta label beside a mono value, and the
 // caption that explains a value under it.
-const field = "type-meta-label text-tertiary";
-const value = "min-w-0 type-mono-sm break-words text-primary";
+const card =
+	"flex min-w-0 flex-col gap-3 rounded-panel border border-overlay bg-card px-[18px] pt-[18px] pb-5";
+const title = "type-meta-label font-normal text-tertiary";
+const rows =
+	"grid grid-cols-[96px_minmax(0,1fr)] items-baseline gap-x-0 gap-y-2.5";
+const field = "type-dense text-tertiary first-letter:uppercase";
+// Values in the sans with tabular figures, as the design sets them;
+// addresses, identities and serials stay mono.
+const value = "min-w-0 type-dense break-words text-primary tabular-nums";
 const note = "mt-0.5 type-caption text-tertiary";
 // A severity note in the card's 16px lines centres its glyph on them.
-const dense = "type-mono-sm";
+const dense = "type-dense";
 
 function headline(w: Workload): string {
 	const s = w.sync;

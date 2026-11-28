@@ -104,7 +104,7 @@ export function NewRuleset({
 							value={name}
 							onChange={(ev) => setName(ev.target.value)}
 							className={cn(
-								"h-control-md w-[320px] rounded-control border bg-field-sunk px-3 type-dialog-title font-mono text-primary placeholder:font-normal placeholder:text-tertiary",
+								"h-control-md w-[320px] rounded-control border bg-field-sunk px-3 type-dialog-title text-primary placeholder:font-normal placeholder:text-disabled",
 								at("name").length > 0
 									? "border-status-critical-fg"
 									: "border-strong",
@@ -133,7 +133,7 @@ export function NewRuleset({
 			</header>
 			<div
 				role="note"
-				className="flex gap-2.5 rounded-panel border border-hairline bg-card px-4 py-3 type-dense text-secondary"
+				className="flex gap-2.5 rounded-panel border border-overlay bg-card px-4 py-3 type-dense text-secondary"
 				data-testid="banner"
 			>
 				<Icon name="info" className="mt-0.5" />
@@ -147,7 +147,7 @@ export function NewRuleset({
 				<div
 					role="note"
 					data-testid="pair-context"
-					className="flex gap-2.5 rounded-panel border border-hairline bg-card px-4 py-3 type-dense text-secondary"
+					className="flex gap-2.5 rounded-panel border border-overlay bg-card px-4 py-3 type-dense text-secondary"
 				>
 					<Icon name="info" className="mt-0.5 shrink-0" />
 					<span>

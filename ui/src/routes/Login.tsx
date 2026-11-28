@@ -85,17 +85,17 @@ export function Login() {
 
 	return (
 		<div className="flex min-h-dvh items-center justify-center bg-canvas px-5 py-12 text-primary">
-			<div className="w-full max-w-[380px] rounded-panel border border-hairline bg-popover p-6">
+			<div className="w-full max-w-[360px] rounded-dialog border border-overlay bg-popover p-6 shadow-overlay">
 				<div className="flex items-center gap-2.5">
 					<Lockup />
-					<span className="ml-auto type-mono-xs text-tertiary">
+					<span className="ml-auto type-caption text-tertiary first-letter:uppercase">
 						operator console
 					</span>
 				</div>
 				{noPassword ? (
 					<FreshInstall onRetry={() => setProblem(null)} />
 				) : (
-					<form onSubmit={submit} className="mt-6" noValidate>
+					<form onSubmit={submit} className="mt-[22px]" noValidate>
 						<Label htmlFor={passwordId}>Operator password</Label>
 						<Input
 							id={passwordId}
@@ -108,7 +108,7 @@ export function Login() {
 							onChange={(e) => setPassword(e.target.value)}
 							aria-invalid={problem ? true : undefined}
 							aria-describedby={problem ? problemId : undefined}
-							className="mt-2 h-control-sm font-mono"
+							className="mt-[7px] h-control-sm font-mono"
 						/>
 						{problem ? (
 							<p id={problemId} role="alert" className="mt-2.5">
@@ -120,7 +120,7 @@ export function Login() {
 						<Button
 							type="submit"
 							size="block"
-							className="mt-5"
+							className="mt-3.5"
 							disabled={
 								submitting ||
 								password === "" ||
@@ -162,7 +162,7 @@ export function describe(
 function FreshInstall({ onRetry }: { onRetry: () => void }) {
 	return (
 		<div className="mt-6" data-testid="fresh-install">
-			<div className="flex gap-2.5 rounded-panel border border-hairline bg-card px-4 py-3">
+			<div className="flex gap-2.5 rounded-panel bg-wash-selected px-4 py-3">
 				<Icon name="info" className="mt-0.5" />
 				<div className="min-w-0 flex-1">
 					<h1 className="type-dense-strong text-primary">
@@ -184,7 +184,7 @@ function FreshInstall({ onRetry }: { onRetry: () => void }) {
 			<Button
 				variant="secondary"
 				size="block"
-				className="mt-5"
+				className="mt-3.5"
 				onClick={onRetry}
 			>
 				Sign in

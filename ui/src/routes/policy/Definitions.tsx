@@ -42,7 +42,7 @@ export const definitionViews = {
 
 const cell = "px-3 py-2 align-top type-dense first:pl-4 last:pr-4";
 const head =
-	"h-row-header whitespace-nowrap border-b border-hairline px-3 text-left type-meta-label text-tertiary first:pl-4 last:pr-4";
+	"h-row-header whitespace-nowrap border-b border-hairline px-3 text-left font-normal type-meta-label text-tertiary first:pl-4 last:pr-4";
 
 // Definitions is one kind of definition, listed: each service with its
 // entries, or each address group with its CIDRs, and the rules that
@@ -74,7 +74,7 @@ export function Definitions({
 		<>
 			<header className="flex flex-col gap-1.5">
 				<div className="flex flex-wrap items-center gap-x-8 gap-y-2">
-					<h1 className="type-section">{view.title}</h1>
+					<h1 className="type-page-title">{view.title}</h1>
 					<Button
 						className="ml-auto"
 						onClick={() => {
@@ -90,7 +90,7 @@ export function Definitions({
 			{notice ? <NoticeLine notice={notice} /> : null}
 			<section
 				aria-label={view.title}
-				className="flex shrink-0 flex-col overflow-hidden rounded-panel border border-hairline bg-card"
+				className="flex shrink-0 flex-col overflow-hidden rounded-panel border border-overlay bg-card"
 			>
 				<table
 					aria-label={view.title}

@@ -196,7 +196,7 @@ function Review({
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-			<div className="flex shrink-0 flex-col gap-4 px-5 pt-5">
+			<div className="flex shrink-0 flex-col gap-5 px-8 pt-5">
 				<div className="flex items-end gap-x-4 border-b border-hairline">
 					<RulesetTabs
 						rulesets={data.rulesets}
@@ -209,7 +209,13 @@ function Review({
 						<Button variant="secondary" asChild>
 							<Link to={editorPath(ruleset.name)}>Edit ruleset</Link>
 						</Button>
-						<Button variant="primary" onClick={() => setPromoting(true)}>
+						{/* The primary style is the view's next step only when the
+						    verdict is safe; while it is not, the button is neutral.
+						    Whether it can be pressed does not change. */}
+						<Button
+							variant={verdict.safe ? "primary" : "secondary"}
+							onClick={() => setPromoting(true)}
+						>
 							Promote to enforced…
 						</Button>
 					</div>
@@ -217,7 +223,7 @@ function Review({
 				<VerdictBanner verdict={verdict} />
 				<Totals verdict={verdict} />
 				<div className="flex flex-wrap items-center gap-2">
-					<fieldset className="m-0 mr-2 flex h-control-sm gap-5 border-0 p-0">
+					<fieldset className="m-0 mr-3 flex h-control-sm gap-6 border-0 p-0">
 						<legend className="sr-only">Take</legend>
 						{takes.map((t) => (
 							<button
@@ -231,10 +237,10 @@ function Review({
 									})
 								}
 								className={cn(
-									"cursor-pointer border-b-2 px-0.5 type-header-register focus-visible:rounded-inner focus-visible:focus-ring-inset",
+									"cursor-pointer type-header-register focus-visible:rounded-inner focus-visible:focus-ring-inset",
 									take === t.key
-										? "border-(--text-primary) text-primary"
-										: "border-transparent text-secondary hover:text-primary",
+										? "text-primary shadow-[inset_0_-1.5px_0_var(--text-primary)]"
+										: "text-tertiary hover:text-primary",
 								)}
 							>
 								{t.label}
@@ -275,8 +281,8 @@ function Review({
 					</div>
 				</div>
 			</div>
-			<div className="mt-4 flex min-h-0 flex-1 overflow-hidden border-t border-hairline">
-				<div className="min-w-0 flex-1 overflow-auto px-5 pt-4 pb-6">
+			<div className="mt-5 flex min-h-0 flex-1 gap-7 overflow-hidden px-8">
+				<div className="min-w-0 flex-1 overflow-auto pb-6">
 					{take === "grouped" ? (
 						<Grouped
 							rows={shown}
@@ -349,7 +355,7 @@ function RulesetTabs({
 			<span className="flex h-tab-row items-center type-meta-label text-tertiary">
 				Ruleset
 			</span>
-			<div className="flex flex-wrap gap-x-5" role="tablist">
+			<div className="flex flex-wrap gap-x-6" role="tablist">
 				{rulesets.map((rs) => {
 					const on = rs.name === current.name;
 					const c = counts[rs.id ?? rs.name];
@@ -361,17 +367,17 @@ function RulesetTabs({
 							aria-selected={on}
 							onClick={() => onPick(rs.name)}
 							className={cn(
-								"-mb-px inline-flex h-tab-row cursor-pointer items-center gap-2 border-b-2 px-0.5 type-mono-sm focus-visible:rounded-inner focus-visible:focus-ring-inset",
+								"inline-flex h-tab-row cursor-pointer items-center gap-2 type-header-register focus-visible:rounded-inner focus-visible:focus-ring-inset",
 								on
-									? "border-(--text-primary) text-primary"
-									: "border-transparent text-secondary hover:text-primary",
+									? "text-primary shadow-[inset_0_-1.5px_0_var(--text-primary)]"
+									: "text-tertiary hover:text-primary",
 							)}
 						>
 							<span>{rs.name}</span>
 							{c ? (
 								<span
 									className={cn(
-										"inline-flex items-center gap-1 type-mono-xs",
+										"inline-flex items-center gap-1 type-caption tabular-nums",
 										on ? "text-secondary" : "text-tertiary",
 									)}
 									title={`${c.pairs}${c.truncated ? "+" : ""} would-block peer/service pairs in range`}
@@ -411,7 +417,7 @@ function ScopeLine({
 	] as const;
 	return (
 		<div
-			className="h-tab-row min-w-0 flex-1 basis-0 truncate text-right type-caption leading-10 text-tertiary [&>span]:ml-2 [&>span:first-child]:ml-0"
+			className="h-tab-row min-w-0 flex-1 basis-0 truncate text-right type-caption leading-(--tab-row) text-tertiary [&>span]:ml-2 [&>span:first-child]:ml-0"
 			data-testid="scope-line"
 			title={`${scopeText(ruleset.scope)} · ${count(workloads.length)} in scope`}
 		>
@@ -442,71 +448,51 @@ function ScopeLine({
 
 // VerdictBanner is the composed verdict: the headline, what it rests on,
 // and a line for every condition the scope fails and every
-// qualification. It is tinted with the verdict's tone; its figures are
-// the tile row under it (Totals).
+// qualification. It takes no fill: the verdict's glyph carries its tone
+// beside a text-1 headline; its figures are the row under it (Totals).
 function VerdictBanner({ verdict }: { verdict: ReviewVerdictResult }) {
 	const safe = verdict.safe;
 	// The headline's glyph agrees with the banner's tone: allowed when safe,
 	// the error severity when not; the reasons carry their own glyphs.
 	const glyph: GlyphStatus = safe ? "allowed" : "error";
 	return (
-		<section
-			aria-label="Verdict"
-			className={cn(
-				"rounded-panel border px-4 py-3",
-				safe
-					? "border-status-ok-border bg-status-ok-bg"
-					: "border-status-critical-border bg-status-critical-bg",
-			)}
-		>
-			<div className="flex flex-wrap items-start gap-x-8 gap-y-3">
-				<div className="flex min-w-0 flex-1 basis-80 items-start gap-2.5">
-					<StatusGlyph
-						status={glyph}
-						size="lg"
-						className="mt-1.5 size-[18px]"
-					/>
-					<div className="flex min-w-0 flex-col gap-1">
-						<h1
-							className={cn(
-								"type-page-title",
-								safe ? "text-status-ok-fg" : "text-status-critical-fg",
-							)}
-						>
-							{verdict.headline}
-						</h1>
-						<p className="type-dense text-primary">{verdict.sub}</p>
-					</div>
-				</div>
+		<section aria-label="Verdict" className="flex items-start gap-3">
+			<StatusGlyph status={glyph} size="lg" className="mt-0.5 size-[18px]" />
+			<div className="flex min-w-0 flex-col gap-1.5">
+				<h1 className="type-dialog-title text-primary">{verdict.headline}</h1>
+				<p className="type-dense text-secondary">{verdict.sub}</p>
+				{verdict.caveats.length > 0 ? (
+					<ul
+						className="mt-0.5 flex flex-col gap-0.5 type-caption text-tertiary"
+						aria-label="Caveats"
+					>
+						{verdict.caveats.map((c) => (
+							<li key={c} className="flex items-start gap-1.5">
+								<StatusGlyph
+									status="alert"
+									size="sm"
+									className="mt-[calc((1lh-var(--glyph-sm))/2)]"
+								/>
+								<span className="min-w-0">{c}</span>
+							</li>
+						))}
+					</ul>
+				) : null}
 			</div>
-			{verdict.caveats.length > 0 ? (
-				<ul
-					className={cn(
-						"mt-3 flex flex-col gap-1.5 border-t pt-3 type-dense text-primary",
-						safe ? "border-status-ok-border" : "border-status-critical-border",
-					)}
-					aria-label="Caveats"
-				>
-					{verdict.caveats.map((c) => (
-						<li key={c} className="flex items-start gap-2">
-							<StatusGlyph status="alert" size="md" className="mt-[3px]" />
-							<span className="min-w-0">{c}</span>
-						</li>
-					))}
-				</ul>
-			) : null}
 		</section>
 	);
 }
 
-// Totals are the verdict's four figures in a row of tiles under the
-// banner: each a short mono label (with its glyph where the figure is a
-// decision) over a mono 24/28 figure.
+// Totals are the verdict's four figures as four equal cards in one row
+// under it (ruled in review): each card on the surface behind the
+// border, the 20/28 figure with tabular digits on top (a decision's
+// figure in its status text tone), its short label below in the mono
+// uppercase label style, with its glyph where the figure is a decision.
 function Totals({ verdict }: { verdict: ReviewVerdictResult }) {
 	const k = verdict.kpis;
 	return (
 		<dl
-			className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3"
+			className="m-0 grid grid-cols-2 gap-3 xl:grid-cols-4"
 			aria-label="Totals"
 		>
 			<Tile
@@ -517,6 +503,7 @@ function Totals({ verdict }: { verdict: ReviewVerdictResult }) {
 					</>
 				}
 				value={count(k.pairs)}
+				tone={k.pairs > 0 ? "text-status-warn-fg" : undefined}
 			/>
 			<Tile label="connections" value={short(k.connections)} />
 			<Tile
@@ -532,6 +519,7 @@ function Totals({ verdict }: { verdict: ReviewVerdictResult }) {
 					</>
 				}
 				value={count(k.allowedPairs)}
+				tone={k.allowedPairs > 0 ? "text-status-ok-fg" : undefined}
 			/>
 		</dl>
 	);
@@ -541,19 +529,23 @@ function Tile({
 	label,
 	value,
 	of,
+	tone,
 }: {
 	label: React.ReactNode;
 	value: string;
 	of?: string;
+	tone?: string;
 }) {
 	return (
-		<div className="flex flex-col-reverse gap-1 rounded-panel border border-hairline bg-card px-4 py-3">
-			<dt className="flex items-center gap-1.5 type-meta-label text-tertiary">
+		<div className="flex min-w-0 flex-col-reverse gap-1 rounded-panel border border-overlay bg-card px-4 py-3">
+			<dt className="flex min-w-0 items-center gap-1.5 type-meta-label text-tertiary">
 				{label}
 			</dt>
-			<dd className="m-0 flex items-baseline gap-2">
-				<span className="type-mono-figure text-primary">{value}</span>
-				{of ? <span className="type-mono-sm text-tertiary">{of}</span> : null}
+			<dd className="m-0 flex items-baseline gap-1.5">
+				<span className={cn("type-mono-figure", tone ?? "text-primary")}>
+					{value}
+				</span>
+				{of ? <span className="type-caption text-tertiary">{of}</span> : null}
 			</dd>
 		</div>
 	);

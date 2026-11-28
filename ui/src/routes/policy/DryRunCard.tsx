@@ -49,7 +49,7 @@ export function DryRunCard({
 	return (
 		<section
 			aria-label="Dry run"
-			className="flex flex-col gap-3 rounded-panel border border-hairline bg-card p-4"
+			className="flex flex-col gap-3 rounded-panel border border-overlay bg-card p-4"
 		>
 			<div className="flex items-center gap-3">
 				<Eyebrow>Dry run — what saving these changes would change</Eyebrow>
@@ -105,7 +105,7 @@ function Result({
 				<div
 					role="status"
 					data-testid="dryrun-freshness"
-					className="flex items-start gap-1.5 rounded-panel border border-status-warn-border bg-status-warn-bg px-3 py-2.5 type-dense"
+					className="flex items-start gap-1.5 rounded-panel border border-status-warn-mark bg-wash-selected px-3.5 py-3 type-dense"
 				>
 					<StatusGlyph status="alert" className="mt-[3px]" />
 					<span>

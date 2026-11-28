@@ -36,7 +36,15 @@ const kindLabel: Record<PeerGroup["kind"], string> = {
 // PeerKind is the tag beside a peer: solid for workloads the scope's
 // policy can name by label, dashed for peers that are not workloads. A
 // note the tag says on every row of its kind is its tooltip instead.
-export function PeerKind({ peer, note }: { peer: PeerGroup; note?: string }) {
+export function PeerKind({
+	peer,
+	note,
+	className,
+}: {
+	peer: PeerGroup;
+	note?: string;
+	className?: string;
+}) {
 	const managed = peer.kind === "workloads" || peer.kind === "unlabeled";
 	return (
 		<span
@@ -44,9 +52,10 @@ export function PeerKind({ peer, note }: { peer: PeerGroup; note?: string }) {
 			className={cn(
 				"inline-flex h-5 shrink-0 items-center whitespace-nowrap rounded-inner border border-strong px-1.5 type-control text-secondary",
 				managed ? "border-solid" : "border-dashed",
+				className,
 			)}
 		>
-			{kindLabel[peer.kind]}
+			<span className="min-w-0 truncate">{kindLabel[peer.kind]}</span>
 		</span>
 	);
 }
@@ -94,11 +103,15 @@ const cellFill = {
 
 // The table pattern every take shares: a bordered panel, a subtle
 // header band, dense rows on subtle hairlines.
-const panel = "overflow-x-auto rounded-panel border border-hairline";
+const panel = "overflow-x-auto rounded-panel border border-overlay bg-card";
 const th =
-	"h-row-header whitespace-nowrap border-b border-hairline px-2.5 text-left type-meta-label text-tertiary first:pl-3 last:pr-3";
+	"h-row-header whitespace-nowrap border-b border-hairline px-2 text-left font-normal type-meta-label text-tertiary first:pl-4 last:pr-4";
 const td =
-	"h-row-pitch border-b border-hairline px-2.5 py-2 type-dense first:pl-3 last:pr-3";
+	"h-row-pitch border-b border-hairline px-2 py-2 type-dense first:pl-4 last:pr-4";
+// The selected row: the selected fill, and a 2px text-1 mark at its
+// left edge.
+const selectedRow =
+	"bg-wash-selected [&>td:first-child]:shadow-[inset_2px_0_0_var(--text-primary)]";
 
 export function Grouped({
 	rows,
@@ -124,7 +137,7 @@ export function Grouped({
 				<thead>
 					<tr>
 						<th className={th}>Decision</th>
-						<th className={cn(th, "min-w-[200px]")}>Peer</th>
+						<th className={cn(th, "min-w-[160px]")}>Peer</th>
 						<th className={th}>Service</th>
 						<th className={th}>Rule</th>
 						<th className={cn(th, "text-right")}>Workloads</th>
@@ -143,7 +156,7 @@ export function Grouped({
 								onClick={() => onSelect(on ? null : r.id)}
 								className={cn(
 									"h-row-pitch cursor-pointer [&:last-child>td]:border-b-0",
-									on ? "bg-wash-selected" : "hover:bg-wash-hover",
+									on ? selectedRow : "hover:bg-wash-hover",
 								)}
 							>
 								<td className={td}>
@@ -153,8 +166,9 @@ export function Grouped({
 									{/* One line: the peer, its kind tag, and its note; a note
 									    the same on every row of a kind (an unknown address) is
 									    the tag's tooltip. The note gives way first, then the
-									    peer truncates (its tooltip is the whole of it); the tag
-									    is never cut and nothing crosses into the next column. */}
+									    tag shrinks, and the peer's name truncates last (its
+									    tooltip is the whole of it); nothing crosses into the
+									    next column. */}
 									<div className="flex min-w-0 items-center gap-2">
 										<button
 											type="button"
@@ -164,7 +178,7 @@ export function Grouped({
 												onSelect(on ? null : r.id);
 											}}
 											title={r.peer.full ?? r.peer.title}
-											className="min-w-0 cursor-pointer truncate text-left type-mono-data font-medium text-primary"
+											className="max-w-full flex-none cursor-pointer truncate text-left type-dense text-primary"
 										>
 											{r.peer.title}
 										</button>
@@ -175,6 +189,7 @@ export function Grouped({
 													? peerNote(r.peer, r.members.length)
 													: undefined
 											}
+											className="min-w-7 shrink"
 										/>
 										{r.peer.kind === "address" ? null : (
 											<span
@@ -205,9 +220,9 @@ export function Grouped({
 									{workloadsText(r)}
 								</td>
 								<td className={td}>
-									<div className="flex items-center justify-end gap-2">
+									<div className="flex items-center justify-end gap-1.5">
 										<div
-											className="h-1 w-12 shrink-0 overflow-hidden rounded-full bg-wash-selected"
+											className="h-1 w-8 shrink-0 overflow-hidden rounded-full bg-wash-selected"
 											aria-hidden="true"
 										>
 											<div
@@ -451,7 +466,7 @@ export function Recency({ rows, range, selected, onSelect }: TakeProps) {
 												onClick={() => onSelect(on ? null : r.id)}
 												className={cn(
 													"flex min-h-row-pitch w-full cursor-pointer flex-wrap items-center gap-x-2.5 gap-y-0.5 px-3 py-2 text-left type-dense",
-													on ? "bg-wash-selected" : "hover:bg-wash-hover",
+													on ? selectedRow : "hover:bg-wash-hover",
 												)}
 											>
 												<span className="w-[104px] shrink-0">

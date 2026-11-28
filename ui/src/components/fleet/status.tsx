@@ -6,8 +6,8 @@ import {
 	type HealthStatus,
 	StatusBadge,
 	StatusGlyph,
+	textTone,
 	tint,
-	tone,
 } from "@/components/StatusGlyph";
 import { labelOutsideGrammar, shownLabelText } from "@/lib/labels";
 import { cn } from "@/lib/utils";
@@ -45,7 +45,7 @@ const health = (status: HealthStatus, label: string) => ({
 	status,
 	glyph: <StatusGlyph status={status} size="sm" />,
 	label,
-	cls: tone[status],
+	cls: textTone[status],
 });
 
 export const syncStates: Record<
@@ -62,8 +62,8 @@ const flow = (status: FlowStatus, label: string) => ({
 	status,
 	glyph: <StatusGlyph status={status} size="sm" />,
 	label,
-	cls: cn(tone[status], tint[status]),
-	text: tone[status],
+	cls: cn(textTone[status], tint[status]),
+	text: textTone[status],
 });
 
 export const verdicts: Record<
@@ -122,10 +122,10 @@ export function VerdictPill({
 	);
 }
 
-// LabelChip is one `key=value` label, always mono and never truncated
-// mid-key: the key in text-tertiary, the value in text-primary, 20px
-// on the overlay surface behind a hairline. The input form sits inside an editable
-// field, on its stronger border. A label outside the label grammar
+// LabelChip is one `key=value` label, never truncated mid-key: a 20px
+// pill on the border with no fill, the key in text 3 and the value in
+// text 2. The input form sits inside an editable field, on the selected
+// fill. A label outside the label grammar
 // (ADR-0022), which only one stored before it can be, is drawn quoted on
 // the warning tone and says why, so a value holding a space or an "="
 // never reads as two healthy labels.
@@ -152,12 +152,12 @@ export function LabelChip({
 					: undefined
 			}
 			className={cn(
-				"inline-flex h-label-chip items-center whitespace-nowrap rounded-inner border px-1.5 type-mono-sm text-primary",
+				"inline-flex h-label-chip items-center whitespace-nowrap rounded-full border px-2 type-caption text-secondary",
 				outside
-					? "border-dashed border-status-warn-border bg-status-warn-bg"
+					? "border-dashed border-status-warn-mark"
 					: cn(
-							"bg-overlay",
-							size === "input" ? "border-strong" : "border-hairline",
+							"border-overlay",
+							size === "input" ? "bg-overlay" : "bg-transparent",
 						),
 			)}
 		>
@@ -174,9 +174,9 @@ export function LabelChip({
 }
 
 // FilterChip is a toggle in a chip row: the fleet's sync states, the
-// review's decisions. It is a secondary control: the raised chooser on
-// the overlay border, whose hover strengthens the border; pressed, it
-// takes the selected wash on the stronger border.
+// review's decisions. It is a pill on the border with the control fill,
+// whose hover strengthens the border; pressed, it takes the selected
+// fill and text 1.
 export function FilterChip({
 	on,
 	glyph,
@@ -196,7 +196,7 @@ export function FilterChip({
 			aria-pressed={on}
 			onClick={onClick}
 			className={cn(
-				"inline-flex h-control cursor-pointer items-center gap-1.5 rounded-control border px-2.5 type-control",
+				"inline-flex h-[26px] cursor-pointer items-center gap-1.5 rounded-full border px-2.5 type-control focus-visible:focus-ring",
 				on
 					? "border-control-hover bg-wash-selected text-primary"
 					: "border-overlay bg-control-raised text-secondary hover:border-control-hover hover:text-primary",
@@ -205,7 +205,7 @@ export function FilterChip({
 			{glyph}
 			<span>{label}</span>
 			{count !== undefined ? (
-				<span className="type-mono-xs text-tertiary">{count}</span>
+				<span className="type-caption text-tertiary">{count}</span>
 			) : null}
 		</button>
 	);
@@ -253,7 +253,7 @@ export function ChoiceChips<T extends string>({
 				<label
 					key={o.value}
 					className={cn(
-						"inline-flex h-control cursor-pointer items-center gap-1.5 rounded-control border px-2.5 type-control has-[:focus-visible]:focus-ring",
+						"inline-flex h-[26px] cursor-pointer items-center gap-1.5 rounded-full border px-2.5 type-control has-[:focus-visible]:focus-ring",
 						value === o.value
 							? "border-control-hover bg-wash-selected text-primary"
 							: "border-overlay bg-control-raised text-secondary hover:border-control-hover hover:text-primary",

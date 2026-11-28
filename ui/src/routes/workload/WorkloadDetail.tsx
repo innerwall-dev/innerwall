@@ -99,14 +99,14 @@ export function WorkloadDetail() {
 
 	if (wl.status === "loading") {
 		return (
-			<div className="px-5">
+			<div className="px-8">
 				<LoadingRow what="workload" />
 			</div>
 		);
 	}
 	if (wl.status === "error") {
 		return (
-			<div className="px-5 pt-5">
+			<div className="px-8 pt-5">
 				{wl.error.type === ProblemType.notFound ? (
 					<EmptyState title="No such workload" icon="server" width={480}>
 						No workload is enrolled with this identity.{" "}
@@ -183,7 +183,7 @@ export function WorkloadDetail() {
 				<ListeningTab w={w} range={range} onRange={onRange} policy={rendered} />
 			) : null}
 			{tab === "policy" ? (
-				<div className="min-h-0 flex-1 overflow-auto px-5 pt-5 pb-6">
+				<div className="min-h-0 flex-1 overflow-auto px-8 pt-5 pb-6">
 					<PolicyTab w={w} policy={policy} />
 				</div>
 			) : null}
@@ -256,12 +256,12 @@ function Identity({
 		<div className="flex min-w-0 flex-1 items-center gap-3">
 			<nav
 				aria-label="Breadcrumb"
-				className="flex min-w-0 items-center gap-1.5 text-secondary"
+				className="flex min-w-0 items-center gap-2.5 text-tertiary"
 			>
 				<Link to="/workloads" className="hover:text-primary">
 					Workloads
 				</Link>
-				<span className="text-tertiary" aria-hidden="true">
+				<span className="text-disabled" aria-hidden="true">
 					/
 				</span>
 				{gone ? (
@@ -276,7 +276,9 @@ function Identity({
 						className="ml-0.5"
 					/>
 				)}
-				<h1 className="min-w-16 truncate text-primary">{w.hostname}</h1>
+				<h1 className="min-w-16 truncate font-normal text-primary">
+					{w.hostname}
+				</h1>
 			</nav>
 			<ModePill mode={w.mode} />
 			{gone ? (

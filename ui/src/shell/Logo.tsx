@@ -4,8 +4,8 @@ import { cn } from "@/lib/utils";
 // outlined square (the frame rect at x 1, y 1, 20 by 20, rx 3, with a 2
 // stroke) holding a square-cornered bar (x 12, y 6, 4 by 10) that stands
 // right of centre, a wall inside the room. The frame is
-// logo-outline and the bar logo-fill, aliases of text-secondary and
-// text-primary in both themes: the mark is gray, never a status or
+// logo-outline and the bar logo-fill, aliases of text 3 and text 1 in
+// both themes: the mark is gray, never a status or
 // accent color. At its native 22px (logo-size) every edge lands on a
 // whole pixel, so the mark is never drawn at other sizes.
 export function LogoMark() {
@@ -43,11 +43,17 @@ export function Lockup() {
 	);
 }
 
-// Wordmark is the console's name as the lockup sets it: the header
-// register, 13/20 at 500, in text-primary.
+// Wordmark is the console's name as the lockup sets it: the display
+// face at 14/20 and 600 (the one weight above 500 in the console), in
+// text 1.
 export function Wordmark({ className }: { className?: string }) {
 	return (
-		<span className={cn("type-header-register text-primary", className)}>
+		<span
+			className={cn(
+				"font-display text-[14px] leading-5 font-semibold text-primary",
+				className,
+			)}
+		>
 			Innerwall
 		</span>
 	);

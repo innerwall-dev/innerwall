@@ -1,5 +1,14 @@
 # Filter panel
 
+## v4 (locked 2026-11-27, INN-174)
+
+What v4 changes; the anatomy below stands where this says nothing.
+
+- **Panel.** *Ruled in review, 2026-11-27; not in the designs.* A full-height 232px secondary rail directly right of the sidebar, as the policy editor's ruleset rail is: the ground, the subtle rule on its right, no card border or radius, its own vertical scroll. The table area takes the rest of the width at the 32px gutter. At narrow widths it behaves as it did before (it stays beside the table).
+- **Head.** "Filters" in `dense-strong` with Reset at its right; the search field and the range picker below it, both 28px on the control fill behind the border; 16px padding.
+- **Groups.** Each group sits under the subtle rule rather than in its own box. Its title is the mono eyebrow (`meta-label`, text 3) on a 28px row with the active count and the chevron; its rows are 28px with the checkbox, the glyph where there is one, the value, and the count as a caption.
+- **Result line.** Above the table, not in a band: the repo's words ("*K* match ·", "*N* of *M* loaded", "filter counts cover loaded rows"), unchanged.
+
 - **Where:** Inbound flows and Listening services only. It sits left of the table.
 - **Where not:** Overview and Applied policy have no panel.
 - **Filtering:** client-side over columns the console already serves.

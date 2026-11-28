@@ -1,5 +1,15 @@
 # Sidebar (E1 order)
 
+## v4 (locked 2026-11-27, INN-174)
+
+What v4 changes; the spec below stands where this says nothing.
+
+- **Placement.** The sidebar sits under the console's full-width 48px header (structural change 1). The brand row moves into the header; only the mobile sheet, which covers the header, repeats the mark and the wordmark.
+- **Rail.** On the ground (`surface-canvas`) behind the subtle rule (`border-hairline`). Widths: `sidebar-width` **208** (ruled in review), `sidebar-width-collapsed` **48**, `sidebar-sheet` 280.
+- **Items.** 30px (`sidebar-item`), 8px in from the rail, a 6px radius, the 16px icon 10px from the label; text 2 at rest; hover and the **current entry** on the selected fill with text 1. The accent pill is retired: selection is neutral. Collapsed, each item is a 32px square.
+- **Counts.** Plain caption figures at the item's right in text 3; the Workloads attention count in the warning text tone.
+- **Footer.** Only the fleet sync block (on a fresh install, as before) and the collapse toggle at the very foot: the icon alone in text 3, expanded or collapsed, with its accessible name and a tooltip saying the action ("Collapse sidebar" / "Expand sidebar"; ruled in review). The account button below and its popover move to the header (see `HeaderStrip-and-Tabs.md`). Behaviour is unchanged: cookie persistence, ⌘B, the mobile sheet.
+
 The console's only global navigation. It is shadcn `Sidebar` with `collapsible="icon"`. The base behavior is unchanged: cookie persistence, ⌘B, and a mobile sheet below 768px. **Collapse is a user action only. Nothing auto-collapses, on any page (S7).**
 
 ## Anatomy

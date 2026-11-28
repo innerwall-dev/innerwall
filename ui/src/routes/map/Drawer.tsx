@@ -60,7 +60,7 @@ export function Drawer({
 			aria-label={
 				selection.kind === "edge" ? "Traffic between groups" : "Group"
 			}
-			className="flex w-[380px] shrink-0 flex-col overflow-hidden border-l border-hairline bg-popover"
+			className="absolute top-3 right-3 bottom-12 z-10 flex w-[344px] flex-col overflow-hidden rounded-panel border border-overlay bg-popover shadow-sheet"
 		>
 			{selection.kind === "edge" ? (
 				<EdgeDrawer
@@ -98,7 +98,7 @@ function Header({
 	children: React.ReactNode;
 }) {
 	return (
-		<div className="flex flex-col gap-2.5 border-b border-hairline px-4 pt-3 pb-4">
+		<div className="flex flex-col gap-2 border-b border-hairline px-5 pt-4 pb-[18px]">
 			<div className="flex items-center gap-2">
 				<Eyebrow>{eyebrow}</Eyebrow>
 				<Button
@@ -106,7 +106,7 @@ function Header({
 					size="sm"
 					onClick={onClose}
 					aria-label="Close"
-					className="-mr-1.5 ml-auto w-control-sm px-0"
+					className="-mr-1.5 ml-auto size-6 px-0 text-tertiary"
 				>
 					<Icon name="x" />
 				</Button>
@@ -372,9 +372,9 @@ function EdgeDrawer({
 				</div>
 				<p className="type-dense text-secondary">{note(e, dst)}</p>
 			</Header>
-			<div className="flex flex-col gap-2 border-b border-hairline px-4 py-4">
+			<div className="flex flex-col gap-2 border-b border-hairline px-5 py-[18px]">
 				<Eyebrow>Draw a rule from this</Eyebrow>
-				<dl className="flex flex-col gap-1.5 rounded-panel border border-hairline bg-canvas px-3 py-2.5 type-dense">
+				<dl className="flex flex-col gap-1.5 rounded-panel border border-overlay bg-canvas px-3 py-2.5 type-dense">
 					<div className="flex gap-2">
 						<dt className="w-[60px] shrink-0 type-control text-tertiary">
 							ruleset
@@ -450,13 +450,13 @@ function EdgeDrawer({
 					</span>
 				</div>
 			</div>
-			<div className="px-4 pt-4 pb-1.5">
+			<div className="px-5 pt-[18px] pb-1.5">
 				<Eyebrow>
 					Workload pairs on this edge ·{" "}
 					<span className="type-mono-xs">{e.pairs.length}</span>
 				</Eyebrow>
 			</div>
-			<div className="min-h-0 flex-1 overflow-auto px-4 pb-4">
+			<div className="min-h-0 flex-1 overflow-auto px-5 pb-5">
 				<ul className="flex flex-col">
 					{e.pairs.map((p) => {
 						const k = pairKey(p);
@@ -584,7 +584,7 @@ function PairFlows({
 	}
 	return (
 		<div className="flex flex-col gap-2 pt-1 pb-3" data-testid="pair-flows">
-			<div className="overflow-hidden rounded-panel border border-hairline">
+			<div className="overflow-hidden rounded-panel border border-overlay">
 				<table className="w-full border-collapse">
 					<caption className="sr-only">Stored windows of this pair</caption>
 					<thead>
@@ -730,7 +730,7 @@ function NodeDrawer({
 					</p>
 				) : null}
 			</Header>
-			<div className="min-h-0 flex-1 overflow-auto px-4 pb-4">
+			<div className="min-h-0 flex-1 overflow-auto px-5 pb-5">
 				{inbound.length > 0 ? (
 					<section className="pt-4">
 						<Eyebrow className="pb-1.5">Inbound · {inbound.length}</Eyebrow>

@@ -128,7 +128,7 @@ export function RetireDialog({
 							</span>
 						</div>
 					)}
-					<ul className="flex list-disc flex-col gap-1.5 pl-5 type-dense text-primary">
+					<ul className="m-0 flex list-none flex-col rounded-panel bg-wash-selected p-0 type-dense text-secondary [&>li]:border-t [&>li]:border-hairline [&>li]:px-3.5 [&>li]:py-2.5 [&>li:first-child]:border-t-0">
 						<li>
 							Its addresses leave every peer set at once; each workload whose
 							policy changes advances a version.
@@ -157,10 +157,10 @@ export function RetireDialog({
 						<div className="flex flex-col gap-1.5">
 							<label
 								className={cn(
-									"flex cursor-pointer items-start gap-2.5 rounded-panel border bg-card px-3 py-2.5 type-dense text-primary",
+									"flex cursor-pointer items-start gap-2.5 rounded-panel border px-3 py-2.5 type-dense text-primary",
 									nudged && !acknowledged
-										? "border-status-warn-border"
-										: "border-hairline",
+										? "border-status-warn-mark"
+										: "border-overlay",
 								)}
 							>
 								<input
@@ -239,7 +239,7 @@ function Outcomes({
 }) {
 	return (
 		<ul
-			className="flex flex-col overflow-hidden rounded-panel border border-hairline bg-canvas type-dense"
+			className="flex flex-col overflow-hidden rounded-panel border border-overlay type-dense"
 			data-testid="retire-outcomes"
 		>
 			{workloads.map((w) => {

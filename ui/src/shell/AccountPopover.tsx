@@ -7,33 +7,28 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
-import { useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { type Theme, useTheme } from "@/theme/ThemeProvider";
 
-// Avatar is the operator's disc: the user icon in an avatar-sized
-// circle on the overlay surface behind the overlay border.
-function Avatar() {
-	return (
-		<span
-			className="flex size-avatar shrink-0 items-center justify-center rounded-full border border-overlay bg-overlay"
-			aria-hidden="true"
-		>
-			<Icon name="user" />
-		</span>
-	);
+// initials are the operator's display name as the avatar draws it: the
+// first letter of its first and last words, or of its one word.
+export function initials(name: string): string {
+	const words = name.split(/[\s.]+/).filter((w) => w.length > 0);
+	if (words.length === 0) return "?";
+	const first = words[0].charAt(0);
+	const last = words.length > 1 ? words[words.length - 1].charAt(0) : "";
+	return `${first}${last}`.toUpperCase();
 }
 
-// AccountPopover is the sidebar footer's operator entry: the avatar,
-// the display name and site label, and the popover with the identity,
-// the control plane's version, the theme toggle, and sign out. It opens
-// upward from the expanded rail and to the right of the collapsed one.
+// AccountPopover is the operator's entry at the header's far right: a
+// 26px avatar (initials on the selected fill behind the border) whose
+// popover holds the identity, the control plane's version, the theme
+// toggle, and sign out. It opens below the avatar, anchored to its
+// right edge.
 export function AccountPopover() {
 	const me = useMe();
 	const { logout } = useSession();
 	const { theme, setTheme } = useTheme();
-	const { state, isMobile } = useSidebar();
-	const collapsed = state === "collapsed" && !isMobile;
 	const navigate = useNavigate();
 	const [open, setOpen] = useState(false);
 	const [signingOut, setSigningOut] = useState(false);
@@ -62,44 +57,24 @@ export function AccountPopover() {
 				<button
 					type="button"
 					aria-label="Account"
-					className={cn(
-						"flex h-11 w-full cursor-pointer items-center gap-2 rounded-control px-[6px] text-left hover:bg-wash-hover aria-expanded:bg-wash-hover",
-						"group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:px-[5px]",
-					)}
+					title={name}
+					className="flex size-avatar shrink-0 cursor-pointer items-center justify-center rounded-full border border-overlay bg-overlay text-[10.5px] leading-none font-medium text-secondary hover:border-control-hover hover:text-primary focus-visible:focus-ring aria-expanded:border-control-hover"
 				>
-					<Avatar />
-					<span className="flex min-w-0 flex-1 flex-col group-data-[collapsible=icon]:hidden">
-						<span className="truncate type-header-register text-primary">
-							{name}
-						</span>
-						{me.site ? (
-							<span
-								className="truncate type-caption text-tertiary"
-								data-testid="site-label"
-							>
-								{me.site}
-							</span>
-						) : null}
-					</span>
-					<Icon
-						name="chevrons-up-down"
-						className="group-data-[collapsible=icon]:hidden"
-					/>
+					<span aria-hidden="true">{initials(name)}</span>
 				</button>
 			</PopoverTrigger>
 			<PopoverContent
-				className="flex w-popover-account flex-col p-1"
-				side={collapsed ? "right" : "top"}
-				align={collapsed ? "end" : "start"}
-				sideOffset={collapsed ? 12 : 4}
+				className="flex w-popover-account flex-col rounded-dialog p-0"
+				side="bottom"
+				align="end"
+				sideOffset={8}
+				collisionPadding={8}
 				aria-label="Account"
 			>
-				<div className="mb-1 flex flex-col border-b border-hairline p-2">
-					<div className="truncate type-header-register text-primary">
-						{name}
-					</div>
+				<div className="flex flex-col gap-0.5 border-b border-hairline px-4 py-3.5">
+					<div className="truncate type-dense-strong text-primary">{name}</div>
 					<div
-						className="truncate type-caption text-tertiary"
+						className="truncate type-caption text-secondary"
 						data-testid="identity-line"
 					>
 						{identity}
@@ -114,13 +89,13 @@ export function AccountPopover() {
 						</div>
 					) : null}
 				</div>
-				<div className="flex min-h-control-sm items-center justify-between gap-2 px-2 type-dense text-secondary">
+				<div className="flex items-center justify-between gap-2 border-b border-hairline px-4 py-2.5 type-dense text-secondary">
 					<span>Theme</span>
 					<ThemeToggle theme={theme} onChange={setTheme} />
 				</div>
 				<button
 					type="button"
-					className="mt-1 flex h-control-sm cursor-pointer items-center gap-2 rounded-control border-t border-hairline px-2 text-left type-dense text-primary hover:bg-wash-hover disabled:cursor-default disabled:text-disabled"
+					className="flex h-[38px] cursor-pointer items-center gap-2 rounded-b-dialog px-4 text-left type-dense text-primary hover:bg-wash-hover focus-visible:focus-ring-inset disabled:cursor-default disabled:text-disabled"
 					onClick={signOut}
 					disabled={signingOut}
 				>
@@ -129,7 +104,7 @@ export function AccountPopover() {
 				</button>
 				{failure ? (
 					<p
-						className="px-2 pb-1 type-caption text-status-critical-fg"
+						className="px-4 pb-2 type-caption text-status-critical-fg"
 						role="alert"
 					>
 						{failure}
@@ -155,16 +130,16 @@ function ThemeToggle({
 		{ value: "dark", label: "Dark", icon: "moon" },
 	];
 	return (
-		<fieldset className="flex gap-0.5 rounded-control border border-overlay bg-field-sunk p-0.5">
+		<fieldset className="flex gap-0.5 rounded-[7px] border-0 bg-overlay p-0.5">
 			<legend className="sr-only">Theme</legend>
 			{options.map((o) => (
 				<label
 					key={o.value}
 					className={cn(
-						"inline-flex h-5.5 cursor-pointer items-center gap-1 rounded-inner border px-2 type-control has-[:focus-visible]:focus-ring",
+						"inline-flex h-5.5 cursor-pointer items-center gap-1 rounded-[5px] border px-2.5 type-control has-[:focus-visible]:focus-ring",
 						theme === o.value
 							? "border-overlay bg-control-raised text-primary [&_[data-slot=icon]]:text-icon-active"
-							: "border-transparent text-secondary hover:text-primary",
+							: "border-transparent text-tertiary hover:text-primary",
 					)}
 				>
 					<input

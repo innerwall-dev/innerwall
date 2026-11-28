@@ -11,8 +11,8 @@ import type { EvidenceGaps, Workload } from "@/api/schema";
 import {
 	type GlyphStatus,
 	StatusGlyph,
+	textTone,
 	tint,
-	tone,
 } from "@/components/StatusGlyph";
 import { Button } from "@/components/ui/button";
 import {
@@ -237,7 +237,7 @@ function clockSkew(w: Workload, range: ScreenRange): ReactNode | null {
 function OfflineResend() {
 	const reason = useId();
 	return (
-		<span className="flex flex-col items-end gap-1">
+		<span className="flex flex-col items-end gap-1" data-slot="offline-resend">
 			<Button
 				variant="secondary"
 				size="sm"
@@ -261,13 +261,22 @@ function OfflineResend() {
 const offlineRefusal =
 	"Refused while the agent is offline; it is sent a fresh snapshot whenever it next connects.";
 
-// Lead is a state's glyph and word in its tone, at 500.
-function Lead({ s, className }: { s: ExceptionalState; className?: string }) {
+// Lead is a state's glyph and word at 500: the word in its tone, or in
+// text 1 beside the toned glyph (plain) where a card already frames it.
+function Lead({
+	s,
+	plain = false,
+	className,
+}: {
+	s: ExceptionalState;
+	plain?: boolean;
+	className?: string;
+}) {
 	return (
 		<span
 			className={cn(
 				"inline-flex items-center gap-1.5 font-medium",
-				tone[s.glyph],
+				plain ? "text-primary" : textTone[s.glyph],
 				className,
 			)}
 		>
@@ -344,9 +353,9 @@ export function StateChips({ states }: { states: ExceptionalState[] }) {
 	const hidden = states.slice(fit);
 	const chip = (s: { glyph: GlyphStatus }) =>
 		cn(
-			"inline-flex h-chip shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-inner border px-2 type-control hover:shadow-[inset_0_0_0_1px_var(--border-control-hover)] aria-expanded:focus-ring",
+			"inline-flex h-chip shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border px-2 type-control hover:shadow-[inset_0_0_0_1px_var(--border-control-hover)] aria-expanded:focus-ring",
 			tint[s.glyph],
-			tone[s.glyph],
+			textTone[s.glyph],
 		);
 	return (
 		<div
@@ -418,9 +427,9 @@ export function StateChips({ states }: { states: ExceptionalState[] }) {
 }
 
 // AlertCards are the active states inline at the top of the Overview,
-// one card per state in severity order: the tint and the status
-// hairline, the glyph and lead word in the tone, the sentence in
-// text-primary, and the action on the right.
+// one card per state in severity order: a bordered card on the surface,
+// the toned glyph beside the lead word in text 1, the sentence in text 2,
+// and the action under it, as the design places it.
 export function AlertCards({ states }: { states: ExceptionalState[] }) {
 	if (states.length === 0) return null;
 	return (
@@ -431,15 +440,18 @@ export function AlertCards({ states }: { states: ExceptionalState[] }) {
 					aria-label={s.word}
 					data-testid={`alert-${s.key}`}
 					className={cn(
-						"flex items-start gap-3 rounded-panel border px-3.5 py-2.5 type-dense",
-						tint[s.glyph],
+						"flex items-start gap-3 rounded-panel border border-overlay bg-card px-5 py-[18px] type-dense",
 					)}
 				>
-					<div className="flex min-w-0 flex-1 flex-col gap-0.5">
-						<Lead s={s} />
-						<div className="text-primary">{s.body}</div>
+					<div className="flex min-w-0 flex-1 flex-col gap-2">
+						<Lead s={s} plain />
+						<div className="text-secondary">{s.body}</div>
+						{s.action ? (
+							<div className="mt-0.5 self-start [&_[data-slot=offline-resend]]:items-start [&_[data-slot=offline-resend]>span]:text-left">
+								{s.action}
+							</div>
+						) : null}
 					</div>
-					{s.action ? <div className="shrink-0">{s.action}</div> : null}
 				</section>
 			))}
 		</div>

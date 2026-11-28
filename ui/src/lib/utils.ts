@@ -28,7 +28,8 @@ const twMerge = extendTailwindMerge({
 				"glyph-md",
 				"glyph-lg",
 			],
-			radius: ["inner", "control", "panel"],
+			radius: ["inner", "control", "panel", "dialog"],
+			shadow: ["overlay", "sheet"],
 		},
 	},
 });

@@ -45,7 +45,7 @@ const status: Record<
 };
 
 const th =
-	"h-row-header whitespace-nowrap border-b border-hairline px-3 text-left type-meta-label text-tertiary";
+	"h-row-header whitespace-nowrap border-b border-hairline px-3 text-left font-normal type-meta-label text-tertiary first:pl-4 last:pr-4";
 
 // Tokens is the provisioning-tokens tab: every token by its listing
 // prefix and metadata (the secret is never stored, so never listed),
@@ -62,7 +62,7 @@ export function Tokens({
 	const [revoking, setRevoking] = useState<ProvisioningToken | null>(null);
 
 	return (
-		<div className="flex flex-1 flex-col gap-5 overflow-auto px-5 pt-5 pb-8">
+		<div className="flex flex-1 flex-col gap-5 overflow-auto px-8 pt-5 pb-8">
 			<div className="flex items-center gap-3">
 				<p className="max-w-[620px] type-dense text-secondary">
 					A token enrolls any number of workloads within its label scope until
@@ -78,13 +78,13 @@ export function Tokens({
 				<ProblemNotice what="tokens" error={tokens.error} onRetry={reload} />
 			) : null}
 			{tokens.status === "ready" && tokens.data.tokens.length === 0 ? (
-				<p className="rounded-panel border border-hairline bg-card px-4 py-5 type-dense text-secondary">
+				<p className="rounded-panel border border-overlay bg-card px-4 py-5 type-dense text-secondary">
 					No tokens yet. Mint one to enroll your first workload.
 				</p>
 			) : null}
 			{tokens.status === "ready" && tokens.data.tokens.length > 0 ? (
 				<>
-					<div className="overflow-hidden rounded-panel border border-hairline">
+					<div className="overflow-hidden rounded-panel border border-overlay bg-card">
 						<table className="w-full border-separate border-spacing-0">
 							<thead>
 								<tr>
@@ -133,14 +133,12 @@ function TokenRow({
 	onRevoke: () => void;
 }) {
 	const cell =
-		"h-row-pitch border-b border-hairline px-3 py-2 type-dense group-last:border-b-0";
+		"h-row-pitch border-b border-hairline px-3 py-2 type-dense group-last:border-b-0 first:pl-4 last:pr-4";
 	const s = status[t.state];
 	return (
 		<tr className="group hover:bg-wash-hover">
 			<td className={cell}>
-				<span className="type-mono-data font-medium text-primary">
-					{t.name}
-				</span>
+				<span className="type-dense text-primary">{t.name}</span>
 				{t.prefix ? (
 					<div className="type-mono-sm text-tertiary">{t.prefix}…</div>
 				) : null}

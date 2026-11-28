@@ -25,7 +25,17 @@ describe("shell", () => {
 				within(nav).getByRole("link", { name: new RegExp(label) }),
 			).toBeInTheDocument();
 		}
-		expect(screen.getByTestId("site-label")).toHaveTextContent("iad1");
+		// The account is the header's avatar, not a sidebar entry.
+		const banner = screen.getByRole("banner");
+		expect(
+			within(banner).getByRole("button", { name: "Account" }),
+		).toBeInTheDocument();
+		expect(
+			within(screen.getByRole("navigation", { name: "Sections" })).queryByRole(
+				"button",
+				{ name: "Account" },
+			),
+		).not.toBeInTheDocument();
 		const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
 		expect(crumbs).toHaveTextContent("Workloads/Fleet");
 	});
@@ -232,8 +242,9 @@ describe("account popover", () => {
 		const user = userEvent.setup();
 		renderApp("/simulation");
 		const trigger = await screen.findByRole("button", { name: "Account" });
-		expect(trigger).toHaveTextContent("A. Rao");
-		expect(trigger).toHaveTextContent("iad1");
+		// The header's avatar: the operator's initials, the name as its title.
+		expect(trigger).toHaveTextContent("AR");
+		expect(trigger).toHaveAttribute("title", "A. Rao");
 		await user.click(trigger);
 		const popover = await screen.findByRole("dialog", { name: "Account" });
 		expect(within(popover).getByText("A. Rao")).toBeInTheDocument();
@@ -268,7 +279,8 @@ describe("account popover", () => {
 		const user = userEvent.setup();
 		renderApp("/simulation");
 		const trigger = await screen.findByRole("button", { name: "Account" });
-		expect(trigger).toHaveTextContent("Operator");
+		expect(trigger).toHaveTextContent("O");
+		expect(trigger).toHaveAttribute("title", "Operator");
 		await user.click(trigger);
 		const popover = await screen.findByRole("dialog", { name: "Account" });
 		expect(within(popover).getByText("Operator")).toBeInTheDocument();

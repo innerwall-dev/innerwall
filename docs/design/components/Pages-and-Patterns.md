@@ -1,5 +1,17 @@
 # Pages and patterns
 
+## v4 (locked 2026-11-27, INN-174)
+
+What v4 changes; the patterns below stand where this says nothing.
+
+- **Page gutter.** 32px at the sides and 20px above the first line on every data page. The Overview takes the design's grid (ruled in review): a main column of notices and three status cards (Policy, Evidence, Credential), and a 320px side card of Labels and Host facts, 28px apart; below 1024px the side card drops under the column. `content-max` no longer bounds it.
+- **Tables.** In a bordered card on the surface at an 8px radius; the column-label row is 34px (`row-header`) in `meta-label` (11px); the subtle rule between rows and none under the last. The selected row is the selected fill with a 2px text-1 mark at its left edge.
+- **Drawers.** The review's pair detail is a card beside its table. The flow map's details are a **floating sheet** over the graph's right side (12px inset, 8px radius, the border, `shadow-sheet`, closable; the graph stays interactive beside it).
+- **Flow map** (structural change 2). The graph runs edge to edge on a 20px dot grid under one 44px toolbar strip with the existing controls on one row (`white-space: nowrap`): the Graph / Matrix switch as a segmented control, the grouping, the scope's requirements and filter field, the totals and evidence warnings, and the range. The legend is a 36px strip along the canvas's foot. Nodes are the control fill on the border at a 7px radius; unmanaged peers a dashed text-4 border on the ground; selection a text-1 border. Edges are bezier at one width, `edge-width` 1.5px. The matrix runs edge to edge too.
+- **Dialogs.** The surface on the border at a 10px radius with `shadow-overlay`; a 24px gutter; the header 22px above the title. Partition and outcome wells are bordered cards on the dialog's surface.
+- **Empty states.** The page title, the explanation in text 2, the steps as rows of a bordered card, then the actions; no icon disc.
+- **Verdict.** No box: the verdict glyph (18px) beside a text-1 `dialog-title` headline, the reason in text 2 and the caveats as captions in text 3; the four figures as four equal cards in one row (ruled in review): the surface behind the border at 8px, the 20px tabular figure on top, its label below in `meta-label`.
+
 ## Page width (R4.2)
 
 - **Data pages are full-bleed:** Simulation review, Workloads, Inbound flows, Listening services, Applied policy, Flow map and Policy.

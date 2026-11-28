@@ -43,7 +43,7 @@ export function PolicyTab({
 				<span className="type-dense text-secondary">
 					{behind ? "Rendered policy" : "Rendered policy applied on host"}
 				</span>
-				<span className="inline-flex h-[22px] items-center rounded-inner border border-strong bg-canvas px-2 type-mono-sm text-primary">
+				<span className="inline-flex h-[22px] items-center rounded-full border border-overlay px-2 type-mono-sm text-primary">
 					v{p.version}
 				</span>
 				{behind ? (
@@ -89,7 +89,7 @@ export function PolicyTab({
 function RuleCard({ r }: { r: RenderedRule }) {
 	return (
 		<article
-			className="grid grid-cols-[1fr_auto] items-baseline gap-x-4 gap-y-1 rounded-panel border border-hairline bg-card px-4 py-3"
+			className="grid grid-cols-[1fr_auto] items-baseline gap-x-4 gap-y-1 rounded-panel border border-overlay bg-card px-4 py-3"
 			aria-label={r.description || ruleId(r)}
 		>
 			<div className="flex items-center gap-2">

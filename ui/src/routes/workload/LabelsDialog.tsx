@@ -199,7 +199,7 @@ function Editor({ w, onSaved }: { w: Workload; onSaved: () => void }) {
 					<div
 						role="note"
 						data-testid="label-effect"
-						className="flex gap-2.5 rounded-panel border border-hairline bg-card px-4 py-3 type-dense text-secondary"
+						className="flex gap-2.5 rounded-panel border border-overlay bg-card px-4 py-3 type-dense text-secondary"
 					>
 						<Icon name="info" className="mt-0.5 shrink-0" />
 						<span>
@@ -248,7 +248,7 @@ function Editor({ w, onSaved }: { w: Workload; onSaved: () => void }) {
 				{conflict ? (
 					<div
 						role="alert"
-						className="flex flex-col gap-1.5 rounded-panel border border-status-warn-border bg-status-warn-bg px-3 py-2.5 type-dense"
+						className="flex flex-col gap-1.5 rounded-panel border border-status-warn-mark bg-wash-selected px-3.5 py-3 type-dense"
 					>
 						<SeverityNote level="alert" prose className="font-medium">
 							The labels changed since this editor read them; nothing was saved
@@ -304,7 +304,7 @@ function Editor({ w, onSaved }: { w: Workload; onSaved: () => void }) {
 							}}
 							onKeyDown={onKey}
 							onBlur={() => commit()}
-							className="h-5 min-w-[120px] flex-1 bg-transparent px-1 type-mono-sm text-primary outline-none placeholder:text-tertiary focus-visible:shadow-none"
+							className="h-5 min-w-[120px] flex-1 bg-transparent px-1 type-mono-sm text-primary outline-none placeholder:text-disabled focus-visible:shadow-none"
 						/>
 					</div>
 					{textError ? (

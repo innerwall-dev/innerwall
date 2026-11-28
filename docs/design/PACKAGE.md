@@ -1,4 +1,152 @@
-# Innerwall Console — design package v3
+# Innerwall Console — design package v4
+
+**Dated:** 2026-11-27.
+
+**Status:** the **design of record: v4, locked 2026-11-27** (Avi), after three review rounds on the build's captures (INN-174).
+
+**Supersedes:** package v3, locked 2026-10-15, which stays below and in history (`git log -- docs/design`). Everything in v3 that v4 does not change carries over: the status glyph shapes and their three families, the 40px row pitch, the label grammar's quoted drawing, the Workload detail IA (A′), the state chips and their popovers' copy, and every v3 erratum and amendment that is about content rather than style.
+
+**Provenance:** the maintainer approved the v4 designs: 23 screens, each in a dark and a light theme. The designs are reference material kept with the project's records, not in this repository; their sample data is not product copy. Outbound enforcement is drawn on one screen of them and is out of scope: it is not in the product (ADR-0010), and nothing is built for it.
+
+**The rule that decides every conflict:** the repository owns functionality; the design owns style. Routes, navigation order, strings, columns, states, API calls and behaviour are as they were under v3. Where a design shows less, more or different content than a screen has, the screen's content wins and takes the design's styling. Every such place is in the errata below.
+
+## Where each piece lives
+
+| Package piece | Where it lives |
+| --- | --- |
+| `tokens.json` | `docs/design/tokens.json`: v4 colors in two themes, type, spacing, radii, sizes, the edge tokens. |
+| `tokens.css` | **Generated** from `tokens.json`; do not hand-edit. `ui/src/tokens.css` is the same file with its font URLs pointing at `ui/src/fonts/`. |
+| `brand-book.md` | The v4 record leads it; the v3 record follows, superseded where the v4 record says so. |
+| `components/` | Each spec opens with what v4 changes; the v3 text after it stands where v4 says nothing. |
+| Fonts | `ui/src/fonts/`: Inter 4.001 and Manrope 4.504 (variable woff2, latin and latin-ext, from the `@fontsource-variable` packages 5.3.0) beside `OFL-Inter.txt` and `OFL-Manrope.txt`; Source Code Pro 1.026 beside `OFL-SourceCodePro.txt`. All self-hosted; the console fetches nothing from another origin. DM Sans is retired. |
+
+## What v4 is
+
+From first principles: an operator reads this console for long stretches and acts on it rarely, so the page should be calm and the few things that need a decision should be the only things that carry color.
+
+- **Neutral grounds.** One ground (the page, the header and the sidebar), one surface (cards, sheets, dialogs), one selected / hover fill, one control fill. Elevation is a step of the surface plus a border; dialogs and floating sheets add a shadow because they float over live content.
+- **Two border roles.** The border, for anything that is an object (cards, dialogs, pills, inputs, buttons); and the subtle rule, for divisions inside an object (rows, sections) and for the header's and the sidebar's edges.
+- **Selection is neutral.** The active sidebar entry, the selected row and the active tab underline use the selected fill or text 1. Green is for primary buttons, focus rings and the allowed status only, so it never competes with a verdict.
+- **Status takes no fill.** A status is its glyph in the status's mark color and its word in the status's text color, on the neutral surface; chips and badges are pills on the neutral border. A notice with a severity sits on the selected fill behind the status mark's border.
+- **Type.** Manrope for headings and the wordmark; Inter for body and UI text; Source Code Pro for mono (data: addresses, versions, services, identifiers). Nothing is heavier than 500 except the wordmark at 600. Column labels and section eyebrows are mono, uppercase, 11px, 0.06em, in text 3. The base size is 13/20.
+- **Shape.** Controls 6px (the map's nodes 7px), cards and sheets 8px, dialogs 10px; tags and chips are pills; status markers are circles; switches are rounded.
+- **Density and air.** Tables sit in bordered, rounded cards with only the subtle rule between rows; pages have a 32px gutter and 20px above the first line; buttons are 28px (toolbar controls and filter chips 26px).
+
+## Tokens (normative values)
+
+| Role | Token(s) | Dark | Light |
+| --- | --- | --- | --- |
+| ground | `surface-canvas` | `#0f100f` | `#fcfcfc` |
+| surface | `surface-card`, `surface-popover` | `#151716` | `#ffffff` |
+| selected / hover fill | `wash-hover`, `wash-selected`, `surface-overlay`, `surface-top` | `#1c1e1d` | `#f5f6f5` |
+| control fill | `field-sunk`, `control-raised` | `#191b1a` | `#ffffff` |
+| border | `border-overlay`, `border-strong` | `#282a29` | `#e3e5e4` |
+| border, subtle | `border-hairline` | `#1f2120` | `#eef0ef` |
+| text 1 / 2 / 3 / 4 | `text-primary` / `text-secondary` / `text-tertiary` / `text-disabled` | `#edefee` / `#bcbdbc` / `#989a99` / `#6b6d6c` | `#1a1c1b` / `#4d504f` / `#686b6a` / `#a4a7a6` |
+| primary button | `plate` / `plate-border` / `plate-ink` | `#236b1c` / `#3f9a33` / white | `#007f35` / `#006b2c` / white |
+| allowed (mark / text) | `status-ok-mark` / `status-ok-fg` | `#80ee64` | `#00993f` / `#007f35` |
+| warning (mark / text) | `status-warn-mark` / `status-warn-fg` | `#f5d547` | `#edb900` / `#dba400` |
+| error (mark / text) | `status-critical-mark` / `status-critical-fg` | `#ff5b4f` | `#e5484d` / `#ce2c31` |
+| destructive button | `destructive` | `#c93a30` | `#ce2c31` |
+| accent (focus, allowed) | `accent`, `accent-ring` | `#80ee64`, 55% | `#007f35`, 80% |
+
+Glyph aliases (`flow-*`, `health-*`, `severity-*`) now point at the `status-*-mark` tokens, so the glyphs take the mark color and the words beside them take the text color.
+
+### Values the designs do not give
+
+These are derived, not drawn, and are recorded so they are not mistaken for design values:
+
+- `border-stronger` (unchecked boxes, the secret well) is text 4 as a border, as the designs draw the empty checkbox.
+- `border-control-hover` (`#363837` / `#d0d3d1`): one step past the border.
+- `plate-hover` / `plate-pressed` (`#2a7a22` / `#1e5d18`; light `#00722f` / `#006b2c`) and `destructive-hover` (`#b5342b` / `#b8252a`): one step toward the border or darker.
+- `status-*-bg` are `transparent` and `status-*-border` are the border: status takes no fill.
+- `scrim` (60% black / 28% black) and the two shadows are read from the dialog and sheet designs.
+
+### Token names added, kept and retired
+
+- **Added:** `plate-border`; `status-ok-mark`, `status-warn-mark`, `status-critical-mark`; `shadow-overlay` (dialogs, the account popover); `shadow-sheet` (floating sheets, tooltips); `radius-dialog` (10px); `--font-display` (Manrope).
+- **Kept with a new value or role:** every v3 color name survives. `surface-top` and `highlight` have no role in v4 and are kept so nothing that names them breaks; `border-strong` and `border-overlay` are one value.
+- **Retired:** none.
+- **Sizes changed:** `sidebar-width` 208px (ruled in review); `control` 28px; `row-header` 34px; `tab-row` 34px; `tab-underline` 1.5px; `sidebar-width-collapsed` 48px; `sidebar-item` 30px; `radius-panel` 8px; `edge-width` 1.5px; `avatar` 26px; `icon-stroke` 1.75.
+
+## The three structural changes
+
+Ruled with the designs; they are the only places v4 changes structure rather than style.
+
+1. **Shell.** A full-width 48px header with the subtle rule below it: logo and wordmark at the left, the existing page-header content (the path, or a workload's identity) after them, the existing search trigger (⌘K) as a pill, and the account control at the far right: a 26px avatar (initials on the selected fill behind the border, the operator's name as its title) whose existing popover opens below it, anchored to its right edge. Under the header, the sidebar at the left and the content at the right. The sidebar stays the shadcn `Sidebar` with `collapsible="icon"`, its cookie persistence, ⌘B and the mobile sheet; its footer holds only the fleet sync block (on a fresh install, as before) and the collapse toggle at its foot. On a phone the avatar stays in the header; the mobile sheet, which covers the header, repeats the logo. *Ruled in review, 2026-11-27: the account control moves to the header as the designs draw it, which supersedes the first build's reading that it stays in the sidebar.*
+2. **Flow map.** The graph runs edge to edge in the content area under one 44px toolbar strip holding the existing controls on one row (`white-space: nowrap`). The details that sat in a fixed side panel open in a sheet floating over the graph's right side: 12px inset, rounded, bordered, shadowed and closable; the graph stays interactive beside it. Edges stay bezier at one uniform width. The legend is a strip along the canvas's foot. (There was no minimap on main to remove.)
+3. **Promote button.** **Promote to enforced…** takes the neutral button style while the verdict is unsafe and the primary style otherwise. Its enabled / disabled logic does not change. This supersedes v3's D1 for this one button; the promote dialog's confirm keeps the primary style when enabled.
+
+## Accessibility
+
+AA holds on the text pairs of the normative table except the one waiver below (W2).
+
+### W2: light warning text (waiver, scoped)
+
+| | |
+| --- | --- |
+| **Waived** | The light-theme warning text `status-warn-fg` = `#dba400`: **2.20:1** on the ground, **2.25:1** on the surface. The warning mark `#edb900` is 1.82:1 on the surface (a glyph, not text). Ruled by the maintainer with the v4 designs: warnings must read yellow, not brown, and no yellow fill is put behind text. |
+| **Scope** | The warning word and glyph in warning contexts only (status words, chip words, the attention count, warning captions). **Not** body text: sentences in banners, alert cards, popovers and notices are text 1 or text 2 beside the toned glyph. **Not** the dark theme. **Not** any non-warning use. Any new sub-AA color needs a new waiver. |
+| **Mitigation** | Status is never shown by color alone: the glyph's shape and the word always. |
+| **AA fallback** | `#8f6400` (5.26:1 on white) is the seam for a possible strict-contrast toggle, which is not built. |
+| **Build instruction** | Do not "fix" it, and do not extend it. |
+
+W1 (v3's light warning, `#dc7b18`) is superseded by W2.
+
+### Resolved findings (ruled 2026-11-27, fixes #271)
+
+The first build recorded two light-theme pairs below AA for a ruling; the maintainer ruled new values, now in the token table:
+
+- **Light text 3** is `#686b6a` (was `#707372`): **5.25:1** on the ground, **5.38:1** on the surface, **4.97:1** on the selected fill (was 4.42:1).
+- **Light error text and the light destructive fill** are `#ce2c31` (was `#e5484d`): error text **5.21:1** on white, **5.08:1** on the ground, **4.81:1** on the selected fill; white ink on the destructive fill **5.21:1** (was 3.91:1). The light error mark (dot and glyph) stays `#e5484d`, so `status-critical-mark` and `status-critical-fg` now differ in the light theme. `destructive-hover` follows at `#b8252a` (derived, 6.29:1 with white ink).
+
+Dark: text 3 on the selected fill is 5.92:1 and on the ground 6.73:1; error on the surface 5.88:1; white on the dark plate 6.58:1 and on the dark destructive fill 5.08:1.
+
+## Errata (where the screens' real content departs from the designs)
+
+| # | Design | Built |
+| --- | --- | --- |
+| V1 | *Retired 2026-11-27.* The account avatar at the header's right. | Built as drawn (structural change 1, as ruled in review). The avatar shows initials; the site label that the sidebar entry showed beside the name is in the popover's identity line. |
+| V2 | Inbound / Outbound tabs (review, workload detail, policy), Outbound columns (workloads), per-direction mode rows, and outbound wording in the promote and mode-change dialogs. | Not built: policy is inbound-only (ADR-0010) and outbound is out of scope. The repo's tabs, columns and copy stand. |
+| V3 | Controls the screens do not have: "Find workload…", "Fit view", "Auto layout", "Export", "Sort rows" (map), "Group: …" and "Filter" in tab rows, a "Rulesets in simulation" sidebar section, header buttons ("Change mode…", "Retire…", "Mint token") placed at the page's top right, "+ Add label" inline in the scope. | Not built. The repo's controls stay where they are and take the design's styling. |
+| V4 | An in-content `h1` with a description line on Workloads, Workload detail, Simulation review and Policy. | Workloads keeps its path and tabs (no heading is added: no new strings). Simulation review keeps its ruleset row and scope line, and its verdict headline stays the `h1`. A workload's name stays in the header as the `h1` (v3 E12). The policy editor's ruleset name takes the page title style. |
+| V5 | Review figures drawn inline, with design wording ("of 40 workloads affected"). | *Ruled departure, 2026-11-27.* The four figures (would-block pairs, connections, workloads affected, allowed) are four equal cards in one row (two by two below 1280px, where four would crush their labels): the surface behind the border at an 8px radius, the 20px tabular figure on top (a decision's figure in its status text tone), its label below in the mono uppercase 11px label style, with the repo's labels, glyphs and "/ N simulating". The rest of the screen is as drawn. |
+| V6 | Review table: Peer · Service · Rule · Reached · Connections · Seen, under decision group rows. | The repo's columns (Decision · Peer · Service · Rule · Workloads · Connections · Last seen), flat rows and decision chips stand; the selected row takes the design's mark. |
+| V7 | Workloads table: Workload · Labels · Inbound · Outbound · Policy · Credential · Agent · Seen, grouped under "Needs attention". | The repo's columns (v3 E8) and order stand; labels stay chips, which wrap. The Sync cell lets its note wrap so the table fits 1440px. |
+| V8 | The Overview: notices over a row of Policy, Evidence and Credential cards in the main column, and one 320px side card of Mode, Labels and Host sections. | *Rewritten 2026-11-27, as ruled in review.* Built to the design's grid with the repo's fields: the retired card and alert cards, then the repo's Status card split into the three drawn cards by its own field groups (Policy: the status line, applied, rendered, last ack, rendered at, last snapshot, the apply error and Resend snapshot; Evidence: flow report, dropped flows, overruns, evidence gaps; Credential: credential, issued, in use / presented), then the repo's evidence-gap history; beside them one 320px card holding Labels and Host facts. Card titles are mono eyebrows; labels sit in a 96px column (72px in Credential) at a 10px row gap. **What still differs:** the side card has no Mode section (the mode is in the header beside the workload's name, and a per-direction mode does not exist: V2); "enrolled" moves from the status fields into Host facts, since the design has no row for it in the cards; the apply error and Resend stay in the Policy card rather than in the degraded notice, because the repo shows both in every state, not only while degraded; the host's OS stays a Host facts row (the design puts it under the heading, which the repo does not draw: V4); the evidence-gap history, which the design does not draw, stays under the cards. Field labels are the repo's lowercase words set with a capital first letter ("OS" and "ID" in capitals). Copy added: the card titles "Policy", "Evidence" and "Credential", which replace the "Status" title, and the side card's accessible name "Workload facts". |
+| V9 | Map nodes 148×50 with two lines; totals at the legend strip's left; the range as plain text. | Nodes stay 176×64 with the repo's third line (v3 E13). The totals and the evidence warnings stay in the toolbar (in the Matrix view there is no legend strip to hold them); the range control moves into the toolbar. The Graph / Matrix switch takes the design's segmented form. |
+| V10 | The flow map matrix as a flex grid with column rules. | The repo's table is kept and runs edge to edge on the subtle rule; it leaves room for the sheet when one is open. |
+| V11 | The mint dialog's label / field grid; the mode-change dialog's workload pills. | The repo's stacked fields and its selection list stand, restyled. |
+| V12 | Empty-state steps with design copy. | The repo's copy stands; the steps take the design's bordered card. The v3 icon disc above the heading is not drawn. |
+| V13 | The account popover without the control plane's version line. | The version line stays (v3 E9). |
+| V14 | The search pill at 208px reading "Search…". | The repo's placeholder ("Search workloads and rulesets…") stands, in a 240px pill. |
+| V15 | Peer, host and ruleset names in the sans; some versions and addresses in the sans. | Names (hostnames, peers, rulesets, token names) move to the sans as drawn; data values (addresses, versions, services, identifiers, rule ids) stay in mono, as v3's "the system speaks in mono" rule had it for data, except on the Overview, whose field values follow the design: the sans with tabular figures, with addresses, the identity and credential serials in mono. |
+| V16 | The review's pair detail at 340px. | 360px, so the pair table's four columns fit. The map's sheet is 344px as drawn. |
+| V17 | Promote dialog title "Enforce inbound on this scope". | The repo's title ("Switch scope to enforced") and copy stand. |
+
+### Changes ruled in review (2026-11-27)
+
+These depart from the designs by the maintainer's ruling on the first build's captures.
+
+- **Simulation review figures** are four equal cards (erratum V5).
+- **Filter panels are a secondary rail.** On a workload's Inbound flows and Listening services (the only screens with the filter panel), the panel is a full-height 232px rail directly right of the sidebar, in the pattern of the policy editor's ruleset rail: the ground, the subtle rule on its right, no card border or radius, its own vertical scroll, its section headers as before. The table area takes the remaining width at the 32px gutter. Filters and behaviour are unchanged. The designs draw the panel as a card beside the table.
+- **The account control is in the header** and the **Overview takes the design's grid** (structural change 1, errata V1 and V8).
+- **Light-theme contrast**: see Accessibility.
+- **Dark neutrals one step darker.** The whole dark neutral ramp moves one step down, keeping its spacing: ground `#0f100f`, surface `#151716`, selected / hover fill `#1c1e1d`, control fill `#191b1a`, border `#282a29`, subtle rule `#1f2120` (each was 4 levels lighter: `#131413`, `#181a19`, `#202221`, `#1d1f1e`, `#2c2e2d`, `#232524`). The derived control-hover border follows (`#363837`) and the checkbox ink takes the new ground. Text, status and primary colours are unchanged; the designs draw the earlier ramp.
+- **The sidebar is 208px wide** when expanded (`sidebar-width`; the designs draw 232px). The collapsed rail stays 48px; the secondary rails keep their widths (the policy editor's ruleset rail 216px, the filter rail 232px).
+- **The collapse toggle is icon-only** in the expanded state too: the same icon at the same place, its accessible name and a tooltip saying the action ("Collapse sidebar" / "Expand sidebar").
+
+### Build decisions (style, not content)
+
+- **Sidebar ground.** The token table lists the sidebar with the surface; every design draws it on the ground behind the subtle rule, continuous with the header. Built as the designs draw it.
+- **Control height.** Designs draw 26px buttons; the package's density note says 28–32px. `control` is 28px; the map's toolbar controls and the filter chips are 26px as drawn.
+- **Edge width.** Designs draw 1.25px edges; `edge-width` is 1.5px, one width for every edge, for legibility in the light theme at 1×.
+- **Synced** reads in text 2 in lists (as the designs draw it); only states that need attention take a status color.
+- **Status badges** in drawers and dialogs are pills on the neutral border with the toned glyph and the text-toned word.
+
+---
+
+# Design package v3 (superseded by v4, locked 2026-11-27)
 
 **Dated:** 2026-10-14 / 2026-10-15.
 

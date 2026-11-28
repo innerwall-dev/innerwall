@@ -186,9 +186,9 @@ export function FlowsTab({
 					},
 				]}
 			/>
-			<div className="flex min-w-0 flex-1 flex-col overflow-auto">
+			<div className="flex min-w-0 flex-1 flex-col gap-3 overflow-auto px-8 pt-5 pb-6">
 				<div
-					className="flex h-row-pitch shrink-0 items-center gap-2 border-b border-hairline px-5 type-dense text-secondary"
+					className="flex h-7 shrink-0 items-center gap-2 type-dense text-secondary"
 					data-testid="flows-result"
 				>
 					{filtering ? (
@@ -222,7 +222,7 @@ export function FlowsTab({
 					</span>
 				</div>
 				{resource.status === "error" ? (
-					<div className="px-5">
+					<div>
 						<ProblemNotice
 							what="flows"
 							error={resource.error}
@@ -230,16 +230,16 @@ export function FlowsTab({
 						/>
 					</div>
 				) : (
-					<table className="w-full min-w-[724px] border-separate border-spacing-0">
+					<table className="w-full min-w-[724px] border-separate border-spacing-0 overflow-clip rounded-panel border border-overlay bg-card">
 						<thead>
 							<tr>
-								<th className={cn(th, "pl-5")}>Decision</th>
+								<th className={cn(th, "pl-4")}>Decision</th>
 								<th className={th}>Source</th>
 								<th className={th}>Port</th>
 								{process ? <th className={th}>Process</th> : null}
 								<th className={th}>Matched rule</th>
 								<th className={cn(th, "text-right")}>Conns</th>
-								<th className={cn(th, "pr-5 text-right")}>Last seen</th>
+								<th className={cn(th, "pr-4 text-right")}>Last seen</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -250,24 +250,24 @@ export function FlowsTab({
 					</table>
 				)}
 				{resource.status === "loading" ? (
-					<div className="px-5">
+					<div>
 						<LoadingRow what="flows" />
 					</div>
 				) : null}
 				{resource.status === "ready" && loaded.length === 0 ? (
-					<p className="px-5 py-6 type-dense text-tertiary">
+					<p className="py-6 type-dense text-tertiary">
 						No inbound flows recorded in the last {range.text}.
 					</p>
 				) : null}
 				{resource.status === "ready" &&
 				loaded.length > 0 &&
 				rows.length === 0 ? (
-					<p className="px-5 py-6 type-dense text-tertiary">
+					<p className="py-6 type-dense text-tertiary">
 						No loaded flows match these filters.
 					</p>
 				) : null}
 				{cursor || more.error ? (
-					<div className="flex items-center gap-3 px-5 py-4">
+					<div className="flex items-center gap-3 py-2">
 						{cursor ? (
 							<Button
 								variant="secondary"
@@ -309,9 +309,9 @@ function Row({
 	return (
 		<tr
 			title={`window ${f.window_start} – ${f.window_end}`}
-			className="hover:bg-wash-hover"
+			className="hover:bg-wash-hover [&:last-child>td]:border-b-0"
 		>
-			<td className={cn(td, "pl-5")}>
+			<td className={cn(td, "pl-4")}>
 				<VerdictPill verdict={f.verdict} />
 			</td>
 			<td className={td}>
@@ -355,7 +355,7 @@ function Row({
 			<td className={cn(td, "text-right type-mono-data")}>
 				{count(f.connection_count)}
 			</td>
-			<td className={cn(td, "pr-5 text-right type-mono-data text-secondary")}>
+			<td className={cn(td, "pr-4 text-right type-mono-data text-secondary")}>
 				{since(f.last_seen)}
 			</td>
 		</tr>
@@ -365,5 +365,5 @@ function Row({
 // The table's header and body cells: the meta label over 40px rows on
 // hairlines.
 const th =
-	"h-row-header border-b border-hairline px-3 text-left type-meta-label whitespace-nowrap text-tertiary";
+	"h-row-header border-b border-hairline px-3 text-left font-normal type-meta-label whitespace-nowrap text-tertiary";
 const td = "h-row-pitch border-b border-hairline px-3 py-2 text-primary";

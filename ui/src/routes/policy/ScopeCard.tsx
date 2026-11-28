@@ -48,7 +48,7 @@ export function ScopeCard({
 	return (
 		<section
 			aria-label="Scope"
-			className="flex flex-col gap-3 rounded-panel border border-hairline bg-card p-4"
+			className="flex flex-col gap-3 rounded-panel border border-overlay bg-card p-4"
 		>
 			<div className="flex flex-col gap-0.5">
 				<Eyebrow>Scope</Eyebrow>
@@ -128,7 +128,7 @@ function Requirement({
 	return (
 		<span
 			className={cn(
-				"inline-flex h-6 items-center gap-1.5 rounded-inner border bg-card px-1.5 type-mono-sm text-primary",
+				"inline-flex h-6 items-center gap-1.5 rounded-full border bg-overlay px-2.5 type-mono-sm text-primary",
 				failed ? "border-dashed border-status-critical-fg" : "border-strong",
 			)}
 			data-testid="requirement"
@@ -205,7 +205,7 @@ function Matches({
 	return (
 		<>
 			<div className="flex items-baseline gap-2" data-testid="match-count">
-				<span className="type-section font-mono">{count(m.count)}</span>
+				<span className="type-mono-figure">{count(m.count)}</span>
 				<span className="type-dense text-secondary">
 					{m.count === 1 ? "workload matches" : "workloads match"}{" "}
 					{edited ? "this scope" : "right now"}
