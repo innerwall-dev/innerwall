@@ -277,7 +277,7 @@ func runWorkloadSetMode(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("innerwall workload set-mode", flag.ContinueOnError)
 	dbURL := fs.String("database-url", "", "Postgres connection string (default $"+envDatabaseURL+")")
 	fs.Usage = func() {
-		fmt.Fprintln(fs.Output(), setModeUsage)
+		_, _ = fmt.Fprintln(fs.Output(), setModeUsage)
 		fs.PrintDefaults()
 	}
 	if err := cli.Parse(fs, args, 2); err != nil {
