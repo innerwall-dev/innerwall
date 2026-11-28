@@ -58,9 +58,20 @@ var directiveQueueTimeout = 10 * time.Second
 var credentialEndLead = 5 * time.Minute
 
 // offlineWriteTimeout bounds a status write that may run after a stream's
-// own context has already ended: the offline mark, and the snapshot
-// instant of a snapshot already sent.
+// own context has already ended: the snapshot instant of a snapshot
+// already sent, and the offline mark. A handler's exit writes both, when
+// both are due, within this one bound.
 const offlineWriteTimeout = 5 * time.Second
+
+// writerExitTimeout bounds how long a handler's exit waits for its
+// writer. Once the session ends the writer sends nothing more, so it
+// returns at once unless it is inside a send. A send blocks while the
+// transport has no flow-control credit for it, and gRPC releases it only
+// when the stream is done: when its agent goes away, when the server
+// stops, or when the handler returns, which is after this wait. A send
+// still blocked at the bound is left to fail when the handler returns;
+// the writer touches no store, so nothing it does outlasts the handler.
+const writerExitTimeout = 5 * time.Second
 
 // session is one live sync stream: the in-process record that lets a
 // render's announcement find the stream to push to. It holds only stream
@@ -205,6 +216,24 @@ func (r *sessions) remove(sess *session) (marked func(), ok bool) {
 	return r.hold(sess.id), true
 }
 
+// withdraw drops sess, whose open could not be recorded, from the
+// registry. The workload is still held for that open: withdraw takes no
+// hold of its own, and the caller writes what the stream's end needs and
+// then calls the release add returned, so no other stream registers in
+// between. A retirement watching the workload sees a stream leave, as it
+// does for any stream that ends.
+func (r *sessions) withdraw(sess *session) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.live[sess.id] != sess {
+		return
+	}
+	delete(r.live, sess.id)
+	for _, w := range r.watching[sess.id] {
+		w.left = true
+	}
+}
+
 // hold holds workload for one sync-state write and returns the release.
 // The caller holds r.mu, and nothing holds the workload already.
 func (r *sessions) hold(workload identity.WorkloadID) func() {
@@ -320,48 +349,64 @@ func (s *Server) Sync(stream innerwallv1.AgentService_SyncServer) error {
 	}
 	// The stream open is recorded while the workload is held, so on this
 	// replica no other stream of it registers until the record names this
-	// one; across replicas the name alone orders what is written last.
+	// one; across replicas the name alone orders what is written last. A
+	// stream the record does not name is never served (#264).
 	if err := s.registry.RecordStreamOpen(ctx, id, sess.stream, now); err != nil {
-		log.Error("recording stream open", "error", err)
+		return s.openFailed(log, sess, recorded, err)
 	}
 	recorded()
-	defer func() {
-		cancel(nil)
-		if marked, ok := s.sessions.remove(sess); ok {
-			defer marked()
-			octx, ocancel := context.WithTimeout(context.Background(), offlineWriteTimeout)
-			defer ocancel()
-			// The mark is written only while the record still names this
-			// stream: a stream opened since, here or on another replica,
-			// holds the record, and its state stands (ADR-0018 as amended).
-			written, err := s.registry.MarkStreamOffline(octx, id, sess.stream, s.now())
-			switch {
-			case err != nil:
-				log.Error("marking workload offline", "error", err)
-			case !written:
-				log.Info("offline mark not written: a newer sync stream of the workload has opened since this one")
-			}
-		}
-	}()
 
 	// Writer: the only goroutine that calls Send, and so the one place
-	// that knows a snapshot is on the stream. It stamps the instant of
-	// every snapshot it sends, whatever caused it (ADR-0018 as amended).
+	// that knows a snapshot is on the stream. It touches no store: each
+	// snapshot it sends is reported on sent, and the handler stamps its
+	// instant, whatever caused it (ADR-0018 as amended), so every write
+	// the stream makes is the handler's own and returns before it does
+	// (#260). Reports coalesce: one pending report is stamped after every
+	// snapshot it stands for.
 	writeErr := make(chan error, 1)
+	sent := make(chan struct{}, 1)
+	written := make(chan struct{})
+	defer func() {
+		cancel(nil)
+		s.awaitWriter(log, written)
+		wctx, wcancel := context.WithTimeout(context.Background(), offlineWriteTimeout)
+		defer wcancel()
+		// A snapshot sent before the stream ended is stamped before the
+		// stream's end is recorded, never after it.
+		select {
+		case <-sent:
+			s.recordSnapshotSent(wctx, log, id)
+		default:
+		}
+		if marked, ok := s.sessions.remove(sess); ok {
+			defer marked()
+			s.markOffline(wctx, log, sess)
+		}
+	}()
 	go func() {
+		defer close(written)
 		for {
 			select {
 			case <-sctx.Done():
 				writeErr <- nil
 				return
 			case msg := <-sess.send:
+				if sctx.Err() != nil {
+					// An ended session sends nothing more, so the wait
+					// for this goroutine covers at most one send.
+					writeErr <- nil
+					return
+				}
 				if err := stream.Send(msg); err != nil {
 					cancel(err)
 					writeErr <- err
 					return
 				}
 				if msg.GetPolicyUpdate().GetSnapshot() != nil {
-					s.recordSnapshotSent(sctx, log, id)
+					select {
+					case sent <- struct{}{}:
+					default:
+					}
 				}
 			}
 		}
@@ -411,35 +456,119 @@ func (s *Server) Sync(stream innerwallv1.AgentService_SyncServer) error {
 		}
 	}()
 
-	select {
-	case err := <-recvErr:
-		if errors.Is(err, context.Canceled) || status.Code(err) == codes.Canceled {
+	for {
+		select {
+		case <-sent:
+			// The snapshot is on the stream, so its instant is written
+			// even if the stream ends meanwhile.
+			wctx, wcancel := context.WithTimeout(context.WithoutCancel(sctx), offlineWriteTimeout)
+			s.recordSnapshotSent(wctx, log, id)
+			wcancel()
+		case err := <-recvErr:
+			if errors.Is(err, context.Canceled) || status.Code(err) == codes.Canceled {
+				return nil
+			}
+			if err != nil && !isEOF(err) {
+				log.Info("sync stream closed", "error", err)
+				return err
+			}
+			log.Info("sync stream closed")
+			return nil
+		case err := <-writeErr:
+			if end := endedWith(sctx); end != nil {
+				return end
+			}
+			if cause := context.Cause(sctx); errors.Is(cause, errSuperseded) {
+				log.Info("sync stream superseded")
+				return status.Error(codes.Aborted, errSuperseded.Error())
+			}
+			return err
+		case <-sctx.Done():
+			if end := endedWith(sctx); end != nil {
+				return end
+			}
+			if cause := context.Cause(sctx); errors.Is(cause, errSuperseded) {
+				log.Info("sync stream superseded")
+				return status.Error(codes.Aborted, errSuperseded.Error())
+			}
 			return nil
 		}
-		if err != nil && !isEOF(err) {
-			log.Info("sync stream closed", "error", err)
-			return err
-		}
-		log.Info("sync stream closed")
-		return nil
-	case err := <-writeErr:
-		if end := endedWith(sctx); end != nil {
-			return end
-		}
-		if cause := context.Cause(sctx); errors.Is(cause, errSuperseded) {
-			log.Info("sync stream superseded")
-			return status.Error(codes.Aborted, errSuperseded.Error())
-		}
-		return err
-	case <-sctx.Done():
-		if end := endedWith(sctx); end != nil {
-			return end
-		}
-		if cause := context.Cause(sctx); errors.Is(cause, errSuperseded) {
-			log.Info("sync stream superseded")
-			return status.Error(codes.Aborted, errSuperseded.Error())
-		}
-		return nil
+	}
+}
+
+// openFailed ends a stream whose open could not be recorded, before
+// anything is sent on it (#264). Served, the stream's own writes would
+// land while the record went on naming another stream, or none, and its
+// offline mark, which needs the record to name it, would be skipped when
+// it ended: the workload would read as connected with no stream. The
+// session leaves the registry while the workload is still held for its
+// open, so no other stream of it registers in between; the stream's end
+// is written as any stream's is, by the mark conditioned on the record
+// naming it or naming none, and the hold is released. Where the record
+// names another stream, that stream's state stands and its own mark
+// records its end; where it names none, no stream is served, and offline
+// is what is true; where the open landed though its write reported
+// failure, the record names this stream, and the mark undoes it. A
+// workload the registry does not hold has no record to mark.
+//
+// The status is the Hello's for the same finding: the opaque refusal for
+// a retired workload (ADR-0023), PermissionDenied for one the registry
+// does not hold, and otherwise Unavailable, naming nothing of the store's
+// error, so the agent redials with its ordinary backoff, onto a stream
+// the record names.
+func (s *Server) openFailed(log *slog.Logger, sess *session, recorded func(), err error) error {
+	unknown := errors.Is(err, registry.ErrWorkloadUnknown)
+	if !unknown && !isRetired(err) {
+		log.Error("recording stream open; ending the stream so its agent redials", "error", err)
+	}
+	s.sessions.withdraw(sess)
+	sess.cancel(nil)
+	if !unknown {
+		wctx, wcancel := context.WithTimeout(context.Background(), offlineWriteTimeout)
+		s.markOffline(wctx, log, sess)
+		wcancel()
+	}
+	recorded()
+	if end := endedWith(sess.ctx); end != nil {
+		// Ended meanwhile through EndStream, as a retirement ends it.
+		return end
+	}
+	switch {
+	case isRetired(err):
+		return refuseRetired(log, err, "sync stream open")
+	case unknown:
+		return status.Error(codes.PermissionDenied, registry.ErrWorkloadUnknown.Error())
+	default:
+		return status.Error(codes.Unavailable, "recording stream open")
+	}
+}
+
+// markOffline writes the offline mark of a stream that has ended. The mark
+// is written only while the record still names the stream, or names
+// none: a stream opened since, here or on another replica, holds the
+// record, and its state stands (ADR-0018 as amended).
+func (s *Server) markOffline(ctx context.Context, log *slog.Logger, sess *session) {
+	written, err := s.registry.MarkStreamOffline(ctx, sess.id, sess.stream, s.now())
+	switch {
+	case err != nil:
+		log.Error("marking workload offline", "error", err)
+	case !written:
+		log.Info("offline mark not written: a newer sync stream of the workload has opened since this one")
+	}
+}
+
+// awaitWriter waits, at most writerExitTimeout, for a stream's writer to
+// return once its session has ended (written closes when it does). The
+// writer then holds nothing the store or the shutdown waits on, so a
+// writer still inside a send at the bound is left to fail as the handler
+// returns, with a warning.
+func (s *Server) awaitWriter(log *slog.Logger, written <-chan struct{}) {
+	timer := time.NewTimer(writerExitTimeout)
+	defer timer.Stop()
+	select {
+	case <-written:
+	case <-timer.C:
+		log.Warn("sync stream writer still in a send at the handler's exit; it ends with the stream", "waited", writerExitTimeout.String())
 	}
 }
 
@@ -604,13 +733,13 @@ func (s *Server) currentPolicy(ctx context.Context, id identity.WorkloadID) (*in
 }
 
 // recordSnapshotSent stamps the instant a snapshot went onto the stream of
-// id. The snapshot is sent by the time this runs, so the record is written
-// even when the stream ends meanwhile; a failure to write it is logged and
-// costs only the record, never the stream.
+// id, within ctx, which the caller bounds and does not end with the
+// stream: the snapshot is sent by the time this runs, so the record is
+// written even when the stream ends meanwhile. Only the stream's handler
+// calls it. A failure to write it is logged and costs only the record,
+// never the stream.
 func (s *Server) recordSnapshotSent(ctx context.Context, log *slog.Logger, id identity.WorkloadID) {
-	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), offlineWriteTimeout)
-	defer cancel()
-	if err := s.registry.RecordSnapshotSent(wctx, id, s.now()); err != nil {
+	if err := s.registry.RecordSnapshotSent(ctx, id, s.now()); err != nil {
 		log.Error("recording snapshot sent", "error", err)
 	}
 }
