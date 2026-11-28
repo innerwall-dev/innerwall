@@ -14,7 +14,7 @@ A workload in simulation holds exactly the ruleset it would hold enforced, with 
 
 The review lists the `would_block` traffic of the workloads its ruleset's scope matches, over the range you choose (the last hour to the last 30 days, 24 hours by default).
 
-**Evidence starts when the workload enters simulation.** Traffic a workload received in visibility was recorded as `observed`, and a stored flow is never rewritten (ADR-0019), so that traffic never appears as would-block, and nothing is evaluated retroactively. After moving a tier to simulation, the review fills as new connections arrive: a peer that connects once a day needs a day of simulation before the review can show it. The review says how much observation stands behind its verdict ("Observed for 6h …; a peer that connects less often than that has not been seen"). Choose a range that covers your slowest regular traffic (nightly jobs, weekly reports) and let simulation run that long.
+**Evidence starts when the workload enters simulation.** Traffic a workload received in visibility was recorded as `observed`, and a stored flow is never rewritten (ADR-0019), so that traffic never appears as would-block, and nothing is evaluated retroactively. After moving a tier to simulation, the review fills as new connections arrive: a peer that connects once a day needs a day of simulation before the review can show it. The review says how much observation stands behind its verdict ("Observed for 6h …; a peer that connects less often than that has not been seen"), and until any traffic has been recorded in simulation in the range it does not call the scope safe. Choose a range that covers your slowest regular traffic (nightly jobs, weekly reports) and let simulation run that long.
 
 The range is a range, not a starting point: it also counts any `would_block` traffic left from an earlier stint in simulation that falls inside it.
 
@@ -22,7 +22,7 @@ The range is a range, not a starting point: it also counts any `would_block` tra
 
 The review's headline is one of:
 
-- **Safe to enforce.** Every observed inbound connection on the simulating workloads matched an enabled rule, and nothing else fails.
+- **Safe to enforce.** Traffic was observed in simulation in the range, every observed inbound connection on the simulating workloads matched an enabled rule, and nothing else fails.
 - **Not safe to enforce yet.** At least one condition fails. Each failing condition is listed beneath it.
 - **No workload in scope**, or **Nothing is simulating in this scope**: there is no simulated verdict to review.
 
@@ -34,9 +34,12 @@ The conditions, each of which fails the verdict on its own:
 |---|---|---|
 | Would-block traffic | `N peer/service pairs would be dropped` | Decide each pair: admit it, or accept that enforcement drops it (below). |
 | Evidence gaps | `Evidence incomplete for db-1 between 13:02 and 13:04 UTC — the agent was not reporting`, or for several gaps `Evidence incomplete for db-1: 6 gaps totalling 16m between 18:44 and 19:42 UTC — the agent was not reporting` | Find out why the evidence is missing ([evidence gaps](#evidence-gaps)). |
+| No traffic in simulation | `No traffic was recorded in simulation in this range — no observed traffic stands behind this verdict` | Give the scope time in simulation, or widen the range. If the tier should have had traffic, look at each workload's **Inbound flows** tab and last flow report (below). |
 | A workload offline | `db-1 is offline (last seen 2h ago) — nothing it saw since reaches this review` | Bring the agent back, or exclude it from the decision deliberately. A workload whose control channel is reconnecting while its flow reports still arrive is counted as offline here. |
 | A workload degraded or pending | `… has not applied its latest policy (applied v3, rendered v4)` | Its flows were evaluated against a policy other than the one you are judging; wait for it to apply, or find why it failed ([states](../reference/states.md#sync-states)). |
 | A workload still in visibility | `N workloads in scope are still in visibility mode and produced no verdict` | Move them to simulation, or accept that the review says nothing about them. |
+
+No drops in a range where nothing was observed proves nothing, so the no-traffic condition fails the verdict even when every other condition holds. It says that nothing was observed, not why: a workload that entered simulation a moment ago and one that is simply quiet read the same. It judges the scope as a whole, like every condition: traffic recorded on any workload in scope, however little, satisfies it. No minimum time in simulation is required.
 
 A workload that dropped flow records is noted beside the verdict: its verdict may be incomplete.
 
@@ -73,7 +76,7 @@ The condition states the gaps in the range as they are stored. Gaps that overlap
 
 ## Promoting
 
-When the verdict is safe, **Promote to enforced…** opens the promote dialog with the verdict restated. When it is not safe, the dialog restates the cost (how many peer/service pairs and connections would be dropped, and whether the evidence is incomplete) and enforcing takes an explicit acknowledgment of exactly that. The acknowledgment is the deliberate override ADR-0001 records: promotion past evidence that does not support it is possible, never silent. What promotion does on the host, and how to roll it back, is in [promotion and enforcement](promotion-and-enforcement.md).
+When the verdict is safe, **Promote to enforced…** opens the promote dialog with the verdict restated. When it is not safe, the dialog restates the cost (how many peer/service pairs and connections would be dropped, and whether the evidence is incomplete; with nothing to drop, the first condition that fails, such as no traffic recorded in simulation) and enforcing takes an explicit acknowledgment of exactly that. The acknowledgment is the deliberate override ADR-0001 records: promotion past evidence that does not support it is possible, never silent. What promotion does on the host, and how to roll it back, is in [promotion and enforcement](promotion-and-enforcement.md).
 
 > [!NOTE]
-> Fleet health does not yet tell a workload that receives no inbound traffic from one whose observation is broken without any gap being recorded: both show no flows. A tier whose review shows no traffic at all deserves a look at each workload's **Inbound flows** tab and last flow report before it is promoted.
+> Fleet health does not yet tell a workload that receives no inbound traffic from one whose observation is broken without any gap being recorded: both show no flows. A scope whose review shows no traffic at all is not safe to enforce on that alone, and the condition cannot say which of the two it is: look at each workload's **Inbound flows** tab and last flow report before acknowledging past it. A scope where some workloads saw traffic passes the condition, so a quiet workload inside a busy scope deserves the same look.

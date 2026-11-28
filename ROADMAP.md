@@ -22,7 +22,7 @@ Each of these is a decision or a named gap in the record; none is implied to exi
 
 **Security and identity**
 - Duplicate-identity (cloned image) detection on connect, with forced re-enrollment (ADR-0004 as amended).
-- A server-side evidence guard on mode changes, refusing an unacknowledged promotion at the domain layer; today the gate lives in the console (ADR-0001 as amended).
+- A server-side evidence guard on mode changes, refusing an unacknowledged promotion at the domain layer; today the gate lives in the console, and the command line and the surface say they are unguarded ([#256](https://github.com/innerwall-dev/innerwall/issues/256), ADR-0001 as amended).
 - The signing tripwire: an authenticity envelope for rendered policy before it transits anything but the mutually authenticated sync stream (ADR-0012, ADR-0018).
 
 **Agent**

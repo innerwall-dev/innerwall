@@ -161,6 +161,11 @@ export interface paths {
          *     The response acknowledges the recorded intent and says nothing about
          *     convergence, which is observed on the workload reads as applied
          *     version against latest.
+         *
+         *     A change to enforced is not checked against any evidence and asks
+         *     for no acknowledgment: the simulation review in the console is where
+         *     the evidence is weighed, and this operation applies the mode as
+         *     asked.
          */
         post: operations["createModeChange"];
         delete?: never;
