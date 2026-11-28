@@ -174,6 +174,31 @@ function rollup(
 	};
 }
 
+// observedAllowed is one allowed peer-and-service group over covered
+// windows: the least traffic a review can have observed.
+const observedAllowed = {
+	...rollup([], 1),
+	effective_from: minutesAgo(120),
+	effective_to: minutesAgo(60),
+	group_by: ["peer", "service"],
+	groups: [
+		{
+			keys: {
+				peer: { kind: "address", address: "10.0.4.9", labels: {} },
+				service: { protocol: "tcp", port: 5432 },
+			},
+			workload_count: 1,
+			flow_count: 1,
+			connection_count: 1,
+			byte_count: 60,
+			first_seen: minutesAgo(90),
+			last_seen: minutesAgo(90),
+		},
+	],
+	group_count: 1,
+	totals: { flow_count: 1, connection_count: 1, byte_count: 60 },
+};
+
 function surface(
 	opts: {
 		workload?: () => Workload;
@@ -183,6 +208,9 @@ function surface(
 		};
 		extra?: Route[];
 		gaps?: EvidenceGap[];
+		// The review's allowed peer-and-service rollup covers a window:
+		// traffic was recorded in simulation in the range.
+		observed?: boolean;
 	} = {},
 ) {
 	return mockSurface([
@@ -253,6 +281,13 @@ function surface(
 										3,
 									),
 					};
+				}
+				if (
+					opts.observed &&
+					q.get("group_by") === "peer,service" &&
+					v === "allowed"
+				) {
+					return { status: 200, json: observedAllowed };
 				}
 				const counts: Record<string, number> = {
 					allowed: 4,
@@ -1016,6 +1051,7 @@ const noAddressGroups: Route = {
 describe("mode change from the detail", () => {
 	it("changes this one workload by id", async () => {
 		const { calls } = surface({
+			observed: true,
 			workload: () => ({
 				...db,
 				sync: {
@@ -1048,14 +1084,77 @@ describe("mode change from the detail", () => {
 		const dialog = await screen.findByRole("dialog", { name: "Change mode" });
 		expect(dialog).toHaveTextContent("this workload");
 		await user.click(within(dialog).getByRole("radio", { name: /Enforced/ }));
-		// Simulating on its latest policy with nothing the review would
-		// drop: the review's verdict is safe and the change is one step.
+		// Simulating on its latest policy, one flow observed and nothing
+		// the review would drop: the review's verdict is safe and the
+		// change is one step.
 		expect(await within(dialog).findByTestId("evidence")).toHaveTextContent(
 			"Safe to enforce",
 		);
 		await user.click(
 			within(dialog).getByRole("button", { name: "Change to enforced" }),
 		);
+		await waitFor(() =>
+			expect(calls.find((c) => c.method === "POST")?.body).toEqual({
+				workload_ids: [db.id],
+				target_mode: "enforced",
+				expected_match_count: 1,
+			}),
+		);
+	});
+
+	it("holds a change to enforced of a simulating workload with no observed traffic for the acknowledgment", async () => {
+		const { calls } = surface({
+			workload: () => ({
+				...db,
+				sync: {
+					...db.sync,
+					state: "synced",
+					applied_version: 42,
+					latest_version: 42,
+					error: "",
+				},
+			}),
+			extra: [
+				noAddressGroups,
+				{
+					method: "POST",
+					path: "/api/v1/mode-changes",
+					reply: {
+						status: 200,
+						json: {
+							mode_change_id: "5e0c1c7e-0000-4000-8000-000000000003",
+							matched: 1,
+							desired_updated: 1,
+						},
+					},
+				},
+			],
+		});
+		const user = userEvent.setup();
+		renderApp(`/workloads/${db.id}`);
+		await user.click(await screen.findByRole("button", { name: "change…" }));
+		const dialog = await screen.findByRole("dialog", { name: "Change mode" });
+		await user.click(within(dialog).getByRole("radio", { name: /Enforced/ }));
+		// Simulating on its latest policy, but nothing was recorded in
+		// simulation in the range: no observed traffic stands behind the
+		// verdict, so it is not safe and the change waits on the
+		// acknowledgment.
+		const block = await within(dialog).findByTestId("evidence");
+		expect(block).toHaveTextContent("Not safe to enforce for 1 of 1 selected.");
+		expect(block).toHaveTextContent(
+			"No traffic was recorded in simulation in this range — no observed traffic stands behind this verdict",
+		);
+		const confirm = within(dialog).getByRole("button", {
+			name: "Enforce anyway on 1 workload",
+		});
+		await user.click(confirm);
+		expect(calls.some((c) => c.method === "POST")).toBe(false);
+		await user.click(
+			within(dialog).getByLabelText(
+				"I understand this workload is not safe to enforce yet",
+			),
+		);
+		await user.click(confirm);
 		await waitFor(() =>
 			expect(calls.find((c) => c.method === "POST")?.body).toEqual({
 				workload_ids: [db.id],

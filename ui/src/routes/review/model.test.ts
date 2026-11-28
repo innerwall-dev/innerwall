@@ -12,6 +12,7 @@ import {
 	chipCounts,
 	composeVerdict,
 	duration,
+	enforceEvidence,
 	filterRows,
 	matrixOf,
 	partition,
@@ -301,12 +302,153 @@ describe("the verdict", () => {
 		);
 	});
 
-	it("says a safe verdict rests on nothing when nothing was stored", () => {
-		const v = verdictOf(ready(), rollups({}));
-		expect(v.safe).toBe(true);
-		expect(v.caveats).toEqual([
-			"No flows were stored in this range; no observed traffic stands behind this verdict",
-		]);
+	describe("with no observed traffic", () => {
+		const noTraffic =
+			"No traffic was recorded in simulation in this range — no observed traffic stands behind this verdict";
+
+		it("fails when nothing was recorded in simulation in the range", () => {
+			const v = verdictOf(ready(), rollups({}));
+			expect(v.safe).toBe(false);
+			expect(v.failing).toEqual([{ id: "no-traffic", text: noTraffic }]);
+			expect(v.headline).toBe("Not safe to enforce yet");
+			expect(v.sub).toBe(
+				"Nothing was observed in simulation in this range, so the review cannot show what enforcing would drop.",
+			);
+			// The failing condition replaces the old caveat: one line, not
+			// both, and no "Observed for" qualification.
+			expect(v.caveats).toEqual([noTraffic]);
+			expect(v.caveats.join("\n")).not.toMatch(/No flows were stored/);
+		});
+
+		it("does not fire for one observed flow, however little", () => {
+			const one = rollups({
+				allowed: [ps(peer.workload(api), "tcp/8443", 1, 1)],
+			});
+			const v = verdictOf(ready(), one);
+			expect(v.safe).toBe(true);
+			expect(v.failing).toEqual([]);
+			expect(v.caveats).toHaveLength(1);
+			expect(v.caveats[0]).toMatch(/^Observed for /);
+		});
+
+		it("does not fire when only would-block traffic was recorded", () => {
+			const r = rollups(
+				{ would_block: [ps(peer.workload(m1), "tcp/9100", 3, 1)] },
+				{ would_block: [srcDst(peer.workload(m1), c1, 3)] },
+			);
+			const v = verdictOf(ready(), r);
+			expect(v.failing.map((c) => c.id)).toEqual(["would-block"]);
+		});
+
+		it("takes a truncated read for traffic, never for none", () => {
+			const r = rollups(
+				{ allowed: [ps(peer.workload(api), "tcp/8443", 400, 3)] },
+				{},
+				{ truncated: true },
+			);
+			const v = verdictOf(ready(), r);
+			expect(v.failing.map((c) => c.id)).not.toContain("no-traffic");
+		});
+
+		it("judges the scope as a whole: one workload's traffic is the scope's", () => {
+			// Five workloads, one of which saw traffic: the scope-wide
+			// rollups covered windows, so the condition does not fire.
+			const one = rollups({
+				allowed: [ps(peer.workload(api), "tcp/8443", 12, 1)],
+			});
+			const v = verdictOf(ready(5), one);
+			expect(v.safe).toBe(true);
+		});
+
+		it("stands beside a sync condition, each on its line", () => {
+			const w = ready();
+			w[0].sync = {
+				...w[0].sync,
+				state: "synced",
+				applied_version: 3,
+				latest_version: 4,
+			};
+			const v = verdictOf(w, rollups({}));
+			expect(v.failing.map((c) => c.id)).toEqual(["no-traffic", "pending"]);
+			expect(v.caveats).toEqual([
+				noTraffic,
+				"checkout-01 has not applied its latest policy (applied v3, rendered v4)",
+			]);
+			expect(v.sub).toBe(
+				"Nothing was observed in simulation in this range, and not every workload in scope is simulating on its latest policy.",
+			);
+		});
+
+		it("stands beside evidence gaps, which come first", () => {
+			const w = ready();
+			const v = verdictOf(w, rollups({}), [gap(w[1], 600, 500)]);
+			expect(v.failing.map((c) => c.id)).toEqual([
+				"evidence-gaps",
+				"no-traffic",
+			]);
+			expect(v.sub).toBe(
+				"Nothing was observed in simulation in this range, and evidence is missing from part of it: traffic in it may have gone unseen.",
+			);
+		});
+
+		it("states all three together", () => {
+			const w = ready();
+			w[2].sync = { ...w[2].sync, state: "offline" };
+			const v = verdictOf(w, rollups({}), [gap(w[1], 600, 500)]);
+			expect(v.failing.map((c) => c.id)).toEqual([
+				"evidence-gaps",
+				"no-traffic",
+				"offline",
+			]);
+			expect(v.sub).toBe(
+				"Nothing was observed in simulation in this range, evidence is missing from part of it, and not every workload in scope is simulating on its latest policy.",
+			);
+		});
+
+		it("is not asked of a scope with nothing simulating", () => {
+			// Visibility traffic is recorded as observed, not as a simulated
+			// decision; the visibility condition already says no verdict
+			// exists, and claiming nothing was observed would be untrue.
+			const vis = ready(2).map((w) => ({
+				...w,
+				mode: "visibility" as const,
+			}));
+			const v = verdictOf(vis, rollups({}));
+			expect(v.failing.map((c) => c.id)).toEqual(["visibility"]);
+			expect(v.sub).toBe(
+				"No observed traffic would be dropped, but not every workload in scope is simulating on its latest policy.",
+			);
+
+			const enforced = ready(2).map((w) => ({
+				...w,
+				mode: "enforced" as const,
+			}));
+			expect(verdictOf(enforced, rollups({})).failing.map((c) => c.id)).toEqual(
+				["nothing-simulating"],
+			);
+			expect(verdictOf([], rollups({})).failing.map((c) => c.id)).toEqual([
+				"no-workloads",
+			]);
+		});
+
+		it("fires beside visibility when the rest of the scope simulates unobserved", () => {
+			const w = ready();
+			w[0].mode = "visibility";
+			const v = verdictOf(w, rollups({}));
+			expect(v.failing.map((c) => c.id)).toEqual(["no-traffic", "visibility"]);
+		});
+
+		it("makes the mode-change dialog's verdict ask for the acknowledgment", () => {
+			const [w] = ready(1);
+			const e = enforceEvidence(
+				[w],
+				[{ workload: w, verdict: verdictOf([w], rollups({})) }],
+			);
+			expect(e.safe).toEqual([]);
+			expect(e.unsimulated).toEqual([]);
+			expect(e.notSafe.map((x) => x.workload.id)).toEqual([w.id]);
+			expect(e.notSafe[0].verdict.failing[0].text).toBe(noTraffic);
+		});
 	});
 
 	it("fails on would-block traffic, stated in the headline", () => {
@@ -557,7 +699,11 @@ describe("the verdict", () => {
 				}),
 			]);
 			expect(v.safe).toBe(false);
-			expect(v.failing.map((c) => c.id)).toEqual(["evidence-gaps"]);
+			// Nothing was recorded either, which fails on its own line.
+			expect(v.failing.map((c) => c.id)).toEqual([
+				"evidence-gaps",
+				"no-traffic",
+			]);
 			expect(v.caveats[0]).toMatch(
 				/^Evidence incomplete for checkout-02 between .* — the agent dropped buffered windows$/,
 			);
